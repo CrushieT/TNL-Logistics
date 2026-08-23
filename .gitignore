@@ -1,35 +1,54 @@
-HELP.md
-target/
-.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
+# --- General exclusions ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.log
+tmp/
+.history/
 
-### STS ###
-.apt_generated
+# --- IDE and Editor settings ---
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+.vscode/
+.settings/
+.project
 .classpath
 .factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
+.metadata/
+bin/
+*.code-workspace
 
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
+# --- Environment files & Local Secrets ---
+.env
+.env.local
+.env.*.local
+*.env
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
+# --- Backend (Maven / Java) exclusions ---
+backend/target/
+backend/pom.xml.tag
+backend/pom.xml.releaseBackup
+backend/pom.xml.next
+backend/release.properties
+backend/dependency-reduced-pom.xml
+backend/buildNumber.properties
+backend/.mvn/timing.properties
 
-### VS Code ###
-.vscode/
-GEMINI.md
+# --- Frontend Web (Next.js / React) exclusions ---
+frontend-web/node_modules/
+frontend-web/.next/
+frontend-web/out/
+frontend-web/build/
 
+# --- Frontend Mobile (Expo / React Native) exclusions ---
+frontend-mobile/node_modules/
+frontend-mobile/.expo/
+frontend-mobile/dist/
+frontend-mobile/web-build/
+frontend-mobile/npm-debug.log*
+frontend-mobile/yarn-debug.log*
+frontend-mobile/yarn-error.log*
+frontend-mobile/.expo-shared/
