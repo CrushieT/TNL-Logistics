@@ -1,4 +1,4 @@
-package com.tnl.logistics.domain.shipment;
+package com.tnl.logistics.model;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;

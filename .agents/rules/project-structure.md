@@ -10,40 +10,24 @@ tnl-logistics/
 │   ├── src/
 │   │   ├── main/
 │   │   │   ├── java/com/tnl/logistics/
-│   │   │   │   ├── domain/
-│   │   │   │   │   ├── shipment/
-│   │   │   │   │   │   ├── Shipment.java
-│   │   │   │   │   │   ├── ShipmentRepository.java
-│   │   │   │   │   │   └── ShipmentService.java
-│   │   │   │   │   ├── billing/
-│   │   │   │   │   ├── tracking/
-│   │   │   │   │   │   ├── TrackingEvent.java
-│   │   │   │   │   │   ├── TrackingEventRepository.java
-│   │   │   │   │   │   └── TrackingEventService.java
-│   │   │   │   │   └── parcel/
-│   │   │   │   │       ├── ParcelUnit.java
-│   │   │   │   │       ├── ParcelUnitRepository.java
-│   │   │   │   │       └── ParcelUnitService.java
-│   │   │   │   ├── service/
-│   │   │   │   │   ├── QRGenerationService.java
-│   │   │   │   │   ├── BillingService.java
-│   │   │   │   │   └── WeeklyCollectionService.java
-│   │   │   │   ├── controller/
-│   │   │   │   │   └── api/v1/
-│   │   │   │   │       ├── ShipmentController.java
-│   │   │   │   │       ├── ParcelController.java
-│   │   │   │   │       └── BillingController.java
-│   │   │   │   ├── repository/
-│   │   │   │   ├── entity/
 │   │   │   │   ├── config/
-│   │   │   │   │   ├── SecurityConfig.java
 │   │   │   │   │   ├── CorsConfig.java
-│   │   │   │   │   └── OpenApiConfig.java
+│   │   │   │   │   └── SecurityConfig.java
+│   │   │   │   ├── controller/
+│   │   │   │   │   └── ShipmentController.java
+│   │   │   │   ├── dto/
+│   │   │   │   │   └── .gitkeep
+│   │   │   │   ├── model/
+│   │   │   │   │   └── Shipment.java
+│   │   │   │   ├── repository/
+│   │   │   │   │   └── ShipmentRepository.java
+│   │   │   │   ├── service/
+│   │   │   │   │   └── ShipmentService.java
 │   │   │   │   └── TnlLogisticsApplication.java
 │   │   │   └── resources/
-│   │   │       ├── application.yml
-│   │   │       ├── application-dev.yml
-│   │   │       ├── application-prod.yml
+│   │   │       ├── application.properties
+│   │   │       ├── application-dev.properties
+│   │   │       ├── application-prod.properties
 │   │   │       └── db/migration/
 │   │   │           └── V1__init_schema.sql
 │   │   └── test/java/com/tnl/logistics/
@@ -109,10 +93,10 @@ tnl-logistics/
 
 ### Folder Organization Philosophy
 
-**Backend (by domain):** Features live in vertical slices (`domain/shipment/`, `domain/billing/`). Each domain owns its entities, repos, and services. Controllers sit at the API layer and delegate to services.
+**Backend (layered):** Features are structured using a traditional layered architecture (`config`, `controller`, `dto`, `model`, `repository`, `service`). 
 
-- **Why:** Domain-driven design reduces coupling. Adding a new feature (e.g., `domain/returns/`) requires no changes to existing domains.
-- **Example:** A request to register a shipment flows: `ShipmentController` → `ShipmentService` → `ShipmentRepository` → `Shipment` entity. All within `domain/shipment/`.
+- **Why:** Clear separation of concerns by technical layers. Standard layout that is instantly familiar to Java/Spring developers.
+- **Example:** A request to register a shipment flows: `ShipmentController` (Controller layer) → `ShipmentService` (Service layer) → `ShipmentRepository` (Data access layer) → `Shipment` (Model/Entity layer).
 
 **Frontend Web:** Standard React structure — components, pages, API client, hooks, utilities.
 

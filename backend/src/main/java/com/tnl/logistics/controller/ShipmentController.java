@@ -1,7 +1,7 @@
-package com.tnl.logistics.controller.api.v1;
+package com.tnl.logistics.controller;
 
-import com.tnl.logistics.domain.shipment.Shipment;
-import com.tnl.logistics.domain.shipment.ShipmentService;
+import com.tnl.logistics.model.Shipment;
+import com.tnl.logistics.service.ShipmentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;

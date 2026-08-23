@@ -1,5 +1,7 @@
-package com.tnl.logistics.domain.shipment;
+package com.tnl.logistics.service;
 
+import com.tnl.logistics.model.Shipment;
+import com.tnl.logistics.repository.ShipmentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +26,6 @@ public class ShipmentService {
 	 */
 	@Transactional
 	public Shipment createShipment(Shipment shipment) {
-		// Set default PENDING status if not set
 		if (shipment.getStatus() == null) {
 			shipment.setStatus(Shipment.ShipmentStatus.PENDING);
 		}
@@ -72,7 +73,6 @@ public class ShipmentService {
 		Shipment shipment = shipmentRepository.findById(id)
 				.orElseThrow(() -> new IllegalArgumentException("Shipment not found with id: " + id));
 		shipment.setStatus(status);
-		// TODO: Log tracking event for status update
 		return shipmentRepository.save(shipment);
 	}
 
