@@ -1,0 +1,26 @@
+{
+  "name": "tnl-logistics-field-mobile",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "expo": "~51.0.0",
+    "expo-camera": "~15.0.13",
+    "expo-router": "~3.5.14",
+    "react": "18.2.0",
+    "react-native": "0.74.1",
+    "react-native-paper": "^5.12.3",
+    "react-native-safe-area-context": "4.10.1",
+    "react-native-screens": "3.31.1",
+    "react-native-bluetooth-escpos-printer": "^0.0.5"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.20.0"
+  },
+  "private": true
+}

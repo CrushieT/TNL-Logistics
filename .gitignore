@@ -1,49 +1,54 @@
-# Target/build outputs
-target/
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.next
-release.properties
-dependency-reduced-pom.xml
-buildNumber.properties
-.mvn/timing.properties
-
-# STS / Eclipse
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4db
-
-# IntelliJ IDEA
-.idea/
-*.iws
-*.iml
-*.ipr
-out/
-
-# NetBeans
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-
-# VS Code
-.vscode/
-.history/
-*.code-workspace
-
-# Operating System files
+# --- General exclusions ---
 .DS_Store
 Thumbs.db
 Desktop.ini
+*.log
+tmp/
+.history/
 
-# Local configuration and secrets
+# --- IDE and Editor settings ---
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+.metadata/
+bin/
+*.code-workspace
+
+# --- Environment files & Local Secrets ---
 .env
 .env.local
 .env.*.local
-application-local.properties
-application-local.yml
+*.env
+
+# --- Backend (Maven / Java) exclusions ---
+backend/target/
+backend/pom.xml.tag
+backend/pom.xml.releaseBackup
+backend/pom.xml.next
+backend/release.properties
+backend/dependency-reduced-pom.xml
+backend/buildNumber.properties
+backend/.mvn/timing.properties
+
+# --- Frontend Web (Next.js / React) exclusions ---
+frontend-web/node_modules/
+frontend-web/.next/
+frontend-web/out/
+frontend-web/build/
+
+# --- Frontend Mobile (Expo / React Native) exclusions ---
+frontend-mobile/node_modules/
+frontend-mobile/.expo/
+frontend-mobile/dist/
+frontend-mobile/web-build/
+frontend-mobile/npm-debug.log*
+frontend-mobile/yarn-debug.log*
+frontend-mobile/yarn-error.log*
+frontend-mobile/.expo-shared/
