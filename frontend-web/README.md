@@ -1,6 +1,6 @@
-# TNL Logistics - Admin Web Dashboard
+# TNL Logistics - Admin Web Portal
 
-React-based admin dashboard powered by **Next.js 14**.
+Expo-based admin dashboard powered by **React Native Web**.
 
 ## Prerequisites
 
@@ -13,23 +13,23 @@ React-based admin dashboard powered by **Next.js 14**.
    ```bash
    cd frontend-web
    ```
-2. Copy the environment variables template and configure it:
+2. Copy the environment variables template:
    ```bash
-   cp .env.example .env.local
+   cp .env.example .env
    ```
 3. Install dependencies:
    ```bash
    npm install
    ```
-4. Start the local development server:
+4. Start the Expo web bundler:
    ```bash
-   npm run dev
+   npm run start
    ```
-   *The dashboard will run on [http://localhost:3000](http://localhost:3000).*
+   *The dashboard will compile and open on [http://localhost:3000](http://localhost:3000).*
 
 ## Features Scaffolded
 
-- **Axios API Client:** Configured in `src/api/client.js` with base URL environment routing.
-- **Shipment Registration Form:** Located in `src/components/ShipmentForm.jsx`.
-- **Admin Dashboard:** Displays active shipments using reactive `swr` polling in `src/pages/Dashboard.jsx`.
-- **Tailwind CSS integration.**
+- **Axios API Client:** Configured in `api/client.js`.
+- **Shipment Registration Form:** Located in `components/ShipmentForm.js`.
+- **Dashboard:** Displays active shipments using standard React Native view components and polling in `app/index.js`.
+- **UI System:** Integrated with `react-native-paper` component libraries.

@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "TNL Logistics Admin Web",
+    "slug": "tnl-admin-web",
+    "version": "1.0.0",
+    "platforms": [
+      "web"
+    ],
+    "scheme": "tnl-admin-web"
+  }
+}

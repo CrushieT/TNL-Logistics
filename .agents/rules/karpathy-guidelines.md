@@ -72,3 +72,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Assume someone will read this in production 6 months from now.
 
 Question: "Would I deploy this today?" If no, don't commit it.
+
+## 6. Maintain Documentation & Rules
+
+**Keep system guidelines and folder structure layouts updated.**
+
+- **Project Structure Alignment:** Any time the workspace directory tree, folder layout, file names, or package layout is modified (e.g. adding, deleting, moving, or renaming directories/files), you MUST immediately update [`.agents/rules/project-structure.md`](.agents/rules/project-structure.md) to keep the documentation synchronized.
