@@ -21,15 +21,11 @@ tnl-logistics/
 │   │   │   │   │   ├── CorsConfig.java
 │   │   │   │   │   └── SecurityConfig.java
 │   │   │   │   ├── controller/
-│   │   │   │   │   └── ShipmentController.java
 │   │   │   │   ├── dto/
 │   │   │   │   │   └── .gitkeep
 │   │   │   │   ├── model/
-│   │   │   │   │   └── Shipment.java
 │   │   │   │   ├── repository/
-│   │   │   │   │   └── ShipmentRepository.java
 │   │   │   │   ├── service/
-│   │   │   │   │   └── ShipmentService.java
 │   │   │   │   └── TnlLogisticsApplication.java
 │   │   │   └── resources/
 │   │   │       ├── application.properties

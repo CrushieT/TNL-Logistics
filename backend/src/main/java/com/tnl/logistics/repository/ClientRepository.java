@@ -1,12 +1,12 @@
 package com.tnl.logistics.repository;
 
-import com.tnl.logistics.model.Shipment;
+import com.tnl.logistics.model.Client;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 /**
- * Spring Data Repository for Shipment entity.
+ * Spring Data Repository for Client entity.
  */
 @Repository
-public interface ShipmentRepository extends JpaRepository<Shipment, String> {
+public interface ClientRepository extends JpaRepository<Client, String> {
 }
