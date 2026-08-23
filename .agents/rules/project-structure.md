@@ -6,6 +6,13 @@
 
 ```
 tnl-logistics/
+├── .agents/
+│   └── rules/
+│       ├── git-conventions.md        # Git workflow, branch naming & commit rules
+│       ├── karpathy-guidelines.md    # LLM coding best practices
+│       └── project-structure.md      # Project directory layout & philosophies
+├── .github/
+│   └── pull_request_template.md      # GitHub Pull Request template
 ├── backend/                          # Spring Boot API (Java 21)
 │   ├── src/
 │   │   ├── main/
