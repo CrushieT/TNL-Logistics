@@ -27,16 +27,26 @@ public class DataSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        seedUser("USR-ADMIN", "admin", "admin123", "System Administrator", UserRole.ADMIN);
+        seedUser("USR-ADMIN", "admin", "admin123", "Maria Santos", UserRole.ADMIN);
         seedUser("USR-OFFICE", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF);
         seedUser("USR-FIELD", "field", "field123", "Field Staff/Courier", UserRole.FIELD_STAFF);
 
-        seedClient("CL-001", "Acme Logistics Client", "Manila, Philippines", "09170000000", "client@acme.com");
+        // Seed default prototype client
+        if (clientRepository.findById("CL-001").isEmpty()) {
+            clientRepository.save(new Client(
+                    "CL-001",
+                    "Northbridge Trading",
+                    "Unit 402, Trade Tower, Binondo, Manila",
+                    "0917-555-0148",
+                    "accounts@northbridgetrading.ph"
+            ));
+        }
     }
 
     private void seedUser(String id, String username, String rawPassword, String fullName, UserRole role) {
-        if (appUserRepository.findByUsername(username).isEmpty()) {
-            AppUser user = new AppUser(
+        AppUser user = appUserRepository.findByUsername(username).orElse(null);
+        if (user == null) {
+            user = new AppUser(
                 id,
                 username,
                 passwordEncoder.encode(rawPassword),
@@ -44,6 +54,9 @@ public class DataSeeder implements CommandLineRunner {
                 role
             );
             user.setMustChangePassword(true);
+            appUserRepository.save(user);
+        } else {
+            user.setPasswordHash(passwordEncoder.encode(rawPassword));
             appUserRepository.save(user);
         }
     }

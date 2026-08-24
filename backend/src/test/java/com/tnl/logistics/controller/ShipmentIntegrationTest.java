@@ -69,18 +69,18 @@ public class ShipmentIntegrationTest {
 
     @BeforeEach
     public void setup() {
-        appUserRepository.deleteAll();
-        clientRepository.deleteAll();
-
-        // Seed Users
-        appUserRepository.save(new AppUser("USR-OFFICE", "office", passwordEncoder.encode("office123"), "Office User", UserRole.OFFICE_STAFF));
-        appUserRepository.save(new AppUser("USR-FIELD", "field", passwordEncoder.encode("field123"), "Field User", UserRole.FIELD_STAFF));
+        trackingEventRepository.deleteAll();
+        paymentRepository.deleteAll();
+        parcelUnitRepository.deleteAll();
+        shipmentRepository.deleteAll();
 
         officeToken = "Bearer " + JwtTokenProvider.generateToken("office", "OFFICE_STAFF");
         fieldToken = "Bearer " + JwtTokenProvider.generateToken("field", "FIELD_STAFF");
 
-        // Seed Client
-        clientRepository.save(new Client("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com"));
+        // Seed Client if not present
+        if (clientRepository.findById("CL-001").isEmpty()) {
+            clientRepository.save(new Client("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com"));
+        }
 
         currentYear = String.valueOf(LocalDate.now().getYear());
     }
