@@ -57,8 +57,6 @@ const styles = StyleSheet.create({
   frame: {
     flex: 1,
     backgroundColor: colors.canvas,
-    borderWidth: 1,
-    borderColor: '#111111',
     minHeight: '100vh',
   },
   mobileHeader: {
@@ -115,7 +113,7 @@ const styles = StyleSheet.create({
     minHeight: 'auto',
   },
   sidebarWrap: {
-    width: 220,
+    width: 245,
     backgroundColor: '#FFFFFF',
   },
   sidebarMobile: {
