@@ -30,10 +30,13 @@ tnl-logistics/
 │   └── pom.xml
 │
 ├── frontend-web/                    # Admin Web Portal (React Native Web / Expo Router)
-│   ├── app/                         # File-based routes (_layout.js, index.js, register.js, etc.)
-│   ├── components/                  # ShipmentForm, ShipmentResultView, PrintLabelsModal, common/
-│   ├── api/                         # client.js, shipments.js
-│   ├── constants/                   # theme.js (colors, fonts, typography)
+│   ├── src/
+│   │   ├── app/                     # File-based routes (_layout.js, index.js, register.js, shipments/, etc.)
+│   │   ├── components/              # Shared design system (common/ atoms, layout/ wrappers)
+│   │   ├── features/                # Domain modules (shipments/, clients/) with components and services
+│   │   ├── services/                # Core infrastructure (api/client.js with JWT interceptor)
+│   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
+│   │   └── utils/                   # Pure utilities (qr.js in-memory vector QR encoder)
 │   ├── assets/                      # favicon.png
 │   ├── app.json                     # Expo web configuration
 │   ├── babel.config.js

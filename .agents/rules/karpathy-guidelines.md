@@ -85,3 +85,11 @@ Question: "Would I deploy this today?" If no, don't commit it.
 - **Project Structure Alignment:** Any time the workspace directory tree, folder layout, file names, or package layout is modified (e.g. adding, deleting, moving, or renaming directories/files), you MUST immediately update [`.agents/rules/project-structure.md`](file:///C:/Users/Aundray/Desktop/Project/Tracking/logistics/.agents/rules/project-structure.md) to keep the documentation synchronized.
 - **Build Plan Progress Alignment:** Any time a phase, feature slice, or development milestone is completed, added, or modified, you MUST immediately update [`.docs/build-plan.md`](file:///C:/Users/Aundray/Desktop/Project/Tracking/logistics/.docs/build-plan.md) to reflect the current progress status (`[COMPLETED]`, `[CURRENT FOCUS]`, `[UPCOMING]`). Do not use emojis in status tags.
 
+## 7. Error Explanation Before Code Fixes
+
+**Always explain the root cause first.**
+
+- When the user sends an error message, stack trace, or asks about a bug:
+  1. Clearly explain what the error means, where it occurred, and why it happened in plain terms.
+  2. Only after providing the full explanation, propose the specific code changes and ask or proceed to apply the fix.
+
