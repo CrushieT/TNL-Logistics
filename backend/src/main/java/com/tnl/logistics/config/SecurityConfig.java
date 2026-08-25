@@ -32,6 +32,8 @@ public class SecurityConfig {
 			.csrf(csrf -> csrf.disable()) // Disabled for stateless APIs
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 			.authorizeHttpRequests(auth -> auth
+				// Allow CORS preflight OPTIONS requests
+				.requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
 				// Allow public access to API documentation (Swagger/OpenAPI)
 				.requestMatchers(
 						"/v3/api-docs/**",

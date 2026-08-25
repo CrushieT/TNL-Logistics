@@ -17,41 +17,31 @@ tnl-logistics/
 │   ├── src/
 │   │   ├── main/
 │   │   │   ├── java/com/tnl/logistics/
-│   │   │   │   ├── config/
-│   │   │   │   │   ├── CorsConfig.java
-│   │   │   │   │   └── SecurityConfig.java
-│   │   │   │   ├── controller/
-│   │   │   │   ├── dto/
-│   │   │   │   │   └── .gitkeep
-│   │   │   │   ├── model/
-│   │   │   │   ├── repository/
-│   │   │   │   ├── service/
-│   │   │   │   └── TnlLogisticsApplication.java
-│   │   │   └── resources/
-│   │   │       ├── application.properties
-│   │   │       ├── application-dev.properties
-│   │   │       ├── application-prod.properties
-│   │   │       └── db/migration/
-│   │   │           └── V1__init_schema.sql
-│   │   └── test/java/com/tnl/logistics/
-│   ├── pom.xml
-│   ├── Dockerfile
-│   ├── .gitignore
-│   └── README.md
+│   │   │   │   ├── config/              # SecurityConfig, CorsConfig, JwtTokenProvider, DataSeeder
+│   │   │   ├── controller/          # REST endpoints (AuthController, ShipmentController, ClientController, etc.)
+│   │   │   ├── dto/                 # Request & Response DTOs
+│   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, etc.)
+│   │   │   ├── repository/          # Spring Data Repositories
+│   │   │   └── service/             # Business Logic & Service Interfaces (ShipmentService, etc.)
+│   │   └── resources/
+│   │       ├── application.properties
+│   │       ├── application-dev.properties
+│   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V5)
+│   └── pom.xml
 │
-├── frontend-web/                     # React Native (Expo) Admin Web (JavaScript)
-│   ├── app/
-│   │   ├── _layout.js
-│   │   └── index.js
-│   ├── api/
-│   │   └── client.js
-│   ├── components/
-│   │   ├── ShipmentForm.js
-│   │   └── common/
-│   ├── app.json                      # Expo web configuration
+├── frontend-web/                    # Admin Web Portal (React Native Web / Expo Router)
+│   ├── src/
+│   │   ├── app/                     # File-based routes (_layout.js, index.js, register.js, shipments/, etc.)
+│   │   ├── components/              # Shared design system (common/ atoms, layout/ wrappers)
+│   │   ├── features/                # Domain modules (shipments/, clients/) with components and services
+│   │   ├── services/                # Core infrastructure (api/client.js with JWT interceptor)
+│   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
+│   │   └── utils/                   # Pure utilities (qr.js in-memory vector QR encoder)
+│   ├── assets/                      # favicon.png
+│   ├── app.json                     # Expo web configuration
+│   ├── babel.config.js
 │   ├── package.json
 │   ├── .env.example
-│   ├── .gitignore
 │   └── README.md
 │
 ├── frontend-mobile/                  # React Native (Expo) Field Operations (JavaScript)

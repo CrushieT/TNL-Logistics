@@ -46,13 +46,29 @@ public class SecurityIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private com.tnl.logistics.repository.PaymentRepository paymentRepository;
+
+    @Autowired
+    private com.tnl.logistics.repository.TrackingEventRepository trackingEventRepository;
+
+    @Autowired
+    private com.tnl.logistics.repository.ParcelUnitRepository parcelUnitRepository;
+
+    @Autowired
+    private com.tnl.logistics.repository.ShipmentRepository shipmentRepository;
+
     @BeforeEach
     public void setup() {
-        appUserRepository.deleteAll();
+        trackingEventRepository.deleteAll();
+        paymentRepository.deleteAll();
+        parcelUnitRepository.deleteAll();
+        shipmentRepository.deleteAll();
 
-        // Seed test accounts
-        appUserRepository.save(new AppUser("USR-ADMIN", "admin", passwordEncoder.encode("admin123"), "Admin User", UserRole.ADMIN));
-        appUserRepository.save(new AppUser("USR-FIELD", "field", passwordEncoder.encode("field123"), "Field User", UserRole.FIELD_STAFF));
+        // Ensure test admin exists
+        if (appUserRepository.findByUsername("admin").isEmpty()) {
+            appUserRepository.save(new AppUser("USR-ADMIN", "admin", passwordEncoder.encode("admin123"), "Admin User", UserRole.ADMIN));
+        }
     }
 
     @Test
