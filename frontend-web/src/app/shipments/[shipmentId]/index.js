@@ -11,6 +11,7 @@ import {
   SingleUnitQRModal,
   getShipment,
   printLabels,
+  subscribeRealtimeEvents,
 } from '../../../features/shipments';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
 
@@ -22,10 +23,10 @@ export default function ShipmentDetailScreen() {
   const [printModalVisible, setPrintModalVisible] = useState(false);
   const [singleQRModalUnit, setSingleQRModalUnit] = useState(null);
 
-  const loadShipment = useCallback(async () => {
+  const loadShipment = useCallback(async (showSpinner = true) => {
     if (!shipmentId) return;
     try {
-      setLoading(true);
+      if (showSpinner) setLoading(true);
       const data = await getShipment(shipmentId);
       if (data) {
         setShipment(data);
@@ -33,13 +34,37 @@ export default function ShipmentDetailScreen() {
     } catch (err) {
       console.warn('Shipment detail fetch failed:', err?.message);
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   }, [shipmentId]);
 
   useEffect(() => {
-    loadShipment();
+    loadShipment(true);
   }, [loadShipment]);
+
+  // Real-time SSE listener
+  useEffect(() => {
+    const handleSilentRefresh = () => {
+      loadShipment(false);
+    };
+
+    const unsubscribe = subscribeRealtimeEvents((event) => {
+      if (event.data?.shipmentId === shipmentId) {
+        handleSilentRefresh();
+      }
+    });
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleSilentRefresh);
+    }
+
+    return () => {
+      unsubscribe();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', handleSilentRefresh);
+      }
+    };
+  }, [loadShipment, shipmentId]);
 
   const handlePrintAll = async () => {
     try {

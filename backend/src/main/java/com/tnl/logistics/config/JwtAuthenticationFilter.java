@@ -15,7 +15,7 @@ import java.util.Collections;
 
 /**
  * Filter that intercepts incoming HTTP requests, extracts JWT from the
- * Authorization header, and signs the user into Spring Security context.
+ * Authorization header or query parameter, and signs the user into Spring Security context.
  */
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -24,20 +24,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         String authHeader = request.getHeader("Authorization");
+        String token = null;
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            String token = authHeader.substring(7);
-            if (JwtTokenProvider.validateToken(token)) {
-                String username = JwtTokenProvider.getUsernameFromToken(token);
-                String role = JwtTokenProvider.getRoleFromToken(token);
+            token = authHeader.substring(7);
+        } else if (request.getParameter("token") != null && !request.getParameter("token").isBlank()) {
+            token = request.getParameter("token");
+        }
 
-                if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                    SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + role);
-                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                            username, null, Collections.singletonList(authority));
-                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
-                }
+        if (token != null && JwtTokenProvider.validateToken(token)) {
+            String username = JwtTokenProvider.getUsernameFromToken(token);
+            String role = JwtTokenProvider.getRoleFromToken(token);
+
+            if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + role);
+                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                        username, null, Collections.singletonList(authority));
+                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authentication);
             }
         }
 

@@ -8,6 +8,7 @@ import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.repository.ParcelUnitRepository;
 import com.tnl.logistics.repository.TrackingEventRepository;
 import com.tnl.logistics.repository.VehicleRepository;
+import com.tnl.logistics.service.SseService;
 import com.tnl.logistics.service.TrackingService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,7 +19,7 @@ import java.util.stream.Collectors;
 
 /**
  * Service implementing 5-state parcel status flow, sequential validation,
- * vehicle fleet assignment, and append-only audit event logging.
+ * vehicle fleet assignment, append-only audit event logging, and real-time SSE broadcasting.
  */
 @Service
 @Transactional
@@ -28,15 +29,18 @@ public class TrackingServiceImpl implements TrackingService {
     private final TrackingEventRepository trackingEventRepository;
     private final VehicleRepository vehicleRepository;
     private final AppUserRepository appUserRepository;
+    private final SseService sseService;
 
     public TrackingServiceImpl(ParcelUnitRepository parcelUnitRepository,
                                TrackingEventRepository trackingEventRepository,
                                VehicleRepository vehicleRepository,
-                               AppUserRepository appUserRepository) {
+                               AppUserRepository appUserRepository,
+                               SseService sseService) {
         this.parcelUnitRepository = parcelUnitRepository;
         this.trackingEventRepository = trackingEventRepository;
         this.vehicleRepository = vehicleRepository;
         this.appUserRepository = appUserRepository;
+        this.sseService = sseService;
     }
 
     @Override
@@ -54,7 +58,7 @@ public class TrackingServiceImpl implements TrackingService {
         if (currentStatus == targetStatus) {
             String rollup = computeRollupForShipment(parcel.getShipment());
             Vehicle vehicle = parcel.getCurrentVehicle();
-            return new TrackingScanResponse(
+            TrackingScanResponse resp = new TrackingScanResponse(
                     parcel.getTrackingId(),
                     formatStatus(currentStatus),
                     formatStatus(targetStatus),
@@ -65,6 +69,7 @@ public class TrackingServiceImpl implements TrackingService {
                     parcel.getShipment().getShipmentId(),
                     rollup
             );
+            return resp;
         }
 
         // 2. Validate Sequential 5-State Transition
@@ -106,7 +111,7 @@ public class TrackingServiceImpl implements TrackingService {
         // 6. Compute Updated Rollup for Shipment
         String rollup = computeRollupForShipment(parcel.getShipment());
 
-        return new TrackingScanResponse(
+        TrackingScanResponse response = new TrackingScanResponse(
                 parcel.getTrackingId(),
                 formatStatus(currentStatus),
                 formatStatus(targetStatus),
@@ -117,6 +122,13 @@ public class TrackingServiceImpl implements TrackingService {
                 parcel.getShipment().getShipmentId(),
                 rollup
         );
+
+        // 7. Broadcast real-time SSE event to all connected office/field browsers
+        try {
+            sseService.broadcastTrackingScan(response);
+        } catch (Exception ignored) {}
+
+        return response;
     }
 
     @Override

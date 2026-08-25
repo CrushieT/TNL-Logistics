@@ -1,16 +1,19 @@
 package com.tnl.logistics.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.CreationTimestamp;
+import org.springframework.data.domain.Persistable;
+
 import java.time.LocalDateTime;
 import java.util.Objects;
-import org.hibernate.annotations.CreationTimestamp;
 
 /**
  * Entity mapping to the vehicle database table.
+ * Implements Persistable to properly handle assigned IDs with Spring Data JPA.
  */
 @Entity
 @Table(name = "vehicle")
-public class Vehicle {
+public class Vehicle implements Persistable<String> {
 
     @Id
     @Column(name = "vehicle_id", length = 20)
@@ -29,12 +32,32 @@ public class Vehicle {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    @Transient
+    private boolean isNew = true;
+
     public Vehicle() {}
 
     public Vehicle(String vehicleId, String plateNumber, String description) {
         this.vehicleId = vehicleId;
         this.plateNumber = plateNumber;
         this.description = description;
+        this.active = true;
+    }
+
+    @Override
+    public String getId() {
+        return vehicleId;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew || createdAt == null;
+    }
+
+    @PostLoad
+    @PostPersist
+    void markNotNew() {
+        this.isNew = false;
     }
 
     // Getters and Setters

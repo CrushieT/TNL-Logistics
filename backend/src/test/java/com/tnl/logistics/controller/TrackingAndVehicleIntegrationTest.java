@@ -137,7 +137,7 @@ public class TrackingAndVehicleIntegrationTest {
     @Test
     public void testSequential5StateStatusFlowAndVehicleAssignment() throws Exception {
         // 1. Create a vehicle
-        vehicleRepository.save(new Vehicle("VH-001", "ABC-1234", "TNL Truck 1"));
+        vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "TNL Truck 1"));
 
         // 2. Register a shipment
         ShipmentRegistrationRequest regReq = new ShipmentRegistrationRequest();
