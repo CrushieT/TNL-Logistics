@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import AppShell from '../../components/layout/AppShell';
 import PageHeader from '../../components/layout/PageHeader';
@@ -6,22 +6,10 @@ import Button from '../../components/common/Button';
 import SearchFilterBar from '../../components/common/SearchFilterBar';
 import { ShipmentsTable, listShipments } from '../../features/shipments';
 
-const FALLBACK_SHIPMENTS = [
-  { shipmentId: 'SHP-2026-011', dateLabel: 'Aug 24, 2026', recipientName: 'Aundray Tafalla', contactNumber: '08921341232', client: 'Northbridge Trading', quantity: 3, status: 'Registered', statusRollup: '3 / 3 Registered', payment: 'Unpaid', balance: 500 },
-  { shipmentId: 'SHP-2026-001', dateLabel: 'Aug 3, 2026', recipientName: 'Juan Dela Cruz', contactNumber: '0917-555-0148', client: 'Northbridge Trading', quantity: 3, status: 'Loaded on Truck', statusRollup: '1 / 3 Loaded on Truck', payment: 'Unpaid', balance: 500 },
-  { shipmentId: 'SHP-2026-002', dateLabel: 'Aug 4, 2026', recipientName: 'Juan Dela Cruz', contactNumber: '0917-555-0148', client: 'Northbridge Trading', quantity: 1, status: 'Arrived at TNL', statusRollup: '1 / 1 Arrived at TNL', payment: 'Unpaid', balance: 750 },
-  { shipmentId: 'SHP-2026-003', dateLabel: 'Aug 5, 2026', recipientName: 'Rosa Aquino', contactNumber: '0917-555-0148', client: 'Northbridge Trading', quantity: 1, status: 'Loaded on Truck', statusRollup: '1 / 1 Loaded on Truck', payment: 'Unpaid', balance: 300 },
-  { shipmentId: 'SHP-2026-004', dateLabel: 'Aug 3, 2026', recipientName: 'Mario Bautista', contactNumber: '0918-555-0022', client: 'Sunrise Hardware', quantity: 1, status: 'Arrived at TNL', statusRollup: '1 / 1 Arrived at TNL', payment: 'Paid', balance: 0 },
-  { shipmentId: 'SHP-2026-005', dateLabel: 'Aug 3, 2026', recipientName: 'Mario Bautista', contactNumber: '0918-555-0022', client: 'Sunrise Hardware', quantity: 1, status: 'Arrived at TNL', statusRollup: '1 / 1 Arrived at TNL', payment: 'Unpaid', balance: 500 },
-  { shipmentId: 'SHP-2026-006', dateLabel: 'Aug 4, 2026', recipientName: 'Ana Villanueva', contactNumber: '0918-555-0022', client: 'Sunrise Hardware', quantity: 1, status: 'Arrived at TNL', statusRollup: '1 / 1 Arrived at TNL', payment: 'Unpaid', balance: 600 },
-  { shipmentId: 'SHP-2026-007', dateLabel: 'Aug 5, 2026', recipientName: 'Ana Villanueva', contactNumber: '0918-555-0022', client: 'Sunrise Hardware', quantity: 1, status: 'Loaded on Truck', statusRollup: '1 / 1 Loaded on Truck', payment: 'Unpaid', balance: 500 },
-  { shipmentId: 'SHP-2026-008', dateLabel: 'Aug 6, 2026', recipientName: 'Mario Bautista', contactNumber: '0918-555-0022', client: 'Sunrise Hardware', quantity: 1, status: 'Registered', statusRollup: '1 / 1 Registered', payment: 'Unpaid', balance: 600 },
-  { shipmentId: 'SHP-2026-009', dateLabel: 'Aug 4, 2026', recipientName: 'Grace Tan', contactNumber: '0999-555-0099', client: 'Metro Fashion House', quantity: 2, status: 'Arrived at TNL', statusRollup: '2 / 2 Arrived at TNL', payment: 'Paid', balance: 0 },
-];
-
 const STATUS_OPTIONS = [
   { value: 'ALL', label: 'Status: All' },
   { value: 'Registered', label: 'Registered' },
+  { value: 'QR Generated', label: 'QR Generated' },
   { value: 'Loaded on Truck', label: 'Loaded on Truck' },
   { value: 'Arrived at TNL', label: 'Arrived at TNL' },
   { value: 'Loaded to Hauler', label: 'Loaded to Hauler' },
@@ -36,36 +24,62 @@ const PAYMENT_OPTIONS = [
 
 export default function ShipmentsListScreen() {
   const router = useRouter();
-  const [shipments, setShipments] = useState(FALLBACK_SHIPMENTS);
+  const [shipments, setShipments] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [paymentFilter, setPaymentFilter] = useState('ALL');
 
-  const load = useCallback(async () => {
+  // Pagination state
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalElements, setTotalElements] = useState(0);
+
+  const searchTimer = useRef(null);
+
+  const fetchShipments = useCallback(async (currPage, currSize, currSearch, currStatus, currPayment) => {
     try {
-      const data = await listShipments();
-      if (data?.length) setShipments(data);
+      setLoading(true);
+      const params = {
+        page: currPage,
+        size: currSize,
+      };
+      if (currSearch && currSearch.trim()) params.search = currSearch.trim();
+      if (currStatus && currStatus !== 'ALL') params.status = currStatus;
+      if (currPayment && currPayment !== 'ALL') params.paymentStatus = currPayment;
+
+      const data = await listShipments(params);
+      if (data && data.content) {
+        setShipments(data.content);
+        setTotalPages(data.page?.totalPages ?? data.totalPages ?? 1);
+        setTotalElements(data.page?.totalElements ?? data.totalElements ?? data.content.length);
+      } else if (Array.isArray(data)) {
+        setShipments(data);
+        setTotalPages(1);
+        setTotalElements(data.length);
+      }
     } catch (err) {
-      console.warn('Shipments fetch failed, using fallback data.', err?.message);
+      console.warn('Failed to load shipments from backend:', err?.message);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
+  // Fetch when filters or page changes
   useEffect(() => {
-    load();
-  }, [load]);
+    fetchShipments(page, pageSize, search, statusFilter, paymentFilter);
+  }, [fetchShipments, page, pageSize, statusFilter, paymentFilter]);
 
-  const filtered = useMemo(() => {
-    return shipments.filter((s) => {
-      const matchesSearch =
-        !search ||
-        s.shipmentId.toLowerCase().includes(search.toLowerCase()) ||
-        s.recipientName.toLowerCase().includes(search.toLowerCase()) ||
-        s.client.toLowerCase().includes(search.toLowerCase());
-      const matchesStatus = statusFilter === 'ALL' || s.status === statusFilter;
-      const matchesPayment = paymentFilter === 'ALL' || s.payment === paymentFilter;
-      return matchesSearch && matchesStatus && matchesPayment;
-    });
-  }, [shipments, search, statusFilter, paymentFilter]);
+  // Debounced search
+  const handleSearchChange = (val) => {
+    setSearch(val);
+    setPage(0);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      fetchShipments(0, pageSize, val, statusFilter, paymentFilter);
+    }, 350);
+  };
 
   return (
     <AppShell>
@@ -77,16 +91,42 @@ export default function ShipmentsListScreen() {
 
       <SearchFilterBar
         searchValue={search}
-        onSearchChange={setSearch}
-        placeholder="Search shipment, tracking ID, recipient..."
+        onSearchChange={handleSearchChange}
+        placeholder="Search shipment, tracking ID, recipient, client..."
         filters={[
-          { label: 'Status', value: statusFilter, onChange: setStatusFilter, options: STATUS_OPTIONS },
-          { label: 'Payment', value: paymentFilter, onChange: setPaymentFilter, options: PAYMENT_OPTIONS },
+          {
+            label: 'Status',
+            value: statusFilter,
+            onChange: (val) => {
+              setStatusFilter(val);
+              setPage(0);
+            },
+            options: STATUS_OPTIONS,
+          },
+          {
+            label: 'Payment',
+            value: paymentFilter,
+            onChange: (val) => {
+              setPaymentFilter(val);
+              setPage(0);
+            },
+            options: PAYMENT_OPTIONS,
+          },
         ]}
       />
 
       <ShipmentsTable
-        shipments={filtered}
+        shipments={shipments}
+        loading={loading}
+        page={page}
+        totalPages={totalPages}
+        totalElements={totalElements}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={(newSize) => {
+          setPageSize(newSize);
+          setPage(0);
+        }}
         onView={(s) => router.push(`/shipments/${s.shipmentId}`)}
       />
     </AppShell>

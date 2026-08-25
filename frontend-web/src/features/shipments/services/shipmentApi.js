@@ -19,6 +19,18 @@ export async function getShipment(shipmentId) {
   return data;
 }
 
+export async function getParcelUnit(trackingId) {
+  const { data } = await apiClient.get(`/parcel-units/${trackingId}`);
+  return data;
+}
+
+export async function printLabels(shipmentId, packageIds) {
+  const { data } = await apiClient.post(`/shipments/${shipmentId}/labels/print`, {
+    packageIds,
+  });
+  return data;
+}
+
 export async function registerShipment(payload) {
   const qty = parseInt(payload.quantity, 10) || 1;
   const weight = parseFloat(payload.weightPerUnit) || 1.0;
@@ -84,18 +96,6 @@ export async function registerShipment(payload) {
       labelStatus: 'Pending',
     })),
   };
-}
-
-export async function getParcelUnit(trackingId) {
-  const { data } = await apiClient.get(`/parcel-units/${trackingId}`);
-  return data;
-}
-
-export async function printLabels(shipmentId, packageIds) {
-  const { data } = await apiClient.post(`/shipments/${shipmentId}/labels/print`, {
-    packageIds,
-  });
-  return data;
 }
 
 export async function listTrackingLogs(params = {}) {

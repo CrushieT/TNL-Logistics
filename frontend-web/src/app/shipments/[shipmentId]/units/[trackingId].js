@@ -1,52 +1,33 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import AppShell from '../../../../components/layout/AppShell';
 import Card from '../../../../components/common/Card';
-import Button from '../../../../components/common/Button';
 import StatusBadge from '../../../../components/common/StatusBadge';
 import QRCodeGenerator from '../../../../components/common/QRCodeGenerator';
 import { getParcelUnit } from '../../../../features/shipments';
-import { colors, fonts, spacing, type } from '../../../../theme';
+import { colors, fonts, spacing, radius, type } from '../../../../theme';
 
-const STATUS_SEQUENCE = ['Registered', 'QR Generated', 'Loaded on Truck', 'Arrived at TNL', 'Loaded to Hauler'];
-
-const FALLBACK_UNIT = {
-  trackingId: 'TRK-2026-000114',
-  packageIndex: 1,
-  packageCount: 3,
-  recipientName: 'Aundray Tafalla',
-  shipmentId: 'SHP-2026-011',
-  status: 'Registered',
-  labelStatus: 'Printed',
-  client: 'Northbridge Trading',
-  weight: 1,
-  route: 'Manila → TNL Baguio',
-  history: [
-    { event: 'Registered', date: 'Aug 24, 2026', time: '5:01 PM', by: 'Andrea Lim', done: true },
-    { event: 'QR Generated', date: 'Aug 24, 2026', time: '5:01 PM', by: 'Andrea Lim', done: true },
-    { event: 'Loaded on Truck', pending: true, pendingNote: 'pending mobile scan' },
-  ],
-  printing: {
-    status: 'Printed',
-    date: 'Aug 24, 2026 · 5:01 PM',
-    by: 'Maria Santos',
-    printer: 'Brother RJ-2035B',
-    count: 1,
-  },
-};
+const STATUS_FLOW = ['Registered', 'QR Generated', 'Loaded on Truck', 'Arrived at TNL', 'Loaded to Hauler'];
 
 export default function ParcelUnitDetailScreen() {
   const router = useRouter();
   const { shipmentId, trackingId } = useLocalSearchParams();
-  const [unit, setUnit] = useState(FALLBACK_UNIT);
+  const [unit, setUnit] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
+    if (!trackingId) return;
     try {
+      setLoading(true);
       const data = await getParcelUnit(trackingId);
-      if (data) setUnit(data);
+      if (data) {
+        setUnit(data);
+      }
     } catch (err) {
-      console.warn('Parcel unit fetch failed, using fallback data.', err?.message);
+      console.warn('Parcel unit fetch failed:', err?.message);
+    } finally {
+      setLoading(false);
     }
   }, [trackingId]);
 
@@ -54,18 +35,54 @@ export default function ParcelUnitDetailScreen() {
     load();
   }, [load]);
 
+  if (loading) {
+    return (
+      <AppShell>
+        <Pressable onPress={() => router.push(`/shipments/${shipmentId}`)}>
+          <Text style={styles.backLink}>← {shipmentId}</Text>
+        </Pressable>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator color={colors.ink} size="large" />
+          <Text style={styles.loadingText}>Loading parcel unit {trackingId}...</Text>
+        </View>
+      </AppShell>
+    );
+  }
+
+  if (!unit) {
+    return (
+      <AppShell>
+        <Pressable onPress={() => router.push(`/shipments/${shipmentId}`)}>
+          <Text style={styles.backLink}>← {shipmentId}</Text>
+        </Pressable>
+        <Card>
+          <Text style={styles.notFoundText}>Parcel unit {trackingId} was not found.</Text>
+        </Card>
+      </AppShell>
+    );
+  }
+
+  const dimensionsLabel = `${unit.lengthCm || 20} × ${unit.widthCm || 10} × ${unit.heightCm || 15} cm`;
+  const volumeLabel = `${Number(unit.volumeCbm || 0.003).toFixed(4)} m³`;
+  const completedEvents = unit.history || [];
+
+  // Find the single immediate next status in the sequence
+  const completedEventNames = new Set(completedEvents.map((e) => e.event));
+  const nextPendingStatus = STATUS_FLOW.find((s) => !completedEventNames.has(s));
+
   return (
     <AppShell>
       <Pressable onPress={() => router.push(`/shipments/${shipmentId}`)}>
         <Text style={styles.backLink}>← {shipmentId}</Text>
       </Pressable>
 
+      {/* Header Row */}
       <View style={styles.headerRow}>
         <View>
-          <Text style={type.eyebrow}>
-            {unit.trackingId} · Package {unit.packageIndex} of {unit.packageCount}
+          <Text style={styles.eyebrow}>
+            {unit.trackingId} · PACKAGE {unit.packageIndex} OF {unit.packageCount}
           </Text>
-          <Text style={[type.h1, styles.title]}>{unit.recipientName?.toUpperCase()}</Text>
+          <Text style={styles.title}>{(unit.recipientName || '').toUpperCase()}</Text>
         </View>
         <View style={styles.badgeRow}>
           <StatusBadge value={unit.status} kind="status" />
@@ -74,92 +91,144 @@ export default function ParcelUnitDetailScreen() {
       </View>
 
       <View style={styles.row}>
+        {/* Left Column: Metadata & Tracking History */}
         <View style={styles.mainCol}>
-          <Card title="Package & Recipient" style={styles.cardSpacing}>
-            <View style={styles.fieldGrid}>
-              <Field label="Tracking ID" value={unit.trackingId} />
-              <Field label="Package" value={`${unit.packageIndex} of ${unit.packageCount}`} />
-              <Field label="Shipment" value={unit.shipmentId} accent />
-              <Field label="Client" value={unit.client} />
-              <Field label="Weight" value={`${unit.weight} kg`} />
-              <Field label="Route" value={unit.route} />
+          {/* Card 1: Package & Recipient */}
+          <Card title="PACKAGE & RECIPIENT" style={styles.cardSpacing}>
+            <View style={styles.gridRow}>
+              <View style={styles.gridCol}>
+                <Text style={styles.fieldLabel}>TRACKING ID</Text>
+                <Text style={styles.fieldValueMono}>{unit.trackingId}</Text>
+              </View>
+              <View style={styles.gridCol}>
+                <Text style={styles.fieldLabel}>PACKAGE</Text>
+                <Text style={styles.fieldValue}>{unit.packageIndex} of {unit.packageCount}</Text>
+              </View>
+              <View style={styles.gridCol}>
+                <Text style={styles.fieldLabel}>SHIPMENT</Text>
+                <Pressable onPress={() => router.push(`/shipments/${unit.shipmentId}`)}>
+                  <Text style={styles.fieldValueOrange}>{unit.shipmentId}</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={[styles.gridRow, { marginTop: spacing.md }]}>
+              <View style={styles.gridCol}>
+                <Text style={styles.fieldLabel}>CLIENT</Text>
+                <Text style={styles.fieldValue}>{unit.client}</Text>
+              </View>
+              <View style={styles.gridCol}>
+                <Text style={styles.fieldLabel}>DIMENSIONS · VOLUME</Text>
+                <Text style={styles.fieldValue}>{dimensionsLabel} · {volumeLabel}</Text>
+              </View>
+              <View style={styles.gridCol}>
+                <Text style={styles.fieldLabel}>ROUTE</Text>
+                <Text style={styles.fieldValue}>{unit.route}</Text>
+              </View>
             </View>
           </Card>
 
+          {/* Card 2: Tracking History */}
           <Card
-            title="Tracking History"
+            title="TRACKING HISTORY"
             right={<Text style={styles.appendOnly}>append-only · this package only</Text>}
           >
             <View style={styles.timeline}>
-              {STATUS_SEQUENCE.map((stepLabel, idx) => {
-                const entry = unit.history?.find((h) => h.event === stepLabel);
-                const isPending = !entry;
-                const isLast = idx === STATUS_SEQUENCE.length - 1;
+              {/* Completed Events */}
+              {completedEvents.map((entry, idx) => {
+                const hasNextItem = idx < completedEvents.length - 1 || Boolean(nextPendingStatus);
                 return (
-                  <View key={stepLabel} style={styles.timelineRow}>
+                  <View key={`${entry.event}-${idx}`} style={styles.timelineItem}>
+                    {/* Marker & Connecting Line */}
                     <View style={styles.timelineMarkerCol}>
-                      <View style={[styles.timelineDot, isPending && styles.timelineDotPending]} />
-                      {!isLast && <View style={styles.timelineLine} />}
+                      <View style={styles.timelineDotFilled} />
+                      {hasNextItem && <View style={styles.timelineLine} />}
                     </View>
-                    <View style={styles.timelineContent}>
-                      <Text style={[styles.timelineLabel, isPending && styles.timelineLabelPending]}>
-                        {stepLabel}
-                      </Text>
-                      {entry ? (
-                        <>
-                          <Text style={styles.timelineMeta}>
-                            {entry.date} · {entry.time}
-                          </Text>
-                          <Text style={styles.timelineBy}>by {entry.by}</Text>
-                        </>
-                      ) : (
-                        <Text style={styles.timelinePendingNote}>— pending mobile scan</Text>
-                      )}
+
+                    {/* Event Content */}
+                    <View style={[styles.timelineContent, hasNextItem && styles.timelineContentSpacing]}>
+                      <View style={styles.eventTitleRow}>
+                        <Text style={styles.eventTitle}>{entry.event}</Text>
+                        <Text style={styles.eventTimestamp}>{entry.date} · {entry.time}</Text>
+                      </View>
+                      <Text style={styles.eventStaff}>by {entry.by}</Text>
                     </View>
                   </View>
                 );
               })}
+
+              {/* Single Immediate Next Pending Status */}
+              {nextPendingStatus ? (
+                <View style={styles.timelineItem}>
+                  <View style={styles.timelineMarkerCol}>
+                    <View style={styles.timelineDotHollow} />
+                  </View>
+                  <View style={styles.timelineContent}>
+                    <Text style={styles.pendingStatusText}>
+                      {nextPendingStatus} — pending mobile scan
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
             </View>
           </Card>
         </View>
 
+        {/* Right Column: High-Contrast 2D QR Code & Label Printing Card */}
         <View style={styles.sideCol}>
-          <Card>
-            <View style={styles.qrWrap}>
-              <Text style={styles.qrBrand}>TNL LOGISTICS</Text>
-              <QRCodeGenerator size={160} value={unit.trackingId} />
-              <Text style={styles.qrTracking}>{unit.trackingId}</Text>
-              <Text style={styles.qrScan}>Scan to Track</Text>
+          {/* QR Label Card */}
+          <View style={styles.qrCard}>
+            <Text style={styles.qrBrand}>TNL LOGISTICS</Text>
+            <View style={styles.qrBox}>
+              <QRCodeGenerator size={140} value={unit.trackingId} />
             </View>
-            <Button label="Reprint Label" variant="primary" fullWidth style={styles.reprintBtn} />
-            <Button label="Quick Reprint (0)" variant="secondary" fullWidth style={styles.quickReprintBtn} />
-          </Card>
+            <Text style={styles.qrTracking}>{unit.trackingId}</Text>
+            <View style={styles.dashedDivider} />
+            <Text style={styles.qrScanHint}>SCAN TO TRACK</Text>
+          </View>
 
-          <Card title="Label Printing" style={styles.printingCard}>
-            <StatusBadge value={unit.printing?.status} kind="label" />
-            <View style={styles.printRow}>
+          {/* Action Buttons */}
+          <Pressable
+            style={styles.reprintBtn}
+            onPress={() => {
+              if (typeof window !== 'undefined' && window.print) {
+                window.print();
+              }
+            }}
+          >
+            <Text style={styles.reprintBtnText}>Reprint Label</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.quickReprintBtn}
+            onPress={() => {
+              if (typeof window !== 'undefined' && window.print) {
+                window.print();
+              }
+            }}
+          >
+            <Text style={styles.quickReprintText}>Quick Reprint ({unit.reprintCount || 0})</Text>
+          </Pressable>
+
+          {/* Label Printing Card */}
+          <Card title="LABEL PRINTING" style={styles.printingCard}>
+            <View style={styles.printBadgeRow}>
+              <StatusBadge value={unit.printing?.status || 'Printed'} kind="label" />
+            </View>
+            <View style={styles.printDetailsRow}>
               <View>
-                <Text style={styles.printTitle}>Print</Text>
+                <Text style={styles.printType}>Print</Text>
                 <Text style={styles.printDate}>{unit.printing?.date}</Text>
-                <Text style={styles.printBy}>
+                <Text style={styles.printStaff}>
                   by {unit.printing?.by} · {unit.printing?.printer}
                 </Text>
               </View>
-              <Text style={styles.printCount}>{unit.printing?.count} label</Text>
+              <Text style={styles.printLabelCount}>{unit.printing?.count || 1} label</Text>
             </View>
           </Card>
         </View>
       </View>
     </AppShell>
-  );
-}
-
-function Field({ label, value, accent }) {
-  return (
-    <View style={styles.field}>
-      <Text style={type.label}>{label}</Text>
-      <Text style={[styles.fieldValue, accent && styles.fieldValueAccent]}>{value}</Text>
-    </View>
   );
 }
 
@@ -170,14 +239,44 @@ const styles = StyleSheet.create({
     color: colors.inkFaint,
     marginBottom: spacing.md,
   },
+  loadingContainer: {
+    paddingVertical: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+  },
+  loadingText: {
+    fontFamily: fonts.mono,
+    fontSize: 13,
+    color: colors.inkFaint,
+  },
+  notFoundText: {
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    color: colors.danger,
+    padding: spacing.xl,
+    textAlign: 'center',
+  },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
     marginBottom: spacing.lg,
   },
+  eyebrow: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    letterSpacing: 0.8,
+    color: colors.inkFaint,
+    fontWeight: '600',
+  },
   title: {
-    marginTop: 2,
+    fontFamily: fonts.sans,
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.ink,
+    letterSpacing: -0.3,
+    marginTop: 3,
   },
   badgeRow: {
     flexDirection: 'row',
@@ -186,30 +285,45 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: spacing.lg,
+    alignItems: 'flex-start',
   },
   mainCol: {
     flex: 1,
+    minWidth: 280,
   },
   cardSpacing: {
     marginBottom: spacing.lg,
   },
-  fieldGrid: {
+  gridRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.lg,
+    justifyContent: 'space-between',
   },
-  field: {
-    width: '30%',
-    minWidth: 150,
+  gridCol: {
+    flex: 1,
+  },
+  fieldLabel: {
+    ...type.label,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: colors.inkFaint,
+    marginBottom: 4,
   },
   fieldValue: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.sans,
     fontSize: 13.5,
     color: colors.ink,
-    fontWeight: '600',
-    marginTop: 3,
+    fontWeight: '500',
   },
-  fieldValueAccent: {
+  fieldValueMono: {
+    fontFamily: fonts.mono,
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  fieldValueOrange: {
+    fontFamily: fonts.mono,
+    fontSize: 13.5,
+    fontWeight: '700',
     color: colors.accent,
   },
   appendOnly: {
@@ -219,71 +333,90 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   timeline: {
-    marginTop: spacing.xs,
+    paddingVertical: spacing.xs,
   },
-  timelineRow: {
+  timelineItem: {
     flexDirection: 'row',
   },
   timelineMarkerCol: {
     width: 20,
     alignItems: 'center',
   },
-  timelineDot: {
+  timelineDotFilled: {
     width: 9,
     height: 9,
     borderRadius: 5,
     backgroundColor: colors.accent,
     marginTop: 4,
   },
-  timelineDotPending: {
-    backgroundColor: 'transparent',
+  timelineDotHollow: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
     borderWidth: 1.5,
-    borderColor: colors.border,
+    borderColor: '#9CA3AF',
+    backgroundColor: 'transparent',
+    marginTop: 4,
   },
   timelineLine: {
-    width: 1,
+    width: 1.5,
     flex: 1,
-    backgroundColor: colors.border,
-    marginVertical: 2,
+    backgroundColor: colors.accent,
+    marginVertical: 3,
   },
   timelineContent: {
     flex: 1,
+    paddingLeft: spacing.sm,
+  },
+  timelineContentSpacing: {
     paddingBottom: spacing.lg,
   },
-  timelineLabel: {
-    fontFamily: fonts.mono,
+  eventTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  eventTitle: {
+    fontFamily: fonts.sans,
     fontSize: 13.5,
     fontWeight: '700',
     color: colors.ink,
   },
-  timelineLabelPending: {
-    color: colors.inkFaint,
-    fontWeight: '600',
-  },
-  timelineMeta: {
+  eventTimestamp: {
     fontFamily: fonts.mono,
+    fontSize: 11.5,
+    color: colors.inkFaint,
+  },
+  eventStaff: {
+    fontFamily: fonts.sans,
+    fontSize: 11.5,
+    color: colors.inkFaint,
+    marginTop: 2,
+  },
+  eventRemarks: {
+    fontFamily: fonts.sans,
     fontSize: 11.5,
     color: colors.inkSoft,
     marginTop: 2,
   },
-  timelineBy: {
-    fontFamily: fonts.mono,
-    fontSize: 11,
-    color: colors.inkFaint,
-  },
-  timelinePendingNote: {
-    fontFamily: fonts.mono,
-    fontSize: 11.5,
-    color: colors.inkFaint,
-    marginTop: 2,
+  pendingStatusText: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+    marginTop: 1,
   },
   sideCol: {
-    width: 300,
-    gap: spacing.md,
+    width: 280,
+    gap: spacing.sm,
   },
-  qrWrap: {
+  qrCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.lg,
     alignItems: 'center',
-    paddingVertical: spacing.sm,
   },
   qrBrand: {
     fontFamily: fonts.mono,
@@ -293,55 +426,91 @@ const styles = StyleSheet.create({
     color: colors.ink,
     marginBottom: spacing.md,
   },
+  qrBox: {
+    backgroundColor: '#FFFFFF',
+    padding: 6,
+  },
   qrTracking: {
     fontFamily: fonts.mono,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
     color: colors.ink,
     marginTop: spacing.md,
   },
-  qrScan: {
+  dashedDivider: {
+    width: 140,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    borderStyle: 'dashed',
+    marginVertical: spacing.xs + 2,
+  },
+  qrScanHint: {
     fontFamily: fonts.mono,
     fontSize: 9.5,
     color: colors.inkFaint,
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-    marginTop: 2,
   },
   reprintBtn: {
-    marginTop: spacing.md,
+    backgroundColor: colors.ink,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: radius.sm,
+    marginTop: spacing.xs,
+  },
+  reprintBtnText: {
+    fontFamily: fonts.mono,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
   quickReprintBtn: {
-    marginTop: spacing.sm,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: radius.sm,
+  },
+  quickReprintText: {
+    fontFamily: fonts.mono,
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: colors.ink,
   },
   printingCard: {
-    gap: spacing.sm,
+    marginTop: spacing.xs,
   },
-  printRow: {
+  printBadgeRow: {
+    marginBottom: spacing.sm,
+  },
+  printDetailsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: spacing.sm,
+    alignItems: 'flex-start',
   },
-  printTitle: {
-    fontFamily: fonts.mono,
+  printType: {
+    fontFamily: fonts.sans,
     fontSize: 12.5,
     fontWeight: '700',
     color: colors.ink,
   },
   printDate: {
     fontFamily: fonts.mono,
-    fontSize: 11.5,
-    color: colors.inkSoft,
-    marginTop: 2,
-  },
-  printBy: {
-    fontFamily: fonts.mono,
     fontSize: 11,
     color: colors.inkFaint,
+    marginTop: 2,
   },
-  printCount: {
+  printStaff: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    color: colors.inkFaint,
+    marginTop: 1,
+  },
+  printLabelCount: {
     fontFamily: fonts.mono,
-    fontSize: 12,
+    fontSize: 11.5,
     color: colors.inkFaint,
   },
 });
