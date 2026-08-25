@@ -100,7 +100,7 @@ jobs:
 
       - name: Install Dependencies
         working-directory: frontend-web
-        run: npm ci
+        run: npm install
 
       - name: Dependency Security Audit
         working-directory: frontend-web
