@@ -4,6 +4,7 @@ import com.tnl.logistics.dto.*;
 import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.*;
 import com.tnl.logistics.service.ShipmentService;
+import com.tnl.logistics.service.SseService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -33,19 +34,22 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final PaymentRepository paymentRepository;
     private final AppUserRepository appUserRepository;
     private final TrackingEventRepository trackingEventRepository;
+    private final SseService sseService;
 
     public ShipmentServiceImpl(ShipmentRepository shipmentRepository,
                                ParcelUnitRepository parcelUnitRepository,
                                ClientRepository clientRepository,
                                PaymentRepository paymentRepository,
                                AppUserRepository appUserRepository,
-                               TrackingEventRepository trackingEventRepository) {
+                               TrackingEventRepository trackingEventRepository,
+                               SseService sseService) {
         this.shipmentRepository = shipmentRepository;
         this.parcelUnitRepository = parcelUnitRepository;
         this.clientRepository = clientRepository;
         this.paymentRepository = paymentRepository;
         this.appUserRepository = appUserRepository;
         this.trackingEventRepository = trackingEventRepository;
+        this.sseService = sseService;
     }
 
     @Override
@@ -168,6 +172,11 @@ public class ShipmentServiceImpl implements ShipmentService {
             payment.setReferenceNo("PAID-AT-REGISTRATION");
             paymentRepository.save(payment);
         }
+
+        // 6. Broadcast real-time SSE event for new shipment
+        try {
+            sseService.broadcastShipmentCreated(mapToSummaryResponse(shipment));
+        } catch (Exception ignored) {}
 
         return new ShipmentResponse(
                 shipment.getShipmentId(),
@@ -335,6 +344,10 @@ public class ShipmentServiceImpl implements ShipmentService {
             }
             parcelUnitRepository.save(parcel);
         }
+
+        try {
+            sseService.broadcastLabelPrint(shipmentId, packageIds);
+        } catch (Exception ignored) {}
     }
 
     private ShipmentSummaryResponse mapToSummaryResponse(Shipment s) {

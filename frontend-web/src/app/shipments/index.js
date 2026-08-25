@@ -4,7 +4,7 @@ import AppShell from '../../components/layout/AppShell';
 import PageHeader from '../../components/layout/PageHeader';
 import Button from '../../components/common/Button';
 import SearchFilterBar from '../../components/common/SearchFilterBar';
-import { ShipmentsTable, listShipments } from '../../features/shipments';
+import { ShipmentsTable, listShipments, subscribeRealtimeEvents } from '../../features/shipments';
 
 const STATUS_OPTIONS = [
   { value: 'ALL', label: 'Status: All' },
@@ -38,9 +38,9 @@ export default function ShipmentsListScreen() {
 
   const searchTimer = useRef(null);
 
-  const fetchShipments = useCallback(async (currPage, currSize, currSearch, currStatus, currPayment) => {
+  const fetchShipments = useCallback(async (currPage, currSize, currSearch, currStatus, currPayment, showSpinner = true) => {
     try {
-      setLoading(true);
+      if (showSpinner) setLoading(true);
       const params = {
         page: currPage,
         size: currSize,
@@ -62,14 +62,40 @@ export default function ShipmentsListScreen() {
     } catch (err) {
       console.warn('Failed to load shipments from backend:', err?.message);
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   }, []);
 
   // Fetch when filters or page changes
   useEffect(() => {
-    fetchShipments(page, pageSize, search, statusFilter, paymentFilter);
+    fetchShipments(page, pageSize, search, statusFilter, paymentFilter, true);
   }, [fetchShipments, page, pageSize, statusFilter, paymentFilter]);
+
+  // Real-time SSE listener + Window focus listener
+  useEffect(() => {
+    const handleSilentRefresh = () => {
+      fetchShipments(page, pageSize, search, statusFilter, paymentFilter, false);
+    };
+
+    // 1. Subscribe to real-time status updates and shipment creation
+    const unsubscribe = subscribeRealtimeEvents((event) => {
+      if (event.type === 'STATUS_UPDATE' || event.type === 'SHIPMENT_CREATED' || event.type === 'LABEL_PRINTED') {
+        handleSilentRefresh();
+      }
+    });
+
+    // 2. Fallback on window focus
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleSilentRefresh);
+    }
+
+    return () => {
+      unsubscribe();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', handleSilentRefresh);
+      }
+    };
+  }, [fetchShipments, page, pageSize, search, statusFilter, paymentFilter]);
 
   // Debounced search
   const handleSearchChange = (val) => {
@@ -77,7 +103,7 @@ export default function ShipmentsListScreen() {
     setPage(0);
     if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
-      fetchShipments(0, pageSize, val, statusFilter, paymentFilter);
+      fetchShipments(0, pageSize, val, statusFilter, paymentFilter, true);
     }, 350);
   };
 

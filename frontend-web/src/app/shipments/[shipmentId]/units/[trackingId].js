@@ -5,7 +5,7 @@ import AppShell from '../../../../components/layout/AppShell';
 import Card from '../../../../components/common/Card';
 import StatusBadge from '../../../../components/common/StatusBadge';
 import QRCodeGenerator from '../../../../components/common/QRCodeGenerator';
-import { getParcelUnit } from '../../../../features/shipments';
+import { getParcelUnit, subscribeRealtimeEvents } from '../../../../features/shipments';
 import { colors, fonts, spacing, radius, type } from '../../../../theme';
 
 const STATUS_FLOW = ['Registered', 'QR Generated', 'Loaded on Truck', 'Arrived at TNL', 'Loaded to Hauler'];
@@ -16,10 +16,10 @@ export default function ParcelUnitDetailScreen() {
   const [unit, setUnit] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showSpinner = true) => {
     if (!trackingId) return;
     try {
-      setLoading(true);
+      if (showSpinner) setLoading(true);
       const data = await getParcelUnit(trackingId);
       if (data) {
         setUnit(data);
@@ -27,13 +27,37 @@ export default function ParcelUnitDetailScreen() {
     } catch (err) {
       console.warn('Parcel unit fetch failed:', err?.message);
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   }, [trackingId]);
 
   useEffect(() => {
-    load();
+    load(true);
   }, [load]);
+
+  // Real-time SSE listener
+  useEffect(() => {
+    const handleSilentRefresh = () => {
+      load(false);
+    };
+
+    const unsubscribe = subscribeRealtimeEvents((event) => {
+      if (event.data?.trackingId === trackingId || event.data?.shipmentId === shipmentId) {
+        handleSilentRefresh();
+      }
+    });
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleSilentRefresh);
+    }
+
+    return () => {
+      unsubscribe();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', handleSilentRefresh);
+      }
+    };
+  }, [load, trackingId, shipmentId]);
 
   if (loading) {
     return (
