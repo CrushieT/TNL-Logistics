@@ -6,75 +6,42 @@
 
 ```
 tnl-logistics/
+├── .agents/
+│   └── rules/
+│       ├── git-conventions.md        # Git workflow, branch naming & commit rules
+│       ├── karpathy-guidelines.md    # LLM coding best practices
+│       └── project-structure.md      # Project directory layout & philosophies
+├── .github/
+│   └── pull_request_template.md      # GitHub Pull Request template
 ├── backend/                          # Spring Boot API (Java 21)
 │   ├── src/
 │   │   ├── main/
 │   │   │   ├── java/com/tnl/logistics/
-│   │   │   │   ├── domain/
-│   │   │   │   │   ├── shipment/
-│   │   │   │   │   │   ├── Shipment.java
-│   │   │   │   │   │   ├── ShipmentRepository.java
-│   │   │   │   │   │   └── ShipmentService.java
-│   │   │   │   │   ├── billing/
-│   │   │   │   │   ├── tracking/
-│   │   │   │   │   │   ├── TrackingEvent.java
-│   │   │   │   │   │   ├── TrackingEventRepository.java
-│   │   │   │   │   │   └── TrackingEventService.java
-│   │   │   │   │   └── parcel/
-│   │   │   │   │       ├── ParcelUnit.java
-│   │   │   │   │       ├── ParcelUnitRepository.java
-│   │   │   │   │       └── ParcelUnitService.java
-│   │   │   │   ├── service/
-│   │   │   │   │   ├── QRGenerationService.java
-│   │   │   │   │   ├── BillingService.java
-│   │   │   │   │   └── WeeklyCollectionService.java
-│   │   │   │   ├── controller/
-│   │   │   │   │   └── api/v1/
-│   │   │   │   │       ├── ShipmentController.java
-│   │   │   │   │       ├── ParcelController.java
-│   │   │   │   │       └── BillingController.java
-│   │   │   │   ├── repository/
-│   │   │   │   ├── entity/
-│   │   │   │   ├── config/
-│   │   │   │   │   ├── SecurityConfig.java
-│   │   │   │   │   ├── CorsConfig.java
-│   │   │   │   │   └── OpenApiConfig.java
-│   │   │   │   └── TnlLogisticsApplication.java
-│   │   │   └── resources/
-│   │   │       ├── application.yml
-│   │   │       ├── application-dev.yml
-│   │   │       ├── application-prod.yml
-│   │   │       └── db/migration/
-│   │   │           └── V1__init_schema.sql
-│   │   └── test/java/com/tnl/logistics/
-│   ├── pom.xml
-│   ├── Dockerfile
-│   ├── .gitignore
-│   └── README.md
+│   │   │   │   ├── config/              # SecurityConfig, CorsConfig, JwtTokenProvider, DataSeeder
+│   │   │   ├── controller/          # REST endpoints (AuthController, ShipmentController, ClientController, etc.)
+│   │   │   ├── dto/                 # Request & Response DTOs
+│   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, etc.)
+│   │   │   ├── repository/          # Spring Data Repositories
+│   │   │   └── service/             # Business Logic & Service Interfaces (ShipmentService, etc.)
+│   │   └── resources/
+│   │       ├── application.properties
+│   │       ├── application-dev.properties
+│   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V5)
+│   └── pom.xml
 │
-├── frontend-web/                     # React/Next.js Admin Dashboard (JavaScript)
-│   ├── public/
-│   │   └── (favicon, assets)
+├── frontend-web/                    # Admin Web Portal (React Native Web / Expo Router)
 │   ├── src/
-│   │   ├── components/
-│   │   │   ├── ShipmentForm.jsx
-│   │   │   ├── Dashboard.jsx
-│   │   │   └── common/
-│   │   ├── pages/
-│   │   │   ├── index.jsx
-│   │   │   ├── dashboard.jsx
-│   │   │   ├── shipments.jsx
-│   │   │   └── clients.jsx
-│   │   ├── api/
-│   │   │   └── client.js
-│   │   ├── hooks/
-│   │   ├── utils/
-│   │   ├── App.jsx
-│   │   └── index.jsx
-│   ├── .env.example
-│   ├── .gitignore
+│   │   ├── app/                     # File-based routes (_layout.js, index.js, register.js, shipments/, etc.)
+│   │   ├── components/              # Shared design system (common/ atoms, layout/ wrappers)
+│   │   ├── features/                # Domain modules (shipments/, clients/) with components and services
+│   │   ├── services/                # Core infrastructure (api/client.js with JWT interceptor)
+│   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
+│   │   └── utils/                   # Pure utilities (qr.js in-memory vector QR encoder)
+│   ├── assets/                      # favicon.png
+│   ├── app.json                     # Expo web configuration
+│   ├── babel.config.js
 │   ├── package.json
-│   ├── next.config.js (if using Next.js)
+│   ├── .env.example
 │   └── README.md
 │
 ├── frontend-mobile/                  # React Native (Expo) Field Operations (JavaScript)
@@ -109,20 +76,20 @@ tnl-logistics/
 
 ### Folder Organization Philosophy
 
-**Backend (by domain):** Features live in vertical slices (`domain/shipment/`, `domain/billing/`). Each domain owns its entities, repos, and services. Controllers sit at the API layer and delegate to services.
+**Backend (layered):** Features are structured using a traditional layered architecture (`config`, `controller`, `dto`, `model`, `repository`, `service`). 
 
-- **Why:** Domain-driven design reduces coupling. Adding a new feature (e.g., `domain/returns/`) requires no changes to existing domains.
-- **Example:** A request to register a shipment flows: `ShipmentController` → `ShipmentService` → `ShipmentRepository` → `Shipment` entity. All within `domain/shipment/`.
+- **Why:** Clear separation of concerns by technical layers. Standard layout that is instantly familiar to Java/Spring developers.
+- **Example:** A request to register a shipment flows: `ShipmentController` (Controller layer) → `ShipmentService` (Service layer) → `ShipmentRepository` (Data access layer) → `Shipment` (Model/Entity layer).
 
-**Frontend Web:** Standard React structure — components, pages, API client, hooks, utilities.
+**Frontend Web:** Expo Router file-based routing configured for Web (React Native Web). Structure mirrors the mobile app structure.
 
-- **Why:** Familiar layout for any React dev. Easy to scale horizontally (add new pages/components).
-- **API client:** Centralized in `api/client.js` — shared by all components, single point to change the backend URL.
+- **Why:** Allows sharing design guidelines, components, and libraries with the mobile app while keeping separate, web-specific desktop layouts.
+- **API client:** Centralized in `api/client.js` — shared by all components, single point to change the backend URL for web admin actions.
 
-**Frontend Mobile:** Expo Router file-based routing. Screens in `app/`, components in `components/`, API client shared pattern.
+**Frontend Mobile:** Expo Router file-based routing targeting iOS and Android natively.
 
-- **Why:** File-based routing mirrors Next.js; juniors transitioning between web and mobile see consistency.
-- **Parallel with web:** Both use `api/client.js` pattern — no special mobile API logic, just HTTP calls.
+- **Why:** Provides standard, high-performance native experiences for mobile sensors (camera scan, bluetooth).
+- **Parallel with web:** Uses a similar structure and the exact same `api/client.js` connection pattern to communicate with the Spring Boot backend.
 
 **Root:** Configuration files that coordinate all three services (docker-compose, .gitignore, README).
 

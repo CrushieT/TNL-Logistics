@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "TNL Logistics — Admin Console",
+    "slug": "tnl-logistics-admin",
+    "scheme": "tnladmin",
+    "version": "1.0.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": ["**/*"],
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": ["expo-router"],
+    "extra": {
+      "router": {
+        "origin": false
+      }
+    }
+  }
+}
