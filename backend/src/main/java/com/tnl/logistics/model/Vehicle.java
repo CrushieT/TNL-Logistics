@@ -22,8 +22,17 @@ public class Vehicle implements Persistable<String> {
     @Column(name = "plate_number", length = 20, nullable = false, unique = true)
     private String plateNumber;
 
+    @Column(name = "vehicle_type", length = 50, nullable = false)
+    private String vehicleType = "6-Wheeler Forward";
+
     @Column(name = "description", length = 100, nullable = false)
     private String description;
+
+    @Column(name = "status", length = 30, nullable = false)
+    private String status = "Active";
+
+    @Column(name = "remarks", length = 255)
+    private String remarks;
 
     @Column(name = "active", nullable = false)
     private Boolean active = true;
@@ -41,7 +50,19 @@ public class Vehicle implements Persistable<String> {
         this.vehicleId = vehicleId;
         this.plateNumber = plateNumber;
         this.description = description;
+        this.vehicleType = "6-Wheeler Forward";
+        this.status = "Active";
         this.active = true;
+    }
+
+    public Vehicle(String vehicleId, String plateNumber, String vehicleType, String description, String status, String remarks) {
+        this.vehicleId = vehicleId;
+        this.plateNumber = plateNumber;
+        this.vehicleType = vehicleType != null ? vehicleType : "6-Wheeler Forward";
+        this.description = description;
+        this.status = status != null ? status : "Active";
+        this.remarks = remarks;
+        this.active = !"Inactive".equalsIgnoreCase(this.status);
     }
 
     @Override
@@ -67,11 +88,30 @@ public class Vehicle implements Persistable<String> {
     public String getPlateNumber() { return plateNumber; }
     public void setPlateNumber(String plateNumber) { this.plateNumber = plateNumber; }
 
+    public String getVehicleType() { return vehicleType; }
+    public void setVehicleType(String vehicleType) { this.vehicleType = vehicleType; }
+
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
 
+    public String getStatus() { return status; }
+    public void setStatus(String status) {
+        this.status = status;
+        this.active = !"Inactive".equalsIgnoreCase(status);
+    }
+
+    public String getRemarks() { return remarks; }
+    public void setRemarks(String remarks) { this.remarks = remarks; }
+
     public Boolean getActive() { return active; }
-    public void setActive(Boolean active) { this.active = active; }
+    public void setActive(Boolean active) {
+        this.active = active;
+        if (Boolean.FALSE.equals(active)) {
+            this.status = "Inactive";
+        } else if ("Inactive".equalsIgnoreCase(this.status)) {
+            this.status = "Active";
+        }
+    }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
 

@@ -13,4 +13,6 @@ import java.util.List;
 public interface TrackingEventRepository extends JpaRepository<TrackingEvent, Long> {
 
     List<TrackingEvent> findByParcelUnit_TrackingIdOrderByEventTimestampAsc(String trackingId);
+
+    long countByVehicle_VehicleId(String vehicleId);
 }
