@@ -35,8 +35,8 @@ export async function ensureAuthenticated() {
   if (!token) {
     try {
       const authRes = await axios.post('http://localhost:8080/api/v1/auth/login', {
-        username: 'office',
-        password: 'office123',
+        username: 'admin',
+        password: 'admin123',
       });
       if (authRes.data?.token) {
         token = authRes.data.token;
