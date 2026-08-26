@@ -37,11 +37,14 @@ backend/dependency-reduced-pom.xml
 backend/buildNumber.properties
 backend/.mvn/timing.properties
 
-# --- Frontend Web (Next.js / React) exclusions ---
+# --- Frontend Web (Expo / React Native) exclusions ---
 frontend-web/node_modules/
 frontend-web/.next/
 frontend-web/out/
 frontend-web/build/
+frontend-web/.expo/
+frontend-web/dist/
+
 
 # --- Frontend Mobile (Expo / React Native) exclusions ---
 frontend-mobile/node_modules/
