@@ -10,6 +10,7 @@ const NAV_SECTIONS = [
       { label: 'Dashboard', href: '/' },
       { label: 'Register Shipment', href: '/register' },
       { label: 'Shipments', href: '/shipments' },
+      { label: 'Vehicles / Trucks', href: '/vehicles' },
       { label: 'Tracking Logs', href: '/tracking-logs' },
     ],
   },
@@ -20,6 +21,7 @@ const NAV_SECTIONS = [
       { label: 'Payments', href: '/payments' },
       { label: 'Weekly Collections', href: '/weekly-collections' },
       { label: 'Statements of Account', href: '/statements' },
+      { label: 'Waybills', href: '/waybills' },
     ],
   },
   {

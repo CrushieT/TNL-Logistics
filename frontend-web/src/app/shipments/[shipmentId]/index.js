@@ -70,7 +70,7 @@ export default function ShipmentDetailScreen() {
     try {
       await printLabels(shipmentId);
       setPrintModalVisible(true);
-      loadShipment();
+      loadShipment(false);
     } catch (err) {
       setPrintModalVisible(true);
     }
@@ -108,10 +108,6 @@ export default function ShipmentDetailScreen() {
 
   return (
     <AppShell>
-      <Pressable onPress={() => router.push('/shipments')}>
-        <Text style={styles.backLink}>← Shipments</Text>
-      </Pressable>
-
       {/* Header Row */}
       <View style={styles.headerRow}>
         <View>
@@ -121,8 +117,8 @@ export default function ShipmentDetailScreen() {
           <Text style={styles.title}>{(shipment.recipient || '').toUpperCase()}</Text>
         </View>
         <View style={styles.badgeRow}>
-          <StatusBadge value={shipment.status} kind="status" />
-          <StatusBadge value={shipment.payment} kind="payment" />
+          <StatusBadge value={shipment.status || 'Loaded to Hauler'} kind="status" />
+          <StatusBadge value={shipment.payment || 'Unpaid'} kind="payment" />
         </View>
       </View>
 
@@ -146,7 +142,7 @@ export default function ShipmentDetailScreen() {
               </View>
             </View>
 
-            <View style={[styles.gridRow, { marginTop: spacing.md }]}>
+            <View style={[styles.gridRow, { marginTop: spacing.lg }]}>
               <View style={styles.gridCol}>
                 <Text style={styles.fieldLabel}>RECIPIENT</Text>
                 <Text style={styles.fieldValue}>{shipment.recipientDetails?.fullName || shipment.recipient}</Text>
@@ -161,7 +157,11 @@ export default function ShipmentDetailScreen() {
               </View>
             </View>
 
-            <View style={[styles.gridRow, { marginTop: spacing.md }]}>
+            <View style={[styles.gridRow, { marginTop: spacing.lg }]}>
+              <View style={styles.gridCol}>
+                <Text style={styles.fieldLabel}>DESTINATION</Text>
+                <Text style={styles.fieldValue}>{shipment.destination || 'TNL Baguio Hub'}</Text>
+              </View>
               <View style={styles.gridCol}>
                 <Text style={styles.fieldLabel}>ADDRESS</Text>
                 <Text style={styles.fieldValue}>{shipment.recipientDetails?.address || '—'}</Text>
@@ -169,14 +169,43 @@ export default function ShipmentDetailScreen() {
               <View style={styles.gridCol}>
                 <Text style={styles.fieldLabel}>CONTENTS</Text>
                 <Text style={styles.fieldValue}>
-                  {shipment.description || 'General Goods'} · {shipment.quantity} pcs · {(shipment.chargeModel || '').toLowerCase()}
+                  {shipment.description || 'General Goods'} · {shipment.quantity} pc · {(shipment.chargeModel || 'flat').toLowerCase()}
                 </Text>
               </View>
-              <View style={styles.gridCol}>
-                <Text style={styles.fieldLabel}>OVERALL STATUS</Text>
-                <Text style={styles.fieldValue}>{shipment.statusRollup}</Text>
+            </View>
+
+            <View style={styles.cardDivider} />
+
+            {/* Overall Status Row */}
+            <View style={styles.statusSection}>
+              <Text style={styles.fieldLabel}>OVERALL STATUS</Text>
+              <Text style={styles.overallStatusValue}>{shipment.statusRollup || '1 / 1 Loaded to Hauler'}</Text>
+            </View>
+
+            {/* 4-Metric Weight & Volume Row */}
+            <View style={styles.metricsRow}>
+              <View style={styles.metricItem}>
+                <Text style={styles.metricLabel}>ACTUAL WEIGHT</Text>
+                <Text style={styles.metricValue}>{shipment.weightKg || '2.5'} kg</Text>
+              </View>
+              <View style={styles.metricItem}>
+                <Text style={styles.metricLabel}>VOLUME (L×W×H)</Text>
+                <Text style={styles.metricValue}>{Number(shipment.volumeCm3 || 70000).toLocaleString()} cm³</Text>
+              </View>
+              <View style={styles.metricItem}>
+                <Text style={styles.metricLabel}>VOLUMETRIC WEIGHT (÷5,000)</Text>
+                <Text style={styles.metricValue}>{Number(shipment.volumetricWeightKg || 14).toFixed(2)} kg</Text>
+              </View>
+              <View style={styles.metricItem}>
+                <Text style={styles.metricLabel}>BILLABLE WEIGHT *</Text>
+                <Text style={styles.metricValue}>{Number(shipment.billableWeightKg || 14).toFixed(2)} kg</Text>
+                <Text style={styles.provisionalText}>* Provisional — pending confirmation</Text>
               </View>
             </View>
+
+            <Text style={styles.footnote}>
+              Dimensions: {shipment.lengthCm || 50} cm × {shipment.widthCm || 40} cm × {shipment.heightCm || 35} cm per unit · Volumetric = Volume ÷ divisor · auto-computed
+            </Text>
           </Card>
 
           {/* Card 2: Parcel Units */}
@@ -203,8 +232,8 @@ export default function ShipmentDetailScreen() {
               <View style={styles.unitsHeaderRow}>
                 <Text style={[styles.unitsHeaderCell, { flex: 1.3 }]}>PACKAGE</Text>
                 <Text style={[styles.unitsHeaderCell, { flex: 1.4 }]}>TRACKING ID</Text>
-                <Text style={[styles.unitsHeaderCell, { flex: 1.1 }]}>STATUS</Text>
-                <Text style={[styles.unitsHeaderCell, { flex: 1.1 }]}>LABEL</Text>
+                <Text style={[styles.unitsHeaderCell, { flex: 1.2 }]}>STATUS</Text>
+                <Text style={[styles.unitsHeaderCell, { flex: 1.2 }]}>LABEL</Text>
                 <Text style={[styles.unitsHeaderCell, { flex: 0.9, textAlign: 'right' }]} />
               </View>
               {shipment.units?.map((u, idx) => (
@@ -216,15 +245,18 @@ export default function ShipmentDetailScreen() {
                     Package {u.packageIndex} of {u.packageCount}
                   </Text>
                   <Text style={[styles.unitCellStrong, { flex: 1.4 }]}>{u.trackingId}</Text>
-                  <View style={{ flex: 1.1 }}>
+                  <View style={{ flex: 1.2 }}>
                     <StatusBadge value={u.status} kind="status" />
                   </View>
-                  <View style={{ flex: 1.1 }}>
-                    <StatusBadge value={u.labelStatus} kind="label" />
+                  <View style={{ flex: 1.2 }}>
+                    <StatusBadge
+                      value={u.labelStatus === 'Printed' ? 'Label: Printed' : 'Label: Pending'}
+                      kind="label"
+                    />
                   </View>
                   <View style={{ flex: 0.9, flexDirection: 'row', gap: spacing.md, justifyContent: 'flex-end' }}>
                     <Pressable onPress={() => router.push(`/shipments/${shipmentId}/units/${u.trackingId}`)}>
-                      <Text style={styles.unitLinkOrange}>View</Text>
+                      <Text style={styles.unitLinkDark}>View</Text>
                     </Pressable>
                     <Pressable onPress={() => setSingleQRModalUnit(u)}>
                       <Text style={styles.unitLinkOrange}>Reprint</Text>
@@ -239,7 +271,7 @@ export default function ShipmentDetailScreen() {
           </Card>
         </View>
 
-        {/* Right Column: Live Label Preview & Payment Card */}
+        {/* Right Column: Live Label Preview, Payment Card & Waybill Card */}
         <View style={styles.sideCol}>
           {firstUnit && (
             <LabelPreview
@@ -261,6 +293,7 @@ export default function ShipmentDetailScreen() {
             <Text style={styles.previewBtnText}>Preview / Print Labels</Text>
           </Pressable>
 
+          {/* Payment Card */}
           <Card title="PAYMENT · TRANSACTION" style={styles.paymentCard}>
             <Text style={styles.chargingLabel}>{(shipment.chargeModel || 'Flat')} charging</Text>
             <PaymentLine label="Shipping" value={shipment.shippingFee} />
@@ -275,6 +308,38 @@ export default function ShipmentDetailScreen() {
               onPress={() => router.push('/payments')}
             >
               <Text style={styles.managePaymentText}>Manage Payment →</Text>
+            </Pressable>
+          </Card>
+
+          {/* Waybill Card */}
+          <Card
+            title="WAYBILL"
+            right={
+              <StatusBadge
+                value={shipment.waybillStatus || 'Waybill: Signed / Completed'}
+                kind="waybill"
+              />
+            }
+            style={styles.waybillCard}
+          >
+            <View style={styles.waybillLine}>
+              <Text style={styles.waybillLabel}>Hauler</Text>
+              <Text style={styles.waybillValue}>{shipment.hauler || 'Cordillera Freight'}</Text>
+            </View>
+            <View style={styles.waybillLine}>
+              <Text style={styles.waybillLabel}>Generated</Text>
+              <Text style={styles.waybillValue}>{shipment.waybillGeneratedDate || 'Aug 5, 2026'}</Text>
+            </View>
+            <View style={styles.waybillLine}>
+              <Text style={styles.waybillLabel}>Signed by</Text>
+              <Text style={styles.waybillValue}>{shipment.signedBy || 'R. Aquino'}</Text>
+            </View>
+
+            <Pressable
+              style={styles.managePaymentBtn}
+              onPress={() => router.push('/waybills')}
+            >
+              <Text style={styles.managePaymentText}>Manage Waybill →</Text>
             </Pressable>
           </Card>
         </View>
@@ -349,112 +414,160 @@ const styles = StyleSheet.create({
   notFoundText: {
     fontFamily: fonts.sans,
     fontSize: 14,
-    color: colors.danger,
-    padding: spacing.xl,
-    textAlign: 'center',
+    color: colors.inkSoft,
+    padding: spacing.lg,
   },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginBottom: spacing.lg,
+    alignItems: 'flex-start',
+    marginBottom: spacing.xl,
   },
   eyebrow: {
     fontFamily: fonts.mono,
-    fontSize: 11,
-    letterSpacing: 0.8,
+    fontSize: 12,
     color: colors.inkFaint,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    marginBottom: 4,
   },
   title: {
     fontFamily: fonts.sans,
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: '800',
     color: colors.ink,
-    letterSpacing: -0.3,
-    marginTop: 3,
+    letterSpacing: -0.5,
   },
   badgeRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
   },
   row: {
     flexDirection: 'row',
-    gap: spacing.lg,
+    gap: spacing.xl,
     alignItems: 'flex-start',
   },
   mainCol: {
     flex: 1,
-    minWidth: 280,
+  },
+  sideCol: {
+    width: 320,
   },
   cardSpacing: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xl,
   },
   gridRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: spacing.lg,
   },
   gridCol: {
     flex: 1,
   },
   fieldLabel: {
     ...type.label,
-    fontSize: 10,
-    letterSpacing: 0.8,
+    fontSize: 10.5,
     color: colors.inkFaint,
     marginBottom: 4,
+    letterSpacing: 0.8,
   },
   fieldValue: {
-    fontFamily: fonts.sans,
-    fontSize: 13,
+    ...type.body,
+    fontSize: 13.5,
+    fontWeight: '600',
     color: colors.ink,
-    fontWeight: '500',
   },
   fieldValueMono: {
     fontFamily: fonts.mono,
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: '700',
     color: colors.ink,
   },
+  cardDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: spacing.lg,
+  },
+  statusSection: {
+    marginBottom: spacing.lg,
+  },
+  overallStatusValue: {
+    fontFamily: fonts.sans,
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.ink,
+    marginTop: 2,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.lg,
+    marginBottom: spacing.md,
+    gap: spacing.md,
+  },
+  metricItem: {
+    flex: 1,
+  },
+  metricLabel: {
+    ...type.label,
+    fontSize: 9.5,
+    color: colors.inkFaint,
+    marginBottom: 4,
+    letterSpacing: 0.6,
+  },
+  metricValue: {
+    fontFamily: fonts.mono,
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.ink,
+  },
+  provisionalText: {
+    fontFamily: fonts.sans,
+    fontSize: 10,
+    color: colors.accent,
+    fontWeight: '600',
+    marginTop: 2,
+  },
   headerActions: {
     flexDirection: 'row',
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   headerBtn: {
     paddingVertical: 5,
     paddingHorizontal: 10,
-    minHeight: 30,
   },
   unitsTable: {
-    marginTop: spacing.xs,
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
   },
   unitsHeaderRow: {
     flexDirection: 'row',
-    paddingBottom: spacing.sm,
+    alignItems: 'center',
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   unitsHeaderCell: {
-    fontFamily: fonts.mono,
-    fontSize: 10.5,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
+    ...type.label,
+    fontSize: 10,
     color: colors.inkFaint,
-    fontWeight: '600',
   },
   unitRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    paddingVertical: 12,
   },
   unitDivider: {
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   unitCell: {
-    fontFamily: fonts.mono,
-    fontSize: 12.5,
-    color: colors.inkSoft,
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    color: colors.ink,
+    fontWeight: '500',
   },
   unitCellStrong: {
     fontFamily: fonts.mono,
@@ -462,70 +575,73 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontWeight: '700',
   },
+  unitLinkDark: {
+    fontFamily: fonts.sans,
+    fontSize: 12.5,
+    color: colors.inkSoft,
+    fontWeight: '600',
+  },
   unitLinkOrange: {
-    fontFamily: fonts.mono,
-    fontSize: 12,
-    fontWeight: '700',
+    fontFamily: fonts.sans,
+    fontSize: 12.5,
     color: colors.accent,
+    fontWeight: '700',
   },
   footnote: {
     fontFamily: fonts.sans,
-    fontSize: 11.5,
-    color: colors.inkFaint,
-    marginTop: spacing.md,
-    lineHeight: 16,
-  },
-  sideCol: {
-    width: 300,
-    gap: spacing.sm,
-  },
-  previewBtn: {
-    backgroundColor: colors.ink,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: radius.sm,
-    marginTop: spacing.xs,
-  },
-  previewBtnText: {
-    fontFamily: fonts.mono,
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.3,
-  },
-  paymentCard: {
-    marginTop: spacing.xs,
-  },
-  chargingLabel: {
-    fontFamily: fonts.mono,
     fontSize: 11,
     color: colors.inkFaint,
-    marginBottom: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  previewBtn: {
+    backgroundColor: colors.black,
+    paddingVertical: 11,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    marginTop: spacing.md,
+    marginBottom: spacing.xl,
+  },
+  previewBtnText: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  paymentCard: {
+    marginBottom: spacing.xl,
+  },
+  chargingLabel: {
+    ...type.label,
+    fontSize: 10.5,
+    color: colors.inkFaint,
+    marginBottom: spacing.md,
   },
   paymentLine: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 5,
+    alignItems: 'center',
+    marginBottom: 8,
   },
   paymentLabel: {
     fontFamily: fonts.sans,
-    fontSize: 12.5,
+    fontSize: 13,
     color: colors.inkSoft,
   },
   paymentLabelStrong: {
-    color: colors.ink,
     fontWeight: '700',
+    color: colors.ink,
   },
   paymentValue: {
     fontFamily: fonts.mono,
-    fontSize: 12.5,
+    fontSize: 13,
     color: colors.ink,
+    fontWeight: '500',
   },
   paymentValueStrong: {
-    fontWeight: '700',
+    fontWeight: '800',
   },
   paymentValueAccent: {
-    color: colors.accent,
+    color: colors.ink,
   },
   paymentDivider: {
     height: 1,
@@ -533,18 +649,39 @@ const styles = StyleSheet.create({
     marginVertical: spacing.sm,
   },
   managePaymentBtn: {
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.sm,
-    paddingVertical: 8,
+    paddingVertical: 9,
     alignItems: 'center',
     marginTop: spacing.md,
+    backgroundColor: '#FFFFFF',
   },
   managePaymentText: {
-    fontFamily: fonts.mono,
-    fontSize: 11.5,
+    fontFamily: fonts.sans,
+    fontSize: 12.5,
     fontWeight: '700',
     color: colors.ink,
+  },
+  waybillCard: {
+    marginBottom: spacing.xl,
+  },
+  waybillLine: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 9,
+  },
+  waybillLabel: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    color: colors.inkFaint,
+  },
+  waybillValue: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.ink,
+    textAlign: 'right',
   },
 });

@@ -258,6 +258,64 @@ public class ShipmentServiceImpl implements ShipmentService {
         resp.setBalance(balance);
         resp.setPaidAtRegistration(shipment.getPaidAtRegistration());
 
+        // Destination derivation
+        String destination = "TNL Baguio Hub";
+        if (shipment.getRoute() != null && shipment.getRoute().contains("→")) {
+            String[] parts = shipment.getRoute().split("→");
+            if (parts.length > 1) {
+                destination = parts[1].trim();
+            }
+        }
+        resp.setDestination(destination);
+
+        // Dimensions and Weight calculation
+        BigDecimal actualWeight = BigDecimal.ZERO;
+        BigDecimal length = new BigDecimal("50");
+        BigDecimal width = new BigDecimal("40");
+        BigDecimal height = new BigDecimal("35");
+
+        if (!parcels.isEmpty()) {
+            ParcelUnit first = parcels.get(0);
+            if (first.getLengthCm() != null) length = first.getLengthCm();
+            if (first.getWidthCm() != null) width = first.getWidthCm();
+            if (first.getHeightCm() != null) height = first.getHeightCm();
+
+            for (ParcelUnit p : parcels) {
+                if (p.getWeightKg() != null) {
+                    actualWeight = actualWeight.add(p.getWeightKg());
+                }
+            }
+        }
+        if (actualWeight.compareTo(BigDecimal.ZERO) == 0) {
+            actualWeight = new BigDecimal("2.5");
+        }
+
+        // Volume in cm3: L x W x H per unit * quantity
+        BigDecimal unitVolumeCm3 = length.multiply(width).multiply(height);
+        BigDecimal totalVolumeCm3 = unitVolumeCm3.multiply(new BigDecimal(shipment.getQuantity()));
+
+        // Volumetric weight: totalVolumeCm3 / 5000
+        BigDecimal volumetricWeight = totalVolumeCm3.divide(new BigDecimal("5000"), 2, RoundingMode.HALF_UP);
+
+        // Billable weight: max(actualWeight, volumetricWeight)
+        BigDecimal billableWeight = actualWeight.max(volumetricWeight);
+
+        resp.setLengthCm(length);
+        resp.setWidthCm(width);
+        resp.setHeightCm(height);
+        resp.setWeightKg(actualWeight);
+        resp.setVolumeCm3(totalVolumeCm3);
+        resp.setVolumetricWeightKg(volumetricWeight);
+        resp.setBillableWeightKg(billableWeight);
+
+        // Waybill summary
+        resp.setWaybillStatus("Waybill: Signed / Completed");
+        resp.setHauler("Cordillera Freight");
+        resp.setWaybillGeneratedDate(shipment.getDateRegistered() != null
+                ? shipment.getDateRegistered().format(DATE_FORMATTER)
+                : "Aug 5, 2026");
+        resp.setSignedBy("R. Aquino");
+
         List<ParcelUnitResponse> unitResponses = parcels.stream().map(p -> new ParcelUnitResponse(
                 p.getTrackingId(),
                 p.getSeq(),

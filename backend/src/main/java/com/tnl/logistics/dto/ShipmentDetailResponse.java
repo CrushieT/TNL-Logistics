@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * Detailed response for shipment details page.
+ * Detailed response for shipment details page matching the August 26 prototype specification.
  */
 public class ShipmentDetailResponse {
 
@@ -13,6 +13,7 @@ public class ShipmentDetailResponse {
     private String clientId;
     private String client;
     private String route;
+    private String destination;
     private String recipient;
     private RecipientDetailsDto recipientDetails;
     private String registeredOn;
@@ -28,6 +29,22 @@ public class ShipmentDetailResponse {
     private BigDecimal amountPaid;
     private BigDecimal balance;
     private Boolean paidAtRegistration;
+
+    // Weight & Volume Metrics
+    private BigDecimal weightKg;
+    private BigDecimal lengthCm;
+    private BigDecimal widthCm;
+    private BigDecimal heightCm;
+    private BigDecimal volumeCm3;
+    private BigDecimal volumetricWeightKg;
+    private BigDecimal billableWeightKg;
+
+    // Waybill Information
+    private String waybillStatus;
+    private String hauler;
+    private String waybillGeneratedDate;
+    private String waybillSignedBy;
+
     private List<ParcelUnitResponse> units;
 
     public ShipmentDetailResponse() {}
@@ -46,6 +63,9 @@ public class ShipmentDetailResponse {
 
     public String getRoute() { return route; }
     public void setRoute(String route) { this.route = route; }
+
+    public String getDestination() { return destination; }
+    public void setDestination(String destination) { this.destination = destination; }
 
     public String getRecipient() { return recipient; }
     public void setRecipient(String recipient) { this.recipient = recipient; }
@@ -91,6 +111,39 @@ public class ShipmentDetailResponse {
 
     public Boolean getPaidAtRegistration() { return paidAtRegistration; }
     public void setPaidAtRegistration(Boolean paidAtRegistration) { this.paidAtRegistration = paidAtRegistration; }
+
+    public BigDecimal getWeightKg() { return weightKg; }
+    public void setWeightKg(BigDecimal weightKg) { this.weightKg = weightKg; }
+
+    public BigDecimal getLengthCm() { return lengthCm; }
+    public void setLengthCm(BigDecimal lengthCm) { this.lengthCm = lengthCm; }
+
+    public BigDecimal getWidthCm() { return widthCm; }
+    public void setWidthCm(BigDecimal widthCm) { this.widthCm = widthCm; }
+
+    public BigDecimal getHeightCm() { return heightCm; }
+    public void setHeightCm(BigDecimal heightCm) { this.heightCm = heightCm; }
+
+    public BigDecimal getVolumeCm3() { return volumeCm3; }
+    public void setVolumeCm3(BigDecimal volumeCm3) { this.volumeCm3 = volumeCm3; }
+
+    public BigDecimal getVolumetricWeightKg() { return volumetricWeightKg; }
+    public void setVolumetricWeightKg(BigDecimal volumetricWeightKg) { this.volumetricWeightKg = volumetricWeightKg; }
+
+    public BigDecimal getBillableWeightKg() { return billableWeightKg; }
+    public void setBillableWeightKg(BigDecimal billableWeightKg) { this.billableWeightKg = billableWeightKg; }
+
+    public String getWaybillStatus() { return waybillStatus; }
+    public void setWaybillStatus(String waybillStatus) { this.waybillStatus = waybillStatus; }
+
+    public String getHauler() { return hauler; }
+    public void setHauler(String hauler) { this.hauler = hauler; }
+
+    public String getWaybillGeneratedDate() { return waybillGeneratedDate; }
+    public void setWaybillGeneratedDate(String waybillGeneratedDate) { this.waybillGeneratedDate = waybillGeneratedDate; }
+
+    public String getSignedBy() { return waybillSignedBy; }
+    public void setSignedBy(String waybillSignedBy) { this.waybillSignedBy = waybillSignedBy; }
 
     public List<ParcelUnitResponse> getUnits() { return units; }
     public void setUnits(List<ParcelUnitResponse> units) { this.units = units; }
