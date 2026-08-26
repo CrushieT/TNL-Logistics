@@ -1,126 +1,104 @@
--- ============================================================
--- CLIENT — billing party, owns many shipments
--- ============================================================
-CREATE TABLE client (
-    client_id           VARCHAR(20)     PRIMARY KEY,
-    name                 VARCHAR(150)    NOT NULL,
-    address              VARCHAR(255)    NOT NULL,
-    contact_number       VARCHAR(30)     NOT NULL,
-    email                VARCHAR(150)    NULL,
-    created_at           TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at           TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+-- Flyway Database Migration: V1 Initial Schema Setup
+-- Target Database: MySQL 8.0+
 
--- ============================================================
--- SHIPMENT / TRANSACTION — groups parcel units under one client
--- ============================================================
-CREATE TABLE shipment (
-    shipment_id          VARCHAR(20)     PRIMARY KEY,
-    client_id            VARCHAR(20)     NOT NULL,
-    recipient_name        VARCHAR(150)    NOT NULL,
-    recipient_address     VARCHAR(255)    NOT NULL,
-    recipient_contact     VARCHAR(30)     NOT NULL,
-    description           VARCHAR(255)    NULL,
-    quantity              INT             NOT NULL,
-    charge_model          ENUM('FLAT','PER_PARCEL') NOT NULL,
-    shipping_fee          DECIMAL(12,2)   NOT NULL,
-    other_charges         DECIMAL(12,2)   NOT NULL DEFAULT 0,
-    total_amount          DECIMAL(12,2)   NOT NULL,
-    paid_at_registration  BOOLEAN         NOT NULL DEFAULT FALSE,
-    route                 VARCHAR(150)    NULL,
-    registered_via        ENUM('DESKTOP_OFFICE','MOBILE_FIELD') NOT NULL,
-    date_registered       TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+-- 1. Clients Table
+CREATE TABLE clients (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    phone VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-    CONSTRAINT fk_shipment_client
-        FOREIGN KEY (client_id) REFERENCES client(client_id),
-    INDEX idx_shipment_client (client_id),
-    INDEX idx_shipment_date (date_registered)
-);
+-- 2. Shipments Table
+CREATE TABLE shipments (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    client_id BIGINT NOT NULL,
+    origin VARCHAR(255) NOT NULL,
+    destination VARCHAR(255) NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ============================================================
--- PARCEL UNIT — one physical package, unique Tracking ID + QR
--- ============================================================
-CREATE TABLE parcel_unit (
-    tracking_id           VARCHAR(30)     PRIMARY KEY,
-    shipment_id            VARCHAR(20)     NOT NULL,
-    seq                    INT             NOT NULL,
-    weight_kg               DECIMAL(8,2)    NULL,
-    length_cm                DECIMAL(8,2)    NULL,
-    height_cm                DECIMAL(8,2)    NULL,
-    width_cm                 DECIMAL(8,2)    NULL,
-    volume_cbm                DECIMAL(10,4)   NULL,
-    current_status          ENUM(
-                                'REGISTERED',
-                                'QR_GENERATED',
-                                'LOADED_ON_TRUCK',
-                                'ARRIVED_AT_TNL',
-                                'LOADED_TO_HAULER'
-                             ) NOT NULL DEFAULT 'REGISTERED',
-    label_status             ENUM('NOT_PRINTED','PRINTED','REPRINTED') NOT NULL DEFAULT 'NOT_PRINTED',
-    reprint_count             INT             NOT NULL DEFAULT 0,
-    current_vehicle_id        VARCHAR(20)     NULL,
+-- 3. Parcel Units Table
+CREATE TABLE parcel_units (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    shipment_id BIGINT NOT NULL,
+    weight DECIMAL(10, 2),
+    dimensions VARCHAR(100), -- Format: "WxHxD cm"
+    description VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (shipment_id) REFERENCES shipments(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-    CONSTRAINT fk_parcel_shipment
-        FOREIGN KEY (shipment_id) REFERENCES shipment(shipment_id),
-    INDEX idx_parcel_shipment (shipment_id),
-    INDEX idx_parcel_status (current_status)
-);
+-- 4. QR Codes Table
+CREATE TABLE qr_codes (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    parcel_unit_id BIGINT NOT NULL UNIQUE,
+    code_data VARCHAR(500) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (parcel_unit_id) REFERENCES parcel_units(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ============================================================
--- TRACKING EVENT — append-only, per-unit status history
--- ============================================================
-CREATE TABLE tracking_event (
-    event_id               BIGINT          AUTO_INCREMENT PRIMARY KEY,
-    tracking_id             VARCHAR(30)     NOT NULL,
-    status                   ENUM(
-                                'REGISTERED',
-                                'QR_GENERATED',
-                                'LOADED_ON_TRUCK',
-                                'ARRIVED_AT_TNL',
-                                'LOADED_TO_HAULER'
-                             ) NOT NULL,
-    vehicle_id                VARCHAR(20)     NULL,
-    staff_id                  VARCHAR(20)     NOT NULL,
-    remarks                    VARCHAR(255)    NULL,
-    event_timestamp            TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+-- 5. Tracking Events Table (Append-only for history tracking)
+CREATE TABLE tracking_events (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    shipment_id BIGINT NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    location VARCHAR(255) NOT NULL,
+    description VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (shipment_id) REFERENCES shipments(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-    CONSTRAINT fk_event_parcel
-        FOREIGN KEY (tracking_id) REFERENCES parcel_unit(tracking_id),
-    INDEX idx_event_tracking (tracking_id),
-    INDEX idx_event_timestamp (event_timestamp)
-);
+-- 6. Statements of Account Table (Billing periods summaries)
+CREATE TABLE statements_of_account (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    client_id BIGINT NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    total_charges DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
+    total_payments DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
+    balance_due DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ============================================================
--- PRINT EVENT — label print/reprint history, separate from tracking
--- ============================================================
-CREATE TABLE print_event (
-    print_id                BIGINT          AUTO_INCREMENT PRIMARY KEY,
-    tracking_id              VARCHAR(30)     NOT NULL,
-    kind                      ENUM('PRINT','REPRINT') NOT NULL,
-    labels_produced            INT             NOT NULL DEFAULT 1,
-    staff_id                    VARCHAR(20)     NOT NULL,
-    printer_id                   VARCHAR(20)     NULL,
-    print_timestamp               TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+-- 7. Charges Table
+CREATE TABLE charges (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    shipment_id BIGINT NOT NULL,
+    statement_id BIGINT NULL,
+    amount DECIMAL(10, 2) NOT NULL,
+    type VARCHAR(100) NOT NULL, -- e.g., BASE_FARE, FUEL_SURCHARGE, TAX, INSURANCE
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (shipment_id) REFERENCES shipments(id) ON DELETE CASCADE,
+    FOREIGN KEY (statement_id) REFERENCES statements_of_account(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-    CONSTRAINT fk_print_parcel
-        FOREIGN KEY (tracking_id) REFERENCES parcel_unit(tracking_id),
-    INDEX idx_print_tracking (tracking_id)
-);
+-- 8. Payments Table
+CREATE TABLE payments (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    client_id BIGINT NOT NULL,
+    statement_id BIGINT NULL,
+    amount DECIMAL(10, 2) NOT NULL,
+    payment_method VARCHAR(50) NOT NULL, -- e.g., CARD, BANK_TRANSFER, CASH
+    status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE RESTRICT,
+    FOREIGN KEY (statement_id) REFERENCES statements_of_account(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- ============================================================
--- PAYMENT — collections recorded against a shipment
--- ============================================================
-CREATE TABLE payment (
-    payment_id               BIGINT          AUTO_INCREMENT PRIMARY KEY,
-    shipment_id                VARCHAR(20)     NOT NULL,
-    amount_paid                  DECIMAL(12,2)   NOT NULL,
-    method                        ENUM('CASH','BANK','GCASH') NOT NULL,
-    reference_no                   VARCHAR(100)    NULL,
-    payment_date                    DATE            NOT NULL,
-    statement_id                     VARCHAR(30)     NULL,
-    recorded_at                       TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_payment_shipment
-        FOREIGN KEY (shipment_id) REFERENCES shipment(shipment_id),
-    INDEX idx_payment_shipment (shipment_id)
-);
+-- 9. Weekly Collections Table
+CREATE TABLE weekly_collections (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    statement_id BIGINT NULL,
+    collected_amount DECIMAL(10, 2) NOT NULL,
+    collection_date DATE NOT NULL,
+    collector_name VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (statement_id) REFERENCES statements_of_account(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

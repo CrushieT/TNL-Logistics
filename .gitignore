@@ -37,14 +37,11 @@ backend/dependency-reduced-pom.xml
 backend/buildNumber.properties
 backend/.mvn/timing.properties
 
-# --- Frontend Web (Expo / React Native Web) exclusions ---
+# --- Frontend Web (Next.js / React) exclusions ---
 frontend-web/node_modules/
-frontend-web/.expo/
-frontend-web/dist/
-frontend-web/web-build/
-frontend-web/npm-debug.log*
-frontend-web/yarn-debug.log*
-frontend-web/yarn-error.log*
+frontend-web/.next/
+frontend-web/out/
+frontend-web/build/
 
 # --- Frontend Mobile (Expo / React Native) exclusions ---
 frontend-mobile/node_modules/
@@ -55,7 +52,3 @@ frontend-mobile/npm-debug.log*
 frontend-mobile/yarn-debug.log*
 frontend-mobile/yarn-error.log*
 frontend-mobile/.expo-shared/
-
-# --- Private Planning & Client Documentation ---
-.docs/
-*.pdf

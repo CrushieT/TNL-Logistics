@@ -1,216 +1,79 @@
-# TNL Logistics — Enterprise Multi-Platform Freight Management System
+# TNL Logistics Monorepo
 
-[![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.4.2-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
-[![Java](https://img.shields.io/badge/Java-21%20%2F%2023-ED8B00?logo=openjdk&logoColor=white)](https://www.oracle.com/java/)
-[![Expo](https://img.shields.io/badge/Expo-52.0-000020?logo=expo&logoColor=white)](https://expo.dev/)
-[![React Native](https://img.shields.io/badge/React_Native-Web%20%26%20Mobile-61DAFB?logo=react&logoColor=black)](https://reactnative.dev/)
-[![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
-[![Flyway](https://img.shields.io/badge/Flyway-Database_Migrations-CC0200?logo=flyway&logoColor=white)](https://flywaydb.org/)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+Welcome to the **TNL Logistics** project! This is a multi-platform parcel management system that connects a centralized Spring Boot backend with both web and mobile frontends.
 
-**TNL Logistics** is a production-grade commercial logistics and freight forwarding platform engineered as a **Unified Modular Monolith**. It connects a robust Spring Boot 3.4 REST backend with an Expo Web administration console and a React Native mobile field staff scanner app over a single shared MySQL database and a real-time Server-Sent Events (SSE) streaming pipeline.
+## Project Structure
 
----
+This project uses a monorepo layout separating independent application concerns:
 
-## Executive Summary & Core Capabilities
-
-Commercial freight forwarding requires strict chain-of-custody tracking, legal proof of delivery, decoupled billing states, and real-time inventory visibility across warehouse hubs. TNL Logistics delivers:
-
-* **Real-Time Parcel Lifecycle Tracking:** Strict sequential 5-state transition engine (`Registered` → `QR Generated` → `Loaded on Truck` → `Arrived at TNL` → `Loaded to Hauler`) with append-only audit event logging.
-* **Automated Volumetric Calculation:** Automatic volumetric weight derivation ($\frac{L \times W \times H\text{ cm}}{5000}$) and total $m^3$ cubic volume computation against actual scale weight.
-* **Instant Vector QR Label Generator:** Generates high-contrast thermal printable label cards with encoded sequential tracking numbers (`TRK-YYYY-XXXXXX`).
-* **Intelligent Fleet Registry & Smart Delete:** Live on-truck cargo counters with $0\text{ms}$ SSE auto-updates and a hybrid smart deletion engine (hard delete for unused entries, soft deactivation for vehicles with delivery audit history).
-* **Waybill & Manifest Handover Workflow:** Sequential `WYB-YYYY-XXXX` manifest generation for legal 3rd-party hauler custody turnover and Proof of Delivery (POD).
-* **Role-Based Access Control (RBAC):** Granular permission boundaries separating `ADMIN`, `OFFICE_STAFF`, and scan-only `FIELD_STAFF`.
-
----
-
-## System Architecture
-
-```text
-                                  ┌────────────────────────────────┐
-                                  │       MySQL 8.0 Database       │
-                                  │   (Flyway Migrations V1-V8)    │
-                                  └───────────────┬────────────────┘
-                                                  │
-                                                  ▼
-                        ┌──────────────────────────────────────────────────┐
-                        │          Spring Boot 3.4 Backend Service         │
-                        │    • REST API (Port 8080)   • SSE Event Stream   │
-                        │    • JWT Stateless Auth     • Hibernate JPA      │
-                        └─────────────┬──────────────────────┬─────────────┘
-                                      │                      │
-                   HTTP REST / SSE    │                      │  HTTP REST / SSE
-                                      ▼                      ▼
-┌──────────────────────────────────────────────┐    ┌─────────────────────────────────────────────┐
-│       Frontend Web Portal (Expo Web)         │    │       Frontend Mobile App (Expo Mobile)     │
-│   • Operations: Shipments, Fleet, Tracking   │    │   • Camera Barcode / QR Scanner             │
-│   • Billing: Collections, Waybills, SOA      │    │   • Active Vehicle Pickup on Truck Load     │
-│   • Admin: Metrics, Reports, User Staff      │    │   • Offline Scan Queue (SQLite fallback)    │
-└──────────────────────────────────────────────┘    └─────────────────────────────────────────────┘
+```
+tnl-logistics/
+├── backend/            # Spring Boot 3.4.2 + Java 21 REST API
+├── frontend-web/       # React / Next.js 14 Web Dashboard (Admin interface)
+├── frontend-mobile/    # Expo / React Native Field Agent App (QR Scan & Label Print)
+├── docker-compose.yml  # Orchestrates development MySQL & Backend services
+└── README.md           # Root documentation
 ```
 
----
+## Tech Stack
 
-## The 4 Independent Status Dimensions (Rule 19)
-
-Unlike simplistic CRUD apps that conflate tracking and accounting into a single enum, TNL Logistics models the 4 physical realities of cargo independently:
-
-```text
-1. Tracking Status (5-State):
-   [Registered] ──► [QR Generated] ──► [Loaded on Truck] ──► [Arrived at TNL] ──► [Loaded to Hauler]
-
-2. Payment Status:
-   [Unpaid] ────────► [Partially Paid] ────────► [Paid] (and [For Collection] batch)
-
-3. Label Status:
-   [Not Printed] ───► [Printed] ───────────────► [Reprinted]
-
-4. Waybill Custody Lifecycle (4-State):
-   [Not Generated] ─► [Generated] ─────────────► [Sent to Hauler] ────────► [Signed / POD Completed]
-```
-
----
-
-## Current Implementation Status & Roadmap
-
-| Phase | Milestone Description | Status | Key Deliverables |
-| :--- | :--- | :---: | :--- |
-| **Phase 0** | **Foundation & Security** | `[COMPLETED]` | Spring Boot 3.4, Flyway migrations `V1`–`V8`, MySQL 8, JPA models, stateless JWT auth with 3 roles (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`). |
-| **Phase 1** | **Shipment Registration & QR Labels** | `[COMPLETED]` | Sequential IDs (`SHP-YYYY-XXX`, `TRK-YYYY-XXXXXX`), volumetric weight ($\div 5000$) & $m^3$ calculations, vector thermal QR labels, paginated table, tracking inspection. |
-| **Phase 2** | **Status Flow, Real-Time SSE & Fleet Management** | `[COMPLETED]` | Sequential 5-state transition engine, live SSE stream, vehicle fleet CRUD (`VH-XXX`), smart deletion, composite indexing, and batch query aggregation. |
-| **Phase 3** | **Waybills & Freight Manifest Handover** | `[UPCOMING]` | `WYB-YYYY-XXXX` auto-numbering, 4-state lifecycle (`Generated` → `Sent to Hauler` → `Signed/Completed`), and print-ready A4 3rd-party hauler manifest. |
-| **Phase 4** | **Billing, Collections & Statement of Account** | `[UPCOMING]` | Thursday weekly collections consolidation, `SOA-YYYY-XXXX` generator with 3 business deductions (Bad Orders, Discrepancies, Claims). |
-| **Phase 5** | **Web Console Administration & Clients** | `[UPCOMING]` | Dedicated client directory, live operational dashboard metrics, company-wide audit tracking logs stream, and exportable reports. |
-| **Phase 6** | **Role-Aware Mobile Courier Portal** | `[UPCOMING]` | Mobile PIN auth with role branching (scan-only field staff vs authorized office mobile), camera QR scanner, and Bluetooth thermal printer integration. |
-
----
-
-## Monorepo Layout
-
-```text
-logistics/
-├── backend/                               # Spring Boot 3.4.2 REST API
-│   ├── src/main/java/com/tnl/logistics/
-│   │   ├── config/                        # SecurityConfig, JWT Provider, WebMvcConfig
-│   │   ├── controller/                    # REST API Controllers & SSE Stream Endpoints
-│   │   ├── dto/                           # Request & Response Data Transfer Objects
-│   │   ├── model/                         # JPA Entities (Shipment, ParcelUnit, Vehicle, etc.)
-│   │   ├── repository/                    # Spring Data Repositories & Group By Aggregations
-│   │   └── service/                       # Business Service Contracts & Implementations (impl/)
-│   └── src/main/resources/
-│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V8)
-│       └── application-dev.yml            # Environment Configuration
-│
-├── frontend-web/                          # Expo / React Native Web Admin Portal
-│   ├── src/
-│   │   ├── app/                           # Expo Router Screens (/, /shipments, /vehicles, etc.)
-│   │   ├── components/                    # Common UI Components (Cards, Buttons, Badges, Shell)
-│   │   ├── features/                      # Domain Features (shipments, vehicles, clients)
-│   │   ├── services/api/                  # Axios Client with Auto-Auth & SSE Event Subscriptions
-│   │   └── theme/                         # Design System Tokens (Colors, Typography, Spacing)
-│   └── package.json
-│
-├── frontend-mobile/                       # Expo / React Native Field Courier Portal
-│   └── src/                               # Camera QR Scanner, Field Actions & Thermal Printer
-│
-├── .docs/                                 # Logistics Blueprint & Master Build Plan
-│   ├── build-plan.md                      # 6-Phase Master Development Plan
-│   └── prototype/                         # Desktop & Mobile Screen Prototypes
-│
-└── docker-compose.yml                     # Local MySQL & Services Orchestration
-```
-
----
-
-## Key Engineering Highlights
-
-### 1. Zero $N+1$ Database Query Aggregation
-Fleet management calculates real-time parcels loaded on each truck using a single batch `GROUP BY` query mapped in $O(1)$ memory:
-```java
-@Query("SELECT p.currentVehicle.vehicleId, COUNT(p) FROM ParcelUnit p " +
-       "WHERE p.currentStatus = :status AND p.currentVehicle IS NOT NULL " +
-       "GROUP BY p.currentVehicle.vehicleId")
-List<Object[]> countLoadedParcelsGroupedByVehicle(@Param("status") ParcelStatus status);
-```
-*Cuts database round-trips from $N+1$ queries to **2 queries flat**, backed by Flyway `V8` composite B-Tree indexes on `(current_vehicle_id, current_status)`.*
-
-### 2. Hybrid Smart Deletion Safety
-Deletes protect database foreign keys while keeping the fleet clean:
-* **Unused Vehicles (0 Historical Scans):** Executes a permanent **Hard Delete** (`DELETE FROM vehicle`), removing accidental inputs without database residue.
-* **Vehicles with Delivery History (1+ Scans):** Executes a **Soft Deactivation** (`active = false`, `status = 'Inactive'`), safeguarding past customer Proof of Delivery records and foreign key constraints.
-
-### 3. Server-Sent Events (SSE) Live Pipeline
-When field staff scan a parcel with their phone, an append-only event is committed and broadcast over `/api/v1/events/stream`. The desktop web console silently refreshes metrics, parcel timelines, and vehicle counters in $0\text{ms}$ without page reloads.
-
----
-
-## REST API Reference Summary
-
-| Endpoint | Method | Role | Description |
-| :--- | :---: | :---: | :--- |
-| `/api/v1/auth/login` | `POST` | Public | Authenticate user and receive stateless JWT token |
-| `/api/v1/shipments` | `POST` | Office/Admin | Register shipment with parcels, pricing, and QR codes |
-| `/api/v1/shipments` | `GET` | All Staff | Paginated shipments search with status & payment filters |
-| `/api/v1/shipments/{id}` | `GET` | All Staff | Detailed shipment view with billable weight & dimension specs |
-| `/api/v1/parcel-units/{id}` | `GET` | All Staff | Individual parcel inspection and scan timeline history |
-| `/api/v1/tracking-events/scan` | `POST` | Field/Office | Strict sequential scan status advance with vehicle assignment |
-| `/api/v1/vehicles` | `GET` | All Staff | Fleet registry with real-time `ON TRUCK` parcel counts |
-| `/api/v1/vehicles` | `POST` | Office/Admin | Register new vehicle with auto-generated `VH-XXX` ID |
-| `/api/v1/vehicles/{id}` | `PUT` | Office/Admin | Update vehicle plate, type, status, and remarks |
-| `/api/v1/vehicles/{id}` | `DELETE` | Office/Admin | Smart Delete (Hard delete unused / Soft deactivation) |
-| `/api/v1/events/stream` | `GET` | All Staff | Server-Sent Events real-time event subscription stream |
+- **Backend:** Spring Boot 3.x, Hibernate/JPA, Flyway (DB migrations), MySQL 8.0, Lombok, Springdoc OpenAPI (Swagger).
+- **Web App:** Next.js 14 (JavaScript), SWR (data fetching), Tailwind CSS, Axios.
+- **Mobile App:** Expo 51 (React Native), Expo Router, React Native Paper (UI), Expo Camera (QR barcode scanning).
 
 ---
 
 ## Getting Started
 
-### Prerequisites
-* **Java:** JDK 21 or JDK 23
-* **Node.js:** v18+ & npm
-* **MySQL:** 8.0+ (or Docker)
-* **Maven:** 3.9+
+Follow these steps to run the complete environment locally:
 
-### 1. Start the Database & Backend
+### 1. Database & Backend API
+
+To start the MySQL database and backend service in containers:
 ```bash
-# Option A: Run MySQL via Docker Compose
-docker-compose up -d mysql
+docker-compose up --build
+```
+- **MySQL** will bind to `localhost:3306` (Credentials: `root` / `root`, DB: `tnl_dev`).
+- **Backend API** will run at [http://localhost:8080](http://localhost:8080).
+- **Swagger Documentation:** Access the interactive API explorer at [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html).
 
-# Option B: Native MySQL
-# Ensure MySQL is running on localhost:3306 with database `tnl_dev`
-
-# Start Spring Boot Application
+*Alternatively, you can run the backend service bare-metal (Prerequisites: JDK 21, Maven 3.9):*
+```bash
 cd backend
 mvn spring-boot:run
 ```
-*API will run at `http://localhost:8080` (Flyway auto-runs all migrations `V1` to `V8` on startup).*
 
-### 2. Start the Admin Web Dashboard
+### 2. Admin Web Dashboard
+The React / Next.js administration portal allows managers to view and dispatch shipments.
 ```bash
 cd frontend-web
 npm install
-npx expo start --web
+npm run dev
 ```
-*Open `http://localhost:8081` in your browser.*
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### 3. Run Automated Tests
+### 3. Courier Field Mobile App
+The React Native app is used by couriers on-site to scan parcel QRs and trigger status updates.
 ```bash
-cd backend
-mvn test
+cd frontend-mobile
+npm install
+npx expo start
 ```
-*Runs all 12 unit, repository, security, and SSE integration tests.*
+*   Scan the generated CLI QR code using **Expo Go** on iOS/Android to run it on your physical device.
+*   **Important:** To run on physical mobile devices, ensure your `.env` points to your computer's local IP (e.g. `192.168.x.x:8080`) rather than `localhost`.
 
 ---
 
-## Default Development Accounts
+## API Summary Quick-links
 
-| Username | Password | Role | Permitted Workflows |
-| :--- | :--- | :--- | :--- |
-| `admin` | `admin123` | `ADMIN` | Full System Access, Fleet Management, Financials & Reports |
-| `office` | `office123` | `OFFICE_STAFF` | Shipment Encoding, Pricing, Label Printing, Waybills |
-| `field` | `field123` | `FIELD_STAFF` | Scan-Only Mobile Mode (`Loaded on Truck`, `Arrived at TNL`) |
+- **Create Shipment:** `POST /api/v1/shipments`
+- **Get Shipment Details:** `GET /api/v1/shipments/{id}`
+- **List All Shipments:** `GET /api/v1/shipments` (supports `clientId` query filter)
+- **Update Shipment Status:** `PATCH /api/v1/shipments/{id}/status?status={PENDING|IN_TRANSIT|DELIVERED|CANCELLED}`
 
 ---
 
-## License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## Contributing and TODOs
+- **QR Code Generation:** Implement backend generator logic to produce custom code payloads to match Flyway `qr_codes` mapping.
+- **Thermal Belt Printing:** Pair ESC/POS bluetooth streams in `frontend-mobile/app/(main)/home.js`.
+- **Stateless Authentication:** Replace HTTP basic security fallback in `SecurityConfig.java` with production JWT verification filter.

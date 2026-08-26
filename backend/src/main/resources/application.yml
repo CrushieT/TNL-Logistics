@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: logistics
+  profiles:
+    active: dev # Default fallback profile
+
+  # Jackson date serialization properties
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+logging:
+  level:
+    root: INFO
+    com.tnl.logistics: DEBUG
+    org.springframework.web: INFO
+    org.hibernate.SQL: DEBUG
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
