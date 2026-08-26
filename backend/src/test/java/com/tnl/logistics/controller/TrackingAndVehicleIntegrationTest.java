@@ -125,13 +125,12 @@ public class TrackingAndVehicleIntegrationTest {
         Vehicle updated = vehicleRepository.findById("VH-001").orElseThrow();
         assertEquals("Updated Isuzu 6-Wheeler", updated.getDescription());
 
-        // 5. Deactivate vehicle
+        // 5. Smart Delete: Hard deletes vehicle when 0 events exist
         mockMvc.perform(delete("/api/v1/vehicles/VH-001")
                         .header("Authorization", officeToken))
                 .andExpect(status().isNoContent());
 
-        Vehicle deactivated = vehicleRepository.findById("VH-001").orElseThrow();
-        assertFalse(deactivated.getActive());
+        assertTrue(vehicleRepository.findById("VH-001").isEmpty());
     }
 
     @Test
@@ -242,5 +241,99 @@ public class TrackingAndVehicleIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(missingVehicle)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testVehicleCustomTypeRemarksAndOnTruckCount() throws Exception {
+        // 1. Create vehicle with custom type and remarks
+        VehicleRequest req = new VehicleRequest("TRK-999", "Refrigerated Wing Van", "Cold storage transport", "Active", "Brake service due soon", true);
+        MvcResult res = mockMvc.perform(post("/api/v1/vehicles")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        VehicleResponse v = objectMapper.readValue(res.getResponse().getContentAsString(), VehicleResponse.class);
+        assertEquals("TRK-999", v.getPlateNumber());
+        assertEquals("Refrigerated Wing Van", v.getVehicleType());
+        assertEquals("Brake service due soon", v.getRemarks());
+        assertEquals(0L, v.getOnTruckCount());
+
+        // 2. Register a shipment with 2 parcels
+        ShipmentRegistrationRequest regReq = new ShipmentRegistrationRequest();
+        regReq.setClientId("CL-001");
+        regReq.setRecipientName("Frozen Goods Mart");
+        regReq.setRecipientAddress("Baguio City");
+        regReq.setRecipientContact("09189998888");
+        regReq.setQuantity(2);
+        regReq.setChargeModel(ChargeModel.FLAT);
+        regReq.setShippingFee(new BigDecimal("500.00"));
+        regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setParcels(List.of(
+                new ParcelUnitRequest(1, new BigDecimal("5"), new BigDecimal("30"), new BigDecimal("30"), new BigDecimal("30")),
+                new ParcelUnitRequest(2, new BigDecimal("5"), new BigDecimal("30"), new BigDecimal("30"), new BigDecimal("30"))
+        ));
+
+        ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "office");
+        String t1 = shipResp.getTrackingIds().get(0);
+        String t2 = shipResp.getTrackingIds().get(1);
+
+        // 3. Scan first parcel to LOADED_ON_TRUCK with this vehicle
+        TrackingScanRequest scan1 = new TrackingScanRequest(t1, ParcelStatus.LOADED_ON_TRUCK, v.getVehicleId(), "Loaded on cold van");
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", fieldToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(scan1)))
+                .andExpect(status().isOk());
+
+        // 4. Verify onTruckCount is now 1
+        MvcResult getRes1 = mockMvc.perform(get("/api/v1/vehicles/" + v.getVehicleId())
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        VehicleResponse vAfter1 = objectMapper.readValue(getRes1.getResponse().getContentAsString(), VehicleResponse.class);
+        assertEquals(1L, vAfter1.getOnTruckCount());
+
+        // 5. Scan second parcel to LOADED_ON_TRUCK with same vehicle
+        TrackingScanRequest scan2 = new TrackingScanRequest(t2, ParcelStatus.LOADED_ON_TRUCK, v.getVehicleId(), "Loaded second cold box");
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", fieldToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(scan2)))
+                .andExpect(status().isOk());
+
+        // 6. Verify onTruckCount is now 2
+        MvcResult getRes2 = mockMvc.perform(get("/api/v1/vehicles/" + v.getVehicleId())
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        VehicleResponse vAfter2 = objectMapper.readValue(getRes2.getResponse().getContentAsString(), VehicleResponse.class);
+        assertEquals(2L, vAfter2.getOnTruckCount());
+
+        // 7. Scan first parcel to ARRIVED_AT_TNL (unloaded from truck)
+        TrackingScanRequest scan3 = new TrackingScanRequest(t1, ParcelStatus.ARRIVED_AT_TNL, null, "Unloaded box 1");
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", fieldToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(scan3)))
+                .andExpect(status().isOk());
+
+        // 8. Verify onTruckCount decremented to 1
+        MvcResult getRes3 = mockMvc.perform(get("/api/v1/vehicles/" + v.getVehicleId())
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        VehicleResponse vAfter3 = objectMapper.readValue(getRes3.getResponse().getContentAsString(), VehicleResponse.class);
+        assertEquals(1L, vAfter3.getOnTruckCount());
+
+        // 9. Smart Delete: Soft-deactivates when vehicle has past tracking history
+        mockMvc.perform(delete("/api/v1/vehicles/" + v.getVehicleId())
+                        .header("Authorization", officeToken))
+                .andExpect(status().isNoContent());
+
+        Vehicle softDeleted = vehicleRepository.findById(v.getVehicleId()).orElseThrow();
+        assertFalse(softDeleted.getActive());
+        assertEquals("Inactive", softDeleted.getStatus());
     }
 }

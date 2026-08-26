@@ -5,7 +5,8 @@ import { colors, fonts, spacing, radius, type } from '../../theme';
 
 const NAV_SECTIONS = [
   {
-    label: 'Operations',
+    id: 'operations',
+    label: 'OPERATIONS',
     items: [
       { label: 'Dashboard', href: '/' },
       { label: 'Register Shipment', href: '/register' },
@@ -15,7 +16,8 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    label: 'Billing',
+    id: 'billing',
+    label: 'BILLING & FINANCE',
     items: [
       { label: 'Clients', href: '/clients' },
       { label: 'Payments', href: '/payments' },
@@ -25,7 +27,8 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    label: 'Admin',
+    id: 'admin',
+    label: 'ADMINISTRATION',
     items: [
       { label: 'Reports', href: '/reports' },
       { label: 'Users / Staff', href: '/users' },
@@ -41,36 +44,54 @@ export default function Sidebar({ user = { name: 'Maria Santos', role: 'Administ
   return (
     <View style={styles.sidebar}>
       <View>
+        {/* Brand Header with Clean Separator */}
         <View style={styles.brandRow}>
           <View style={styles.logoMark}>
             <Text style={styles.logoMarkText}>T</Text>
           </View>
-          <View>
+          <View style={styles.brandInfo}>
             <Text style={styles.brandName}>TNL LOGISTICS</Text>
-            <Text style={styles.brandSub}>Admin Console</Text>
+            <View style={styles.badgeWrap}>
+              <Text style={styles.brandBadge}>ADMIN CONSOLE</Text>
+            </View>
           </View>
         </View>
 
-        {NAV_SECTIONS.map((section) => (
-          <View key={section.label} style={styles.section}>
-            <Text style={styles.sectionLabel}>{section.label}</Text>
-            {section.items.map((item) => {
-              const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
-              return (
-                <Pressable
-                  key={item.href}
-                  onPress={() => router.push(item.href)}
-                  style={[styles.navItem, active && styles.navItemActive]}
-                >
-                  <View style={[styles.activeBar, active && styles.activeBarVisible]} />
-                  <Text style={[styles.navLabel, active && styles.navLabelActive]}>{item.label}</Text>
-                </Pressable>
-              );
-            })}
+        {/* Navigation Sections */}
+        {NAV_SECTIONS.map((section, sIdx) => (
+          <View
+            key={section.id}
+            style={[
+              styles.section,
+              sIdx > 0 && styles.sectionDivider,
+            ]}
+          >
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionLabel}>{section.label}</Text>
+            </View>
+
+            <View style={styles.navGroup}>
+              {section.items.map((item) => {
+                const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+                return (
+                  <Pressable
+                    key={item.href}
+                    onPress={() => router.push(item.href)}
+                    style={[styles.navItem, active && styles.navItemActive]}
+                  >
+                    {active ? <View style={styles.activeBar} /> : null}
+                    <Text style={[styles.navLabel, active && styles.navLabelActive]}>
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
         ))}
       </View>
 
+      {/* Footer / User Profile */}
       <View style={styles.footer}>
         <View style={styles.userRow}>
           <View style={styles.avatar}>
@@ -93,7 +114,7 @@ export default function Sidebar({ user = { name: 'Maria Santos', role: 'Administ
 
 const styles = StyleSheet.create({
   sidebar: {
-    width: 245,
+    width: 252,
     backgroundColor: colors.sidebar,
     borderRightWidth: 1,
     borderRightColor: colors.border,
@@ -106,79 +127,107 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     paddingHorizontal: spacing.xl,
-    marginBottom: spacing.xl,
+    paddingBottom: spacing.lg,
+    marginBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E0D6',
   },
   logoMark: {
-    width: 32,
-    height: 32,
+    width: 38,
+    height: 38,
     backgroundColor: colors.black,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.sm,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   logoMarkText: {
     fontFamily: fonts.mono,
     color: '#FFFFFF',
     fontWeight: '800',
-    fontSize: 15,
+    fontSize: 18,
+  },
+  brandInfo: {
+    gap: 2,
   },
   brandName: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.sans,
     fontWeight: '800',
-    fontSize: 13.5,
+    fontSize: 14.5,
     color: colors.ink,
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
   },
-  brandSub: {
+  badgeWrap: {
+    alignSelf: 'flex-start',
+  },
+  brandBadge: {
     fontFamily: fonts.mono,
-    fontSize: 10.5,
-    color: colors.inkFaint,
-    marginTop: 1,
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: '#65635C',
+    letterSpacing: 0.8,
   },
   section: {
-    marginBottom: spacing.lg + 2,
+    marginBottom: spacing.sm + 2,
+  },
+  sectionDivider: {
+    borderTopWidth: 1,
+    borderTopColor: '#E4E2D8',
+    paddingTop: spacing.md + 4,
+    marginTop: spacing.xs + 2,
+  },
+  sectionHeader: {
+    paddingHorizontal: spacing.xl,
+    marginBottom: 6,
   },
   sectionLabel: {
-    ...type.label,
-    fontSize: 10.5,
-    letterSpacing: 1.1,
-    paddingHorizontal: spacing.xl,
-    marginBottom: spacing.xs + 2,
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6E6C65',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  navGroup: {
+    paddingHorizontal: spacing.sm + 2,
   },
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 9.5,
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.md + 2,
     position: 'relative',
+    borderRadius: radius.sm,
+    marginVertical: 1,
   },
   navItemActive: {
-    backgroundColor: colors.canvas,
+    backgroundColor: '#EBE9E0',
   },
   activeBar: {
     position: 'absolute',
     left: 0,
-    top: 0,
-    bottom: 0,
+    top: 6,
+    bottom: 6,
     width: 3.5,
-    backgroundColor: 'transparent',
-  },
-  activeBarVisible: {
+    borderRadius: 2,
     backgroundColor: colors.accent,
   },
   navLabel: {
     fontFamily: fonts.sans,
     fontSize: 13.5,
-    color: colors.inkSoft,
-    fontWeight: '500',
+    color: '#3F3D38',
+    fontWeight: '600',
+    letterSpacing: 0.1,
   },
   navLabelActive: {
     color: colors.ink,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   footer: {
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: '#E2E0D6',
     paddingTop: spacing.lg,
     paddingHorizontal: spacing.xl,
   },
@@ -189,8 +238,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   avatar: {
-    width: 34,
-    height: 34,
+    width: 36,
+    height: 36,
     borderRadius: radius.pill,
     backgroundColor: colors.accentSoft,
     alignItems: 'center',
@@ -198,19 +247,19 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     fontFamily: fonts.sans,
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '800',
     color: colors.accent,
   },
   userName: {
     fontFamily: fonts.sans,
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: '700',
     color: colors.ink,
   },
   userRole: {
     fontFamily: fonts.sans,
-    fontSize: 11,
+    fontSize: 11.5,
     color: colors.inkFaint,
     marginTop: 1,
   },
@@ -218,15 +267,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderStrong,
     borderRadius: radius.sm,
-    paddingVertical: 7,
+    paddingVertical: 8,
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
   },
   switchBtnText: {
     fontFamily: fonts.mono,
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.ink,
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
 });

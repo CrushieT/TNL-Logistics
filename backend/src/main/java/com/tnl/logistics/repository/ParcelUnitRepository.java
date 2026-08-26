@@ -19,4 +19,13 @@ public interface ParcelUnitRepository extends JpaRepository<ParcelUnit, String> 
     Optional<String> findMaxTrackingIdWithPrefix(@Param("prefix") String prefix);
 
     List<ParcelUnit> findByShipment_ShipmentIdOrderBySeqAsc(String shipmentId);
+
+    long countByCurrentVehicle_VehicleIdAndCurrentStatus(String vehicleId, com.tnl.logistics.model.ParcelStatus currentStatus);
+
+    long countByCurrentVehicle_VehicleId(String vehicleId);
+
+    @Query("SELECT p.currentVehicle.vehicleId, COUNT(p) FROM ParcelUnit p " +
+           "WHERE p.currentStatus = :status AND p.currentVehicle IS NOT NULL " +
+           "GROUP BY p.currentVehicle.vehicleId")
+    List<Object[]> countLoadedParcelsGroupedByVehicle(@Param("status") com.tnl.logistics.model.ParcelStatus status);
 }
