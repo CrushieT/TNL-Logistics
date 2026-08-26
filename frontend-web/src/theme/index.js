@@ -121,6 +121,19 @@ export const paymentStyles = {
 };
 
 export const labelStyles = {
-  Printed: { fg: colors.success, bg: colors.successSoft },
-  Pending: { fg: colors.inkFaint, bg: colors.canvas },
+  Printed: { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success },
+  Pending: { fg: colors.inkFaint, bg: colors.canvas, border: colors.border, dot: colors.inkFaint },
+  'Label: Printed': { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success },
+  'Label: Pending': { fg: colors.inkFaint, bg: colors.canvas, border: colors.border, dot: colors.inkFaint },
+};
+
+export const waybillStyles = {
+  'Signed / Completed': { fg: colors.ink, bg: colors.canvas, border: colors.borderStrong },
+  'Waybill: Signed / Completed': { fg: colors.ink, bg: colors.canvas, border: colors.borderStrong },
+  'Sent to Hauler': { fg: colors.info, bg: colors.infoSoft, border: colors.info },
+  'Waybill: Sent to Hauler': { fg: colors.info, bg: colors.infoSoft, border: colors.info },
+  Generated: { fg: colors.warning, bg: colors.warningSoft, border: colors.warning },
+  'Waybill: Generated': { fg: colors.warning, bg: colors.warningSoft, border: colors.warning },
+  'Not Generated': { fg: colors.inkFaint, bg: colors.canvas, border: colors.border },
+  'Waybill: Not Generated': { fg: colors.inkFaint, bg: colors.canvas, border: colors.border },
 };
