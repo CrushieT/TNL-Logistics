@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -25,4 +27,17 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
            "OR LOWER(s.recipientContact) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(c.name) LIKE LOWER(CONCAT('%', :search, '%')))")
     Page<Shipment> searchShipments(@Param("search") String search, Pageable pageable);
+
+    @Query("SELECT s.client.clientId, COUNT(s), COALESCE(SUM(s.quantity), 0), COALESCE(SUM(s.totalAmount), 0) " +
+           "FROM Shipment s WHERE s.client.clientId IN :clientIds GROUP BY s.client.clientId")
+    List<Object[]> countAndSumShipmentsByClientIds(@Param("clientIds") Collection<String> clientIds);
+
+    @Query("SELECT s.client.clientId, COALESCE(SUM(p.amountPaid), 0) " +
+           "FROM Payment p JOIN p.shipment s WHERE s.client.clientId IN :clientIds GROUP BY s.client.clientId")
+    List<Object[]> sumPaymentsByClientIds(@Param("clientIds") Collection<String> clientIds);
+
+    long countByClient_ClientId(String clientId);
+
+    List<Shipment> findByClient_ClientIdOrderByDateRegisteredDesc(String clientId);
 }
+

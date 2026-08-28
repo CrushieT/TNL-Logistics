@@ -108,6 +108,10 @@ export default function ShipmentDetailScreen() {
 
   return (
     <AppShell>
+      <Pressable onPress={() => router.push('/shipments')}>
+        <Text style={styles.backLink}>← Shipments</Text>
+      </Pressable>
+
       {/* Header Row */}
       <View style={styles.headerRow}>
         <View>

@@ -72,8 +72,12 @@ public class ShipmentIntegrationTest {
         officeToken = "Bearer " + JwtTokenProvider.generateToken("office", "OFFICE_STAFF");
         fieldToken = "Bearer " + JwtTokenProvider.generateToken("field", "FIELD_STAFF");
 
-        if (clientRepository.findById("CL-001").isEmpty()) {
-            clientRepository.save(new Client("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com"));
+        Client client = clientRepository.findById("CL-001").orElse(null);
+        if (client == null) {
+            clientRepository.save(new Client("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com", ChargeModel.FLAT, true));
+        } else if (!Boolean.TRUE.equals(client.getActive())) {
+            client.setActive(true);
+            clientRepository.save(client);
         }
 
         currentYear = String.valueOf(LocalDate.now().getYear());
@@ -299,5 +303,29 @@ public class ShipmentIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testRejectShipmentRegistrationForInactiveClient() throws Exception {
+        // Create an inactive client
+        Client inactiveClient = new Client("CL-INACTIVE", "Deactivated Client", "Manila", "09170001111", "inactive@client.com", ChargeModel.FLAT, false);
+        clientRepository.saveAndFlush(inactiveClient);
+
+        ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
+        request.setClientId("CL-INACTIVE");
+        request.setRecipientName("Test Inactive Rejection");
+        request.setRecipientAddress("Baguio");
+        request.setRecipientContact("09180000000");
+        request.setQuantity(1);
+        request.setChargeModel(ChargeModel.FLAT);
+        request.setShippingFee(new BigDecimal("200.00"));
+        request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        request.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
+
+        mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
     }
 }

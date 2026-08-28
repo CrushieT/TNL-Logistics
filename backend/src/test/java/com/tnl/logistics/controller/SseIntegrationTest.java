@@ -80,8 +80,12 @@ public class SseIntegrationTest {
 
         officeToken = "Bearer " + JwtTokenProvider.generateToken("office", "OFFICE_STAFF");
 
-        if (clientRepository.findById("CL-001").isEmpty()) {
-            clientRepository.save(new Client("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com"));
+        Client client = clientRepository.findById("CL-001").orElse(null);
+        if (client == null) {
+            clientRepository.save(new Client("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com", ChargeModel.FLAT, true));
+        } else if (!Boolean.TRUE.equals(client.getActive())) {
+            client.setActive(true);
+            clientRepository.save(client);
         }
     }
 
