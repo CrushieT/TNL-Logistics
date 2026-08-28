@@ -57,6 +57,10 @@ public class ShipmentServiceImpl implements ShipmentService {
         Client client = clientRepository.findById(request.getClientId())
                 .orElseThrow(() -> new IllegalArgumentException("Client not found with ID: " + request.getClientId()));
 
+        if (Boolean.FALSE.equals(client.getActive())) {
+            throw new IllegalArgumentException("Cannot register shipment for inactive client: " + client.getName());
+        }
+
         AppUser actingStaff = appUserRepository.findByUsername(actingStaffUsername)
                 .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUsername));
 

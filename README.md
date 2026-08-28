@@ -78,10 +78,10 @@ Unlike simplistic CRUD apps that conflate tracking and accounting into a single 
 | :--- | :--- | :---: | :--- |
 | **Phase 0** | **Foundation & Security** | `[COMPLETED]` | Spring Boot 3.4, Flyway migrations `V1`–`V8`, MySQL 8, JPA models, stateless JWT auth with 3 roles (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`). |
 | **Phase 1** | **Shipment Registration & QR Labels** | `[COMPLETED]` | Sequential IDs (`SHP-YYYY-XXX`, `TRK-YYYY-XXXXXX`), volumetric weight ($\div 5000$) & $m^3$ calculations, vector thermal QR labels, paginated table, tracking inspection. |
-| **Phase 2** | **Status Flow, Real-Time SSE & Fleet Management** | `[COMPLETED]` | Sequential 5-state transition engine, live SSE stream, vehicle fleet CRUD (`VH-XXX`), smart deletion, composite indexing, and batch query aggregation. |
+| **Phase 2** | **Status Flow, Real-Time SSE, Fleet & Client Management** | `[IN PROGRESS]` | Sequential 5-state transition engine, live SSE stream, vehicle fleet CRUD (`VH-XXX`), smart deletion, and client directory management (`/clients`). |
 | **Phase 3** | **Waybills & Freight Manifest Handover** | `[UPCOMING]` | `WYB-YYYY-XXXX` auto-numbering, 4-state lifecycle (`Generated` → `Sent to Hauler` → `Signed/Completed`), and print-ready A4 3rd-party hauler manifest. |
 | **Phase 4** | **Billing, Collections & Statement of Account** | `[UPCOMING]` | Thursday weekly collections consolidation, `SOA-YYYY-XXXX` generator with 3 business deductions (Bad Orders, Discrepancies, Claims). |
-| **Phase 5** | **Web Console Administration & Clients** | `[UPCOMING]` | Dedicated client directory, live operational dashboard metrics, company-wide audit tracking logs stream, and exportable reports. |
+| **Phase 5** | **Web Console Administration & Reports** | `[UPCOMING]` | Live operational dashboard metrics, company-wide audit tracking logs stream, staff management, and exportable reports. |
 | **Phase 6** | **Role-Aware Mobile Courier Portal** | `[UPCOMING]` | Mobile PIN auth with role branching (scan-only field staff vs authorized office mobile), camera QR scanner, and Bluetooth thermal printer integration. |
 
 ---

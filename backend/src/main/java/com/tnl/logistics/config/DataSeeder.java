@@ -31,16 +31,11 @@ public class DataSeeder implements CommandLineRunner {
         seedUser("USR-OFFICE", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF);
         seedUser("USR-FIELD", "field", "field123", "Field Staff/Courier", UserRole.FIELD_STAFF);
 
-        // Seed default prototype client
-        if (clientRepository.findById("CL-001").isEmpty()) {
-            clientRepository.save(new Client(
-                    "CL-001",
-                    "Northbridge Trading",
-                    "Unit 402, Trade Tower, Binondo, Manila",
-                    "0917-555-0148",
-                    "accounts@northbridgetrading.ph"
-            ));
-        }
+        // Seed default prototype clients
+        seedClient("CL-001", "Northbridge Trading", "Unit 402, Trade Tower, Binondo, Manila", "0917-555-0148", "orders@northbridge.ph");
+        seedClient("CL-002", "Sunrise Hardware", "88 Rizal St., Baguio City", "0918-555-0022", "acctg@sunrisehw.ph");
+        seedClient("CL-003", "Metro Fashion House", "Session Road, Baguio City", "0999-555-0099", "metro@fashionhouse.ph");
+        seedClient("CL-004", "Delacruz General Merchandise", "Magsaysay Ave, Baguio City", "0920-555-0077", null);
     }
 
     private void seedUser(String id, String username, String rawPassword, String fullName, UserRole role) {

@@ -47,22 +47,28 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
   // Field Validation Errors
   const [errors, setErrors] = useState({});
 
-  // Automatically sync client selection when clients list loads from backend
+  // Automatically sync client selection to first active client when clients list loads
   useEffect(() => {
-    if (!clientId && clients && clients.length > 0) {
-      const defaultId = clients[0].id || clients[0].clientId || '';
-      setClientId(defaultId);
-      setErrors((prev) => ({ ...prev, clientId: null }));
+    const activeClients = (clients || []).filter((c) => c.active !== false);
+    if (activeClients.length > 0) {
+      const isCurrentActive = activeClients.some((c) => (c.id || c.clientId) === clientId);
+      if (!clientId || !isCurrentActive) {
+        const defaultId = activeClients[0].id || activeClients[0].clientId || '';
+        setClientId(defaultId);
+        setErrors((prev) => ({ ...prev, clientId: null }));
+      }
     }
   }, [clients, clientId]);
 
   const clientOptions = useMemo(
     () =>
-      clients.map((c) => {
-        const val = c.id || c.clientId;
-        const code = c.code || c.clientId || c.id;
-        return { value: val, label: `${code} — ${c.name}` };
-      }),
+      (clients || [])
+        .filter((c) => c.active !== false)
+        .map((c) => {
+          const val = c.id || c.clientId;
+          const code = c.code || c.clientId || c.id;
+          return { value: val, label: `${code} — ${c.name}` };
+        }),
     [clients]
   );
 
