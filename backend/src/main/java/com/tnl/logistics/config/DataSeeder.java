@@ -27,9 +27,11 @@ public class DataSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        seedUser("USR-ADMIN", "admin", "admin123", "Maria Santos", UserRole.ADMIN);
-        seedUser("USR-OFFICE", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF);
-        seedUser("USR-FIELD", "field", "field123", "Field Staff/Courier", UserRole.FIELD_STAFF);
+        seedUser("USR-ADMIN", "admin", "admin123", "Maria Santos", UserRole.ADMIN, null, null);
+        seedUser("USR-OFFICE", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF, null, null);
+        seedUser("USR-FIELD", "field", "field123", "Carlos Mendoza", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.INTERNAL_TRUCK, null);
+        seedUser("USR-FIELD-2", "hauler1", "field123", "Rogelio Aquino", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.HAULER_STAFF, null);
+        seedUser("USR-FIELD-3", "hauler2", "field123", "Danilo Cruz", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.HAULER_STAFF, null);
 
         // Seed default prototype clients
         seedClient("CL-001", "Northbridge Trading", "Unit 402, Trade Tower, Binondo, Manila", "0917-555-0148", "orders@northbridge.ph");
@@ -38,7 +40,7 @@ public class DataSeeder implements CommandLineRunner {
         seedClient("CL-004", "Delacruz General Merchandise", "Magsaysay Ave, Baguio City", "0920-555-0077", null);
     }
 
-    private void seedUser(String id, String username, String rawPassword, String fullName, UserRole role) {
+    private void seedUser(String id, String username, String rawPassword, String fullName, UserRole role, com.tnl.logistics.model.StaffType staffType, String haulerCompany) {
         AppUser user = appUserRepository.findByUsername(username).orElse(null);
         if (user == null) {
             user = new AppUser(
@@ -46,11 +48,17 @@ public class DataSeeder implements CommandLineRunner {
                 username,
                 passwordEncoder.encode(rawPassword),
                 fullName,
-                role
+                role,
+                staffType,
+                haulerCompany
             );
             user.setMustChangePassword(true);
             appUserRepository.save(user);
         } else {
+            user.setFullName(fullName);
+            user.setRole(role);
+            user.setStaffType(staffType);
+            user.setHaulerCompany(haulerCompany);
             user.setPasswordHash(passwordEncoder.encode(rawPassword));
             appUserRepository.save(user);
         }

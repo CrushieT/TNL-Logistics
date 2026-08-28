@@ -177,8 +177,15 @@ public class TrackingServiceImpl implements TrackingService {
                 }
                 break;
             case LOADED_TO_HAULER:
+                if (target != ParcelStatus.COMPLETED) {
+                    throw new IllegalStateException(String.format(
+                            "Invalid status transition for %s: Cannot move from LOADED_TO_HAULER directly to %s. Expected next status is COMPLETED.",
+                            trackingId, target));
+                }
+                break;
+            case COMPLETED:
                 throw new IllegalStateException(String.format(
-                        "Parcel %s is already in terminal state LOADED_TO_HAULER. No further status transitions allowed.",
+                        "Parcel %s is already in terminal state COMPLETED. No further status transitions allowed.",
                         trackingId));
             default:
                 break;
@@ -193,6 +200,9 @@ public class TrackingServiceImpl implements TrackingService {
         Map<ParcelStatus, Long> counts = parcels.stream()
                 .collect(Collectors.groupingBy(ParcelUnit::getCurrentStatus, Collectors.counting()));
 
+        if (counts.containsKey(ParcelStatus.COMPLETED)) {
+            return counts.get(ParcelStatus.COMPLETED) + " / " + total + " Completed";
+        }
         if (counts.containsKey(ParcelStatus.LOADED_TO_HAULER)) {
             return counts.get(ParcelStatus.LOADED_TO_HAULER) + " / " + total + " Loaded to Hauler";
         }
@@ -217,6 +227,7 @@ public class TrackingServiceImpl implements TrackingService {
             case LOADED_ON_TRUCK: return "Loaded on Truck";
             case ARRIVED_AT_TNL: return "Arrived at TNL";
             case LOADED_TO_HAULER: return "Loaded to Hauler";
+            case COMPLETED: return "Completed";
             case REGISTERED:
             default: return "Registered";
         }

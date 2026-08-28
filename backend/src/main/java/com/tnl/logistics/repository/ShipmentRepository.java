@@ -39,5 +39,7 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
     long countByClient_ClientId(String clientId);
 
     List<Shipment> findByClient_ClientIdOrderByDateRegisteredDesc(String clientId);
+
+    List<Shipment> findAllByOrderByDateRegisteredDesc();
 }
 

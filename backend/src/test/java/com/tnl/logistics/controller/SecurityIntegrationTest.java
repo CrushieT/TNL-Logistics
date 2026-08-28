@@ -58,8 +58,12 @@ public class SecurityIntegrationTest {
     @Autowired
     private com.tnl.logistics.repository.ShipmentRepository shipmentRepository;
 
+    @Autowired
+    private com.tnl.logistics.repository.WaybillRepository waybillRepository;
+
     @BeforeEach
     public void setup() {
+        waybillRepository.deleteAll();
         trackingEventRepository.deleteAll();
         paymentRepository.deleteAll();
         parcelUnitRepository.deleteAll();

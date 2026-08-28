@@ -78,6 +78,7 @@ public class TrackingEvent {
     public void setRemarks(String remarks) { this.remarks = remarks; }
 
     public LocalDateTime getEventTimestamp() { return eventTimestamp; }
+    public void setEventTimestamp(LocalDateTime eventTimestamp) { this.eventTimestamp = eventTimestamp; }
 
     @Override
     public boolean equals(Object o) {

@@ -56,6 +56,9 @@ public class ShipmentIntegrationTest {
     private TrackingEventRepository trackingEventRepository;
 
     @Autowired
+    private com.tnl.logistics.repository.WaybillRepository waybillRepository;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     private String officeToken;
@@ -64,6 +67,7 @@ public class ShipmentIntegrationTest {
 
     @BeforeEach
     public void setup() {
+        waybillRepository.deleteAll();
         trackingEventRepository.deleteAll();
         paymentRepository.deleteAll();
         parcelUnitRepository.deleteAll();

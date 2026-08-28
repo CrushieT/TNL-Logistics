@@ -11,4 +11,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface AppUserRepository extends JpaRepository<AppUser, String> {
     Optional<AppUser> findByUsername(String username);
+    java.util.List<AppUser> findByStaffTypeAndActiveTrue(com.tnl.logistics.model.StaffType staffType);
+    java.util.List<AppUser> findByRoleAndActiveTrue(com.tnl.logistics.model.UserRole role);
 }

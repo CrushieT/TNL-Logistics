@@ -60,8 +60,12 @@ public class TrackingAndVehicleIntegrationTest {
     private String officeToken;
     private String fieldToken;
 
+    @Autowired
+    private com.tnl.logistics.repository.WaybillRepository waybillRepository;
+
     @BeforeEach
     public void setup() {
+        waybillRepository.deleteAll();
         trackingEventRepository.deleteAll();
         parcelUnitRepository.deleteAll();
         paymentRepository.deleteAll();

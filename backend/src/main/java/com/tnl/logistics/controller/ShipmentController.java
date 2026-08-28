@@ -31,7 +31,7 @@ public class ShipmentController {
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
     public ResponseEntity<ShipmentResponse> registerShipment(@Valid @RequestBody ShipmentRegistrationRequest request) {
-        String username = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
         ShipmentResponse response = shipmentService.registerShipment(request, username);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -63,7 +63,7 @@ public class ShipmentController {
             @PathVariable String shipmentId,
             @RequestBody(required = false) PrintLabelRequest request
     ) {
-        String username = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
         List<String> packageIds = request != null ? request.getPackageIds() : null;
         shipmentService.recordLabelPrint(shipmentId, packageIds, username);
         return ResponseEntity.ok().build();
