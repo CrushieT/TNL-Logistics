@@ -34,6 +34,7 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final PaymentRepository paymentRepository;
     private final AppUserRepository appUserRepository;
     private final TrackingEventRepository trackingEventRepository;
+    private final WaybillRepository waybillRepository;
     private final SseService sseService;
 
     public ShipmentServiceImpl(ShipmentRepository shipmentRepository,
@@ -42,6 +43,7 @@ public class ShipmentServiceImpl implements ShipmentService {
                                PaymentRepository paymentRepository,
                                AppUserRepository appUserRepository,
                                TrackingEventRepository trackingEventRepository,
+                               WaybillRepository waybillRepository,
                                SseService sseService) {
         this.shipmentRepository = shipmentRepository;
         this.parcelUnitRepository = parcelUnitRepository;
@@ -49,6 +51,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         this.paymentRepository = paymentRepository;
         this.appUserRepository = appUserRepository;
         this.trackingEventRepository = trackingEventRepository;
+        this.waybillRepository = waybillRepository;
         this.sseService = sseService;
     }
 
@@ -313,12 +316,21 @@ public class ShipmentServiceImpl implements ShipmentService {
         resp.setBillableWeightKg(billableWeight);
 
         // Waybill summary
-        resp.setWaybillStatus("Waybill: Signed / Completed");
-        resp.setHauler("Cordillera Freight");
-        resp.setWaybillGeneratedDate(shipment.getDateRegistered() != null
-                ? shipment.getDateRegistered().format(DATE_FORMATTER)
-                : "Aug 5, 2026");
-        resp.setSignedBy("R. Aquino");
+        Waybill waybill = waybillRepository.findByShipment_ShipmentId(shipment.getShipmentId()).orElse(null);
+        if (waybill != null) {
+            String wbStatusLabel = waybill.getStatus() == com.tnl.logistics.model.WaybillStatus.SIGNED_COMPLETED
+                    ? "Waybill: Signed / Completed"
+                    : (waybill.getStatus() == com.tnl.logistics.model.WaybillStatus.SENT_TO_HAULER ? "Waybill: Sent to Hauler" : "Waybill: Generated");
+            resp.setWaybillStatus(wbStatusLabel);
+            resp.setHauler(waybill.getHaulerName());
+            resp.setWaybillGeneratedDate(waybill.getGeneratedAt() != null ? waybill.getGeneratedAt().format(DATE_FORMATTER) : "—");
+            resp.setSignedBy(waybill.getSignedBy());
+        } else {
+            resp.setWaybillStatus("Waybill: Not Generated");
+            resp.setHauler("—");
+            resp.setWaybillGeneratedDate("—");
+            resp.setSignedBy(null);
+        }
 
         List<ParcelUnitResponse> unitResponses = parcels.stream().map(p -> new ParcelUnitResponse(
                 p.getTrackingId(),
@@ -468,6 +480,10 @@ public class ShipmentServiceImpl implements ShipmentService {
         Map<ParcelStatus, Long> counts = parcels.stream()
                 .collect(Collectors.groupingBy(ParcelUnit::getCurrentStatus, Collectors.counting()));
 
+        if (counts.containsKey(ParcelStatus.COMPLETED)) {
+            long c = counts.get(ParcelStatus.COMPLETED);
+            return new RollupStatus("Completed", c + " / " + total + " Completed");
+        }
         if (counts.containsKey(ParcelStatus.LOADED_TO_HAULER)) {
             long c = counts.get(ParcelStatus.LOADED_TO_HAULER);
             return new RollupStatus("Loaded to Hauler", c + " / " + total + " Loaded to Hauler");
@@ -496,6 +512,7 @@ public class ShipmentServiceImpl implements ShipmentService {
             case LOADED_ON_TRUCK: return "Loaded on Truck";
             case ARRIVED_AT_TNL: return "Arrived at TNL";
             case LOADED_TO_HAULER: return "Loaded to Hauler";
+            case COMPLETED: return "Completed";
             case REGISTERED:
             default: return "Registered";
         }

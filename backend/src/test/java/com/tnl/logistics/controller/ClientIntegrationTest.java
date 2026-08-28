@@ -64,12 +64,16 @@ public class ClientIntegrationTest {
     private TrackingEventRepository trackingEventRepository;
 
     @Autowired
+    private com.tnl.logistics.repository.WaybillRepository waybillRepository;
+
+    @Autowired
     private ShipmentService shipmentService;
 
     private String officeToken;
 
     @BeforeEach
     public void setup() {
+        waybillRepository.deleteAll();
         trackingEventRepository.deleteAll();
         parcelUnitRepository.deleteAll();
         paymentRepository.deleteAll();

@@ -68,10 +68,14 @@ public class SseIntegrationTest {
     @Autowired
     private PaymentRepository paymentRepository;
 
+    @Autowired
+    private com.tnl.logistics.repository.WaybillRepository waybillRepository;
+
     private String officeToken;
 
     @BeforeEach
     public void setup() {
+        waybillRepository.deleteAll();
         trackingEventRepository.deleteAll();
         parcelUnitRepository.deleteAll();
         paymentRepository.deleteAll();

@@ -76,10 +76,10 @@ Unlike simplistic CRUD apps that conflate tracking and accounting into a single 
 
 | Phase | Milestone Description | Status | Key Deliverables |
 | :--- | :--- | :---: | :--- |
-| **Phase 0** | **Foundation & Security** | `[COMPLETED]` | Spring Boot 3.4, Flyway migrations `V1`–`V8`, MySQL 8, JPA models, stateless JWT auth with 3 roles (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`). |
+| **Phase 0** | **Foundation & Security** | `[COMPLETED]` | Spring Boot 3.4, Flyway migrations `V1`–`V9`, MySQL 8, JPA models, stateless JWT auth with 3 roles (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`). |
 | **Phase 1** | **Shipment Registration & QR Labels** | `[COMPLETED]` | Sequential IDs (`SHP-YYYY-XXX`, `TRK-YYYY-XXXXXX`), volumetric weight ($\div 5000$) & $m^3$ calculations, vector thermal QR labels, paginated table, tracking inspection. |
-| **Phase 2** | **Status Flow, Real-Time SSE, Fleet & Client Management** | `[IN PROGRESS]` | Sequential 5-state transition engine, live SSE stream, vehicle fleet CRUD (`VH-XXX`), smart deletion, and client directory management (`/clients`). |
-| **Phase 3** | **Waybills & Freight Manifest Handover** | `[UPCOMING]` | `WYB-YYYY-XXXX` auto-numbering, 4-state lifecycle (`Generated` → `Sent to Hauler` → `Signed/Completed`), and print-ready A4 3rd-party hauler manifest. |
+| **Phase 2** | **Status Flow, Real-Time SSE, Fleet & Client Management** | `[COMPLETED]` | Sequential 5-state transition engine, live SSE stream, vehicle fleet CRUD (`VH-XXX`), client directory & profile view (`CL-XXX`), smart deletion, composite indexing, and batch aggregation. |
+| **Phase 3** | **Waybills & Freight Manifest Handover** | `[IN PROGRESS]` | `WYB-YYYY-XXXX` auto-numbering, 4-state lifecycle (`Generated` → `Sent to Hauler` → `Signed/Completed`), and print-ready A4 3rd-party hauler manifest. |
 | **Phase 4** | **Billing, Collections & Statement of Account** | `[UPCOMING]` | Thursday weekly collections consolidation, `SOA-YYYY-XXXX` generator with 3 business deductions (Bad Orders, Discrepancies, Claims). |
 | **Phase 5** | **Web Console Administration & Reports** | `[UPCOMING]` | Live operational dashboard metrics, company-wide audit tracking logs stream, staff management, and exportable reports. |
 | **Phase 6** | **Role-Aware Mobile Courier Portal** | `[UPCOMING]` | Mobile PIN auth with role branching (scan-only field staff vs authorized office mobile), camera QR scanner, and Bluetooth thermal printer integration. |
@@ -95,16 +95,16 @@ logistics/
 │   │   ├── config/                        # SecurityConfig, JWT Provider, WebMvcConfig
 │   │   ├── controller/                    # REST API Controllers & SSE Stream Endpoints
 │   │   ├── dto/                           # Request & Response Data Transfer Objects
-│   │   ├── model/                         # JPA Entities (Shipment, ParcelUnit, Vehicle, etc.)
+│   │   ├── model/                         # JPA Entities (Shipment, ParcelUnit, Vehicle, Client, etc.)
 │   │   ├── repository/                    # Spring Data Repositories & Group By Aggregations
 │   │   └── service/                       # Business Service Contracts & Implementations (impl/)
 │   └── src/main/resources/
-│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V8)
+│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V9)
 │       └── application-dev.yml            # Environment Configuration
 │
 ├── frontend-web/                          # Expo / React Native Web Admin Portal
 │   ├── src/
-│   │   ├── app/                           # Expo Router Screens (/, /shipments, /vehicles, etc.)
+│   │   ├── app/                           # Expo Router Screens (/, /shipments, /vehicles, /clients, etc.)
 │   │   ├── components/                    # Common UI Components (Cards, Buttons, Badges, Shell)
 │   │   ├── features/                      # Domain Features (shipments, vehicles, clients)
 │   │   ├── services/api/                  # Axios Client with Auto-Auth & SSE Event Subscriptions
@@ -126,19 +126,19 @@ logistics/
 ## Key Engineering Highlights
 
 ### 1. Zero $N+1$ Database Query Aggregation
-Fleet management calculates real-time parcels loaded on each truck using a single batch `GROUP BY` query mapped in $O(1)$ memory:
+Fleet and Client management calculate real-time metrics using single batch `GROUP BY` queries mapped in $O(1)$ memory:
 ```java
 @Query("SELECT p.currentVehicle.vehicleId, COUNT(p) FROM ParcelUnit p " +
        "WHERE p.currentStatus = :status AND p.currentVehicle IS NOT NULL " +
        "GROUP BY p.currentVehicle.vehicleId")
 List<Object[]> countLoadedParcelsGroupedByVehicle(@Param("status") ParcelStatus status);
 ```
-*Cuts database round-trips from $N+1$ queries to **2 queries flat**, backed by Flyway `V8` composite B-Tree indexes on `(current_vehicle_id, current_status)`.*
+*Cuts database round-trips from $N+1$ queries to **2 queries flat**, backed by Flyway `V8` and `V9` composite B-Tree indexes.*
 
 ### 2. Hybrid Smart Deletion Safety
-Deletes protect database foreign keys while keeping the fleet clean:
-* **Unused Vehicles (0 Historical Scans):** Executes a permanent **Hard Delete** (`DELETE FROM vehicle`), removing accidental inputs without database residue.
-* **Vehicles with Delivery History (1+ Scans):** Executes a **Soft Deactivation** (`active = false`, `status = 'Inactive'`), safeguarding past customer Proof of Delivery records and foreign key constraints.
+Deletes protect database foreign keys while keeping records clean:
+* **Unused Records (0 Historical Operations):** Executes a permanent **Hard Delete**, removing accidental inputs without database residue.
+* **Records with Audit History (1+ Operations):** Executes a **Soft Deactivation** (`active = false`), safeguarding past invoices, waybills, and proof of delivery audit trails.
 
 ### 3. Server-Sent Events (SSE) Live Pipeline
 When field staff scan a parcel with their phone, an append-only event is committed and broadcast over `/api/v1/events/stream`. The desktop web console silently refreshes metrics, parcel timelines, and vehicle counters in $0\text{ms}$ without page reloads.
@@ -159,6 +159,11 @@ When field staff scan a parcel with their phone, an append-only event is committ
 | `/api/v1/vehicles` | `POST` | Office/Admin | Register new vehicle with auto-generated `VH-XXX` ID |
 | `/api/v1/vehicles/{id}` | `PUT` | Office/Admin | Update vehicle plate, type, status, and remarks |
 | `/api/v1/vehicles/{id}` | `DELETE` | Office/Admin | Smart Delete (Hard delete unused / Soft deactivation) |
+| `/api/v1/clients` | `GET` | Office/Admin | Paginated client directory or full active billing party list |
+| `/api/v1/clients/{id}` | `GET` | Office/Admin | Detailed client profile with financial balance rollup and shipments |
+| `/api/v1/clients` | `POST` | Office/Admin | Register new client with auto-generated `CL-XXX` ID |
+| `/api/v1/clients/{id}` | `PUT` | Office/Admin | Update client contact details, rate type, and active status |
+| `/api/v1/clients/{id}` | `DELETE` | Office/Admin | Smart Delete client (Hard delete unused / Soft deactivation) |
 | `/api/v1/events/stream` | `GET` | All Staff | Server-Sent Events real-time event subscription stream |
 
 ---

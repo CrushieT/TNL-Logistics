@@ -35,6 +35,13 @@ public class AppUser {
     @Column(name = "must_change_password", nullable = false)
     private Boolean mustChangePassword = true;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "staff_type")
+    private StaffType staffType;
+
+    @Column(name = "hauler_company", length = 100)
+    private String haulerCompany;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -49,7 +56,22 @@ public class AppUser {
         this.role = role;
     }
 
+    public AppUser(String userId, String username, String passwordHash, String fullName, UserRole role, StaffType staffType, String haulerCompany) {
+        this.userId = userId;
+        this.username = username;
+        this.passwordHash = passwordHash;
+        this.fullName = fullName;
+        this.role = role;
+        this.staffType = staffType;
+        this.haulerCompany = haulerCompany;
+    }
+
     // Getters and Setters
+    public StaffType getStaffType() { return staffType; }
+    public void setStaffType(StaffType staffType) { this.staffType = staffType; }
+
+    public String getHaulerCompany() { return haulerCompany; }
+    public void setHaulerCompany(String haulerCompany) { this.haulerCompany = haulerCompany; }
     public String getUserId() { return userId; }
     public void setUserId(String userId) { this.userId = userId; }
 
