@@ -39,6 +39,13 @@ public class Payment {
     @Column(name = "statement_id", length = 30)
     private String statementId;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "staff_id")
+    private AppUser staff;
+
+    @Column(name = "remarks", length = 255)
+    private String remarks;
+
     @CreationTimestamp
     @Column(name = "recorded_at", nullable = false, updatable = false)
     private LocalDateTime recordedAt;
@@ -50,6 +57,15 @@ public class Payment {
         this.amountPaid = amountPaid;
         this.method = method;
         this.paymentDate = paymentDate;
+    }
+
+    public Payment(Shipment shipment, BigDecimal amountPaid, PaymentMethod method, LocalDate paymentDate, AppUser staff, String remarks) {
+        this.shipment = shipment;
+        this.amountPaid = amountPaid;
+        this.method = method;
+        this.paymentDate = paymentDate;
+        this.staff = staff;
+        this.remarks = remarks;
     }
 
     // Getters and Setters
@@ -73,6 +89,12 @@ public class Payment {
 
     public String getStatementId() { return statementId; }
     public void setStatementId(String statementId) { this.statementId = statementId; }
+
+    public AppUser getStaff() { return staff; }
+    public void setStaff(AppUser staff) { this.staff = staff; }
+
+    public String getRemarks() { return remarks; }
+    public void setRemarks(String remarks) { this.remarks = remarks; }
 
     public LocalDateTime getRecordedAt() { return recordedAt; }
 
