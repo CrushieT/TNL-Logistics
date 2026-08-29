@@ -94,6 +94,11 @@ public class SseServiceImpl implements SseService {
         broadcastEvent("LABEL_PRINTED", payload);
     }
 
+    @Override
+    public void broadcastPaymentRecorded(Object payment) {
+        broadcastEvent("PAYMENT_RECORDED", payment);
+    }
+
     /**
      * Send keep-alive heartbeats every 25 seconds to prevent intermediate proxy timeouts.
      */
