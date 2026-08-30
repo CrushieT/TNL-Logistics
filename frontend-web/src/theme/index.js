@@ -120,9 +120,9 @@ export const statusStyles = {
 };
 
 export const paymentStyles = {
-  Paid: { fg: colors.success, bg: colors.successSoft },
-  Unpaid: { fg: colors.danger, bg: colors.dangerSoft },
-  Partial: { fg: colors.warning, bg: colors.warningSoft },
+  Paid: { fg: '#16A34A', bg: '#F0FDF4', border: '#86EFAC', dot: '#16A34A' },
+  Unpaid: { fg: '#DC2626', bg: '#FEF2F2', border: '#FCA5A5', dot: '#DC2626' },
+  Partial: { fg: '#D97706', bg: '#FFFBEB', border: '#FDE68A', dot: '#D97706' },
 };
 
 export const labelStyles = {

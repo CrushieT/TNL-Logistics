@@ -206,19 +206,18 @@ export default function WaybillManifestCard({ manifest, selectedHauler }) {
           <Text style={styles.sigSubLabel}>Signature</Text>
         </View>
 
-        {/* Right: CLIENT SIGNATURE */}
+        {/* Right: CLIENT SIGNATURE AND PRINTED NAME */}
         <View style={[styles.sigCol, styles.sigColRight]}>
-          <Text style={styles.sigEyebrow}>CLIENT SIGNATURE</Text>
-          <View style={styles.sigRightLineContainer}>
+          <Text style={styles.sigEyebrow}>CLIENT SIGNATURE AND PRINTED NAME</Text>
+          <View style={styles.sigLineContainer}>
+            {isCompleted && signedBy ? (
+              <Text style={styles.sigAdminName}>{signedBy}</Text>
+            ) : (
+              <View style={styles.sigBlankSpacer} />
+            )}
             <View style={styles.sigLine} />
           </View>
           <View style={styles.sigClientMetaRight}>
-            <Text style={styles.sigMetaLabel}>
-              Printed Name:{' '}
-              <Text style={styles.sigMetaValue}>
-                {isCompleted && signedBy ? signedBy : '_________________'}
-              </Text>
-            </Text>
             <Text style={styles.sigMetaLabel}>
               Date:{' '}
               <Text style={styles.sigMetaValue}>
@@ -452,8 +451,8 @@ const styles = StyleSheet.create({
   sigLineContainer: {
     marginTop: 16,
   },
-  sigRightLineContainer: {
-    marginTop: 34,
+  sigBlankSpacer: {
+    height: 19,
   },
   sigAdminName: {
     fontFamily: fonts.sans,
