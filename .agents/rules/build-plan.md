@@ -24,7 +24,7 @@
 | **Phase 3** | Waybills: `WYB-YYYY-XXXX` Generator, 4-State Lifecycle, Printable Manifest & Signature (Desktop Screens 23–25) | [COMPLETED] |
 | **Phase 4.1** | Backend: Payments & Collections Engine (`POST /api/v1/payments`, Balance Recalculation, Multi-Search & Audit) | [COMPLETED] |
 | **Phase 4.2** | Backend: Thursday Weekly Collections Consolidation & SOA Generator (3 Deductions, Net Remittance) | [COMPLETED] |
-| **Phase 4.3** | Web: Billing, Collections & Printable SOA (Desktop Screens 18–22) | [UPCOMING] |
+| **Phase 4.3** | Web: Billing, Collections & Printable SOA (Desktop Screens 18–22) | [IN PROGRESS] |
 | **Phase 5** | Web Console: Live Dashboard, Tracking Logs Stream, Reports, Users & Settings (Screens 01, 02, 17, 26–28) | [UPCOMING] |
 | **Phase 6** | Role-Aware Mobile App: Scan-Only Field Staff vs. Authorized Office Mobile + Bluetooth Printing (Screens 29–53) | [UPCOMING] |
 
@@ -163,12 +163,16 @@
 - Real-time SSE broadcasting via `broadcastSoaGenerated`.
 - Verified via `SoaIntegrationTest` suite (21/21 total backend tests passing).
 
-**4.3 — Web: Billing, Collections & Printable SOA (Desktop Screens 18, 19, 20, 21, 22)**
-- **Payment Management (Screen 18):** `/payments` directory table with method filter (`CASH`, `BANK`, `GCASH`), client filter, date picker, search bar + "Record Payment" modal with real-time balance calculations.
-- **Weekly Collections (Screen 19):** `/collections` Thursday consolidation dashboard with 4 metric cards (Total Due, Collected, Outstanding, Clients), target Thursday selector, and client collection status table.
-- **Consolidated SOA Preview (Screen 20):** `/collections/[clientId]` unbilled shipment breakdown for the billing cycle with itemized table and "Apply Deduction" modal (supporting `BAD_ORDER`, `DISCREPANCY`, `CLAIM`).
-- **Detailed Statement View (Screen 21):** `/soa/[soaNo]` full digital Statement of Account with client info header, line items, deduction credits, and remittance calculation summary.
-- **Printable SOA & Batch Export (Screen 22):** Formal print layout with runtime CSSOM extraction, `@page { size: landscape / portrait; margin: 0; }`, signature blocks (Prepared by, Checked by, Received by), and multi-client batch export.
+**4.3 — Web: Billing, Collections & Printable SOA (Desktop Screens 18, 19, 20, 21, 22)**  — **[IN PROGRESS]**
+- **Payment Management (Screen 18) — [COMPLETED]:**
+  - `/payments` directory table with payment status filter (`Unpaid`, `Partial`, `Paid`), multi-search (Shipment ID, Client Name, Recipient), and real-time outstanding balance metric card.
+  - "Record Payment" modal with real-time balance ceiling restriction, dynamic reference validation (`*` for `GCASH`, `BANK`, `CHEQUE`), and SSE live refresh.
+  - "Payment History" modal (`View` action) with itemized compounding installment ledger, date stamps, staff attribution, and financial summary.
+  - Fixed-slot action column layout (`View`, `Record →`, `Settled`) to eliminate horizontal row jitter.
+- **Weekly Collections (Screen 19) — [IN PROGRESS]:** `/collections` Thursday consolidation dashboard with 4 metric cards (Total Due, Collected, Outstanding, Clients), target Thursday selector, and client collection status table.
+- **Consolidated SOA Preview (Screen 20) — [IN PROGRESS]:** `/collections/[clientId]` unbilled shipment breakdown for the billing cycle with itemized table and "Apply Deduction" modal (supporting `BAD_ORDER`, `DISCREPANCY`, `CLAIM`).
+- **Detailed Statement View (Screen 21) — [IN PROGRESS]:** `/soa/[soaNo]` full digital Statement of Account with client info header, line items, deduction credits, and remittance calculation summary.
+- **Printable SOA & Batch Export (Screen 22) — [IN PROGRESS]:** Formal print layout with runtime CSSOM extraction, `@page { size: landscape / portrait; margin: 0; }`, signature blocks (Prepared by, Checked by, Received by), and multi-client batch export.
 
 ---
 
