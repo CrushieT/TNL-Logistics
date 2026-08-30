@@ -27,9 +27,12 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import org.springframework.transaction.annotation.Transactional;
+
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("dev")
+@ActiveProfiles("test")
+@Transactional
 public class PaymentIntegrationTest {
 
     @Autowired
@@ -172,6 +175,64 @@ public class PaymentIntegrationTest {
         mockMvc.perform(get("/api/v1/payments?search=" + shipmentId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content.length()").value(2));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testGcashAndBankRequireReferenceNumber() throws Exception {
+        // Register an unpaid shipment
+        ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
+        shipmentReq.setClientId("CL-001");
+        shipmentReq.setRecipientName("Ref Test Recipient");
+        shipmentReq.setRecipientContact("0917-000-1111");
+        shipmentReq.setRecipientAddress("Manila Hub");
+        shipmentReq.setRoute("Manila → Hub");
+        shipmentReq.setDescription("Test items");
+        shipmentReq.setQuantity(1);
+        shipmentReq.setChargeModel(ChargeModel.FLAT);
+        shipmentReq.setShippingFee(new BigDecimal("500.00"));
+        shipmentReq.setOtherCharges(BigDecimal.ZERO);
+        shipmentReq.setPaidAtRegistration(false);
+        shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipmentReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
+
+        MvcResult createResult = mockMvc.perform(post("/api/v1/shipments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(shipmentReq)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse shipment = objectMapper.readValue(createResult.getResponse().getContentAsString(), ShipmentResponse.class);
+
+        // 1. GCash without reference number -> should fail (HTTP 400)
+        PaymentRecordRequest invalidGcash = new PaymentRecordRequest(
+                shipment.getShipmentId(),
+                new BigDecimal("200.00"),
+                PaymentMethod.GCASH,
+                null,
+                LocalDate.now(),
+                "No ref GCash"
+        );
+        mockMvc.perform(post("/api/v1/payments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invalidGcash)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Reference number is required for GCASH payments."));
+
+        // 2. Cash without reference number -> should SUCCEED (HTTP 201)
+        PaymentRecordRequest validCash = new PaymentRecordRequest(
+                shipment.getShipmentId(),
+                new BigDecimal("200.00"),
+                PaymentMethod.CASH,
+                null,
+                LocalDate.now(),
+                "Cash payment without ref"
+        );
+        mockMvc.perform(post("/api/v1/payments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(validCash)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.amountPaid").value(200.00));
     }
 
     @Test

@@ -83,6 +83,11 @@ public class PaymentServiceImpl implements PaymentService {
                 ? request.getRemarks().trim()
                 : null;
 
+        if ((request.getMethod() == PaymentMethod.GCASH || request.getMethod() == PaymentMethod.BANK || request.getMethod() == PaymentMethod.CHEQUE)
+                && (refNo == null || refNo.isBlank())) {
+            throw new IllegalArgumentException(String.format("Reference number is required for %s payments.", request.getMethod().name()));
+        }
+
         Payment payment = new Payment(
                 shipment,
                 request.getAmountPaid(),

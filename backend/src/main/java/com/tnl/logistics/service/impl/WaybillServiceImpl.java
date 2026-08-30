@@ -56,6 +56,14 @@ public class WaybillServiceImpl implements WaybillService {
         Map<String, Waybill> waybillMap = waybills.stream()
                 .collect(Collectors.toMap(w -> w.getShipment().getShipmentId(), w -> w, (w1, w2) -> w1));
 
+        List<ParcelUnit> allParcels = parcelUnitRepository.findAll();
+        Map<String, List<String>> trackingMap = allParcels.stream()
+                .filter(p -> p.getShipment() != null && p.getTrackingId() != null)
+                .collect(Collectors.groupingBy(
+                        p -> p.getShipment().getShipmentId(),
+                        Collectors.mapping(ParcelUnit::getTrackingId, Collectors.toList())
+                ));
+
         return shipments.stream().map(s -> {
             Waybill w = waybillMap.get(s.getShipmentId());
             String statusStr = "Not Generated";
@@ -71,6 +79,8 @@ public class WaybillServiceImpl implements WaybillService {
                 }
             }
 
+            List<String> trackingNumbers = trackingMap.getOrDefault(s.getShipmentId(), java.util.Collections.emptyList());
+
             return new WaybillShipmentOptionResponse(
                     s.getShipmentId(),
                     s.getClient() != null ? s.getClient().getName() : "—",
@@ -78,7 +88,8 @@ public class WaybillServiceImpl implements WaybillService {
                     s.getRoute() != null ? s.getRoute() : "TNL Baguio Hub",
                     s.getQuantity(),
                     wbId,
-                    statusStr
+                    statusStr,
+                    trackingNumbers
             );
         }).collect(Collectors.toList());
     }

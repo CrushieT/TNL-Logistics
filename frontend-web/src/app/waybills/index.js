@@ -5,6 +5,7 @@ import AppShell from '../../components/layout/AppShell';
 import { colors, fonts, spacing, radius, type, waybillStyles } from '../../theme';
 import {
   WaybillManifestCard,
+  SearchableShipmentDropdown,
   getWaybillShipmentOptions,
   getHaulerStaffOptions,
   getWaybillManifest,
@@ -37,15 +38,12 @@ export default function WaybillsScreen() {
       setShipments(shipmentList);
       setHaulerOptions(haulers);
 
-      let shipIdToSelect = targetShipmentId;
-      if (!shipIdToSelect && shipmentList.length > 0) {
-        // Default to the first shipment or previously selected
-        shipIdToSelect = selectedShipmentId || shipmentList[0].shipmentId;
-      }
-
-      if (shipIdToSelect) {
-        setSelectedShipmentId(shipIdToSelect);
-        await loadManifest(shipIdToSelect, haulers);
+      if (targetShipmentId) {
+        setSelectedShipmentId(targetShipmentId);
+        await loadManifest(targetShipmentId, haulers);
+      } else {
+        setSelectedShipmentId('');
+        setManifest(null);
       }
     } catch (err) {
       console.error('Failed to load waybill data:', err);
@@ -53,7 +51,7 @@ export default function WaybillsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [selectedShipmentId]);
+  }, []);
 
   const loadManifest = async (shipmentId, haulers = haulerOptions) => {
     try {
@@ -255,8 +253,12 @@ export default function WaybillsScreen() {
 
   // Find currently selected option
   const currentOption = shipments.find((s) => s.shipmentId === selectedShipmentId);
-  const currentStatusLabel = manifest?.statusLabel || currentOption?.waybillStatus || 'Not Generated';
-  const badgeStyle = waybillStyles[currentStatusLabel] || waybillStyles['Not Generated'];
+  const currentStatusLabel = selectedShipmentId
+    ? (manifest?.statusLabel || currentOption?.waybillStatus || 'Not Generated')
+    : 'None Selected';
+  const badgeStyle = selectedShipmentId
+    ? (waybillStyles[currentStatusLabel] || waybillStyles['Not Generated'])
+    : { bg: '#F3F2EB', fg: colors.inkFaint, border: colors.border };
 
   const isCompleted = manifest?.status === 'SIGNED_COMPLETED' || currentStatusLabel === 'Signed / Completed';
   const isSentToHauler = manifest?.status === 'SENT_TO_HAULER' || currentStatusLabel === 'Sent to Hauler';
@@ -271,8 +273,14 @@ export default function WaybillsScreen() {
             <Text style={styles.h1}>WAYBILLS</Text>
           </View>
 
-          <Pressable style={styles.printBtn} onPress={handlePrint}>
-            <Text style={styles.printBtnText}>Print / Export PDF</Text>
+          <Pressable
+            style={[styles.printBtn, (!selectedShipmentId || !manifest) && styles.printBtnDisabled]}
+            onPress={handlePrint}
+            disabled={!selectedShipmentId || !manifest}
+          >
+            <Text style={[styles.printBtnText, (!selectedShipmentId || !manifest) && styles.printBtnTextDisabled]}>
+              Print / Export PDF
+            </Text>
           </Pressable>
         </View>
 
@@ -285,27 +293,14 @@ export default function WaybillsScreen() {
           </View>
         ) : null}
 
-        {/* Shipment Selector & Status Row */}
+        {/* Searchable Shipment Selector & Status Row */}
         <View style={styles.selectorRow}>
-          {Platform.OS === 'web' ? (
-            <View style={styles.selectWrapper}>
-              <select
-                value={selectedShipmentId}
-                onChange={(e) => handleSelectShipment(e.target.value)}
-                style={webSelectStyle}
-              >
-                {shipments.map((s) => (
-                  <option key={s.shipmentId} value={s.shipmentId}>
-                    {s.shipmentId} · {s.recipientName} · {s.waybillStatus}
-                  </option>
-                ))}
-              </select>
-            </View>
-          ) : (
-            <View style={styles.mobileSelectCard}>
-              <Text style={styles.mobileSelectText}>{selectedShipmentId || 'Select Shipment'}</Text>
-            </View>
-          )}
+          <SearchableShipmentDropdown
+            shipments={shipments}
+            selectedShipmentId={selectedShipmentId}
+            onSelectShipment={handleSelectShipment}
+            loading={loading}
+          />
 
           <View style={[styles.statusBadge, { backgroundColor: badgeStyle.bg, borderColor: badgeStyle.border }]}>
             <Text style={[styles.statusBadgeText, { color: badgeStyle.fg }]}>
@@ -323,103 +318,106 @@ export default function WaybillsScreen() {
           ) : null}
         </View>
 
-        {/* Waybill Workflow Control Card */}
-        <View style={styles.workflowCard}>
-          <View style={styles.workflowHeader}>
-            <Text style={styles.workflowEyebrow}>WAYBILL WORKFLOW:</Text>
-          </View>
-
-          <View style={styles.workflowBody}>
-            {isCompleted ? (
-              // Stage 3: Completed
-              <View style={styles.completedRow}>
-                <View style={styles.completedBadge}>
-                  <Text style={styles.completedBadgeText}>✓ Completed</Text>
-                </View>
-                <Text style={styles.completedMeta}>
-                  Signed by <Text style={styles.boldText}>{manifest?.signedBy || 'Consignee'}</Text> on{' '}
-                  <Text style={styles.boldText}>{manifest?.signedDate || manifest?.generatedDate || '—'}</Text>
-                </Text>
-              </View>
-            ) : isSentToHauler ? (
-              // Stage 2: Sent to Hauler -> Direct Mark as Signed / Completed
-              <View style={styles.actionRow}>
-                <View style={styles.haulerInfoTag}>
-                  <Text style={styles.haulerInfoLabel}>HAULER:</Text>
-                  <Text style={styles.haulerInfoVal}>{manifest?.haulerName || selectedHauler || '—'}</Text>
-                </View>
-
-                <Pressable
-                  style={[styles.actionBtn, actionLoading && styles.btnDisabled]}
-                  onPress={handleCompleteWaybill}
-                  disabled={actionLoading}
-                >
-                  {actionLoading ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.actionBtnText}>Mark as Signed / Completed →</Text>
-                  )}
-                </Pressable>
-              </View>
-            ) : (
-              // Stage 1: Not Generated -> Mark as Sent to Hauler
-              <View style={styles.actionRow}>
-                <View style={styles.haulerPickerGroup}>
-                  <Text style={styles.inputLabel}>HAULER</Text>
-                  {Platform.OS === 'web' ? (
-                    <select
-                      value={selectedHauler}
-                      onChange={(e) => setSelectedHauler(e.target.value)}
-                      style={webHaulerSelectStyle}
-                    >
-                      {haulerOptions.map((h) => (
-                        <option key={h.userId || h.fullName} value={h.fullName || h.displayLabel}>
-                          {h.displayLabel || h.fullName}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <TextInput
-                      style={styles.signedByInput}
-                      value={selectedHauler}
-                      onChangeText={setSelectedHauler}
-                      placeholder="Hauler / Carrier Name"
-                    />
-                  )}
-                </View>
-
-                <Pressable
-                  style={[styles.actionBtn, actionLoading && styles.btnDisabled]}
-                  onPress={handleSendToHauler}
-                  disabled={actionLoading}
-                >
-                  {actionLoading ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.actionBtnText}>Mark as Sent to Hauler →</Text>
-                  )}
-                </Pressable>
-              </View>
-            )}
-          </View>
-        </View>
-
-        {/* Live A4 Manifest Sheet Card */}
+        {/* Main Content Area */}
         {loading ? (
           <View style={styles.loaderWrap}>
             <ActivityIndicator size="large" color={colors.accent} />
           </View>
-        ) : (
-          <View style={styles.manifestWrap}>
-            {/* Embedded WaybillManifestCard */}
-            {manifest ? (
-              <WaybillManifestCard manifest={manifest} selectedHauler={selectedHauler} />
-            ) : (
-              <View style={styles.emptyManifestBox}>
-                <Text style={styles.emptyManifestText}>No manifest details available for this shipment.</Text>
-              </View>
-            )}
+        ) : !selectedShipmentId || !manifest ? (
+          <View style={styles.emptyStateCard}>
+            <Text style={styles.emptyStateTitle}>No Shipment Selected</Text>
+            <Text style={styles.emptyStateSubText}>
+              Search or select a shipment in the dropdown above to preview the waybill manifest, dispatch to a hauler, or print.
+            </Text>
           </View>
+        ) : (
+          <>
+            {/* Waybill Workflow Control Card */}
+            <View style={styles.workflowCard}>
+              <View style={styles.workflowHeader}>
+                <Text style={styles.workflowEyebrow}>WAYBILL WORKFLOW:</Text>
+              </View>
+
+              <View style={styles.workflowBody}>
+                {isCompleted ? (
+                  // Stage 3: Completed
+                  <View style={styles.completedRow}>
+                    <View style={styles.completedBadge}>
+                      <Text style={styles.completedBadgeText}>✓ Completed</Text>
+                    </View>
+                    <Text style={styles.completedMeta}>
+                      Signed by <Text style={styles.boldText}>{manifest?.signedBy || 'Consignee'}</Text> on{' '}
+                      <Text style={styles.boldText}>{manifest?.signedDate || manifest?.generatedDate || '—'}</Text>
+                    </Text>
+                  </View>
+                ) : isSentToHauler ? (
+                  // Stage 2: Sent to Hauler -> Direct Mark as Signed / Completed
+                  <View style={styles.actionRow}>
+                    <View style={styles.haulerInfoTag}>
+                      <Text style={styles.haulerInfoLabel}>HAULER:</Text>
+                      <Text style={styles.haulerInfoVal}>{manifest?.haulerName || selectedHauler || '—'}</Text>
+                    </View>
+
+                    <Pressable
+                      style={[styles.actionBtn, actionLoading && styles.btnDisabled]}
+                      onPress={handleCompleteWaybill}
+                      disabled={actionLoading}
+                    >
+                      {actionLoading ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.actionBtnText}>Mark as Signed / Completed →</Text>
+                      )}
+                    </Pressable>
+                  </View>
+                ) : (
+                  // Stage 1: Not Generated -> Mark as Sent to Hauler
+                  <View style={styles.actionRow}>
+                    <View style={styles.haulerPickerGroup}>
+                      <Text style={styles.inputLabel}>HAULER</Text>
+                      {Platform.OS === 'web' ? (
+                        <select
+                          value={selectedHauler}
+                          onChange={(e) => setSelectedHauler(e.target.value)}
+                          style={webHaulerSelectStyle}
+                        >
+                          {haulerOptions.map((h) => (
+                            <option key={h.userId || h.fullName} value={h.fullName || h.displayLabel}>
+                              {h.displayLabel || h.fullName}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <TextInput
+                          style={styles.signedByInput}
+                          value={selectedHauler}
+                          onChangeText={setSelectedHauler}
+                          placeholder="Hauler / Carrier Name"
+                        />
+                      )}
+                    </View>
+
+                    <Pressable
+                      style={[styles.actionBtn, actionLoading && styles.btnDisabled]}
+                      onPress={handleSendToHauler}
+                      disabled={actionLoading}
+                    >
+                      {actionLoading ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.actionBtnText}>Mark as Sent to Hauler →</Text>
+                      )}
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* Live A4 Manifest Sheet Card */}
+            <View style={styles.manifestWrap}>
+              <WaybillManifestCard manifest={manifest} selectedHauler={selectedHauler} />
+            </View>
+          </>
         )}
       </ScrollView>
     </AppShell>
@@ -487,12 +485,46 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
+  printBtnDisabled: {
+    backgroundColor: '#EBE9E1',
+    shadowOpacity: 0,
+    cursor: 'not-allowed',
+  },
   printBtnText: {
     fontFamily: fonts.mono,
     fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.5,
+  },
+  printBtnTextDisabled: {
+    color: colors.inkFaint,
+  },
+  emptyStateCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E1DFD5',
+    borderRadius: radius.sm,
+    paddingVertical: 56,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: spacing.sm,
+  },
+  emptyStateTitle: {
+    fontFamily: fonts.sans,
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.ink,
+    marginBottom: 6,
+  },
+  emptyStateSubText: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    color: colors.inkFaint,
+    textAlign: 'center',
+    maxWidth: 440,
+    lineHeight: 20,
   },
   alertBox: {
     padding: spacing.md,
@@ -523,6 +555,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     paddingVertical: spacing.xs,
+    zIndex: 100,
   },
   selectWrapper: {
     alignSelf: 'center',

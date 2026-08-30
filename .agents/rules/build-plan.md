@@ -22,7 +22,9 @@
 | **Phase 2.4** | Web: Vehicle Fleet Management UI (`/vehicles` list & register modal — Desktop Screens 13/14) | [COMPLETED] |
 | **Phase 2.5** | Web & Backend: Client Management Directory & Profile View (`/clients`, `/clients/[id]` — Screens 15/16) | [COMPLETED] |
 | **Phase 3** | Waybills: `WYB-YYYY-XXXX` Generator, 4-State Lifecycle, Printable Manifest & Signature (Desktop Screens 23–25) | [COMPLETED] |
-| **Phase 4** | Billing & Collections: Payments, Thursday Weekly Collections, SOA Generator with 3 Deductions (Screens 18–22) | [UPCOMING] |
+| **Phase 4.1** | Backend: Payments & Collections Engine (`POST /api/v1/payments`, Balance Recalculation, Multi-Search & Audit) | [COMPLETED] |
+| **Phase 4.2** | Backend: Thursday Weekly Collections Consolidation & SOA Generator (3 Deductions, Net Remittance) | [COMPLETED] |
+| **Phase 4.3** | Web: Billing, Collections & Printable SOA (Desktop Screens 18–22) | [IN PROGRESS] |
 | **Phase 5** | Web Console: Live Dashboard, Tracking Logs Stream, Reports, Users & Settings (Screens 01, 02, 17, 26–28) | [UPCOMING] |
 | **Phase 6** | Role-Aware Mobile App: Scan-Only Field Staff vs. Authorized Office Mobile + Bluetooth Printing (Screens 29–53) | [UPCOMING] |
 
@@ -132,24 +134,45 @@
 ## Phase 4 — Billing, Weekly Collections & Statement of Account (Desktop Screens 18–22)
 *Financial accounting and client billing.*
 
-**4.1 — Backend: Payments & Collections Engine**
-- Record payments against shipments (`CASH`, `BANK_TRANSFER`, `GCASH`, reference number, payment date).
-- Automatic payment status updates: `Unpaid` → `Partially Paid` → `Paid`.
+**4.1 — Backend: Payments & Collections Engine** — **[COMPLETED]**
+- Flyway `V12__enhance_payment_schema.sql`: added `staff_id` (FK to `app_user`), `remarks`, and composite index on `(payment_date, method)`.
+- Financial balance calculation and validation: strictly positive payment amounts, overpayment prevention exceeding remaining balance.
+- Automatic payment status updates: `Unpaid` → `Partially Paid` → `Paid` (with running `totalPaid` and `balance` updates).
+- REST Endpoints:
+  - `POST /api/v1/payments` — Record payment against shipment (`ADMIN`, `OFFICE_STAFF`).
+  - `GET /api/v1/payments/shipment/{shipmentId}` — Itemized shipment payment history and balance overview.
+  - `GET /api/v1/payments` — Paginated company-wide payments directory with multi-field search (shipment ID, client, recipient, ref no, method, date range).
+- Real-time Server-Sent Events (SSE) integration via `broadcastPaymentRecorded`.
+- Verified via `PaymentIntegrationTest` suite (18/18 tests passing).
 
-**4.2 — Backend: Thursday Weekly Collections Consolidation & SOA Generator**
-- Auto-prepare weekly collection batches grouping outstanding shipments by client (Rule 13).
-- Sequential SOA ID generator: `SOA-YYYY-XXXX`.
-- 3 Business Deductions:
-  1. *Bad Orders / Refunds*
-  2. *Discrepancies*
-  3. *Claims / Adjustments*
-- Net Remittance calculation: $\text{Total Collected} - \text{Deductions} = \text{Net Remittance}$.
+**4.2 — Backend: Thursday Weekly Collections Consolidation & SOA Generator** — **[COMPLETED]**
+- Flyway `V13`, `V14`, `V15`, `V16`: enhanced `soa`, created `soa_deduction` table, composite indexes, and complete cascading foreign keys.
+- Thursday Weekly Collection Consolidation Engine (Rule 13): groups unbilled shipments (`statement_id IS NULL`) and client balances.
+- Sequential SOA ID Generator: `SOA-YYYY-XXXX` (e.g. `SOA-2026-0001`).
+- 3 Business Deduction categories: `BAD_ORDER`, `DISCREPANCY`, and `CLAIM`.
+- Mathematical Net Remittance & Outstanding Balance derivation:
+  $\text{Outstanding Balance} = \text{Current Charges} + \text{Previous Balance} - \text{Deductions} - \text{Total Paid}$.
+- Immutability Lock: updates `statement_id = soa_no` on all included shipments and payments upon SOA creation.
+- REST Endpoints:
+  - `GET /api/v1/collections/weekly` — Active Thursday weekly collections overview.
+  - `GET /api/v1/collections/preview/{clientId}` — Live unbilled shipments preview for a client.
+  - `POST /api/v1/soa/generate` — Single SOA generation with itemized deductions.
+  - `POST /api/v1/soa/generate-batch` — Bulk SOA generation for collection cycle.
+  - `GET /api/v1/soa/{soaNo}` — Complete statement details and breakdown.
+  - `GET /api/v1/soa` — Paginated directory of generated SOAs.
+- Real-time SSE broadcasting via `broadcastSoaGenerated`.
+- Verified via `SoaIntegrationTest` suite (21/21 total backend tests passing).
 
-**4.3 — Web: Billing, Collections & Printable SOA (Desktop Screens 18, 19, 20, 21, 22)**
-- **Payment Management (Screen 18):** Payments table + Record Payment modal.
-- **Weekly Collections (Screen 19):** Thursday consolidation list grouped by client with balance due.
-- **Consolidated SOA Preview (Screen 20):** Line-item breakdown of client shipments for the collection week.
-- **Printable SOA & Batch Export (Screens 21 & 22):** Formal multi-page printable Statement of Account with deduction items and remittance summary matching client design.
+**4.3 — Web: Billing, Collections & Printable SOA (Desktop Screens 18, 19, 20, 21, 22)**  — **[IN PROGRESS]**
+- **Payment Management (Screen 18) — [COMPLETED]:**
+  - `/payments` directory table with payment status filter (`Unpaid`, `Partial`, `Paid`), multi-search (Shipment ID, Client Name, Recipient), and real-time outstanding balance metric card.
+  - "Record Payment" modal with real-time balance ceiling restriction, dynamic reference validation (`*` for `GCASH`, `BANK`, `CHEQUE`), and SSE live refresh.
+  - "Payment History" modal (`View` action) with itemized compounding installment ledger, date stamps, staff attribution, and financial summary.
+  - Fixed-slot action column layout (`View`, `Record →`, `Settled`) to eliminate horizontal row jitter.
+- **Weekly Collections (Screen 19) — [IN PROGRESS]:** `/collections` Thursday consolidation dashboard with 4 metric cards (Total Due, Collected, Outstanding, Clients), target Thursday selector, and client collection status table.
+- **Consolidated SOA Preview (Screen 20) — [IN PROGRESS]:** `/collections/[clientId]` unbilled shipment breakdown for the billing cycle with itemized table and "Apply Deduction" modal (supporting `BAD_ORDER`, `DISCREPANCY`, `CLAIM`).
+- **Detailed Statement View (Screen 21) — [IN PROGRESS]:** `/soa/[soaNo]` full digital Statement of Account with client info header, line items, deduction credits, and remittance calculation summary.
+- **Printable SOA & Batch Export (Screen 22) — [IN PROGRESS]:** Formal print layout with runtime CSSOM extraction, `@page { size: landscape / portrait; margin: 0; }`, signature blocks (Prepared by, Checked by, Received by), and multi-client batch export.
 
 ---
 

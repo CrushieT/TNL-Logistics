@@ -1,5 +1,7 @@
 package com.tnl.logistics.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.tnl.logistics.model.PaymentMethod;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -15,6 +17,8 @@ public class PaymentRecordRequest {
     @NotBlank(message = "Shipment ID is required")
     private String shipmentId;
 
+    @JsonProperty("amountPaid")
+    @JsonAlias({"amount", "amount_paid"})
     @NotNull(message = "Amount paid is required")
     @DecimalMin(value = "0.01", message = "Amount paid must be greater than zero")
     private BigDecimal amountPaid;
@@ -22,6 +26,8 @@ public class PaymentRecordRequest {
     @NotNull(message = "Payment method is required")
     private PaymentMethod method;
 
+    @JsonProperty("referenceNo")
+    @JsonAlias({"referenceNumber", "reference_no", "reference_number"})
     private String referenceNo;
 
     private LocalDate paymentDate;

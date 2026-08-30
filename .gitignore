@@ -59,3 +59,4 @@ frontend-mobile/.expo-shared/
 # --- Private Planning & Client Documentation ---
 .docs/
 *.pdf
+.agents/rules/answer.md

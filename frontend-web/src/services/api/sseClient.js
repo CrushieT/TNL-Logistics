@@ -52,6 +52,24 @@ export async function initRealtimeConnection() {
       } catch (err) {}
     });
 
+    globalEventSource.addEventListener('PAYMENT_RECORDED', (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        listeners.forEach((listener) => {
+          try { listener({ type: 'PAYMENT_RECORDED', data: payload }); } catch (err) {}
+        });
+      } catch (err) {}
+    });
+
+    globalEventSource.addEventListener('SOA_GENERATED', (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        listeners.forEach((listener) => {
+          try { listener({ type: 'SOA_GENERATED', data: payload }); } catch (err) {}
+        });
+      } catch (err) {}
+    });
+
     globalEventSource.onerror = () => {
       // Browser EventSource automatically reconnects per standard specification
     };
