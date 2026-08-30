@@ -42,9 +42,14 @@ public class GlobalExceptionHandler {
         error.put("error", "Validation Failed");
 
         Map<String, String> fieldErrors = new HashMap<>();
+        String primaryMessage = null;
         for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
             fieldErrors.put(fe.getField(), fe.getDefaultMessage());
+            if (primaryMessage == null) {
+                primaryMessage = fe.getDefaultMessage();
+            }
         }
+        error.put("message", primaryMessage != null ? primaryMessage : "Validation failed");
         error.put("fieldErrors", fieldErrors);
 
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);

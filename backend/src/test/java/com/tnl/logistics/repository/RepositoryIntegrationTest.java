@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Verifies JPA entity schema mappings and CRUD repository actions under dev profile.
  */
 @SpringBootTest
-@ActiveProfiles("dev")
+@ActiveProfiles("test")
 @Transactional
 public class RepositoryIntegrationTest {
 

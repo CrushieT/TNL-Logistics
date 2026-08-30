@@ -1,5 +1,8 @@
 package com.tnl.logistics.dto;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class WaybillShipmentOptionResponse {
     private String shipmentId;
     private String clientName;
@@ -8,10 +11,13 @@ public class WaybillShipmentOptionResponse {
     private Integer quantity;
     private String waybillId;
     private String waybillStatus; // "Not Generated", "Sent to Hauler", "Signed / Completed"
+    private List<String> trackingNumbers = new ArrayList<>();
 
     public WaybillShipmentOptionResponse() {}
 
-    public WaybillShipmentOptionResponse(String shipmentId, String clientName, String recipientName, String destination, Integer quantity, String waybillId, String waybillStatus) {
+    public WaybillShipmentOptionResponse(String shipmentId, String clientName, String recipientName,
+                                        String destination, Integer quantity, String waybillId,
+                                        String waybillStatus, List<String> trackingNumbers) {
         this.shipmentId = shipmentId;
         this.clientName = clientName;
         this.recipientName = recipientName;
@@ -19,6 +25,7 @@ public class WaybillShipmentOptionResponse {
         this.quantity = quantity;
         this.waybillId = waybillId;
         this.waybillStatus = waybillStatus;
+        this.trackingNumbers = trackingNumbers != null ? trackingNumbers : new ArrayList<>();
     }
 
     public String getShipmentId() { return shipmentId; }
@@ -41,4 +48,7 @@ public class WaybillShipmentOptionResponse {
 
     public String getWaybillStatus() { return waybillStatus; }
     public void setWaybillStatus(String waybillStatus) { this.waybillStatus = waybillStatus; }
+
+    public List<String> getTrackingNumbers() { return trackingNumbers; }
+    public void setTrackingNumbers(List<String> trackingNumbers) { this.trackingNumbers = trackingNumbers; }
 }
