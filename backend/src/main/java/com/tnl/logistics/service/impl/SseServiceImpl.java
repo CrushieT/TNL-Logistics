@@ -5,7 +5,6 @@ import com.tnl.logistics.dto.TrackingScanResponse;
 import com.tnl.logistics.service.SseService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -16,8 +15,8 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Service implementing real-time Server-Sent Events (SSE) streaming,
- * thread-safe client management, and periodic keep-alive heartbeats.
+ * Service implementing real-time Server-Sent Events (SSE) streaming
+ * and thread-safe client management for live dashboard updates.
  */
 @Service
 public class SseServiceImpl implements SseService {
@@ -32,17 +31,17 @@ public class SseServiceImpl implements SseService {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
 
         emitter.onCompletion(() -> {
-            log.debug("SSE connection completed for user: {}", username);
             emitters.remove(emitter);
         });
 
         emitter.onTimeout(() -> {
-            log.debug("SSE connection timed out for user: {}", username);
+            try {
+                emitter.complete();
+            } catch (Exception ignored) {}
             emitters.remove(emitter);
         });
 
         emitter.onError((e) -> {
-            log.debug("SSE connection error for user: {}: {}", username, e.getMessage());
             emitters.remove(emitter);
         });
 
@@ -54,7 +53,10 @@ public class SseServiceImpl implements SseService {
             handshake.put("status", "CONNECTED");
             handshake.put("message", "Real-time tracking stream active");
             emitter.send(SseEmitter.event().name("INIT").data(handshake));
-        } catch (IOException e) {
+        } catch (Exception e) {
+            try {
+                emitter.complete();
+            } catch (Exception ignored) {}
             emitters.remove(emitter);
         }
 
@@ -69,6 +71,9 @@ public class SseServiceImpl implements SseService {
             try {
                 emitter.send(SseEmitter.event().name(eventName).data(data));
             } catch (Exception e) {
+                try {
+                    emitter.complete();
+                } catch (Exception ignored) {}
                 deadEmitters.add(emitter);
             }
         }
@@ -97,23 +102,5 @@ public class SseServiceImpl implements SseService {
     @Override
     public void broadcastPaymentRecorded(Object payment) {
         broadcastEvent("PAYMENT_RECORDED", payment);
-    }
-
-    /**
-     * Send keep-alive heartbeats every 25 seconds to prevent intermediate proxy timeouts.
-     */
-    @Scheduled(fixedRate = 25000)
-    public void sendHeartbeat() {
-        if (emitters.isEmpty()) return;
-
-        List<SseEmitter> deadEmitters = new CopyOnWriteArrayList<>();
-        for (SseEmitter emitter : emitters) {
-            try {
-                emitter.send(SseEmitter.event().comment("ping"));
-            } catch (Exception e) {
-                deadEmitters.add(emitter);
-            }
-        }
-        emitters.removeAll(deadEmitters);
     }
 }

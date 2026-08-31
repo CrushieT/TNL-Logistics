@@ -169,10 +169,17 @@
   - "Record Payment" modal with real-time balance ceiling restriction, dynamic reference validation (`*` for `GCASH`, `BANK`, `CHEQUE`), and SSE live refresh.
   - "Payment History" modal (`View` action) with itemized compounding installment ledger, date stamps, staff attribution, and financial summary.
   - Fixed-slot action column layout (`View`, `Record →`, `Settled`) to eliminate horizontal row jitter.
-- **Weekly Collections (Screen 19) — [IN PROGRESS]:** `/collections` Thursday consolidation dashboard with 4 metric cards (Total Due, Collected, Outstanding, Clients), target Thursday selector, and client collection status table.
+- **Weekly Collections (Screen 19) — [COMPLETED]:**
+  - `/weekly-collections` Thursday consolidation dashboard matching prototype layout with 3 metric cards (`CLIENTS`, `TOTAL DUE`, `OUTSTANDING`).
+  - Active Thursday cycle selector targeting the current closing week with 7-day Friday-to-Thursday SQL date boundaries.
+  - Searchable client dropdown with outside-click dismissal and client table status filters (`All`, `Ready for SOA`, `SOA Generated`, `Settled`).
+  - High-precision MySQL `YYYY-MM-DD HH:mm:ss` timestamp parser for shipment registration dates.
+  - Table with `CLIENT`, `SHIPMENTS`, `TOTAL CHARGES`, `PAID`, `DEDUCTIONS`, `BALANCE`, `STATUS`, and `ACTION`.
+  - Batch SOA Modal with bulk generation trigger (`generateBatchSoa`).
+  - Pure on-demand Server-Sent Events (SSE) live updates with clean disconnect handling.
 - **Consolidated SOA Preview (Screen 20) — [IN PROGRESS]:** `/collections/[clientId]` unbilled shipment breakdown for the billing cycle with itemized table and "Apply Deduction" modal (supporting `BAD_ORDER`, `DISCREPANCY`, `CLAIM`).
-- **Detailed Statement View (Screen 21) — [IN PROGRESS]:** `/soa/[soaNo]` full digital Statement of Account with client info header, line items, deduction credits, and remittance calculation summary.
-- **Printable SOA & Batch Export (Screen 22) — [IN PROGRESS]:** Formal print layout with runtime CSSOM extraction, `@page { size: landscape / portrait; margin: 0; }`, signature blocks (Prepared by, Checked by, Received by), and multi-client batch export.
+- **Detailed Statement View (Screen 21) — [UPCOMING]:** `/soa/[soaNo]` or `/statements` full digital Statement of Account with client info header, line items, deduction credits, and remittance calculation summary.
+- **Printable SOA & Batch Export (Screen 22) — [UPCOMING]:** Formal print layout with runtime CSSOM extraction, `@page { size: landscape / portrait; margin: 0; }`, signature blocks (Prepared by, Checked by, Received by), and multi-client batch export.
 
 ---
 

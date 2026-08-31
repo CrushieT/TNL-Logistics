@@ -41,5 +41,9 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
     List<Shipment> findByClient_ClientIdOrderByDateRegisteredDesc(String clientId);
 
     List<Shipment> findAllByOrderByDateRegisteredDesc();
+
+    List<Shipment> findByDateRegisteredBetweenOrderByDateRegisteredDesc(java.time.LocalDateTime start, java.time.LocalDateTime end);
+
+    List<Shipment> findByClient_ClientIdAndDateRegisteredBetween(String clientId, java.time.LocalDateTime start, java.time.LocalDateTime end);
 }
 
