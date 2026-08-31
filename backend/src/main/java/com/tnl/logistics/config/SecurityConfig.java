@@ -1,5 +1,6 @@
 package com.tnl.logistics.config;
 
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -32,6 +33,8 @@ public class SecurityConfig {
 			.csrf(csrf -> csrf.disable()) // Disabled for stateless APIs
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 			.authorizeHttpRequests(auth -> auth
+				// Allow internal async and error dispatches (prevents SSE disconnect loops)
+				.dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
 				// Allow CORS preflight OPTIONS requests
 				.requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
 				// Allow public access to API documentation (Swagger/OpenAPI)
@@ -42,6 +45,8 @@ public class SecurityConfig {
 				).permitAll()
 				// Allow public access to Login auth endpoint
 				.requestMatchers("/api/v1/auth/login").permitAll()
+				// Allow internal Spring Boot error dispatch
+				.requestMatchers("/error").permitAll()
 				// Secure all other REST API endpoints
 				.requestMatchers("/api/v1/**").authenticated()
 				.anyRequest().authenticated()
