@@ -40,9 +40,35 @@ export function formatCycleDateRange(thursdayDate) {
     if (startMonth === endMonth) {
       return `Thursday, ${startMonth} ${startDay}-${endDay}, ${endYear}`;
     }
-    return `Thursday, ${startMonth} ${startDay}-${endMonth} ${endDay}, ${endYear}`;
+    return `Thursday, ${startMonth} ${startDay} – ${endMonth} ${endDay}, ${endYear}`;
   }
-  return `Thursday, ${startMonth} ${startDay}, ${startYear}-${endMonth} ${endDay}, ${endYear}`;
+  return `Thursday, ${startMonth} ${startDay}, ${startYear} – ${endMonth} ${endDay}, ${endYear}`;
+}
+
+/**
+ * Format a Thursday cycle date into "MMM D – D, YYYY" or "MMM D – MMM D, YYYY"
+ * @param {Date|string} thursdayDate
+ * @returns {string}
+ */
+export function formatShortCycleDateRange(thursdayDate) {
+  const end = new Date(thursdayDate);
+  const start = new Date(end);
+  start.setDate(end.getDate() - 6);
+
+  const startMonth = start.toLocaleDateString('en-US', { month: 'short' });
+  const endMonth = end.toLocaleDateString('en-US', { month: 'short' });
+  const startYear = start.getFullYear();
+  const endYear = end.getFullYear();
+  const startDay = start.getDate();
+  const endDay = end.getDate();
+
+  if (startYear === endYear) {
+    if (startMonth === endMonth) {
+      return `${startMonth} ${startDay} – ${endDay}, ${endYear}`;
+    }
+    return `${startMonth} ${startDay} – ${endMonth} ${endDay}, ${endYear}`;
+  }
+  return `${startMonth} ${startDay}, ${startYear} – ${endMonth} ${endDay}, ${endYear}`;
 }
 
 /**
@@ -77,6 +103,11 @@ export function getRecentThursdays(count = 8) {
 
   return cycles;
 }
+
+/**
+ * Alias for getRecentThursdays for cycle options generation.
+ */
+export const generateThursdayCycleOptions = getRecentThursdays;
 
 /**
  * Format currency amount with Philippine Peso symbol.

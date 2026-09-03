@@ -14,7 +14,9 @@ import AppShell from '../components/layout/AppShell';
 import {
   getWeeklyCollections,
   generateBatchSoa,
+  saveStatement,
   getRecentThursdays,
+  getActiveCollectionCycles,
   formatCurrency,
   SearchableClientDropdown,
   WeeklyCollectionsTable,
@@ -35,8 +37,8 @@ export default function WeeklyCollectionsScreen() {
   const { width } = useWindowDimensions();
   const isMobile = width < 900;
 
-  const cycles = useMemo(() => getRecentThursdays(8), []);
-  const [selectedCycle, setSelectedCycle] = useState(cycles[0]?.isoDate || '');
+  const [cycles, setCycles] = useState([]);
+  const [selectedCycle, setSelectedCycle] = useState('');
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -44,9 +46,32 @@ export default function WeeklyCollectionsScreen() {
   const [batchModalVisible, setBatchModalVisible] = useState(false);
   const [successBanner, setSuccessBanner] = useState(null);
   const [errorBanner, setErrorBanner] = useState(null);
+  const [infoBanner, setInfoBanner] = useState(null);
+
+  // Fetch only active cycles containing registered shipments
+  useEffect(() => {
+    let mounted = true;
+    async function loadCycles() {
+      const activeCycles = await getActiveCollectionCycles();
+      if (!mounted) return;
+      if (activeCycles.length > 0) {
+        setCycles(activeCycles);
+        setSelectedCycle((prev) => (prev && activeCycles.some((c) => c.isoDate === prev) ? prev : activeCycles[0].isoDate));
+      } else {
+        const fallback = getRecentThursdays(1);
+        setCycles(fallback);
+        setSelectedCycle(fallback[0]?.isoDate || '');
+      }
+    }
+    loadCycles();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Load weekly collections data
   const loadData = useCallback(async (showSpinner = true) => {
+    if (!selectedCycle) return;
     try {
       if (showSpinner) setLoading(true);
       setErrorBanner(null);
@@ -61,8 +86,10 @@ export default function WeeklyCollectionsScreen() {
   }, [selectedCycle]);
 
   useEffect(() => {
-    loadData(true);
-  }, [loadData]);
+    if (selectedCycle) {
+      loadData(true);
+    }
+  }, [selectedCycle, loadData]);
 
   // Real-time SSE refresh
   useEffect(() => {
@@ -115,32 +142,81 @@ export default function WeeklyCollectionsScreen() {
     });
   }, [allItems, statusFilter, searchQuery]);
 
-  // Active eligible clients for batch generation
-  const eligibleClients = useMemo(() => {
-    return allItems.filter((i) => i.unbilledShipmentsCount > 0 || i.netAmountDue > 0);
+  // Active unbilled clients that need SOA generation for this cycle
+  const unbilledClients = useMemo(() => {
+    return allItems.filter(
+      (item) =>
+        !item.statementId &&
+        (item.status === 'READY_FOR_SOA' ||
+          Number(item.shipmentsCount || 0) > 0 ||
+          Number(item.unbilledShipmentsCount || 0) > 0)
+    );
   }, [allItems]);
 
-  // Handle Review Client or View Statement
-  const handleReviewClient = (clientItem, action = 'REVIEW') => {
-    if (action === 'VIEW_SOA') {
-      router.push('/statements');
-    } else {
-      router.push(`/clients/${clientItem.clientId}`);
+  // Handle clicking "Generate All SOAs" button
+  const handleBatchClick = () => {
+    setErrorBanner(null);
+    setSuccessBanner(null);
+    setInfoBanner(null);
+
+    if (unbilledClients.length === 0) {
+      setInfoBanner('All Statements of Account for this cycle are already generated. No pending SOAs.');
+      return;
     }
+
+    setBatchModalVisible(true);
+  };
+
+  // Handle Generate SOA or View Statement
+  const handleReviewClient = async (clientItem, action = 'GENERATE_SOA') => {
+    const id = clientItem.clientId || clientItem.clientCode;
+    const isAlreadyGenerated = Boolean(clientItem.statementId);
+
+    if (!isAlreadyGenerated) {
+      try {
+        await saveStatement({
+          clientId: id,
+          targetDate: selectedCycle,
+          cycleThursday: selectedCycle,
+          deductionAmount: 0,
+          deductionNote: '',
+          collectedBy: null,
+        });
+      } catch (err) {
+        console.warn('Auto SOA generation error before navigation:', err);
+      }
+    }
+
+    router.push(`/statements?clientId=${encodeURIComponent(id)}&cycle=${encodeURIComponent(selectedCycle)}`);
   };
 
   // Handle Batch SOA Generation
   const handleConfirmBatch = async () => {
     try {
       setErrorBanner(null);
-      const payload = {
-        targetThursday: selectedCycle,
-        scope: 'ALL_UNBILLED',
-      };
-      const response = await generateBatchSoa(payload);
-      const generatedCount = Array.isArray(response) ? response.length : eligibleClients.length;
-      setSuccessBanner(`Successfully generated ${generatedCount} Statements of Account for ${selectedCycle}.`);
-      loadData(false);
+      setSuccessBanner(null);
+      setInfoBanner(null);
+
+      let successCount = 0;
+      for (const client of unbilledClients) {
+        const id = client.clientId || client.clientCode;
+        try {
+          await saveStatement({
+            clientId: id,
+            targetDate: selectedCycle,
+            cycleThursday: selectedCycle,
+            deductionAmount: 0,
+            deductionNote: '',
+            collectedBy: null,
+          });
+          successCount++;
+        } catch (clientErr) {
+          console.warn(`Failed to generate SOA for client ${id}:`, clientErr);
+        }
+      }
+
+      setSuccessBanner(`Successfully generated ${successCount} Statement(s) of Account for ${selectedCycle}.`);
+      await loadData(false);
     } catch (err) {
       console.warn('Batch generation failed:', err);
       setErrorBanner(err?.response?.data?.message || 'Failed to generate batch SOAs. Please try again.');
@@ -203,6 +279,12 @@ export default function WeeklyCollectionsScreen() {
         </View>
 
         {/* Notifications & Alerts */}
+        {infoBanner ? (
+          <View style={styles.infoAlert}>
+            <Text style={styles.infoAlertText}>{infoBanner}</Text>
+          </View>
+        ) : null}
+
         {successBanner ? (
           <View style={styles.successAlert}>
             <Text style={styles.successAlertText}>{successBanner}</Text>
@@ -288,12 +370,10 @@ export default function WeeklyCollectionsScreen() {
 
           {/* Right: Batch SOA Action */}
           <Pressable
-            onPress={() => setBatchModalVisible(true)}
-            disabled={eligibleClients.length === 0}
+            onPress={handleBatchClick}
             style={({ hovered }) => [
               styles.batchBtn,
-              eligibleClients.length === 0 && styles.batchBtnDisabled,
-              hovered && eligibleClients.length > 0 && styles.batchBtnHovered,
+              hovered && styles.batchBtnHovered,
             ]}
           >
             <Text style={styles.batchBtnText}>Generate All SOAs →</Text>
@@ -312,7 +392,7 @@ export default function WeeklyCollectionsScreen() {
       <BatchSoaModal
         visible={batchModalVisible}
         cycleDate={selectedCycleObj?.label}
-        eligibleClients={eligibleClients}
+        eligibleClients={unbilledClients}
         onClose={() => setBatchModalVisible(false)}
         onConfirmBatch={handleConfirmBatch}
       />
@@ -412,6 +492,20 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  infoAlert: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    padding: 12,
+    borderRadius: radius.sm,
+    marginBottom: 16,
+  },
+  infoAlertText: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    color: '#1D4ED8',
+    fontWeight: '600',
   },
   successAlert: {
     backgroundColor: '#F0FDF4',
