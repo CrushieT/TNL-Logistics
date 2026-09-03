@@ -24,7 +24,7 @@
 | **Phase 3** | Waybills: `WYB-YYYY-XXXX` Generator, 4-State Lifecycle, Printable Manifest & Signature (Desktop Screens 23–25) | [COMPLETED] |
 | **Phase 4.1** | Backend: Payments & Collections Engine (`POST /api/v1/payments`, Balance Recalculation, Multi-Search & Audit) | [COMPLETED] |
 | **Phase 4.2** | Backend: Thursday Weekly Collections Consolidation & SOA Generator (3 Deductions, Net Remittance) | [COMPLETED] |
-| **Phase 4.3** | Web: Billing, Collections & Printable SOA (Desktop Screens 18–22) | [IN PROGRESS] |
+| **Phase 4.3** | Web: Billing, Collections & Printable SOA (Desktop Screens 18–22) | [COMPLETED] |
 | **Phase 5** | Web Console: Live Dashboard, Tracking Logs Stream, Reports, Users & Settings (Screens 01, 02, 17, 26–28) | [UPCOMING] |
 | **Phase 6** | Role-Aware Mobile App: Scan-Only Field Staff vs. Authorized Office Mobile + Bluetooth Printing (Screens 29–53) | [UPCOMING] |
 
@@ -163,7 +163,7 @@
 - Real-time SSE broadcasting via `broadcastSoaGenerated`.
 - Verified via `SoaIntegrationTest` suite (21/21 total backend tests passing).
 
-**4.3 — Web: Billing, Collections & Printable SOA (Desktop Screens 18, 19, 20, 21, 22)**  — **[IN PROGRESS]**
+**4.3 — Web: Billing, Collections & Printable SOA (Desktop Screens 18, 19, 20, 21, 22)**  — **[COMPLETED]**
 - **Payment Management (Screen 18) — [COMPLETED]:**
   - `/payments` directory table with payment status filter (`Unpaid`, `Partial`, `Paid`), multi-search (Shipment ID, Client Name, Recipient), and real-time outstanding balance metric card.
   - "Record Payment" modal with real-time balance ceiling restriction, dynamic reference validation (`*` for `GCASH`, `BANK`, `CHEQUE`), and SSE live refresh.
@@ -171,22 +171,25 @@
   - Fixed-slot action column layout (`View`, `Record →`, `Settled`) to eliminate horizontal row jitter.
 - **Weekly Collections (Screen 19) — [COMPLETED]:**
   - `/weekly-collections` Thursday consolidation dashboard matching prototype layout with 3 metric cards (`CLIENTS`, `TOTAL DUE`, `OUTSTANDING`).
-  - Active Thursday cycle selector targeting the current closing week with 7-day Friday-to-Thursday SQL date boundaries.
+  - Active Thursday cycle selector targeting the current closing week with dynamic endpoint integration (`GET /api/v1/collections/cycles`) to filter out empty weeks.
   - Searchable client dropdown with outside-click dismissal and client table status filters (`All`, `Ready for SOA`, `SOA Generated`, `Settled`).
-  - High-precision MySQL `YYYY-MM-DD HH:mm:ss` timestamp parser for shipment registration dates.
-  - Table with `CLIENT`, `SHIPMENTS`, `TOTAL CHARGES`, `PAID`, `DEDUCTIONS`, `BALANCE`, `STATUS`, and `ACTION`.
-  - Batch SOA Modal with bulk generation trigger (`generateBatchSoa`).
+  - Table with `CLIENT`, `SHIPMENTS`, `TOTAL CHARGES`, `PAID`, `DEDUCTIONS`, `BALANCE`, `STATUS`, and action buttons (`Generate SOA →` and `View SOA`).
+  - Batch SOA Modal with bulk generation trigger and informative notice when all SOAs for a cycle are generated.
   - Pure on-demand Server-Sent Events (SSE) live updates with clean disconnect handling.
-- **Consolidated SOA Preview (Screen 20) — [IN PROGRESS]:** `/collections/[clientId]` unbilled shipment breakdown for the billing cycle with itemized table and "Apply Deduction" modal (supporting `BAD_ORDER`, `DISCREPANCY`, `CLAIM`).
-- **Detailed Statement View (Screen 21) — [UPCOMING]:** `/soa/[soaNo]` or `/statements` full digital Statement of Account with client info header, line items, deduction credits, and remittance calculation summary.
-- **Printable SOA & Batch Export (Screen 22) — [UPCOMING]:** Formal print layout with runtime CSSOM extraction, `@page { size: landscape / portrait; margin: 0; }`, signature blocks (Prepared by, Checked by, Received by), and multi-client batch export.
+- **Consolidated SOA Preview (Screen 20) — [COMPLETED]:**
+  - `/statements` itemized unbilled shipment breakdown for the billing cycle with itemized table, total charges, total paid, and deductions input card (`DeductionsInputCard.js`).
+  - Real-time deduction calculation and notes input (supporting Bad Orders, Discrepancies, Claims) with immediate backend persistence.
+- **Detailed Statement View (Screen 21) — [COMPLETED]:**
+  - `/statements` full digital multi-page Statement of Account with client info header, sequential `SOA-YYYY-XXX-WXX` number, multi-page continuation headers, page numbering (`Page X of Y`), deduction rollup directly below Total Paid, and authorized collector assignment.
+- **Printable SOA & Batch Export (Screen 22) — [COMPLETED]:**
+  - Dedicated isolated print route at `/statements/print` with `@page { margin: 0; }` browser header suppression, crisp vector borderTop rules, signature blocks (Prepared by, Collected by, Date collected), and smart batch generation on `/weekly-collections`.
 
 ---
 
 ## Phase 5 — Web Console: Dashboard, Reports & Administration (Desktop Screens 01, 02, 17, 26–28)
 *Operational dashboards and administrative controls.*
 
-**5.1 — Desktop Login & Route Protection (Screen 01)**
+**5.1 — Desktop Login & Route Protection (Screen 01)** — **[UPCOMING]**
 - Production Login screen with username/password authentication, JWT storage, and session logout in Sidebar.
 
 **5.2 — Dashboard Live Metrics (Screen 02)**

@@ -8,6 +8,7 @@
 tnl-logistics/
 ├── .agents/
 │   └── rules/
+│       ├── build-plan.md             # Master 6-Phase development roadmap & progress tracking
 │       ├── git-conventions.md        # Git workflow, branch naming & commit rules
 │       ├── karpathy-guidelines.md    # LLM coding best practices
 │       └── project-structure.md      # Project directory layout & philosophies
@@ -18,30 +19,41 @@ tnl-logistics/
 │   │   ├── main/
 │   │   │   ├── java/com/tnl/logistics/
 │   │   │   │   ├── config/              # SecurityConfig, CorsConfig, JwtTokenProvider, DataSeeder
-│   │   │   ├── controller/          # REST endpoints (AuthController, ShipmentController, ClientController, etc.)
-│   │   │   ├── dto/                 # Request & Response DTOs
-│   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, etc.)
-│   │   │   ├── repository/          # Spring Data Repositories
-│   │   │   └── service/             # Business Logic & Service Interfaces (ShipmentService, etc.)
-│   │   └── resources/
-│   │       ├── application.properties
-│   │       ├── application-dev.properties
-│   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V5)
+│   │   │   │   ├── controller/          # REST endpoints (Shipment, Vehicle, Client, Waybill, Payment, Collections, SOA)
+│   │   │   │   ├── dto/                 # Request & Response DTOs
+│   │   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, Vehicle, Waybill, Payment, Soa, etc.)
+│   │   │   │   ├── repository/          # Spring Data Repositories & Batch Group By Queries
+│   │   │   │   └── service/             # Business Logic & Service Interfaces (impl/)
+│   │   │   └── resources/
+│   │   │       ├── application.properties
+│   │   │       ├── application-dev.properties
+│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V16)
+│   │   └── test/                        # Integration and unit test suites
 │   └── pom.xml
 │
 ├── frontend-web/                    # Admin Web Portal (React Native Web / Expo Router)
 │   ├── src/
-│   │   ├── app/                     # File-based routes (_layout.js, index.js, register.js, shipments/, etc.)
-│   │   ├── components/              # Shared design system (common/ atoms, layout/ wrappers)
-│   │   ├── features/                # Domain modules (shipments/, clients/) with components and services
-│   │   ├── services/                # Core infrastructure (api/client.js with JWT interceptor)
+│   │   ├── app/                     # File-based routes
+│   │   │   ├── _layout.js           # Root Stack navigator
+│   │   │   ├── index.js             # Dashboard
+│   │   │   ├── register.js          # Register Shipment (form + result view)
+│   │   │   ├── shipments/           # Shipments list and detail views
+│   │   │   ├── vehicles.js          # Vehicle fleet management
+│   │   │   ├── clients.js           # Client directory & profile view
+│   │   │   ├── waybills.js          # Waybills & printable manifest
+│   │   │   ├── payments.js          # Screen 18 Payment recording & installment ledger
+│   │   │   ├── weekly-collections.js# Screen 19 Weekly Collections consolidation dashboard
+│   │   │   ├── statements.js        # Screen 20 Statement of Account (SOA) preview & deductions
+│   │   │   └── statements/
+│   │   │       └── print.js         # Screen 22 Dedicated isolated printable SOA document
+│   │   ├── components/              # Shared design system (common/ atoms, layout/ AppShell)
+│   │   ├── features/                # Domain feature modules (shipments, vehicles, clients, waybills, payments, collections)
+│   │   ├── services/api/            # Core infrastructure (client.js with JWT refresh, sseClient.js)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
 │   │   └── utils/                   # Pure utilities (qr.js in-memory vector QR encoder)
 │   ├── assets/                      # favicon.png
 │   ├── app.json                     # Expo web configuration
-│   ├── babel.config.js
 │   ├── package.json
-│   ├── .env.example
 │   └── README.md
 │
 ├── frontend-mobile/                  # React Native (Expo) Field Operations (JavaScript)
@@ -79,17 +91,16 @@ tnl-logistics/
 **Backend (layered):** Features are structured using a traditional layered architecture (`config`, `controller`, `dto`, `model`, `repository`, `service`). 
 
 - **Why:** Clear separation of concerns by technical layers. Standard layout that is instantly familiar to Java/Spring developers.
-- **Example:** A request to register a shipment flows: `ShipmentController` (Controller layer) → `ShipmentService` (Service layer) → `ShipmentRepository` (Data access layer) → `Shipment` (Model/Entity layer).
+- **Example:** A request to generate an SOA flows: `SoaController` (Controller layer) → `SoaService` (Service layer) → `SoaRepository` (Data access layer) → `Soa` (Model/Entity layer).
 
-**Frontend Web:** Expo Router file-based routing configured for Web (React Native Web). Structure mirrors the mobile app structure.
-
-- **Why:** Allows sharing design guidelines, components, and libraries with the mobile app while keeping separate, web-specific desktop layouts.
-- **API client:** Centralized in `api/client.js` — shared by all components, single point to change the backend URL for web admin actions.
+**Frontend Web (Feature-Sliced):** Organized into file-based routes (`src/app/`) backed by cohesive domain feature modules (`src/features/`):
+- **Why:** Keeps feature-specific UI, modals, API calls, and utilities colocated (e.g. `src/features/collections/` contains table components, deductions cards, paper cards, and API bindings).
+- **API client:** Centralized in `services/api/client.js` with self-healing token refresh and 401/403 transparent request retries.
 
 **Frontend Mobile:** Expo Router file-based routing targeting iOS and Android natively.
 
 - **Why:** Provides standard, high-performance native experiences for mobile sensors (camera scan, bluetooth).
-- **Parallel with web:** Uses a similar structure and the exact same `api/client.js` connection pattern to communicate with the Spring Boot backend.
+- **Parallel with web:** Uses a similar structure and the exact same API connection pattern to communicate with the Spring Boot backend.
 
 **Root:** Configuration files that coordinate all three services (docker-compose, .gitignore, README).
 

@@ -80,7 +80,7 @@ Unlike simplistic CRUD apps that conflate tracking and accounting into a single 
 | **Phase 1** | **Shipment Registration & QR Labels** | `[COMPLETED]` | Sequential IDs (`SHP-YYYY-XXX`, `TRK-YYYY-XXXXXX`), volumetric weight ($\div 5000$) & $m^3$ calculations, vector thermal QR labels, paginated table, tracking inspection. |
 | **Phase 2** | **Status Flow, Real-Time SSE, Fleet & Client Management** | `[COMPLETED]` | Sequential 5-state transition engine, live SSE stream, vehicle fleet CRUD (`VH-XXX`), client directory & profile view (`CL-XXX`), smart deletion, composite indexing, and batch aggregation. |
 | **Phase 3** | **Waybills & Freight Manifest Handover** | `[COMPLETED]` | `WYB-YYYY-XXXX` auto-numbering, 4-state lifecycle (`Generated` → `Sent to Hauler` → `Signed/Completed`), and print-ready A4 3rd-party hauler manifest. |
-| **Phase 4** | **Billing, Collections & Statement of Account** | `[IN PROGRESS]` | Thursday weekly collections consolidation (`/weekly-collections`), payments (`/payments`), `SOA-YYYY-XXXX` generator with 3 business deductions (Bad Orders, Discrepancies, Claims). |
+| **Phase 4** | **Billing, Collections & Statement of Account** | `[COMPLETED]` | Payment ledger (`/payments`), Thursday weekly collections consolidation (`/weekly-collections`), `SOA-YYYY-XXX-WXX` multi-page statement preview (`/statements`), isolated print architecture (`/statements/print`), deduction management, and dynamic active cycle filtering. |
 | **Phase 5** | **Web Console Administration & Reports** | `[UPCOMING]` | Live operational dashboard metrics, company-wide audit tracking logs stream, staff management, and exportable reports. |
 | **Phase 6** | **Role-Aware Mobile Courier Portal** | `[UPCOMING]` | Mobile PIN auth with role branching (scan-only field staff vs authorized office mobile), camera QR scanner, and Bluetooth thermal printer integration. |
 
@@ -93,29 +93,28 @@ logistics/
 ├── backend/                               # Spring Boot 3.4.2 REST API
 │   ├── src/main/java/com/tnl/logistics/
 │   │   ├── config/                        # SecurityConfig, JWT Provider, WebMvcConfig
-│   │   ├── controller/                    # REST API Controllers & SSE Stream Endpoints
+│   │   ├── controller/                    # REST API Controllers (Shipments, Vehicles, Clients, Payments, Collections, SOA)
 │   │   ├── dto/                           # Request & Response Data Transfer Objects
-│   │   ├── model/                         # JPA Entities (Shipment, ParcelUnit, Vehicle, Client, etc.)
+│   │   ├── model/                         # JPA Entities (Shipment, ParcelUnit, Vehicle, Client, Payment, Soa, WeeklyCollection)
 │   │   ├── repository/                    # Spring Data Repositories & Group By Aggregations
 │   │   └── service/                       # Business Service Contracts & Implementations (impl/)
 │   └── src/main/resources/
-│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V9)
+│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V12)
 │       └── application-dev.yml            # Environment Configuration
 │
 ├── frontend-web/                          # Expo / React Native Web Admin Portal
 │   ├── src/
-│   │   ├── app/                           # Expo Router Screens (/, /shipments, /vehicles, /clients, etc.)
-│   │   ├── components/                    # Common UI Components (Cards, Buttons, Badges, Shell)
-│   │   ├── features/                      # Domain Features (shipments, vehicles, clients)
-│   │   ├── services/api/                  # Axios Client with Auto-Auth & SSE Event Subscriptions
+│   │   ├── app/                           # Expo Router Screens (/, /shipments, /vehicles, /clients, /payments, /weekly-collections, /statements, /statements/print)
+│   │   ├── components/                    # Common UI Components (Cards, Buttons, Badges, Layout Shell)
+│   │   ├── features/                      # Domain Features (shipments, vehicles, clients, payments, collections)
+│   │   ├── services/api/                  # Axios Client with Self-Healing JWT Auto-Auth & SSE Event Subscriptions
 │   │   └── theme/                         # Design System Tokens (Colors, Typography, Spacing)
 │   └── package.json
 │
 ├── frontend-mobile/                       # Expo / React Native Field Courier Portal
 │   └── src/                               # Camera QR Scanner, Field Actions & Thermal Printer
 │
-├── .docs/                                 # Logistics Blueprint & Master Build Plan
-│   ├── build-plan.md                      # 6-Phase Master Development Plan
+├── .docs/                                 # Logistics Blueprint & Schema Specifications
 │   └── prototype/                         # Desktop & Mobile Screen Prototypes
 │
 └── docker-compose.yml                     # Local MySQL & Services Orchestration
@@ -164,6 +163,13 @@ When field staff scan a parcel with their phone, an append-only event is committ
 | `/api/v1/clients` | `POST` | Office/Admin | Register new client with auto-generated `CL-XXX` ID |
 | `/api/v1/clients/{id}` | `PUT` | Office/Admin | Update client contact details, rate type, and active status |
 | `/api/v1/clients/{id}` | `DELETE` | Office/Admin | Smart Delete client (Hard delete unused / Soft deactivation) |
+| `/api/v1/payments` | `GET` | Office/Admin | Paginated payment transactions directory with status filters |
+| `/api/v1/payments` | `POST` | Office/Admin | Record payment transaction (Cash, GCash, Bank Transfer, Cheque) |
+| `/api/v1/collections/weekly` | `GET` | Office/Admin | Thursday weekly collections consolidation summary and itemized client list |
+| `/api/v1/collections/cycles` | `GET` | Office/Admin | List of distinct Thursday cycles containing registered shipments |
+| `/api/v1/soa/preview` | `GET` | Office/Admin | Statement of Account preview with itemized shipments and financial rollup |
+| `/api/v1/soa/save` | `POST` | Office/Admin | Persist statement with deductions, notes, and authorized collector |
+| `/api/v1/soa/collectors` | `GET` | Office/Admin | List of active authorized collectors for statement attribution |
 | `/api/v1/events/stream` | `GET` | All Staff | Server-Sent Events real-time event subscription stream |
 
 ---
