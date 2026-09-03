@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * REST Controller providing Thursday weekly collections consolidation endpoints.
@@ -32,5 +33,11 @@ public class CollectionsController {
     ) {
         WeeklyCollectionsResponse response = collectionsService.getWeeklyCollections(targetDate);
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/cycles")
+    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    public ResponseEntity<List<LocalDate>> getActiveCycles() {
+        return ResponseEntity.ok(collectionsService.getActiveCycleThursdays());
     }
 }

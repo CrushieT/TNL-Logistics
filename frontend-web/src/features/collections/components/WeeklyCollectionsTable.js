@@ -187,17 +187,17 @@ export default function WeeklyCollectionsTable({
                     hovered && styles.viewSoaBtnHovered,
                   ]}
                 >
-                  <Text style={styles.viewSoaBtnText}>View SOA ↗</Text>
+                  <Text style={styles.viewSoaBtnText}>View SOA</Text>
                 </Pressable>
               ) : (
                 <Pressable
-                  onPress={() => onReviewClient?.(item, 'REVIEW')}
+                  onPress={() => onReviewClient?.(item, 'GENERATE_SOA')}
                   style={({ hovered }) => [
                     styles.reviewBtn,
                     hovered && styles.reviewBtnHovered,
                   ]}
                 >
-                  <Text style={styles.reviewBtnText}>Review Breakdown →</Text>
+                  <Text style={styles.reviewBtnText}>Generate SOA →</Text>
                 </Pressable>
               )}
             </View>

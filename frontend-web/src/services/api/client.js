@@ -30,10 +30,31 @@ const apiClient = axios.create({
   },
 });
 
+export function isTokenExpired(token) {
+  if (!token || typeof token !== 'string') return true;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const parsed = JSON.parse(jsonPayload);
+    if (!parsed.exp) return false;
+    return Date.now() >= (parsed.exp * 1000 - 30000);
+  } catch (err) {
+    return true;
+  }
+}
+
 export async function ensureAuthenticated() {
   let token = await getToken();
-  if (!token) {
+  if (!token || isTokenExpired(token)) {
     try {
+      await clearToken();
       const authRes = await axios.post('http://localhost:8080/api/v1/auth/login', {
         username: 'admin',
         password: 'admin123',
@@ -53,17 +74,32 @@ export async function ensureAuthenticated() {
 apiClient.interceptors.request.use(async (config) => {
   const token = await ensureAuthenticated();
   if (token) {
+    config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-// Central 401 handling.
+// Central 401 & 403 handling with transparent re-login retry.
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error?.response?.status === 401) {
-      await clearToken();
+    const status = error?.response?.status;
+    const originalRequest = error?.config;
+
+    if ((status === 401 || status === 403) && originalRequest && !originalRequest._retry) {
+      originalRequest._retry = true;
+      try {
+        await clearToken();
+        const newToken = await ensureAuthenticated();
+        if (newToken) {
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return apiClient(originalRequest);
+        }
+      } catch (retryErr) {
+        console.warn('Re-authentication retry failed:', retryErr);
+      }
     }
     return Promise.reject(error);
   }

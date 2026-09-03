@@ -1,5 +1,5 @@
 import apiClient from '../../../services/api/client';
-import { parseShipmentRegistrationDate } from '../utils/collectionsUtils';
+import { parseShipmentRegistrationDate, formatCycleDateRange } from '../utils/collectionsUtils';
 
 /**
  * Fetch active Thursday weekly collections consolidation dashboard data.
@@ -152,4 +152,58 @@ export async function generateBatchSoa(payload) {
 export async function listAllClients() {
   const { data } = await apiClient.get('/clients', { params: { size: 100 } });
   return data;
+}
+
+/**
+ * Fetch detailed Statement of Account preview with itemized shipments for a client.
+ * @param {string} clientId
+ * @param {string} [targetDate] - Target Thursday (YYYY-MM-DD)
+ */
+export async function getStatementPreview(clientId, targetDate) {
+  const params = { clientId };
+  if (targetDate) {
+    params.targetDate = targetDate;
+  }
+  const { data } = await apiClient.get('/soa/preview', { params });
+  return data;
+}
+
+/**
+ * Persist deductions, note, and collector on an SOA.
+ * @param {Object} payload - { clientId, targetDate, deductionAmount, deductionNote, collectedBy }
+ */
+export async function saveStatement(payload) {
+  const { data } = await apiClient.post('/soa/save', payload);
+  return data;
+}
+
+/**
+ * Fetch active authorized staff list for the "COLLECTED BY" dropdown.
+ */
+export async function getAuthorizedCollectors() {
+  const { data } = await apiClient.get('/soa/collectors');
+  return data;
+}
+
+/**
+ * Fetch list of active Thursday cycle dates that actually contain shipments.
+ * @returns {Promise<Array<{ isoDate: string, label: string }>>}
+ */
+export async function getActiveCollectionCycles() {
+  try {
+    const { data } = await apiClient.get('/collections/cycles');
+    if (Array.isArray(data) && data.length > 0) {
+      return data.map((isoDate) => {
+        const parts = isoDate.split('-');
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        return {
+          isoDate,
+          label: formatCycleDateRange(d),
+        };
+      });
+    }
+  } catch (err) {
+    console.warn('Failed to load active cycles from backend:', err?.message);
+  }
+  return [];
 }
