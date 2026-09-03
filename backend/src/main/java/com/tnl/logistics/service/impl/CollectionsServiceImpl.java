@@ -5,9 +5,11 @@ import com.tnl.logistics.dto.WeeklyCollectionsResponse;
 import com.tnl.logistics.model.Client;
 import com.tnl.logistics.model.Payment;
 import com.tnl.logistics.model.Shipment;
+import com.tnl.logistics.model.Soa;
 import com.tnl.logistics.repository.ClientRepository;
 import com.tnl.logistics.repository.PaymentRepository;
 import com.tnl.logistics.repository.ShipmentRepository;
+import com.tnl.logistics.repository.SoaRepository;
 import com.tnl.logistics.service.CollectionsService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,13 +29,16 @@ public class CollectionsServiceImpl implements CollectionsService {
     private final ClientRepository clientRepository;
     private final ShipmentRepository shipmentRepository;
     private final PaymentRepository paymentRepository;
+    private final SoaRepository soaRepository;
 
     public CollectionsServiceImpl(ClientRepository clientRepository,
                                   ShipmentRepository shipmentRepository,
-                                  PaymentRepository paymentRepository) {
+                                  PaymentRepository paymentRepository,
+                                  SoaRepository soaRepository) {
         this.clientRepository = clientRepository;
         this.shipmentRepository = shipmentRepository;
         this.paymentRepository = paymentRepository;
+        this.soaRepository = soaRepository;
     }
 
     @Override
@@ -80,18 +85,24 @@ public class CollectionsServiceImpl implements CollectionsService {
                 }
             }
 
+            Optional<Soa> soaOpt = soaRepository.findByClient_ClientIdAndStatementDate(clientId, targetThursday);
+            String statementId = soaOpt.map(Soa::getSoaNo).orElse(null);
             BigDecimal previousBalance = BigDecimal.ZERO;
-            BigDecimal deductions = BigDecimal.ZERO;
+            BigDecimal deductions = soaOpt.map(Soa::getDeductions).filter(Objects::nonNull).orElse(BigDecimal.ZERO);
             BigDecimal netAmountDue = currentCharges.add(previousBalance).subtract(paid).subtract(deductions);
             if (netAmountDue.compareTo(BigDecimal.ZERO) < 0) {
                 netAmountDue = BigDecimal.ZERO;
             }
 
-            String status = (unbilledCount > 0) ? "READY_FOR_SOA"
-                    : ((netAmountDue.compareTo(BigDecimal.ZERO) == 0 && shipmentsCount > 0) ? "SETTLED" : "SOA_GENERATED");
+            String status;
+            if (soaOpt.isPresent()) {
+                status = (netAmountDue.compareTo(BigDecimal.ZERO) == 0 && shipmentsCount > 0) ? "SETTLED" : "SOA_GENERATED";
+            } else {
+                status = (shipmentsCount > 0) ? "READY_FOR_SOA" : "NO_SHIPMENTS";
+            }
 
             // Only include clients with shipments or outstanding balances in this cycle
-            if (shipmentsCount > 0 || netAmountDue.compareTo(BigDecimal.ZERO) > 0) {
+            if (shipmentsCount > 0 || netAmountDue.compareTo(BigDecimal.ZERO) > 0 || soaOpt.isPresent()) {
                 totalDue = totalDue.add(currentCharges).add(previousBalance);
                 totalCollected = totalCollected.add(paid);
                 outstandingBalance = outstandingBalance.add(netAmountDue);
@@ -110,7 +121,7 @@ public class CollectionsServiceImpl implements CollectionsService {
                         netAmountDue,
                         netAmountDue,
                         status,
-                        null
+                        statementId
                 ));
             }
         }
@@ -127,6 +138,19 @@ public class CollectionsServiceImpl implements CollectionsService {
                 activeClientsCount,
                 items
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LocalDate> getActiveCycleThursdays() {
+        List<Shipment> shipments = shipmentRepository.findAll();
+        Set<LocalDate> activeThursdays = new TreeSet<>(Comparator.reverseOrder());
+        for (Shipment s : shipments) {
+            if (s.getDateRegistered() != null) {
+                activeThursdays.add(calculateActiveThursday(s.getDateRegistered().toLocalDate()));
+            }
+        }
+        return new ArrayList<>(activeThursdays);
     }
 
     private LocalDate calculateActiveThursday(LocalDate baseDate) {
