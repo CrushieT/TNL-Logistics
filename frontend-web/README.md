@@ -36,7 +36,8 @@ the API is wired up.
 frontend-web/
 ├── src/
 │   ├── app/                          # Expo Router file-based routes
-│   │   ├── _layout.js                # Root Stack navigator
+│   │   ├── _layout.js                # Root Stack navigator & route guard
+│   │   ├── login.js                  # Screen 01 Desktop Login with brand logo & rate limiting
 │   │   ├── index.js                  # Operations Dashboard
 │   │   ├── register.js               # Register Shipment (form + result view)
 │   │   ├── shipments/
@@ -100,3 +101,4 @@ Key choices lifted from the prototype:
 4. **Payments & Installments Ledger (Screen 18):** Payment recording with balance ceiling restriction, reference validation (Cash, GCash, Bank Transfer, Cheque), and compounding ledger audit.
 5. **Weekly Collections Consolidation (Screen 19):** Thursday consolidation dashboard, active cycle dropdown filters, and single & batch SOA generation triggers.
 6. **Statement of Account Document & Print (Screens 20, 22):** Multi-page A4 printable document with dynamic pagination, continuation headers, deduction adjustments, authorized collector selection, and isolated browser printing.
+7. **Authentication & Session Protection (Screen 01):** Desktop login with brand artwork, central route guarding with return URL redirection, in-memory rate limit lockout with live countdown, and sidebar user session controls.

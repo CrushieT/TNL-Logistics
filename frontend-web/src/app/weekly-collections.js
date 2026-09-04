@@ -3,7 +3,6 @@ import {
   View,
   Text,
   Pressable,
-  ScrollView,
   StyleSheet,
   ActivityIndicator,
   useWindowDimensions,
@@ -19,6 +18,7 @@ import {
   getActiveCollectionCycles,
   formatCurrency,
   SearchableClientDropdown,
+  CycleDropdown,
   WeeklyCollectionsTable,
   BatchSoaModal,
 } from '../features/collections';
@@ -245,7 +245,7 @@ export default function WeeklyCollectionsScreen() {
 
   return (
     <AppShell activeNav="Weekly Collections">
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
+      <View style={styles.container}>
         {/* Header Row: Eyebrow + Title on left, 3 Summary metric cards on right */}
         <View style={[styles.headerRow, isMobile && styles.headerRowMobile]}>
           <View style={styles.titleColumn}>
@@ -314,31 +314,13 @@ export default function WeeklyCollectionsScreen() {
           {/* Middle: Cycle Dropdown & Status Filter */}
           <View style={styles.filtersGroup}>
             {/* Thursday Cycle Dropdown */}
-            {Platform.OS === 'web' ? (
-              <select
-                value={selectedCycle}
-                onChange={(e) => setSelectedCycle(e.target.value)}
-                style={{
-                  backgroundColor: '#FAF9F5',
-                  border: `1px solid ${colors.border}`,
-                  borderRadius: 2,
-                  padding: '9px 12px',
-                  fontFamily: fonts.sans,
-                  fontSize: 13,
-                  fontWeight: '500',
-                  color: colors.ink,
-                  outline: 'none',
-                  minWidth: 200,
-                  height: 40,
-                }}
-              >
-                {cycles.map((c) => (
-                  <option key={c.isoDate} value={c.isoDate}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            ) : null}
+            <CycleDropdown
+              cycles={cycles}
+              selectedCycle={selectedCycle}
+              onSelectCycle={setSelectedCycle}
+              minWidth={280}
+              style={{ width: 280 }}
+            />
 
             {/* Status Filter */}
             {Platform.OS === 'web' ? (
@@ -386,7 +368,7 @@ export default function WeeklyCollectionsScreen() {
           loading={loading}
           onReviewClient={handleReviewClient}
         />
-      </ScrollView>
+      </View>
 
       {/* Batch SOA Modal */}
       <BatchSoaModal
@@ -401,8 +383,8 @@ export default function WeeklyCollectionsScreen() {
 }
 
 const styles = StyleSheet.create({
-  scrollContainer: {
-    padding: spacing.xl,
+  container: {
+    flex: 1,
     paddingBottom: 64,
   },
   headerRow: {

@@ -34,7 +34,8 @@ tnl-logistics/
 ├── frontend-web/                    # Admin Web Portal (React Native Web / Expo Router)
 │   ├── src/
 │   │   ├── app/                     # File-based routes
-│   │   │   ├── _layout.js           # Root Stack navigator
+│   │   │   ├── _layout.js           # Root Stack navigator & Central Route Guard
+│   │   │   ├── login.js             # Screen 01 Desktop Login with TC & CT branding
 │   │   │   ├── index.js             # Dashboard
 │   │   │   ├── register.js          # Register Shipment (form + result view)
 │   │   │   ├── shipments/           # Shipments list and detail views
@@ -48,10 +49,10 @@ tnl-logistics/
 │   │   │       └── print.js         # Screen 22 Dedicated isolated printable SOA document
 │   │   ├── components/              # Shared design system (common/ atoms, layout/ AppShell)
 │   │   ├── features/                # Domain feature modules (shipments, vehicles, clients, waybills, payments, collections)
-│   │   ├── services/api/            # Core infrastructure (client.js with JWT refresh, sseClient.js)
+│   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sseClient.js)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
 │   │   └── utils/                   # Pure utilities (qr.js in-memory vector QR encoder)
-│   ├── assets/                      # favicon.png
+│   ├── assets/                      # favicon.png, tracking-logo.png
 │   ├── app.json                     # Expo web configuration
 │   ├── package.json
 │   └── README.md

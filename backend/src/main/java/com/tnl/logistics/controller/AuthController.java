@@ -5,7 +5,10 @@ import com.tnl.logistics.dto.LoginRequest;
 import com.tnl.logistics.dto.LoginResponse;
 import com.tnl.logistics.dto.PasswordChangeRequest;
 import com.tnl.logistics.model.AppUser;
+import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.repository.AppUserRepository;
+import com.tnl.logistics.service.LoginRateLimiterService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,18 +27,36 @@ public class AuthController {
 
     private final AppUserRepository appUserRepository;
     private final BCryptPasswordEncoder passwordEncoder;
+    private final LoginRateLimiterService rateLimiterService;
 
-    public AuthController(AppUserRepository appUserRepository, BCryptPasswordEncoder passwordEncoder) {
+    public AuthController(
+            AppUserRepository appUserRepository,
+            BCryptPasswordEncoder passwordEncoder,
+            LoginRateLimiterService rateLimiterService) {
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
+        this.rateLimiterService = rateLimiterService;
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
+        String clientIp = extractClientIp(servletRequest);
+
+        if (rateLimiterService.isBlocked(clientIp)) {
+            long retryAfter = rateLimiterService.getRemainingBlockSeconds(clientIp);
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header("Retry-After", String.valueOf(retryAfter))
+                    .body(Map.of(
+                            "message", "Too many failed login attempts. Access is locked. Please try again in " + retryAfter + " seconds.",
+                            "retryAfterSeconds", retryAfter
+                    ));
+        }
+
         AppUser user = appUserRepository.findByUsername(request.getUsername())
                 .orElse(null);
 
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            rateLimiterService.recordFailure(clientIp);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("message", "Invalid username or password"));
         }
@@ -44,6 +65,13 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(Map.of("message", "Account is deactivated"));
         }
+
+        if (user.getRole() == UserRole.FIELD_STAFF) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Field staff accounts are restricted to the mobile portal."));
+        }
+
+        rateLimiterService.recordSuccess(clientIp);
 
         String token = JwtTokenProvider.generateToken(user.getUsername(), user.getRole().name());
 
@@ -56,6 +84,21 @@ public class AuthController {
         );
 
         return ResponseEntity.ok(response);
+    }
+
+    private String extractClientIp(HttpServletRequest request) {
+        if (request == null) {
+            return "127.0.0.1";
+        }
+        String xForwardedFor = request.getHeader("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.isBlank()) {
+            return xForwardedFor.split(",")[0].trim();
+        }
+        String xRealIp = request.getHeader("X-Real-IP");
+        if (xRealIp != null && !xRealIp.isBlank()) {
+            return xRealIp.trim();
+        }
+        return request.getRemoteAddr() != null ? request.getRemoteAddr() : "127.0.0.1";
     }
 
     @PostMapping("/password-change")
@@ -80,5 +123,26 @@ public class AuthController {
         appUserRepository.save(user);
 
         return ResponseEntity.ok(Map.of("message", "Password updated successfully"));
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<?> getCurrentUser() {
+        String username = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+
+        AppUser user = appUserRepository.findByUsername(username)
+                .orElse(null);
+
+        if (user == null || !user.getActive()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Session invalid or expired"));
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "userId", user.getUserId(),
+                "username", user.getUsername(),
+                "fullName", user.getFullName(),
+                "role", user.getRole().name(),
+                "mustChangePassword", user.getMustChangePassword()
+        ));
     }
 }

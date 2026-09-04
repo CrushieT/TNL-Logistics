@@ -1,4 +1,4 @@
-import { ensureAuthenticated } from './client';
+import { getToken, isAuthenticated } from './client';
 import { Platform } from 'react-native';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
@@ -11,11 +11,15 @@ export async function initRealtimeConnection() {
     return null;
   }
 
+  if (!isAuthenticated()) {
+    return null;
+  }
+
   if (globalEventSource && globalEventSource.readyState !== EventSource.CLOSED) {
     return globalEventSource;
   }
 
-  const token = await ensureAuthenticated();
+  const token = getToken();
   const url = `${API_BASE_URL}/events/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`;
 
   try {

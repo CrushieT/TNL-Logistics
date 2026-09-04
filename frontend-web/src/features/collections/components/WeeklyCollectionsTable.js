@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { colors, fonts, spacing, radius } from '../../../theme';
 import { formatCurrency } from '../utils/collectionsUtils';
 
@@ -36,8 +36,19 @@ export default function WeeklyCollectionsTable({
   if (loading) {
     return (
       <View style={styles.card}>
+        <View style={styles.tableHeader}>
+          <Text style={[styles.thCell, { flex: 2.2 }]}>CLIENT</Text>
+          <Text style={[styles.thCell, { flex: 1.2, textAlign: 'center' }]}>SHIPMENTS</Text>
+          <Text style={[styles.thCell, { flex: 1.2, textAlign: 'right' }]}>TOTAL CHARGES</Text>
+          <Text style={[styles.thCell, { flex: 1.2, textAlign: 'right' }]}>PAID</Text>
+          <Text style={[styles.thCell, { flex: 1.1, textAlign: 'right' }]}>DEDUCTIONS</Text>
+          <Text style={[styles.thCell, { flex: 1.3, textAlign: 'right' }]}>BALANCE</Text>
+          <Text style={[styles.thCell, { flex: 1.3, textAlign: 'center' }]}>STATUS</Text>
+          <Text style={[styles.thCell, { width: 170, textAlign: 'right', paddingRight: 10 }]}>ACTION</Text>
+        </View>
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading weekly collections...</Text>
+          <ActivityIndicator size="small" color={colors.ink} style={{ marginBottom: 10 }} />
+          <Text style={styles.loadingText}>Loading collection data...</Text>
         </View>
       </View>
     );
@@ -46,6 +57,16 @@ export default function WeeklyCollectionsTable({
   if (items.length === 0) {
     return (
       <View style={styles.card}>
+        <View style={styles.tableHeader}>
+          <Text style={[styles.thCell, { flex: 2.2 }]}>CLIENT</Text>
+          <Text style={[styles.thCell, { flex: 1.2, textAlign: 'center' }]}>SHIPMENTS</Text>
+          <Text style={[styles.thCell, { flex: 1.2, textAlign: 'right' }]}>TOTAL CHARGES</Text>
+          <Text style={[styles.thCell, { flex: 1.2, textAlign: 'right' }]}>PAID</Text>
+          <Text style={[styles.thCell, { flex: 1.1, textAlign: 'right' }]}>DEDUCTIONS</Text>
+          <Text style={[styles.thCell, { flex: 1.3, textAlign: 'right' }]}>BALANCE</Text>
+          <Text style={[styles.thCell, { flex: 1.3, textAlign: 'center' }]}>STATUS</Text>
+          <Text style={[styles.thCell, { width: 170, textAlign: 'right', paddingRight: 10 }]}>ACTION</Text>
+        </View>
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No clients found matching the search criteria.</Text>
           <Text style={styles.emptySubText}>
@@ -215,10 +236,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     overflow: 'hidden',
+    minHeight: 380,
     zIndex: 1,
     position: 'relative',
   },
   loadingContainer: {
+    minHeight: 280,
     paddingVertical: 36,
     alignItems: 'center',
     justifyContent: 'center',
@@ -229,6 +252,7 @@ const styles = StyleSheet.create({
     color: colors.inkSoft,
   },
   emptyContainer: {
+    minHeight: 280,
     paddingVertical: 36,
     paddingHorizontal: 20,
     alignItems: 'center',

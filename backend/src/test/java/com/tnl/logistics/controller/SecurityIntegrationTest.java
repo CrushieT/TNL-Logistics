@@ -7,6 +7,7 @@ import com.tnl.logistics.dto.PasswordChangeRequest;
 import com.tnl.logistics.model.AppUser;
 import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.repository.AppUserRepository;
+import com.tnl.logistics.service.LoginRateLimiterService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -47,6 +49,9 @@ public class SecurityIntegrationTest {
     private ObjectMapper objectMapper;
 
     @Autowired
+    private LoginRateLimiterService rateLimiterService;
+
+    @Autowired
     private com.tnl.logistics.repository.PaymentRepository paymentRepository;
 
     @Autowired
@@ -63,6 +68,7 @@ public class SecurityIntegrationTest {
 
     @BeforeEach
     public void setup() {
+        rateLimiterService.reset();
         waybillRepository.deleteAll();
         trackingEventRepository.deleteAll();
         paymentRepository.deleteAll();
@@ -132,5 +138,69 @@ public class SecurityIntegrationTest {
 
         LoginResponse newResponseDto = objectMapper.readValue(newLoginResult.getResponse().getContentAsString(), LoginResponse.class);
         assertFalse(newResponseDto.isMustChangePassword()); // Changed to false on successful update
+    }
+
+    @Test
+    public void testLoginRateLimiterBlocksAfterFiveFailures() throws Exception {
+        String testIp = "192.168.1.55";
+        LoginRequest badRequest = new LoginRequest("admin", "invalid_password");
+
+        // First 5 attempts fail with 401 Unauthorized
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            mockMvc.perform(post("/api/v1/auth/login")
+                            .header("X-Forwarded-For", testIp)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(badRequest)))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        // 6th attempt with valid credentials is blocked with 429 Too Many Requests
+        LoginRequest validRequest = new LoginRequest("admin", "admin123");
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header("X-Forwarded-For", testIp)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(validRequest)))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"));
+
+        // Different IP is not blocked and can authenticate successfully
+        String cleanIp = "192.168.1.99";
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header("X-Forwarded-For", cleanIp)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(validRequest)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    public void testLoginRateLimiterResetsOnSuccess() throws Exception {
+        String testIp = "10.0.0.88";
+        LoginRequest badRequest = new LoginRequest("admin", "wrong_credentials");
+        LoginRequest validRequest = new LoginRequest("admin", "admin123");
+
+        // 2 failed attempts
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            mockMvc.perform(post("/api/v1/auth/login")
+                            .header("X-Forwarded-For", testIp)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(badRequest)))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        // Successful login resets the counter for testIp
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header("X-Forwarded-For", testIp)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(validRequest)))
+                .andExpect(status().isOk());
+
+        // Subsequent 4 failed attempts should not trigger block (threshold is 5)
+        for (int attempt = 1; attempt <= 4; attempt++) {
+            mockMvc.perform(post("/api/v1/auth/login")
+                            .header("X-Forwarded-For", testIp)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(badRequest)))
+                    .andExpect(status().isUnauthorized());
+        }
     }
 }
