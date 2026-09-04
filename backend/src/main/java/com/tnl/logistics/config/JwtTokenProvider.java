@@ -17,6 +17,7 @@ public class JwtTokenProvider {
     private static final String SECRET = "your-super-secret-key-that-needs-to-be-at-least-256-bits-long-tnl-logistics";
     private static final long EXPIRATION_TIME_MS = 864000000; // 10 days
     private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final long SERVER_START_TIME_SECONDS = (System.currentTimeMillis() / 1000) - 1;
 
     public static String generateToken(String username, String role) {
         try {
@@ -63,6 +64,12 @@ public class JwtTokenProvider {
             Map<String, Object> claims = objectMapper.readValue(payloadJson, Map.class);
             Number exp = (Number) claims.get("exp");
             if (exp != null && exp.longValue() < System.currentTimeMillis() / 1000) {
+                return false;
+            }
+
+            // Invalidate tokens issued before this server instance started
+            Number iat = (Number) claims.get("iat");
+            if (iat != null && iat.longValue() < SERVER_START_TIME_SECONDS) {
                 return false;
             }
 
