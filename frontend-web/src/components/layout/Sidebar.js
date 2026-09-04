@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { colors, fonts, spacing, radius, type } from '../../theme';
+import { getCurrentUser, logout } from '../../services/api/client';
 
 const NAV_SECTIONS = [
   {
@@ -37,9 +38,25 @@ const NAV_SECTIONS = [
   },
 ];
 
-export default function Sidebar({ user = { name: 'Maria Santos', role: 'Administrator' } }) {
+export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } }) {
   const router = useRouter();
   const pathname = usePathname();
+
+  const currentUser = getCurrentUser();
+  const displayName = currentUser?.username || user?.name || 'Administrator';
+  const displayRole = currentUser?.role
+    ? currentUser.role.replace(/_/g, ' ')
+    : user?.role || 'Administrator';
+  const initials = displayName
+    .split(/[\s_-]+/)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  const handleSignOut = () => {
+    logout();
+  };
 
   return (
     <View style={styles.sidebar}>
@@ -95,17 +112,15 @@ export default function Sidebar({ user = { name: 'Maria Santos', role: 'Administ
       <View style={styles.footer}>
         <View style={styles.userRow}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {user.name.split(' ').map((n) => n[0]).join('')}
-            </Text>
+            <Text style={styles.avatarText}>{initials}</Text>
           </View>
           <View>
-            <Text style={styles.userName}>{user.name}</Text>
-            <Text style={styles.userRole}>{user.role}</Text>
+            <Text style={styles.userName}>{displayName}</Text>
+            <Text style={styles.userRole}>{displayRole}</Text>
           </View>
         </View>
-        <Pressable style={styles.switchBtn}>
-          <Text style={styles.switchBtnText}>SWITCH PLATFORM</Text>
+        <Pressable style={styles.signOutBtn} onPress={handleSignOut}>
+          <Text style={styles.signOutBtnText}>SIGN OUT</Text>
         </Pressable>
       </View>
     </View>
@@ -263,15 +278,16 @@ const styles = StyleSheet.create({
     color: colors.inkFaint,
     marginTop: 1,
   },
-  switchBtn: {
+  signOutBtn: {
     borderWidth: 1,
     borderColor: colors.borderStrong,
     borderRadius: radius.sm,
     paddingVertical: 8,
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
+    cursor: 'pointer',
   },
-  switchBtnText: {
+  signOutBtnText: {
     fontFamily: fonts.mono,
     fontSize: 11,
     fontWeight: '700',

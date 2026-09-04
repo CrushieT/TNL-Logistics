@@ -81,7 +81,7 @@ Unlike simplistic CRUD apps that conflate tracking and accounting into a single 
 | **Phase 2** | **Status Flow, Real-Time SSE, Fleet & Client Management** | `[COMPLETED]` | Sequential 5-state transition engine, live SSE stream, vehicle fleet CRUD (`VH-XXX`), client directory & profile view (`CL-XXX`), smart deletion, composite indexing, and batch aggregation. |
 | **Phase 3** | **Waybills & Freight Manifest Handover** | `[COMPLETED]` | `WYB-YYYY-XXXX` auto-numbering, 4-state lifecycle (`Generated` → `Sent to Hauler` → `Signed/Completed`), and print-ready A4 3rd-party hauler manifest. |
 | **Phase 4** | **Billing, Collections & Statement of Account** | `[COMPLETED]` | Payment ledger (`/payments`), Thursday weekly collections consolidation (`/weekly-collections`), `SOA-YYYY-XXX-WXX` multi-page statement preview (`/statements`), isolated print architecture (`/statements/print`), deduction management, and dynamic active cycle filtering. |
-| **Phase 5** | **Web Console Administration & Reports** | `[UPCOMING]` | Live operational dashboard metrics, company-wide audit tracking logs stream, staff management, and exportable reports. |
+| **Phase 5** | **Web Console Administration & Reports** | `[IN PROGRESS]` | Desktop login with branded artwork, route guarding, and in-memory rate limiting (`[COMPLETED]`). Upcoming: Live operational dashboard metrics, audit tracking logs stream, staff management, and reports. |
 | **Phase 6** | **Role-Aware Mobile Courier Portal** | `[UPCOMING]` | Mobile PIN auth with role branching (scan-only field staff vs authorized office mobile), camera QR scanner, and Bluetooth thermal printer integration. |
 
 ---
@@ -148,7 +148,7 @@ When field staff scan a parcel with their phone, an append-only event is committ
 
 | Endpoint | Method | Role | Description |
 | :--- | :---: | :---: | :--- |
-| `/api/v1/auth/login` | `POST` | Public | Authenticate user and receive stateless JWT token |
+| `/api/v1/auth/login` | `POST` | Public | Authenticate user with in-memory rate limiting (5 attempts/60s) and receive JWT |
 | `/api/v1/shipments` | `POST` | Office/Admin | Register shipment with parcels, pricing, and QR codes |
 | `/api/v1/shipments` | `GET` | All Staff | Paginated shipments search with status & payment filters |
 | `/api/v1/shipments/{id}` | `GET` | All Staff | Detailed shipment view with billable weight & dimension specs |
@@ -194,7 +194,7 @@ docker-compose up -d mysql
 cd backend
 mvn spring-boot:run
 ```
-*API will run at `http://localhost:8080` (Flyway auto-runs all migrations `V1` to `V8` on startup).*
+*API will run at `http://localhost:8080` (Flyway auto-runs all migrations `V1` to `V16` on startup).*
 
 ### 2. Start the Admin Web Dashboard
 ```bash
@@ -209,7 +209,7 @@ npx expo start --web
 cd backend
 mvn test
 ```
-*Runs all 12 unit, repository, security, and SSE integration tests.*
+*Runs all 21 unit, repository, security, and SSE integration tests.*
 
 ---
 

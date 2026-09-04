@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import AppShell from '../components/layout/AppShell';
 import {
   SearchableClientDropdown,
+  CycleDropdown,
   DeductionsInputCard,
   StatementPaperCard,
   getWeeklyCollections,
@@ -26,7 +27,6 @@ export default function StatementsScreen() {
 
   const [cycleOptions, setCycleOptions] = useState([]);
   const [selectedCycle, setSelectedCycle] = useState(searchParams.cycle || '');
-  const [cycleDropdownOpen, setCycleDropdownOpen] = useState(false);
 
   // Load only active cycles containing registered shipments
   useEffect(() => {
@@ -196,8 +196,6 @@ export default function StatementsScreen() {
     }
   };
 
-  const selectedCycleObj = cycleOptions.find((c) => c.isoDate === selectedCycle) || cycleOptions[0];
-
   return (
     <AppShell>
       {/* Print Media CSS Injection for pristine A4 document export */}
@@ -293,45 +291,11 @@ export default function StatementsScreen() {
           {/* Thursday Cycle Dropdown */}
           <View style={styles.cycleDropdownWrap}>
             <Text style={styles.selectorLabel}>COLLECTION CYCLE</Text>
-            <View style={styles.relativeWrap}>
-              <TouchableOpacity
-                style={styles.cycleButton}
-                onPress={() => setCycleDropdownOpen((prev) => !prev)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.cycleButtonText}>
-                  {selectedCycleObj?.label || selectedCycle}
-                </Text>
-                <Text style={styles.dropdownCaret}>▾</Text>
-              </TouchableOpacity>
-
-              {cycleDropdownOpen && (
-                <View style={styles.cycleDropdownMenu}>
-                  {cycleOptions.map((opt) => (
-                    <TouchableOpacity
-                      key={opt.isoDate}
-                      style={[
-                        styles.cycleMenuItem,
-                        opt.isoDate === selectedCycle && styles.cycleMenuItemSelected,
-                      ]}
-                      onPress={() => {
-                        setSelectedCycle(opt.isoDate);
-                        setCycleDropdownOpen(false);
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.cycleMenuText,
-                          opt.isoDate === selectedCycle && styles.cycleMenuTextSelected,
-                        ]}
-                      >
-                        {opt.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </View>
+            <CycleDropdown
+              cycles={cycleOptions}
+              selectedCycle={selectedCycle}
+              onSelectCycle={setSelectedCycle}
+            />
           </View>
         </View>
 
@@ -494,65 +458,6 @@ const styles = StyleSheet.create({
     color: colors.inkFaint,
     letterSpacing: 0.8,
     marginBottom: 4,
-  },
-  relativeWrap: {
-    position: 'relative',
-  },
-  cycleButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  cycleButtonText: {
-    fontFamily: fonts.mono,
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.ink,
-  },
-  dropdownCaret: {
-    fontFamily: fonts.mono,
-    fontSize: 12,
-    color: colors.inkMuted,
-  },
-  cycleDropdownMenu: {
-    position: 'absolute',
-    top: 44,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 8,
-    zIndex: 100,
-  },
-  cycleMenuItem: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-  },
-  cycleMenuItemSelected: {
-    backgroundColor: colors.canvas,
-  },
-  cycleMenuText: {
-    fontFamily: fonts.mono,
-    fontSize: 12,
-    color: colors.ink,
-  },
-  cycleMenuTextSelected: {
-    fontWeight: '700',
-    color: '#111110',
   },
 
   deductionsBarWrap: {

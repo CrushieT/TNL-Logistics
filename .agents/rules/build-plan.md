@@ -189,10 +189,15 @@
 ## Phase 5 — Web Console: Dashboard, Reports & Administration (Desktop Screens 01, 02, 17, 26–28)
 *Operational dashboards and administrative controls.*
 
-**5.1 — Desktop Login & Route Protection (Screen 01)** — **[UPCOMING]**
-- Production Login screen with username/password authentication, JWT storage, and session logout in Sidebar.
+**5.1 — Desktop Login & Route Protection (Screen 01)** — **[COMPLETED]**
+- Standalone production login screen with `TC & CT INTEGRATED LOGISTICS` artwork branding (`/login`).
+- Username/password authentication, JWT storage, and `FIELD_STAFF` desktop blocking.
+- Route guarding across all web console paths with return URL redirection (`?redirect=<path>`).
+- Dynamic sidebar session display with user avatar initials, role, and functional `SIGN OUT` action.
+- Responsive desktop card layout (`maxWidth: 500px`), optimized transparent brand logo, and viewport height adaptations.
+- Built-in in-memory login rate limiter (5 failed attempts per 60s, 60s lockout) with on-demand lazy eviction, HTTP 429 `Retry-After`, and reactive frontend countdown lock.
 
-**5.2 — Dashboard Live Metrics (Screen 02)**
+**5.2 — Dashboard Live Metrics (Screen 02)** — **[UPCOMING]**
 - Live operational cards: Today's Shipments, Total Parcels, Pending Delivery, Active Fleet count, and Weekly Revenue.
 
 **5.3 — Global Tracking Logs Audit Feed (Screen 17)**
