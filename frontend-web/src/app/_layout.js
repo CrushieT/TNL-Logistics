@@ -1,15 +1,18 @@
-import React, { useEffect, useState } from 'react';
-import { Stack, usePathname, useRouter } from 'expo-router';
-import { View, ActivityIndicator, Platform } from 'react-native';
+import React, { useEffect } from 'react';
+import { Stack, usePathname, useRouter, useRootNavigationState } from 'expo-router';
 import { isAuthenticated, validateSession } from '../services/api/client';
-import { colors } from '../theme';
 
 export default function RootLayout() {
   const pathname = usePathname();
   const router = useRouter();
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const navigationState = useRootNavigationState();
 
   useEffect(() => {
+    // Ensure the root navigator is mounted before attempting navigation
+    if (!navigationState?.key) {
+      return;
+    }
+
     let isCancelled = false;
 
     async function verifyAuth() {
@@ -22,7 +25,6 @@ export default function RootLayout() {
             pathname && pathname !== '/' ? `?redirect=${encodeURIComponent(pathname)}` : '';
           router.replace(`/login${redirectQuery}`);
         }
-        if (!isCancelled) setIsCheckingAuth(false);
         return;
       }
 
@@ -39,7 +41,6 @@ export default function RootLayout() {
       } else if (isLoginPage) {
         router.replace('/');
       }
-      setIsCheckingAuth(false);
     }
 
     verifyAuth();
@@ -47,26 +48,7 @@ export default function RootLayout() {
     return () => {
       isCancelled = true;
     };
-  }, [pathname]);
-
-  if (isCheckingAuth && Platform.OS === 'web') {
-    const authenticated = isAuthenticated();
-    const isLoginPage = pathname === '/login';
-    if (!authenticated && !isLoginPage) {
-      return (
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: colors.canvas,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <ActivityIndicator size="large" color={colors.accent} />
-        </View>
-      );
-    }
-  }
+  }, [navigationState?.key, pathname]);
 
   return (
     <Stack
