@@ -35,6 +35,7 @@ tnl-logistics/
 │   ├── src/
 │   │   ├── app/                     # File-based routes
 │   │   │   ├── _layout.js           # Root Stack navigator & Central Route Guard
+│   │   │   ├── +not-found.js        # Catch-all 404 Route Not Found operations card
 │   │   │   ├── login.js             # Screen 01 Desktop Login with TC & CT branding
 │   │   │   ├── index.js             # Dashboard
 │   │   │   ├── register.js          # Register Shipment (form + result view)

@@ -196,6 +196,7 @@
 - Dynamic sidebar session display with user avatar initials, role, and functional `SIGN OUT` action.
 - Responsive desktop card layout (`maxWidth: 500px`), optimized transparent brand logo, and viewport height adaptations.
 - Built-in in-memory login rate limiter (5 failed attempts per 60s, 60s lockout) with on-demand lazy eviction, HTTP 429 `Retry-After`, and reactive frontend countdown lock.
+- Adaptive `+not-found.js` catch-all route (inside AppShell for authenticated operators, standalone for visitors) and RBAC route guarding for `/users` and `/settings`.
 
 **5.2 — Dashboard Live Metrics (Screen 02)** — **[UPCOMING]**
 - Live operational cards: Today's Shipments, Total Parcels, Pending Delivery, Active Fleet count, and Weekly Revenue.

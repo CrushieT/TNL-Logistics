@@ -58,6 +58,10 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
     logout();
   };
 
+  const visibleSections = NAV_SECTIONS.filter(
+    (section) => section.id !== 'admin' || currentUser?.role === 'ADMIN'
+  );
+
   return (
     <View style={styles.sidebar}>
       <View>
@@ -75,7 +79,7 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
         </View>
 
         {/* Navigation Sections */}
-        {NAV_SECTIONS.map((section, sIdx) => (
+        {visibleSections.map((section, sIdx) => (
           <View
             key={section.id}
             style={[

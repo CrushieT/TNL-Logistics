@@ -37,6 +37,7 @@ frontend-web/
 ├── src/
 │   ├── app/                          # Expo Router file-based routes
 │   │   ├── _layout.js                # Root Stack navigator & route guard
+│   │   ├── +not-found.js             # Catch-all 404 Route Not Found operations card
 │   │   ├── login.js                  # Screen 01 Desktop Login with brand logo & rate limiting
 │   │   ├── index.js                  # Operations Dashboard
 │   │   ├── register.js               # Register Shipment (form + result view)
