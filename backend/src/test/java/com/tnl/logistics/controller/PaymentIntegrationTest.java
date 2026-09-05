@@ -252,4 +252,47 @@ public class PaymentIntegrationTest {
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
+    void testPaymentStaffAttributionWithOfficeUser() throws Exception {
+        // Register an unpaid shipment
+        ShipmentRegistrationRequest shipReq = new ShipmentRegistrationRequest();
+        shipReq.setClientId("CL-001");
+        shipReq.setRecipientName("Attribution Test Consignee");
+        shipReq.setRecipientContact("0917-123-4567");
+        shipReq.setRecipientAddress("Baguio City");
+        shipReq.setRoute("Manila -> Baguio");
+        shipReq.setDescription("Attribution Goods");
+        shipReq.setQuantity(1);
+        shipReq.setChargeModel(ChargeModel.FLAT);
+        shipReq.setShippingFee(new BigDecimal("600.00"));
+        shipReq.setOtherCharges(BigDecimal.ZERO);
+        shipReq.setPaidAtRegistration(false);
+        shipReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
+
+        MvcResult res = mockMvc.perform(post("/api/v1/shipments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(shipReq)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        ShipmentResponse created = objectMapper.readValue(res.getResponse().getContentAsString(), ShipmentResponse.class);
+
+        // Record payment authenticated as "office"
+        PaymentRecordRequest payReq = new PaymentRecordRequest(
+                created.getShipmentId(),
+                new BigDecimal("200.00"),
+                PaymentMethod.CASH,
+                null,
+                LocalDate.now(),
+                "Office staff recorded cash"
+        );
+
+        mockMvc.perform(post("/api/v1/payments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(payReq)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.recordedByStaff").value("Office Staff"));
+    }
 }

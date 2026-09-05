@@ -199,22 +199,30 @@ public class ShipmentServiceImpl implements ShipmentService {
     @Transactional(readOnly = true)
     public Page<ShipmentSummaryResponse> getShipments(String search, String status, String paymentStatus, Pageable pageable) {
         String cleanSearch = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
-        Page<Shipment> shipmentsPage = shipmentRepository.searchShipments(cleanSearch, pageable);
+        String cleanStatus = normalizeStatus(status);
+        String cleanPayment = normalizePayment(paymentStatus);
+
+        Page<Shipment> shipmentsPage = shipmentRepository.searchShipmentsWithFilters(cleanSearch, cleanStatus, cleanPayment, pageable);
 
         List<ShipmentSummaryResponse> summaries = shipmentsPage.getContent().stream()
                 .map(this::mapToSummaryResponse)
-                .filter(s -> {
-                    if (status != null && !status.equalsIgnoreCase("ALL")) {
-                        if (!s.getStatus().equalsIgnoreCase(status)) return false;
-                    }
-                    if (paymentStatus != null && !paymentStatus.equalsIgnoreCase("ALL")) {
-                        if (!s.getPayment().equalsIgnoreCase(paymentStatus)) return false;
-                    }
-                    return true;
-                })
                 .collect(Collectors.toList());
 
         return new PageImpl<>(summaries, pageable, shipmentsPage.getTotalElements());
+    }
+
+    private String normalizeStatus(String status) {
+        if (status == null || status.trim().isEmpty() || status.equalsIgnoreCase("ALL")) {
+            return null;
+        }
+        return status.trim().toUpperCase().replace(" ", "_");
+    }
+
+    private String normalizePayment(String paymentStatus) {
+        if (paymentStatus == null || paymentStatus.trim().isEmpty() || paymentStatus.equalsIgnoreCase("ALL")) {
+            return null;
+        }
+        return paymentStatus.trim().toUpperCase();
     }
 
     @Override

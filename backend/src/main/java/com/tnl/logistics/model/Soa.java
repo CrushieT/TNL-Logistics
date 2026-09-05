@@ -13,7 +13,7 @@ public class Soa {
     private String soaNo;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "batch_id", nullable = false)
+    @JoinColumn(name = "batch_id", nullable = true)
     private SoaBatch batch;
 
     @ManyToOne(fetch = FetchType.LAZY)

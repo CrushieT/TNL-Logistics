@@ -60,3 +60,5 @@ frontend-mobile/.expo-shared/
 .docs/
 *.pdf
 .agents/rules/answer.md
+.audit/
+

@@ -1,9 +1,12 @@
 package com.tnl.logistics.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
@@ -12,12 +15,21 @@ import java.util.Map;
  * Standard JDK-based JWT Token Provider.
  * Generates and validates tokens using HMAC-SHA256 signature verification.
  */
+@Component
 public class JwtTokenProvider {
 
-    private static final String SECRET = "your-super-secret-key-that-needs-to-be-at-least-256-bits-long-tnl-logistics";
+    private static String secret = "your-super-secret-key-that-needs-to-be-at-least-256-bits-long-tnl-logistics";
     private static final long EXPIRATION_TIME_MS = 864000000; // 10 days
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final long SERVER_START_TIME_SECONDS = (System.currentTimeMillis() / 1000) - 1;
+
+    @Value("${jwt.secret:${JWT_SECRET:your-super-secret-key-that-needs-to-be-at-least-256-bits-long-tnl-logistics}}")
+    public void setSecret(String secretKey) {
+        if (secretKey == null || secretKey.trim().getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalArgumentException("JWT secret must be configured and at least 256 bits (32 bytes) long.");
+        }
+        JwtTokenProvider.secret = secretKey.trim();
+    }
 
     public static String generateToken(String username, String role) {
         try {
@@ -38,7 +50,7 @@ public class JwtTokenProvider {
             String encodedPayload = Base64.getUrlEncoder().withoutPadding().encodeToString(payloadJson.getBytes(StandardCharsets.UTF_8));
 
             String signatureInput = encodedHeader + "." + encodedPayload;
-            String signature = sign(signatureInput, SECRET);
+            String signature = sign(signatureInput, secret);
 
             return signatureInput + "." + signature;
         } catch (Exception e) {
@@ -55,8 +67,12 @@ public class JwtTokenProvider {
             String payload = parts[1];
             String signature = parts[2];
 
-            String expectedSignature = sign(header + "." + payload, SECRET);
-            if (!expectedSignature.equals(signature)) return false;
+            String expectedSignature = sign(header + "." + payload, secret);
+            if (!MessageDigest.isEqual(
+                    expectedSignature.getBytes(StandardCharsets.UTF_8),
+                    signature.getBytes(StandardCharsets.UTF_8))) {
+                return false;
+            }
 
             // Check expiration
             String payloadJson = new String(Base64.getUrlDecoder().decode(payload), StandardCharsets.UTF_8);
