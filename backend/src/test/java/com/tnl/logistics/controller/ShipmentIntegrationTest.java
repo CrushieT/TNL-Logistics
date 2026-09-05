@@ -332,4 +332,164 @@ public class ShipmentIntegrationTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    public void testShipmentFilteredPagination() throws Exception {
+        // Shipment 1: Paid, Registered
+        ShipmentRegistrationRequest req1 = new ShipmentRegistrationRequest();
+        req1.setClientId("CL-001");
+        req1.setRecipientName("Alpha Recipient");
+        req1.setRecipientAddress("Baguio");
+        req1.setRecipientContact("09180000001");
+        req1.setQuantity(1);
+        req1.setChargeModel(ChargeModel.FLAT);
+        req1.setShippingFee(new BigDecimal("100.00"));
+        req1.setPaidAtRegistration(true);
+        req1.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        req1.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
+
+        MvcResult res1 = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req1)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        ShipmentResponse s1 = objectMapper.readValue(res1.getResponse().getContentAsString(), ShipmentResponse.class);
+
+        // Shipment 2: Unpaid, Loaded on Truck
+        ShipmentRegistrationRequest req2 = new ShipmentRegistrationRequest();
+        req2.setClientId("CL-001");
+        req2.setRecipientName("Beta Recipient");
+        req2.setRecipientAddress("La Trinidad");
+        req2.setRecipientContact("09180000002");
+        req2.setQuantity(1);
+        req2.setChargeModel(ChargeModel.FLAT);
+        req2.setShippingFee(new BigDecimal("200.00"));
+        req2.setPaidAtRegistration(false);
+        req2.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        req2.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
+
+        MvcResult res2 = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req2)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        ShipmentResponse s2 = objectMapper.readValue(res2.getResponse().getContentAsString(), ShipmentResponse.class);
+
+        ParcelUnit u2 = parcelUnitRepository.findById(s2.getTrackingIds().get(0)).orElseThrow();
+        u2.setCurrentStatus(ParcelStatus.LOADED_ON_TRUCK);
+        parcelUnitRepository.saveAndFlush(u2);
+
+        // Shipment 3: Partial, Completed
+        ShipmentRegistrationRequest req3 = new ShipmentRegistrationRequest();
+        req3.setClientId("CL-001");
+        req3.setRecipientName("Gamma Recipient");
+        req3.setRecipientAddress("Itogon");
+        req3.setRecipientContact("09180000003");
+        req3.setQuantity(1);
+        req3.setChargeModel(ChargeModel.FLAT);
+        req3.setShippingFee(new BigDecimal("300.00"));
+        req3.setPaidAtRegistration(false);
+        req3.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        req3.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
+
+        MvcResult res3 = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req3)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        ShipmentResponse s3 = objectMapper.readValue(res3.getResponse().getContentAsString(), ShipmentResponse.class);
+
+        Shipment shp3 = shipmentRepository.findById(s3.getShipmentId()).orElseThrow();
+        Payment p3 = new Payment(shp3, new BigDecimal("50.00"), PaymentMethod.GCASH, LocalDate.now());
+        paymentRepository.saveAndFlush(p3);
+
+        ParcelUnit u3 = parcelUnitRepository.findById(s3.getTrackingIds().get(0)).orElseThrow();
+        u3.setCurrentStatus(ParcelStatus.COMPLETED);
+        parcelUnitRepository.saveAndFlush(u3);
+
+        // 1. Verify Unfiltered pagination (totalElements = 3, size = 2 -> page 0 has 2, totalElements = 3)
+        MvcResult pageResult = mockMvc.perform(get("/api/v1/shipments?page=0&size=2")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode pageJson = objectMapper.readTree(pageResult.getResponse().getContentAsString());
+        assertEquals(3, getTotalElements(pageJson));
+        assertEquals(2, pageJson.get("content").size());
+
+        // 2. Filter by paymentStatus = "Paid"
+        MvcResult paidResult = mockMvc.perform(get("/api/v1/shipments?paymentStatus=Paid")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode paidJson = objectMapper.readTree(paidResult.getResponse().getContentAsString());
+        assertEquals(1, getTotalElements(paidJson));
+        assertEquals(s1.getShipmentId(), paidJson.get("content").get(0).get("shipmentId").asText());
+
+        // 3. Filter by paymentStatus = "Unpaid"
+        MvcResult unpaidResult = mockMvc.perform(get("/api/v1/shipments?paymentStatus=Unpaid")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode unpaidJson = objectMapper.readTree(unpaidResult.getResponse().getContentAsString());
+        assertEquals(1, getTotalElements(unpaidJson));
+        assertEquals(s2.getShipmentId(), unpaidJson.get("content").get(0).get("shipmentId").asText());
+
+        // 4. Filter by paymentStatus = "Partial"
+        MvcResult partialResult = mockMvc.perform(get("/api/v1/shipments?paymentStatus=Partial")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode partialJson = objectMapper.readTree(partialResult.getResponse().getContentAsString());
+        assertEquals(1, getTotalElements(partialJson));
+        assertEquals(s3.getShipmentId(), partialJson.get("content").get(0).get("shipmentId").asText());
+
+        // 5. Filter by status = "Loaded on Truck"
+        MvcResult truckResult = mockMvc.perform(get("/api/v1/shipments?status=Loaded on Truck")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode truckJson = objectMapper.readTree(truckResult.getResponse().getContentAsString());
+        assertEquals(1, getTotalElements(truckJson));
+        assertEquals(s2.getShipmentId(), truckJson.get("content").get(0).get("shipmentId").asText());
+
+        // 6. Filter by status = "Completed"
+        MvcResult compResult = mockMvc.perform(get("/api/v1/shipments?status=Completed")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode compJson = objectMapper.readTree(compResult.getResponse().getContentAsString());
+        assertEquals(1, getTotalElements(compJson));
+        assertEquals(s3.getShipmentId(), compJson.get("content").get(0).get("shipmentId").asText());
+
+        // 7. Combined filter: status = "Loaded on Truck" & paymentStatus = "Unpaid"
+        MvcResult combResult = mockMvc.perform(get("/api/v1/shipments?status=Loaded on Truck&paymentStatus=Unpaid")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode combJson = objectMapper.readTree(combResult.getResponse().getContentAsString());
+        assertEquals(1, getTotalElements(combJson));
+        assertEquals(s2.getShipmentId(), combJson.get("content").get(0).get("shipmentId").asText());
+
+        // 8. Non-matching combination: status = "Completed" & paymentStatus = "Unpaid" -> 0 results
+        MvcResult noMatchResult = mockMvc.perform(get("/api/v1/shipments?status=Completed&paymentStatus=Unpaid")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode noMatchJson = objectMapper.readTree(noMatchResult.getResponse().getContentAsString());
+        assertEquals(0, getTotalElements(noMatchJson));
+        assertEquals(0, noMatchJson.get("content").size());
+    }
+
+    private int getTotalElements(JsonNode jsonNode) {
+        if (jsonNode.has("page") && jsonNode.get("page").has("totalElements")) {
+            return jsonNode.get("page").get("totalElements").asInt();
+        }
+        if (jsonNode.has("totalElements")) {
+            return jsonNode.get("totalElements").asInt();
+        }
+        return 0;
+    }
 }
