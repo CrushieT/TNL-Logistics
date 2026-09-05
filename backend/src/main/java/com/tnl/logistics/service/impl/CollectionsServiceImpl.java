@@ -143,11 +143,11 @@ public class CollectionsServiceImpl implements CollectionsService {
     @Override
     @Transactional(readOnly = true)
     public List<LocalDate> getActiveCycleThursdays() {
-        List<Shipment> shipments = shipmentRepository.findAll();
+        List<LocalDate> registrationDates = shipmentRepository.findDistinctRegistrationDates();
         Set<LocalDate> activeThursdays = new TreeSet<>(Comparator.reverseOrder());
-        for (Shipment s : shipments) {
-            if (s.getDateRegistered() != null) {
-                activeThursdays.add(calculateActiveThursday(s.getDateRegistered().toLocalDate()));
+        for (LocalDate date : registrationDates) {
+            if (date != null) {
+                activeThursdays.add(calculateActiveThursday(date));
             }
         }
         return new ArrayList<>(activeThursdays);

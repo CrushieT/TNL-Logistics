@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -89,5 +90,8 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
     List<Shipment> findByDateRegisteredBetweenOrderByDateRegisteredDesc(java.time.LocalDateTime start, java.time.LocalDateTime end);
 
     List<Shipment> findByClient_ClientIdAndDateRegisteredBetween(String clientId, java.time.LocalDateTime start, java.time.LocalDateTime end);
+
+    @Query("SELECT DISTINCT CAST(s.dateRegistered AS LocalDate) FROM Shipment s WHERE s.dateRegistered IS NOT NULL")
+    List<LocalDate> findDistinctRegistrationDates();
 }
 

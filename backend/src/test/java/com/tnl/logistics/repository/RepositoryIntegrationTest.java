@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -85,5 +86,11 @@ public class RepositoryIntegrationTest {
         Payment payment = new Payment(shipment, new BigDecimal("100.00"), PaymentMethod.CASH, LocalDate.now());
         paymentRepository.save(payment);
         assertNotNull(payment.getPaymentId());
+    }
+
+    @Test
+    public void testFindDistinctRegistrationDates() {
+        List<LocalDate> dates = shipmentRepository.findDistinctRegistrationDates();
+        assertNotNull(dates);
     }
 }
