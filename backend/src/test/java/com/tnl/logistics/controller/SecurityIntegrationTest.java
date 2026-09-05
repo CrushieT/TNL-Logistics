@@ -148,7 +148,7 @@ public class SecurityIntegrationTest {
         // First 5 attempts fail with 401 Unauthorized
         for (int attempt = 1; attempt <= 5; attempt++) {
             mockMvc.perform(post("/api/v1/auth/login")
-                            .header("X-Forwarded-For", testIp)
+                            .with(req -> { req.setRemoteAddr(testIp); return req; })
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(badRequest)))
                     .andExpect(status().isUnauthorized());
@@ -157,7 +157,7 @@ public class SecurityIntegrationTest {
         // 6th attempt with valid credentials is blocked with 429 Too Many Requests
         LoginRequest validRequest = new LoginRequest("admin", "admin123");
         mockMvc.perform(post("/api/v1/auth/login")
-                        .header("X-Forwarded-For", testIp)
+                        .with(req -> { req.setRemoteAddr(testIp); return req; })
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(validRequest)))
                 .andExpect(status().isTooManyRequests())
@@ -166,7 +166,7 @@ public class SecurityIntegrationTest {
         // Different IP is not blocked and can authenticate successfully
         String cleanIp = "192.168.1.99";
         mockMvc.perform(post("/api/v1/auth/login")
-                        .header("X-Forwarded-For", cleanIp)
+                        .with(req -> { req.setRemoteAddr(cleanIp); return req; })
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(validRequest)))
                 .andExpect(status().isOk());
@@ -181,7 +181,7 @@ public class SecurityIntegrationTest {
         // 2 failed attempts
         for (int attempt = 1; attempt <= 2; attempt++) {
             mockMvc.perform(post("/api/v1/auth/login")
-                            .header("X-Forwarded-For", testIp)
+                            .with(req -> { req.setRemoteAddr(testIp); return req; })
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(badRequest)))
                     .andExpect(status().isUnauthorized());
@@ -189,7 +189,7 @@ public class SecurityIntegrationTest {
 
         // Successful login resets the counter for testIp
         mockMvc.perform(post("/api/v1/auth/login")
-                        .header("X-Forwarded-For", testIp)
+                        .with(req -> { req.setRemoteAddr(testIp); return req; })
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(validRequest)))
                 .andExpect(status().isOk());
@@ -197,10 +197,45 @@ public class SecurityIntegrationTest {
         // Subsequent 4 failed attempts should not trigger block (threshold is 5)
         for (int attempt = 1; attempt <= 4; attempt++) {
             mockMvc.perform(post("/api/v1/auth/login")
-                            .header("X-Forwarded-For", testIp)
+                            .with(req -> { req.setRemoteAddr(testIp); return req; })
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(badRequest)))
                     .andExpect(status().isUnauthorized());
         }
+    }
+
+    @Test
+    public void testSpoofedForwardedHeaderDoesNotBypassRateLimiter() throws Exception {
+        String realIp = "192.168.1.55";
+        LoginRequest badRequest = new LoginRequest("admin", "invalid_password");
+
+        // 5 failed attempts from realIp, each sending a spoofed/randomized X-Forwarded-For header
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            mockMvc.perform(post("/api/v1/auth/login")
+                            .with(req -> { req.setRemoteAddr(realIp); return req; })
+                            .header("X-Forwarded-For", "10.0.0." + attempt)
+                            .header("X-Real-IP", "172.16.0." + attempt)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(badRequest)))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        // 6th attempt from realIp with valid credentials is blocked because rate limiter tracked realIp
+        LoginRequest validRequest = new LoginRequest("admin", "admin123");
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .with(req -> { req.setRemoteAddr(realIp); return req; })
+                        .header("X-Forwarded-For", "10.0.0.99")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(validRequest)))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"));
+
+        // Different real socket IP is not blocked
+        String otherRealIp = "192.168.1.77";
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .with(req -> { req.setRemoteAddr(otherRealIp); return req; })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(validRequest)))
+                .andExpect(status().isOk());
     }
 }
