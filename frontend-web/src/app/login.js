@@ -12,7 +12,7 @@ import {
   useWindowDimensions,
   Platform,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useRootNavigationState } from 'expo-router';
 import { colors, fonts, spacing, radius } from '../theme';
 import { login, isAuthenticated } from '../services/api/client';
 
@@ -21,6 +21,7 @@ export default function LoginScreen() {
   const searchParams = useLocalSearchParams();
   const redirectPath = searchParams?.redirect || '/';
   const { width, height } = useWindowDimensions();
+  const navigationState = useRootNavigationState();
 
   const isSmallScreen = width < 480;
   const isCompactHeight = height < 640;
@@ -32,10 +33,18 @@ export default function LoginScreen() {
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
 
   useEffect(() => {
+    // Prevent calling router.replace before root navigator has mounted
+    if (!navigationState?.key) return;
+
     if (isAuthenticated()) {
       router.replace(redirectPath);
     }
-  }, [redirectPath, router]);
+  }, [navigationState?.key, redirectPath, router]);
+
+  // If already authenticated, do not render login form while redirecting
+  if (isAuthenticated()) {
+    return <View style={{ flex: 1, backgroundColor: colors.canvas }} />;
+  }
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;

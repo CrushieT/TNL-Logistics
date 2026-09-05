@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
 import { Stack, usePathname, useRouter, useRootNavigationState } from 'expo-router';
-import { isAuthenticated, validateSession } from '../services/api/client';
+import { isAuthenticated, validateSession, getCurrentUser } from '../services/api/client';
+
+const ADMIN_ONLY_ROUTES = ['/users', '/settings'];
 
 export default function RootLayout() {
   const pathname = usePathname();
@@ -28,17 +30,30 @@ export default function RootLayout() {
         return;
       }
 
+      // Logged-in operators navigating to /login are bounced to the dashboard
+      if (isLoginPage) {
+        router.replace('/');
+        return;
+      }
+
       // Validate token against backend to handle server restarts
       const isValid = await validateSession();
       if (isCancelled) return;
 
       if (!isValid) {
-        if (!isLoginPage) {
-          const redirectQuery =
-            pathname && pathname !== '/' ? `?redirect=${encodeURIComponent(pathname)}` : '';
-          router.replace(`/login${redirectQuery}`);
-        }
-      } else if (isLoginPage) {
+        const redirectQuery =
+          pathname && pathname !== '/' ? `?redirect=${encodeURIComponent(pathname)}` : '';
+        router.replace(`/login${redirectQuery}`);
+        return;
+      }
+
+      // Enforce role-based access control (RBAC) on admin-only routes
+      const currentUser = getCurrentUser();
+      const isAdminOnly = ADMIN_ONLY_ROUTES.some(
+        (route) => pathname === route || pathname.startsWith(`${route}/`)
+      );
+
+      if (isAdminOnly && currentUser?.role !== 'ADMIN') {
         router.replace('/');
       }
     }
@@ -57,6 +72,7 @@ export default function RootLayout() {
         contentStyle: { backgroundColor: '#F3F2ED' },
       }}
     >
+      <Stack.Screen name="+not-found" options={{ title: 'Page Not Found' }} />
       <Stack.Screen name="login" />
       <Stack.Screen name="index" />
       <Stack.Screen name="register" />
