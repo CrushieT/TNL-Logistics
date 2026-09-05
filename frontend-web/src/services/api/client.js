@@ -138,8 +138,8 @@ apiClient.interceptors.response.use(
     const status = error?.response?.status;
     const requestUrl = error?.config?.url || '';
 
-    // Ignore 401/403 from the login endpoint itself so login error messages can render.
-    if ((status === 401 || status === 403) && !requestUrl.includes('/auth/login')) {
+    // Ignore 401 from the login endpoint itself so login error messages can render.
+    if (status === 401 && !requestUrl.includes('/auth/login')) {
       clearToken();
       clearCurrentUser();
       if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {

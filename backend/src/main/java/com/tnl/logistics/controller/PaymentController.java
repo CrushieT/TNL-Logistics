@@ -14,8 +14,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -41,8 +40,11 @@ public class PaymentController {
     @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
     public ResponseEntity<PaymentResponse> recordPayment(
             @Valid @RequestBody PaymentRecordRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
-        String username = userDetails != null ? userDetails.getUsername() : "admin";
+            Authentication authentication) {
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new IllegalStateException("Authenticated user context is required to record a payment.");
+        }
+        String username = authentication.getName();
         PaymentResponse response = paymentService.recordPayment(request, username);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
