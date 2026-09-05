@@ -1,5 +1,7 @@
 package com.tnl.logistics.controller;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -13,6 +15,7 @@ import com.tnl.logistics.model.Client;
 import com.tnl.logistics.model.PaymentMethod;
 import com.tnl.logistics.model.RegisteredVia;
 import com.tnl.logistics.repository.ClientRepository;
+import com.tnl.logistics.repository.ShipmentRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -43,6 +46,9 @@ public class PaymentIntegrationTest {
 
     @Autowired
     private ClientRepository clientRepository;
+
+    @Autowired
+    private ShipmentRepository shipmentRepository;
 
     @BeforeEach
     void setup() {
@@ -295,4 +301,71 @@ public class PaymentIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.recordedByStaff").value("Office Staff"));
     }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testPessimisticLockRejectsPaymentWhenAlreadyPaid() throws Exception {
+        ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
+        shipmentReq.setClientId("CL-001");
+        shipmentReq.setRecipientName("Lock Test Recipient");
+        shipmentReq.setRecipientContact("0917-555-4321");
+        shipmentReq.setRecipientAddress("Baguio City Center");
+        shipmentReq.setRoute("Manila → TNL Baguio Hub");
+        shipmentReq.setDescription("Hardware Supplies");
+        shipmentReq.setQuantity(1);
+        shipmentReq.setChargeModel(ChargeModel.FLAT);
+        shipmentReq.setShippingFee(new BigDecimal("1000.00"));
+        shipmentReq.setOtherCharges(BigDecimal.ZERO);
+        shipmentReq.setPaidAtRegistration(false);
+        shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipmentReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
+
+        MvcResult createResult = mockMvc.perform(post("/api/v1/shipments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(shipmentReq)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse shipment = objectMapper.readValue(createResult.getResponse().getContentAsString(), ShipmentResponse.class);
+        String shipmentId = shipment.getShipmentId();
+
+        // 1. Pay entire 1,000.00 balance
+        PaymentRecordRequest fullPayment = new PaymentRecordRequest(
+                shipmentId,
+                new BigDecimal("1000.00"),
+                PaymentMethod.CASH,
+                null,
+                LocalDate.now(),
+                "Full payment"
+        );
+
+        mockMvc.perform(post("/api/v1/payments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(fullPayment)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.shipmentBalance").value(0.00))
+                .andExpect(jsonPath("$.shipmentPaymentStatus").value("Paid"));
+
+        // 2. Attempt additional payment on already paid shipment -> rejected by lock-protected check
+        PaymentRecordRequest excessPayment = new PaymentRecordRequest(
+                shipmentId,
+                new BigDecimal("100.00"),
+                PaymentMethod.CASH,
+                null,
+                LocalDate.now(),
+                "Excess payment attempt"
+        );
+
+        mockMvc.perform(post("/api/v1/payments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(excessPayment)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("is already fully paid")));
+    }
+
+    @Test
+    void testShipmentRepositoryFindByIdForUpdate() {
+        assertTrue(shipmentRepository.findByIdForUpdate("NON-EXISTENT-ID").isEmpty());
+    }
 }
+
