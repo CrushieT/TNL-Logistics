@@ -20,10 +20,14 @@ export default function DeductionsInputCard({
   onSave,
   saving = false,
   disabled = false,
+  maxDeduction = null,
 }) {
   const [collectorMode, setCollectorMode] = useState('select'); // 'select' | 'custom'
   const [customCollector, setCustomCollector] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  const numDeduction = Number(deductionAmount) || 0;
+  const isExceedingTotal = maxDeduction !== null && maxDeduction !== undefined && numDeduction > Number(maxDeduction);
 
   useEffect(() => {
     if (collectedBy) {
@@ -63,18 +67,34 @@ export default function DeductionsInputCard({
       <View style={styles.col}>
         <Text style={styles.label}>DEDUCTION (₱)</Text>
         <TextInput
-          style={[styles.input, disabled && styles.inputDisabled]}
+          style={[
+            styles.input,
+            disabled && styles.inputDisabled,
+            isExceedingTotal && styles.inputError,
+          ]}
           value={String(deductionAmount === 0 ? '0' : deductionAmount || '')}
           onChangeText={(val) => {
-            const sanitized = val.replace(/[^0-9.]/g, '');
+            let sanitized = val.replace(/[^0-9.]/g, '');
+            const parts = sanitized.split('.');
+            if (parts.length > 2) {
+              sanitized = `${parts[0]}.${parts.slice(1).join('')}`;
+            }
+            if (parts.length >= 2) {
+              sanitized = `${parts[0]}.${parts[1].slice(0, 2)}`;
+            }
             onDeductionAmountChange(sanitized);
           }}
           placeholder="0"
           placeholderTextColor={colors.inkFaint}
           keyboardType="numeric"
+          maxLength={12}
           editable={!disabled}
         />
-        <Text style={styles.subtext}>Separate from original charges — never modifies them</Text>
+        <Text style={[styles.subtext, isExceedingTotal && styles.subtextError]}>
+          {isExceedingTotal
+            ? `Cannot exceed total charges (₱${Number(maxDeduction).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+            : 'Separate from original charges — max 2 decimals'}
+        </Text>
       </View>
 
       {/* Column 2: DEDUCTION NOTE */}
@@ -86,9 +106,10 @@ export default function DeductionsInputCard({
           onChangeText={onDeductionNoteChange}
           placeholder="e.g. Negotiated discount"
           placeholderTextColor={colors.inkFaint}
+          maxLength={255}
           editable={!disabled}
         />
-        <View style={styles.subtextSpacer} />
+        <Text style={styles.counterText}>{`${(deductionNote || '').length}/255`}</Text>
       </View>
 
       {/* Column 3: COLLECTED BY + Save */}
@@ -103,6 +124,7 @@ export default function DeductionsInputCard({
                 onChangeText={handleCustomChange}
                 placeholder="Enter collector name"
                 placeholderTextColor={colors.inkFaint}
+                maxLength={150}
                 editable={!disabled}
               />
               <TouchableOpacity
@@ -170,9 +192,9 @@ export default function DeductionsInputCard({
 
           {/* Save Button */}
           <TouchableOpacity
-            style={[styles.saveButton, (saving || disabled) && styles.saveButtonDisabled]}
+            style={[styles.saveButton, (saving || disabled || isExceedingTotal) && styles.saveButtonDisabled]}
             onPress={onSave}
-            disabled={saving || disabled}
+            disabled={saving || disabled || isExceedingTotal}
             activeOpacity={0.8}
           >
             {saving ? (
@@ -235,6 +257,10 @@ const styles = StyleSheet.create({
     color: colors.ink,
     outlineStyle: 'none',
   },
+  inputError: {
+    borderColor: colors.danger,
+    backgroundColor: colors.dangerSoft,
+  },
   inputDisabled: {
     backgroundColor: colors.canvas,
     color: colors.inkMuted,
@@ -245,8 +271,19 @@ const styles = StyleSheet.create({
     color: colors.inkMuted,
     marginTop: 4,
   },
+  subtextError: {
+    color: colors.danger,
+    fontWeight: '600',
+  },
   subtextSpacer: {
     height: 15,
+  },
+  counterText: {
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    color: colors.inkFaint,
+    textAlign: 'right',
+    marginTop: 4,
   },
   actionRow: {
     flexDirection: 'row',

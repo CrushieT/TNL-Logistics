@@ -1,5 +1,6 @@
 package com.tnl.logistics.controller;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -154,5 +155,142 @@ public class SoaIntegrationTest {
         mockMvc.perform(get("/api/v1/soa/preview")
                         .param("clientId", "CL-001"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
+    void testSaveStatementValidationConstraints() throws Exception {
+        // 1. Negative deduction amount
+        SaveStatementRequest negativeDeduction = new SaveStatementRequest(
+                "CL-001",
+                LocalDate.now(),
+                new BigDecimal("-50.00"),
+                "Invalid negative deduction",
+                "Carlos Mendoza"
+        );
+        mockMvc.perform(post("/api/v1/soa/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(negativeDeduction)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Validation Failed"))
+                .andExpect(jsonPath("$.fieldErrors.deductionAmount").value("Deduction amount must be zero or positive"));
+
+        // 2. Blank client ID
+        SaveStatementRequest blankClientId = new SaveStatementRequest(
+                "   ",
+                LocalDate.now(),
+                BigDecimal.ZERO,
+                "Valid note",
+                "Carlos Mendoza"
+        );
+        mockMvc.perform(post("/api/v1/soa/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(blankClientId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Validation Failed"))
+                .andExpect(jsonPath("$.fieldErrors.clientId").value("Client ID is required"));
+
+        // 3. Missing target date
+        SaveStatementRequest missingTargetDate = new SaveStatementRequest(
+                "CL-001",
+                null,
+                BigDecimal.ZERO,
+                "Valid note",
+                "Carlos Mendoza"
+        );
+        mockMvc.perform(post("/api/v1/soa/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(missingTargetDate)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Validation Failed"))
+                .andExpect(jsonPath("$.fieldErrors.targetDate").value("Target date is required"));
+
+        // 4. Oversized deduction note (>255 characters)
+        SaveStatementRequest oversizedNote = new SaveStatementRequest(
+                "CL-001",
+                LocalDate.now(),
+                BigDecimal.ZERO,
+                "X".repeat(256),
+                "Carlos Mendoza"
+        );
+        mockMvc.perform(post("/api/v1/soa/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(oversizedNote)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Validation Failed"))
+                .andExpect(jsonPath("$.fieldErrors.deductionNote").value("Deduction note must not exceed 255 characters"));
+
+        // 5. Oversized collectedBy (>150 characters)
+        SaveStatementRequest oversizedCollector = new SaveStatementRequest(
+                "CL-001",
+                LocalDate.now(),
+                BigDecimal.ZERO,
+                "Valid note",
+                "Y".repeat(151)
+        );
+        mockMvc.perform(post("/api/v1/soa/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(oversizedCollector)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Validation Failed"))
+                .andExpect(jsonPath("$.fieldErrors.collectedBy").value("Collected by must not exceed 150 characters"));
+
+        // 6. Fractional precision exceeding 2 decimal places
+        SaveStatementRequest excessDecimals = new SaveStatementRequest(
+                "CL-001",
+                LocalDate.now(),
+                new BigDecimal("100.555"),
+                "Valid note",
+                "Carlos Mendoza"
+        );
+        mockMvc.perform(post("/api/v1/soa/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(excessDecimals)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Validation Failed"))
+                .andExpect(jsonPath("$.fieldErrors.deductionAmount").value("Deduction amount must have at most 2 decimal places"));
+    }
+
+    @Test
+    @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
+    void testSaveStatementDeductionExceedingTotalChargesRejected() throws Exception {
+        // Register a shipment with 1200.00 total charges
+        ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
+        shipmentReq.setClientId("CL-001");
+        shipmentReq.setRecipientName("Consignee Limit Test");
+        shipmentReq.setRecipientContact("0917-111-2233");
+        shipmentReq.setRecipientAddress("Baguio City Center");
+        shipmentReq.setRoute("Manila -> Baguio");
+        shipmentReq.setDescription("Textile Goods");
+        shipmentReq.setQuantity(1);
+        shipmentReq.setChargeModel(ChargeModel.FLAT);
+        shipmentReq.setShippingFee(new BigDecimal("1200.00"));
+        shipmentReq.setOtherCharges(BigDecimal.ZERO);
+        shipmentReq.setPaidAtRegistration(false);
+        shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipmentReq.setParcels(List.of(
+                new ParcelUnitRequest(1, new BigDecimal("2.5"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))
+        ));
+
+        mockMvc.perform(post("/api/v1/shipments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(shipmentReq)))
+                .andExpect(status().isCreated());
+
+        // Attempt to save deduction of 1500.00 (which exceeds 1200.00 total charges)
+        SaveStatementRequest excessiveDeduction = new SaveStatementRequest(
+                "CL-001",
+                LocalDate.now(),
+                new BigDecimal("1500.00"),
+                "Excessive deduction attempt",
+                "Carlos Mendoza"
+        );
+
+        mockMvc.perform(post("/api/v1/soa/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(excessiveDeduction)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message", containsString("cannot exceed total charges")));
     }
 }

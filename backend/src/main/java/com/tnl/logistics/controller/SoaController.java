@@ -4,6 +4,7 @@ import com.tnl.logistics.dto.CollectorOptionDto;
 import com.tnl.logistics.dto.SaveStatementRequest;
 import com.tnl.logistics.dto.StatementPreviewResponse;
 import com.tnl.logistics.service.SoaService;
+import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -39,7 +40,7 @@ public class SoaController {
     @PostMapping("/save")
     @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
     public ResponseEntity<StatementPreviewResponse> saveStatement(
-            @RequestBody SaveStatementRequest request,
+            @Valid @RequestBody SaveStatementRequest request,
             Authentication authentication
     ) {
         String username = (authentication != null) ? authentication.getName() : "admin";

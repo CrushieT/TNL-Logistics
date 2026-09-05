@@ -159,7 +159,45 @@ export default function StatementsScreen() {
 
   // Handle Save deduction and collector
   const handleSaveDeductions = async () => {
-    if (!selectedClientId) return;
+    if (!selectedClientId) {
+      setErrorMessage('Please select a client before saving statement adjustments.');
+      return;
+    }
+    if (!selectedCycle) {
+      setErrorMessage('Please select an active collection cycle.');
+      return;
+    }
+
+    const numDeduction = Number(deductionAmount) || 0;
+    if (isNaN(numDeduction) || numDeduction < 0) {
+      setErrorMessage('Deduction amount must be zero or positive.');
+      return;
+    }
+
+    const totalCharges = Number(statementData?.totalCharges || 0);
+    if (numDeduction > totalCharges) {
+      setErrorMessage(`Deduction amount cannot exceed total charges (₱${totalCharges.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).`);
+      return;
+    }
+
+    const decimalParts = String(deductionAmount || '').split('.');
+    if (decimalParts.length > 1 && decimalParts[1].length > 2) {
+      setErrorMessage('Deduction amount must have at most 2 decimal places.');
+      return;
+    }
+
+    const trimmedNote = (deductionNote || '').trim();
+    if (trimmedNote.length > 255) {
+      setErrorMessage('Deduction note must not exceed 255 characters.');
+      return;
+    }
+
+    const trimmedCollector = (collectedBy || '').trim();
+    if (trimmedCollector.length > 150) {
+      setErrorMessage('Collected by must not exceed 150 characters.');
+      return;
+    }
+
     setSaving(true);
     setErrorMessage(null);
     setSuccessToast(null);
@@ -168,9 +206,9 @@ export default function StatementsScreen() {
       const payload = {
         clientId: selectedClientId,
         targetDate: selectedCycle,
-        deductionAmount: Number(deductionAmount) || 0,
-        deductionNote: deductionNote.trim(),
-        collectedBy: collectedBy.trim(),
+        deductionAmount: numDeduction,
+        deductionNote: trimmedNote,
+        collectedBy: trimmedCollector,
       };
 
       const updated = await saveStatement(payload);
@@ -188,6 +226,13 @@ export default function StatementsScreen() {
   // Open dedicated printable view
   const handleDirectPrint = () => {
     if (!selectedClientId) return;
+    const numDeduction = Number(deductionAmount) || 0;
+    const totalCharges = Number(statementData?.totalCharges || 0);
+    if (numDeduction > totalCharges) {
+      setErrorMessage(`Deduction amount cannot exceed total charges (₱${totalCharges.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).`);
+      return;
+    }
+
     const printUrl = `/statements/print?clientId=${encodeURIComponent(selectedClientId)}&cycle=${encodeURIComponent(selectedCycle || '')}&deduction=${encodeURIComponent(deductionAmount || 0)}&note=${encodeURIComponent(deductionNote || '')}&collector=${encodeURIComponent(collectedBy || '')}`;
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       window.open(printUrl, '_blank');
@@ -324,6 +369,7 @@ export default function StatementsScreen() {
             onSave={handleSaveDeductions}
             saving={saving}
             disabled={loading || !statementData}
+            maxDeduction={statementData?.totalCharges ?? null}
           />
         </View>
 

@@ -235,6 +235,13 @@ public class SoaServiceImpl implements SoaService {
         }
 
         BigDecimal deduction = request.getDeductionAmount() != null ? request.getDeductionAmount() : BigDecimal.ZERO;
+        if (deduction.compareTo(currentCharges) > 0) {
+            throw new IllegalArgumentException(String.format(
+                    "Deduction amount (₱%s) cannot exceed total charges (₱%s)",
+                    deduction.toPlainString(),
+                    currentCharges.toPlainString()
+            ));
+        }
         BigDecimal previousBalance = BigDecimal.ZERO;
         BigDecimal outstandingBalance = currentCharges.add(previousBalance).subtract(totalPaid).subtract(deduction);
         if (outstandingBalance.compareTo(BigDecimal.ZERO) < 0) {
