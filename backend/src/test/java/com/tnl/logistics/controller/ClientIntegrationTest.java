@@ -243,4 +243,39 @@ public class ClientIntegrationTest {
         Client softDeactivated = clientRepository.findById("CL-001").orElseThrow();
         assertFalse(softDeactivated.getActive());
     }
+
+    @Test
+    public void testClientDetailWithZeroShipmentsReturnsEmptyStats() throws Exception {
+        Client client = new Client(
+                "CL-099",
+                "New Enterprise",
+                "Makati City",
+                "0917-999-8888",
+                "admin@newenterprise.ph",
+                ChargeModel.FLAT,
+                true
+        );
+        clientRepository.saveAndFlush(client);
+
+        MvcResult detailRes = mockMvc.perform(get("/api/v1/clients/CL-099")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        ClientDetailResponse detail = objectMapper.readValue(detailRes.getResponse().getContentAsString(), ClientDetailResponse.class);
+        assertEquals("CL-099", detail.getClientId());
+        assertEquals(0, detail.getTotalShipments());
+        assertEquals(0, detail.getTotalParcels());
+        assertEquals(BigDecimal.ZERO, detail.getTotalCharges());
+        assertEquals(BigDecimal.ZERO, detail.getTotalPaid());
+        assertEquals(BigDecimal.ZERO, detail.getOutstandingBalance());
+        assertTrue(detail.getShipments().isEmpty());
+    }
+
+    @Test
+    public void testBatchQueriesForParcelsAndPayments() {
+        assertTrue(parcelUnitRepository.findByShipment_ShipmentIdInOrderBySeqAsc(List.of("NON-EXISTENT")).isEmpty());
+        assertTrue(paymentRepository.findByShipment_ShipmentIdIn(List.of("NON-EXISTENT")).isEmpty());
+    }
 }
+
