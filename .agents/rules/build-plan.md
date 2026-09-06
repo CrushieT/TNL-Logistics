@@ -198,8 +198,11 @@
 - Built-in in-memory login rate limiter (5 failed attempts per 60s, 60s lockout) with on-demand lazy eviction, HTTP 429 `Retry-After`, and reactive frontend countdown lock.
 - Adaptive `+not-found.js` catch-all route (inside AppShell for authenticated operators, standalone for visitors) and RBAC route guarding for `/users` and `/settings`.
 
-**5.2 — Dashboard Live Metrics (Screen 02)** — **[UPCOMING]**
-- Live operational cards: Today's Shipments, Total Parcels, Pending Delivery, Active Fleet count, and Weekly Revenue.
+**5.2 — Dashboard Live Metrics (Screen 02)** — **[COMPLETED]**
+- Live operational cards: Shipments & parcel count, Today's Shipments, Unpaid Transactions, and Thursday Weekly Collection rollup.
+- Visual chart cards: Parcel Units by Status (Donut Chart), Weekly Shipment Volume (Monday–Sunday Bar Chart), and Outstanding vs Collected financial comparison bars.
+- Live recent activity feed with formatted tracking scans, staff attribution, and link to `/tracking-logs`.
+- Backend live aggregation endpoint `GET /api/v1/dashboard/summary` and real-time Server-Sent Events (SSE) synchronization.
 
 **5.3 — Global Tracking Logs Audit Feed (Screen 17)**
 - Company-wide real-time audit stream showing every parcel scan, timestamp, acting staff member, and vehicle assignment (auto-updating via SSE).

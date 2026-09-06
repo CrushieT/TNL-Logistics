@@ -10,39 +10,37 @@ import DonutChart from '../components/common/DonutChart';
 import BarChart from '../components/common/BarChart';
 import ComparisonBars from '../components/common/ComparisonBars';
 import ActivityRow from '../components/common/ActivityRow';
-import { getDashboardSummary } from '../features/shipments';
+import { getDashboardSummary, subscribeRealtimeEvents } from '../features/shipments';
 import { colors, fonts, spacing } from '../theme';
 
 const FALLBACK_SUMMARY = {
-  shipmentCount: 10,
-  parcelCount: 13,
-  registeredToday: 1,
-  registeredTodayDate: 'Aug 7, 2026',
-  unpaidTransactions: 8,
-  forCollection: { amount: 4670, day: 'Thu', clientCount: 3 },
+  shipmentCount: 0,
+  parcelCount: 0,
+  todayShipmentCount: 0,
+  todayDateFormatted: '—',
+  unpaidTransactionCount: 0,
+  forCollection: { amount: 0, day: 'Thu', clientCount: 0 },
   parcelUnitsByStatus: [
-    { label: 'Registered', value: 2, color: colors.info },
-    { label: 'Loaded on Truck', value: 3, color: colors.warning },
-    { label: 'Arrived at TNL', value: 8, color: colors.success },
+    { label: 'Registered', value: 0, color: '#2563EB' },
+    { label: 'QR Generated', value: 0, color: '#0D9488' },
+    { label: 'Loaded on Truck', value: 0, color: '#D97706' },
+    { label: 'Outload / Arrive TNL', value: 0, color: '#16A34A' },
+    { label: 'Loaded to Hauler', value: 0, color: '#7C3AED' },
   ],
-  weeklyRegistrations: [
+  weeklyShipmentVolume: [
     { label: 'Mon', value: 0 },
-    { label: 'Tue', value: 2 },
-    { label: 'Wed', value: 4 },
-    { label: 'Thu', value: 3 },
-    { label: 'Fri', value: 2 },
+    { label: 'Tue', value: 0 },
+    { label: 'Wed', value: 0 },
+    { label: 'Thu', value: 0 },
+    { label: 'Fri', value: 0 },
     { label: 'Sat', value: 0 },
     { label: 'Sun', value: 0 },
   ],
   outstandingVsCollected: [
-    { label: 'Outstanding', value: 4670, color: colors.danger },
-    { label: 'Collected', value: 1500, color: colors.success },
+    { label: 'Outstanding', value: 0, color: '#DC2626' },
+    { label: 'Collected', value: 0, color: '#16A34A' },
   ],
-  recentActivity: [
-    { date: 'Aug 7, 2026', time: '8:16 AM', action: 'QR Generated', trackingId: 'TRK-2026-000113', meta: 'Pkg 1/1 — by Andrea Lim' },
-    { date: 'Aug 7, 2026', time: '8:15 AM', action: 'Registered', trackingId: 'TRK-2026-000113', meta: 'Pkg 1/1 — by Andrea Lim' },
-    { date: 'Aug 6, 2026', time: '8:16 AM', action: 'QR Generated', trackingId: 'TRK-2026-000110', meta: 'Pkg 1/1 — by Andrea Lim' },
-  ],
+  recentActivity: [],
 };
 
 export default function DashboardScreen() {
@@ -66,45 +64,85 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     load();
+
+    const unsubscribe = subscribeRealtimeEvents((event) => {
+      if (['STATUS_UPDATE', 'SHIPMENT_CREATED', 'PAYMENT_RECORDED', 'SOA_GENERATED'].includes(event.type)) {
+        load();
+      }
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
   }, [load]);
 
+  const shipmentCount = summary.shipmentCount ?? 0;
+  const parcelCount = summary.parcelCount ?? 0;
+  const todayShipments = summary.todayShipmentCount ?? summary.registeredToday ?? 0;
+  const todayDate = summary.todayDateFormatted || summary.registeredTodayDate || '—';
+  const unpaidCount = summary.unpaidTransactionCount ?? summary.unpaidTransactions ?? 0;
+
+  const forCollectionAmount = summary.forCollection?.amount ?? 0;
+  const forCollectionClients = summary.forCollection?.clientCount ?? 0;
+  const forCollectionDay = summary.forCollection?.day || 'THU';
+
+  const statusSegments = summary.parcelUnitsByStatus || [];
+  const weeklyVolume = summary.weeklyShipmentVolume || summary.weeklyRegistrations || [];
+  const financialRows = summary.outstandingVsCollected || [];
+  const recentActivities = summary.recentActivity || [];
+
   return (
-    <AppShell shipmentCount={summary.shipmentCount} parcelCount={summary.parcelCount}>
+    <AppShell shipmentCount={shipmentCount} parcelCount={parcelCount}>
       <PageHeader
         eyebrow="Operations Overview"
         title="Dashboard"
-        right={<Button label="+ Register Shipment" variant="primary" onPress={() => router.push('/register')} />}
+        right={
+          <Button
+            label="+ Register Shipment"
+            variant="primary"
+            onPress={() => router.push('/register')}
+          />
+        }
       />
 
       <View style={styles.metricsRow}>
-        <MetricCard label="Shipments" value={summary.shipmentCount} sublabel={`${summary.parcelCount} parcel units`} />
         <MetricCard
-          label="Registered Today"
-          value={summary.registeredToday}
-          sublabel={summary.registeredTodayDate}
+          label="Shipments"
+          value={shipmentCount}
+          sublabel={`${parcelCount} parcel units`}
+          onPress={() => router.push('/shipments')}
+        />
+        <MetricCard
+          label="Today's Shipments"
+          value={todayShipments}
+          sublabel={todayDate}
         />
         <MetricCard
           label="Unpaid Transactions"
-          value={summary.unpaidTransactions}
+          value={unpaidCount}
           sublabel="shipments with balance"
+          onPress={() => router.push('/payments')}
         />
         <MetricCard
-          label={`For Collection · ${summary.forCollection?.day || ''}`}
-          value={`₱${Number(summary.forCollection?.amount || 0).toLocaleString()}`}
-          sublabel={`${summary.forCollection?.clientCount || 0} clients`}
+          label={`For Collection · ${forCollectionDay}`}
+          value={`₱${Number(forCollectionAmount).toLocaleString()}`}
+          sublabel={`${forCollectionClients} clients`}
           emphasis
+          onPress={() => router.push('/weekly-collections')}
         />
       </View>
 
       <View style={styles.chartsRow}>
         <Card title="Parcel Units by Status" style={styles.chartCard}>
-          <DonutChart segments={summary.parcelUnitsByStatus} />
+          <DonutChart segments={statusSegments} />
         </Card>
-        <Card title="Weekly Registrations" style={styles.chartCard}>
-          <BarChart data={summary.weeklyRegistrations} />
+        <Card title="Weekly Shipment Volume" style={styles.chartCard}>
+          <BarChart data={weeklyVolume} />
         </Card>
         <Card title="Outstanding vs Collected" style={styles.chartCard}>
-          <ComparisonBars rows={summary.outstandingVsCollected} />
+          <ComparisonBars rows={financialRows} />
           <Button
             label="Prepare weekly collection →"
             variant="secondary"
@@ -122,9 +160,19 @@ export default function DashboardScreen() {
           </Text>
         }
       >
-        {summary.recentActivity?.map((a, idx) => (
-          <ActivityRow key={`${a.trackingId}-${idx}`} {...a} isLast={idx === summary.recentActivity.length - 1} />
-        ))}
+        {recentActivities.length > 0 ? (
+          recentActivities.map((activity, idx) => (
+            <ActivityRow
+              key={`${activity.trackingId}-${idx}`}
+              {...activity}
+              isLast={idx === recentActivities.length - 1}
+            />
+          ))
+        ) : (
+          <View style={styles.emptyActivity}>
+            <Text style={styles.emptyText}>No recent tracking scans logged yet.</Text>
+          </View>
+        )}
       </Card>
     </AppShell>
   );
@@ -158,5 +206,15 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '700',
     color: colors.accent,
+  },
+  emptyActivity: {
+    paddingVertical: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    color: colors.inkFaint,
   },
 });
