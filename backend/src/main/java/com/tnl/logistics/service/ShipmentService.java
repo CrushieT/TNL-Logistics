@@ -19,5 +19,9 @@ public interface ShipmentService {
 
     ParcelUnitDetailResponse getParcelUnitByTrackingId(String trackingId);
 
-    void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUsername);
+    void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUsername, String printerId);
+
+    default void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUsername) {
+        recordLabelPrint(shipmentId, packageIds, actingStaffUsername, null);
+    }
 }

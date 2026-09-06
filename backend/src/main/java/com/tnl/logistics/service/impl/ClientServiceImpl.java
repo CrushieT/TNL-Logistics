@@ -95,14 +95,46 @@ public class ClientServiceImpl implements ClientService {
 
         List<ShipmentSummaryResponse> shipmentSummaries = new ArrayList<>();
 
+        if (shipments.isEmpty()) {
+            return new ClientDetailResponse(
+                    client.getClientId(),
+                    client.getName(),
+                    client.getAddress(),
+                    client.getContactNumber(),
+                    client.getEmail(),
+                    client.getDefaultRateType(),
+                    client.getActive(),
+                    client.getDateRegistered() != null ? client.getDateRegistered() : client.getCreatedAt(),
+                    0L,
+                    0L,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    0L,
+                    Collections.emptyList()
+            );
+        }
+
+        List<String> shipmentIds = shipments.stream()
+                .map(Shipment::getShipmentId)
+                .collect(Collectors.toList());
+
+        List<ParcelUnit> allParcels = parcelUnitRepository.findByShipment_ShipmentIdInOrderBySeqAsc(shipmentIds);
+        List<Payment> allPayments = paymentRepository.findByShipment_ShipmentIdIn(shipmentIds);
+
+        Map<String, List<ParcelUnit>> parcelsByShipmentId = allParcels.stream()
+                .collect(Collectors.groupingBy(p -> p.getShipment().getShipmentId()));
+        Map<String, List<Payment>> paymentsByShipmentId = allPayments.stream()
+                .collect(Collectors.groupingBy(p -> p.getShipment().getShipmentId()));
+
         for (Shipment s : shipments) {
             totalParcels += (s.getQuantity() != null ? s.getQuantity() : 0);
             if (s.getTotalAmount() != null) {
                 totalCharges = totalCharges.add(s.getTotalAmount());
             }
 
-            List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(s.getShipmentId());
-            List<Payment> payments = paymentRepository.findByShipment_ShipmentId(s.getShipmentId());
+            List<ParcelUnit> parcels = parcelsByShipmentId.getOrDefault(s.getShipmentId(), Collections.emptyList());
+            List<Payment> payments = paymentsByShipmentId.getOrDefault(s.getShipmentId(), Collections.emptyList());
 
             BigDecimal sPaid = payments.stream()
                     .map(Payment::getAmountPaid)

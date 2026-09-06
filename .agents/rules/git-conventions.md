@@ -82,7 +82,16 @@ git push origin backend/feature/register-shipment
 
 ---
 
-## 4. PR Title Format
+## 4. AI Assistant Execution Guardrails
+
+All AI coding assistants and subagents must strictly adhere to these rules:
+- **Never Stage Automatically:** NEVER execute `git add` or `git add .` unless the user explicitly commands you to stage or add files in their prompt.
+- **Leave Working Directory Unstaged:** After creating files, editing code, or running test suites, leave all modified and new files unstaged in the working directory so the user can inspect changes with standard `git diff`.
+- **Do Not Initiate Staging/Commit Permissions:** Never run `git add`, `git commit`, or `git push` proactively. Do not trigger permission prompts for staging or committing unless explicitly asked.
+
+---
+
+## 5. PR Title Format
 
 PR titles must adopt the scope prefix combined with standard semantic labels:
 

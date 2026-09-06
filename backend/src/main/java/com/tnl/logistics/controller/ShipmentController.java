@@ -65,7 +65,8 @@ public class ShipmentController {
     ) {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
         List<String> packageIds = request != null ? request.getPackageIds() : null;
-        shipmentService.recordLabelPrint(shipmentId, packageIds, username);
+        String printerId = request != null ? request.getPrinterId() : null;
+        shipmentService.recordLabelPrint(shipmentId, packageIds, username, printerId);
         return ResponseEntity.ok().build();
     }
 }

@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -21,6 +22,9 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     List<Payment> findByShipment_ShipmentId(String shipmentId);
 
     List<Payment> findByShipment_ShipmentIdOrderByRecordedAtDesc(String shipmentId);
+
+    @Query("SELECT p FROM Payment p WHERE p.shipment.shipmentId IN :shipmentIds")
+    List<Payment> findByShipment_ShipmentIdIn(@Param("shipmentIds") Collection<String> shipmentIds);
 
     @Query("SELECT p FROM Payment p JOIN p.shipment s LEFT JOIN s.client c " +
            "WHERE (:search IS NULL OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) " +
