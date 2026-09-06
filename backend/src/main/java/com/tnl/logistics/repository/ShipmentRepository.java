@@ -93,5 +93,20 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
 
     @Query("SELECT DISTINCT CAST(s.dateRegistered AS LocalDate) FROM Shipment s WHERE s.dateRegistered IS NOT NULL")
     List<LocalDate> findDistinctRegistrationDates();
+
+    @Query("SELECT COUNT(s) FROM Shipment s WHERE s.dateRegistered >= :startOfDay AND s.dateRegistered <= :endOfDay")
+    long countShipmentsRegisteredBetween(@Param("startOfDay") java.time.LocalDateTime startOfDay, @Param("endOfDay") java.time.LocalDateTime endOfDay);
+
+    @Query("SELECT COUNT(s) FROM Shipment s WHERE s.totalAmount > (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s)")
+    long countUnpaidShipments();
+
+    @Query("SELECT FUNCTION('DATE', s.dateRegistered), COUNT(s) FROM Shipment s WHERE s.dateRegistered >= :startDate AND s.dateRegistered <= :endDate GROUP BY FUNCTION('DATE', s.dateRegistered)")
+    List<Object[]> countDailyShipmentsBetween(@Param("startDate") java.time.LocalDateTime startDate, @Param("endDate") java.time.LocalDateTime endDate);
+
+    @Query("SELECT COALESCE(SUM(s.totalAmount), 0) FROM Shipment s")
+    java.math.BigDecimal sumTotalShipmentCharges();
+
+    @Query("SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p")
+    java.math.BigDecimal sumTotalPayments();
 }
 

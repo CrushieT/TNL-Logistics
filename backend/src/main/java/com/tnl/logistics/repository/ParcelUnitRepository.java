@@ -32,4 +32,7 @@ public interface ParcelUnitRepository extends JpaRepository<ParcelUnit, String> 
            "WHERE p.currentStatus = :status AND p.currentVehicle IS NOT NULL " +
            "GROUP BY p.currentVehicle.vehicleId")
     List<Object[]> countLoadedParcelsGroupedByVehicle(@Param("status") com.tnl.logistics.model.ParcelStatus status);
+
+    @Query("SELECT p.currentStatus, COUNT(p) FROM ParcelUnit p GROUP BY p.currentStatus")
+    List<Object[]> countParcelsGroupedByStatus();
 }
