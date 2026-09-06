@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -44,7 +45,7 @@ public class CollectionsServiceImpl implements CollectionsService {
     @Override
     @Transactional(readOnly = true)
     public WeeklyCollectionsResponse getWeeklyCollections(LocalDate targetDate) {
-        LocalDate targetThursday = (targetDate != null) ? targetDate : calculateActiveThursday(LocalDate.now());
+        LocalDate targetThursday = (targetDate != null) ? targetDate : calculateActiveCycleDate(LocalDate.now());
 
         // 7-day Friday-to-Thursday cycle window
         LocalDateTime cycleStart = targetThursday.minusDays(6).atStartOfDay();
@@ -143,19 +144,34 @@ public class CollectionsServiceImpl implements CollectionsService {
     @Override
     @Transactional(readOnly = true)
     public List<LocalDate> getActiveCycleThursdays() {
+        LocalDate currentThursday = calculateActiveCycleDate(LocalDate.now());
         List<LocalDate> registrationDates = shipmentRepository.findDistinctRegistrationDates();
         Set<LocalDate> activeThursdays = new TreeSet<>(Comparator.reverseOrder());
+
+        // Always include the current ongoing cycle closing day
+        activeThursdays.add(currentThursday);
+
+        // Include past cycle closing days only if they contain registered shipments
         for (LocalDate date : registrationDates) {
             if (date != null) {
-                activeThursdays.add(calculateActiveThursday(date));
+                activeThursdays.add(calculateActiveCycleDate(date));
             }
         }
         return new ArrayList<>(activeThursdays);
     }
 
-    private LocalDate calculateActiveThursday(LocalDate baseDate) {
-        int dayOfWeek = baseDate.getDayOfWeek().getValue(); // 1 = Mon, 4 = Thu, 7 = Sun
-        int daysUntilThursday = (4 - dayOfWeek + 7) % 7;
-        return baseDate.plusDays(daysUntilThursday);
+    @Override
+    public DayOfWeek getCollectionDayOfWeek() {
+        // Default operational collection day is Thursday; Phase 5.6 Settings will wire this dynamically
+        return DayOfWeek.THURSDAY;
+    }
+
+    @Override
+    public LocalDate calculateActiveCycleDate(LocalDate baseDate) {
+        DayOfWeek collectionDay = getCollectionDayOfWeek();
+        int currentDayValue = baseDate.getDayOfWeek().getValue();
+        int targetDayValue = collectionDay.getValue();
+        int daysUntilTarget = (targetDayValue - currentDayValue + 7) % 7;
+        return baseDate.plusDays(daysUntilTarget);
     }
 }

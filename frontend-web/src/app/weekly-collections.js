@@ -115,6 +115,7 @@ export default function WeeklyCollectionsScreen() {
 
   // Filter clients based on search query and status filter
   const allItems = dashboardData?.items || [];
+  const selectedCycleObj = useMemo(() => cycles.find((c) => c.isoDate === selectedCycle) || cycles[0] || null, [cycles, selectedCycle]);
 
   const filteredItems = useMemo(() => {
     return allItems.filter((item) => {
@@ -241,8 +242,6 @@ export default function WeeklyCollectionsScreen() {
     };
   }, [filteredItems]);
 
-  const selectedCycleObj = cycles.find((c) => c.isoDate === selectedCycle) || cycles[0];
-
   return (
     <AppShell activeNav="Weekly Collections">
       <View style={styles.container}>
@@ -367,6 +366,8 @@ export default function WeeklyCollectionsScreen() {
           items={filteredItems}
           loading={loading}
           onReviewClient={handleReviewClient}
+          isCurrentCycle={selectedCycleObj?.isCurrent}
+          cycleLabel={selectedCycleObj?.label}
         />
       </View>
 

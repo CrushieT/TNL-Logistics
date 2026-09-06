@@ -108,5 +108,17 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
 
     @Query("SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p")
     java.math.BigDecimal sumTotalPayments();
+
+    @Query("SELECT COALESCE(SUM(s.quantity), 0) FROM Shipment s WHERE s.dateRegistered >= :cycleStart AND s.dateRegistered <= :cycleEnd")
+    long countParcelsRegisteredBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart, @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
+
+    @Query("SELECT COUNT(s) FROM Shipment s WHERE s.dateRegistered >= :cycleStart AND s.dateRegistered <= :cycleEnd AND s.totalAmount > (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s)")
+    long countUnpaidShipmentsBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart, @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
+
+    @Query("SELECT COALESCE(SUM(s.totalAmount), 0) FROM Shipment s WHERE s.dateRegistered >= :cycleStart AND s.dateRegistered <= :cycleEnd")
+    java.math.BigDecimal sumTotalShipmentChargesBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart, @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
+
+    @Query("SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered <= :cycleEnd")
+    java.math.BigDecimal sumTotalPaymentsBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart, @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
 }
 

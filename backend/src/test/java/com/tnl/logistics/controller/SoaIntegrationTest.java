@@ -63,7 +63,8 @@ public class SoaIntegrationTest {
 
         mockMvc.perform(get("/api/v1/collections/cycles"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray());
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$[0]").exists());
     }
 
     @Test

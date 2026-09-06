@@ -32,6 +32,8 @@ export default function WeeklyCollectionsTable({
   loading = false,
   onReviewClient,
   onGenerateClientSoa,
+  isCurrentCycle = false,
+  cycleLabel = '',
 }) {
   if (loading) {
     return (
@@ -68,9 +70,17 @@ export default function WeeklyCollectionsTable({
           <Text style={[styles.thCell, { width: 170, textAlign: 'right', paddingRight: 10 }]}>ACTION</Text>
         </View>
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No clients found matching the search criteria.</Text>
+          <Text style={styles.emptyText}>
+            {isCurrentCycle
+              ? (cycleLabel
+                  ? `No shipments registered yet for the current cycle (${cycleLabel.replace(' (Current Cycle)', '')}).`
+                  : 'No shipments registered yet for the current weekly cycle.')
+              : 'No clients found matching the search criteria.'}
+          </Text>
           <Text style={styles.emptySubText}>
-            Try selecting a different Thursday cycle or clearing active filters.
+            {isCurrentCycle
+              ? 'Shipments registered this week will automatically appear here for billing and SOA generation.'
+              : 'Try selecting a different Thursday cycle or clearing active filters.'}
           </Text>
         </View>
       </View>

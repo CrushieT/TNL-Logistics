@@ -1,5 +1,5 @@
 import apiClient from '../../../services/api/client';
-import { parseShipmentRegistrationDate, formatCycleDateRange } from '../utils/collectionsUtils';
+import { parseShipmentRegistrationDate, formatCycleDateRange, getNearestThursday } from '../utils/collectionsUtils';
 
 /**
  * Fetch active Thursday weekly collections consolidation dashboard data.
@@ -193,12 +193,21 @@ export async function getActiveCollectionCycles() {
   try {
     const { data } = await apiClient.get('/collections/cycles');
     if (Array.isArray(data) && data.length > 0) {
+      const currentThursdayDate = getNearestThursday(new Date());
+      const currentYear = currentThursdayDate.getFullYear();
+      const currentMonth = String(currentThursdayDate.getMonth() + 1).padStart(2, '0');
+      const currentDay = String(currentThursdayDate.getDate()).padStart(2, '0');
+      const currentThursdayIso = `${currentYear}-${currentMonth}-${currentDay}`;
+
       return data.map((isoDate) => {
         const parts = isoDate.split('-');
         const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        const isCurrent = isoDate === currentThursdayIso || isoDate === data[0];
+        const baseLabel = formatCycleDateRange(d);
         return {
           isoDate,
-          label: formatCycleDateRange(d),
+          label: isCurrent ? `${baseLabel} (Current Cycle)` : baseLabel,
+          isCurrent,
         };
       });
     }

@@ -25,4 +25,19 @@ public interface CollectionsService {
      * @return list of Thursday dates (newest first) with registered shipments
      */
     List<LocalDate> getActiveCycleThursdays();
+
+    /**
+     * Retrieve the configured weekly collection closing day of the week (default Thursday).
+     *
+     * @return DayOfWeek representing the weekly collection closing day
+     */
+    java.time.DayOfWeek getCollectionDayOfWeek();
+
+    /**
+     * Calculate the active weekly cycle closing date for the given base date.
+     *
+     * @param baseDate the reference date
+     * @return LocalDate of the cycle closing day
+     */
+    LocalDate calculateActiveCycleDate(LocalDate baseDate);
 }

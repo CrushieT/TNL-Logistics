@@ -10,6 +10,9 @@ import DonutChart from '../components/common/DonutChart';
 import BarChart from '../components/common/BarChart';
 import ComparisonBars from '../components/common/ComparisonBars';
 import ActivityRow from '../components/common/ActivityRow';
+import CycleDropdown from '../features/collections/components/CycleDropdown';
+import { getActiveCollectionCycles } from '../features/collections/services/collectionsApi';
+import { getRecentThursdays } from '../features/collections/utils/collectionsUtils';
 import { getDashboardSummary, subscribeRealtimeEvents } from '../features/shipments';
 import { colors, fonts, spacing } from '../theme';
 
@@ -47,11 +50,34 @@ export default function DashboardScreen() {
   const router = useRouter();
   const [summary, setSummary] = useState(FALLBACK_SUMMARY);
   const [loading, setLoading] = useState(true);
+  const [cycles, setCycles] = useState([]);
+  const [selectedCycle, setSelectedCycle] = useState('');
 
-  const load = useCallback(async () => {
+  // Fetch active cycles containing registered shipments
+  useEffect(() => {
+    let mounted = true;
+    async function loadCycles() {
+      const activeCycles = await getActiveCollectionCycles();
+      if (!mounted) return;
+      if (activeCycles.length > 0) {
+        setCycles(activeCycles);
+        setSelectedCycle((prev) => (prev && activeCycles.some((c) => c.isoDate === prev) ? prev : activeCycles[0].isoDate));
+      } else {
+        const fallback = getRecentThursdays(1);
+        setCycles(fallback);
+        setSelectedCycle(fallback[0]?.isoDate || '');
+      }
+    }
+    loadCycles();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const load = useCallback(async (cycleDate) => {
     try {
       setLoading(true);
-      const data = await getDashboardSummary();
+      const data = await getDashboardSummary(cycleDate);
       if (data) {
         setSummary(data);
       }
@@ -63,11 +89,17 @@ export default function DashboardScreen() {
   }, []);
 
   useEffect(() => {
-    load();
+    if (selectedCycle) {
+      load(selectedCycle);
+    }
+  }, [selectedCycle, load]);
 
+  useEffect(() => {
     const unsubscribe = subscribeRealtimeEvents((event) => {
       if (['STATUS_UPDATE', 'SHIPMENT_CREATED', 'PAYMENT_RECORDED', 'SOA_GENERATED'].includes(event.type)) {
-        load();
+        if (selectedCycle) {
+          load(selectedCycle);
+        }
       }
     });
 
@@ -76,7 +108,7 @@ export default function DashboardScreen() {
         unsubscribe();
       }
     };
-  }, [load]);
+  }, [selectedCycle, load]);
 
   const shipmentCount = summary.shipmentCount ?? 0;
   const parcelCount = summary.parcelCount ?? 0;
@@ -99,11 +131,21 @@ export default function DashboardScreen() {
         eyebrow="Operations Overview"
         title="Dashboard"
         right={
-          <Button
-            label="+ Register Shipment"
-            variant="primary"
-            onPress={() => router.push('/register')}
-          />
+          <View style={styles.headerRightGroup}>
+            {cycles.length > 0 ? (
+              <CycleDropdown
+                cycles={cycles}
+                selectedCycle={selectedCycle}
+                onSelectCycle={setSelectedCycle}
+                minWidth={280}
+              />
+            ) : null}
+            <Button
+              label="+ Register Shipment"
+              variant="primary"
+              onPress={() => router.push('/register')}
+            />
+          </View>
         }
       />
 
@@ -130,7 +172,7 @@ export default function DashboardScreen() {
           value={`₱${Number(forCollectionAmount).toLocaleString()}`}
           sublabel={`${forCollectionClients} clients`}
           emphasis
-          onPress={() => router.push('/weekly-collections')}
+          onPress={() => router.push(selectedCycle ? `/weekly-collections?cycle=${encodeURIComponent(selectedCycle)}` : '/weekly-collections')}
         />
       </View>
 
@@ -146,7 +188,7 @@ export default function DashboardScreen() {
           <Button
             label="Prepare weekly collection →"
             variant="secondary"
-            onPress={() => router.push('/weekly-collections')}
+            onPress={() => router.push(selectedCycle ? `/weekly-collections?cycle=${encodeURIComponent(selectedCycle)}` : '/weekly-collections')}
             style={styles.collectionBtn}
           />
         </Card>
@@ -179,6 +221,12 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerRightGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
   metricsRow: {
     flexDirection: 'row',
     gap: spacing.lg,
