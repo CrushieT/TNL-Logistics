@@ -1,6 +1,7 @@
 package com.tnl.logistics.service;
 
 import com.tnl.logistics.dto.DashboardSummaryResponse;
+import java.time.LocalDate;
 
 /**
  * Service interface for aggregating live operations metrics, status charts,
@@ -9,4 +10,6 @@ import com.tnl.logistics.dto.DashboardSummaryResponse;
 public interface DashboardService {
 
     DashboardSummaryResponse getDashboardSummary();
+
+    DashboardSummaryResponse getDashboardSummary(LocalDate targetCycleDate);
 }

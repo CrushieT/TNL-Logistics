@@ -41,6 +41,10 @@ public class DashboardIntegrationTest {
                 .andExpect(jsonPath("$.forCollection.amount").isNumber())
                 .andExpect(jsonPath("$.parcelUnitsByStatus").isArray())
                 .andExpect(jsonPath("$.weeklyShipmentVolume").isArray())
+                .andExpect(jsonPath("$.weeklyShipmentVolume.length()").value(7))
+                .andExpect(jsonPath("$.weeklyShipmentVolume[0].label").value("Fri"))
+                .andExpect(jsonPath("$.weeklyShipmentVolume[6].label").value("Thu"))
+                .andExpect(jsonPath("$.forCollection.day").value("Thu"))
                 .andExpect(jsonPath("$.outstandingVsCollected").isArray())
                 .andExpect(jsonPath("$.recentActivity").isArray());
     }
@@ -67,5 +71,16 @@ public class DashboardIntegrationTest {
         mockMvc.perform(get("/api/v1/dashboard/summary")
                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testGetDashboardSummaryWithSpecificCycleReturns200() throws Exception {
+        mockMvc.perform(get("/api/v1/dashboard/summary")
+                .param("cycle", "2026-09-03")
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.shipmentCount").isNumber())
+                .andExpect(jsonPath("$.weeklyShipmentVolume.length()").value(7));
     }
 }

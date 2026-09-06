@@ -35,4 +35,9 @@ public interface ParcelUnitRepository extends JpaRepository<ParcelUnit, String> 
 
     @Query("SELECT p.currentStatus, COUNT(p) FROM ParcelUnit p GROUP BY p.currentStatus")
     List<Object[]> countParcelsGroupedByStatus();
+
+    @Query("SELECT p.currentStatus, COUNT(p) FROM ParcelUnit p " +
+           "WHERE p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered <= :cycleEnd " +
+           "GROUP BY p.currentStatus")
+    List<Object[]> countParcelsGroupedByStatusBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart, @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
 }

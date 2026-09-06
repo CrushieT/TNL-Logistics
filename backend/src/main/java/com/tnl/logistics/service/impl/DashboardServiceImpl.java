@@ -18,6 +18,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.TextStyle;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -50,35 +51,51 @@ public class DashboardServiceImpl implements DashboardService {
 
     @Override
     public DashboardSummaryResponse getDashboardSummary() {
-        // 1. Total counts
-        long shipmentCount = shipmentRepository.count();
-        long parcelCount = parcelUnitRepository.count();
+        return getDashboardSummary(null);
+    }
+
+    @Override
+    public DashboardSummaryResponse getDashboardSummary(LocalDate targetCycleDate) {
+        LocalDate today = LocalDate.now();
+        LocalDate activeCycleEnd = (targetCycleDate != null)
+                ? targetCycleDate
+                : collectionsService.calculateActiveCycleDate(today);
+
+        LocalDateTime cycleStart = activeCycleEnd.minusDays(6).atStartOfDay();
+        LocalDateTime cycleEnd = activeCycleEnd.atTime(23, 59, 59, 999999999);
+
+        // 1. Cycle-scoped counts
+        long shipmentCount = shipmentRepository.countShipmentsRegisteredBetween(cycleStart, cycleEnd);
+        long parcelCount = shipmentRepository.countParcelsRegisteredBetween(cycleStart, cycleEnd);
 
         // 2. Today's shipments
-        LocalDate today = LocalDate.now();
         LocalDateTime todayStart = today.atStartOfDay();
         LocalDateTime todayEnd = today.atTime(23, 59, 59, 999999999);
         long todayShipmentCount = shipmentRepository.countShipmentsRegisteredBetween(todayStart, todayEnd);
         String todayDateFormatted = today.format(DATE_FORMATTER);
 
-        // 3. Unpaid transactions count
-        long unpaidTransactionCount = shipmentRepository.countUnpaidShipments();
+        // 3. Cycle-scoped unpaid transactions count
+        long unpaidTransactionCount = shipmentRepository.countUnpaidShipmentsBetween(cycleStart, cycleEnd);
 
-        // 4. Thursday weekly collection metrics
+        // 4. Weekly collection metrics aligned to active billing cycle
+        DayOfWeek collectionDay = collectionsService.getCollectionDayOfWeek();
+        String collectionDayShort = collectionDay != null
+                ? collectionDay.getDisplayName(TextStyle.SHORT, Locale.ENGLISH)
+                : "Thu";
         DashboardSummaryResponse.ForCollectionDto forCollection;
         try {
-            WeeklyCollectionsResponse weeklyResponse = collectionsService.getWeeklyCollections(null);
+            WeeklyCollectionsResponse weeklyResponse = collectionsService.getWeeklyCollections(activeCycleEnd);
             BigDecimal amount = (weeklyResponse != null && weeklyResponse.getOutstandingBalance() != null)
                     ? weeklyResponse.getOutstandingBalance()
                     : BigDecimal.ZERO;
             int clientCount = weeklyResponse != null ? weeklyResponse.getActiveClientsCount() : 0;
-            forCollection = new DashboardSummaryResponse.ForCollectionDto(amount, clientCount, "Thu");
+            forCollection = new DashboardSummaryResponse.ForCollectionDto(amount, clientCount, collectionDayShort);
         } catch (Exception e) {
-            forCollection = new DashboardSummaryResponse.ForCollectionDto(BigDecimal.ZERO, 0, "Thu");
+            forCollection = new DashboardSummaryResponse.ForCollectionDto(BigDecimal.ZERO, 0, collectionDayShort);
         }
 
-        // 5. Parcel units status breakdown
-        List<Object[]> statusRows = parcelUnitRepository.countParcelsGroupedByStatus();
+        // 5. Parcel units status breakdown for this cycle
+        List<Object[]> statusRows = parcelUnitRepository.countParcelsGroupedByStatusBetween(cycleStart, cycleEnd);
         Map<ParcelStatus, Long> statusCounts = new EnumMap<>(ParcelStatus.class);
         for (Object[] row : statusRows) {
             if (row[0] instanceof ParcelStatus) {
@@ -101,11 +118,8 @@ public class DashboardServiceImpl implements DashboardService {
                     "Completed", statusCounts.get(ParcelStatus.COMPLETED), "#059669"));
         }
 
-        // 6. Weekly shipment volume (Monday through Sunday)
-        LocalDate monday = today.with(DayOfWeek.MONDAY);
-        LocalDate sunday = today.with(DayOfWeek.SUNDAY);
-        List<Object[]> dailyRows = shipmentRepository.countDailyShipmentsBetween(
-                monday.atStartOfDay(), sunday.atTime(23, 59, 59, 999999999));
+        // 6. Weekly shipment volume aligned to active 7-day billing cycle
+        List<Object[]> dailyRows = shipmentRepository.countDailyShipmentsBetween(cycleStart, cycleEnd);
         Map<LocalDate, Long> dailyMap = new HashMap<>();
         for (Object[] row : dailyRows) {
             LocalDate date = null;
@@ -122,17 +136,17 @@ public class DashboardServiceImpl implements DashboardService {
                 dailyMap.put(date, ((Number) row[1]).longValue());
             }
         }
-        String[] dayLabels = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
         List<DashboardSummaryResponse.VolumePointDto> weeklyShipmentVolume = new ArrayList<>();
         for (int i = 0; i < 7; i++) {
-            LocalDate dayDate = monday.plusDays(i);
+            LocalDate dayDate = cycleStart.toLocalDate().plusDays(i);
+            String dayLabel = dayDate.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.ENGLISH);
             long volume = dailyMap.getOrDefault(dayDate, 0L);
-            weeklyShipmentVolume.add(new DashboardSummaryResponse.VolumePointDto(dayLabels[i], volume));
+            weeklyShipmentVolume.add(new DashboardSummaryResponse.VolumePointDto(dayLabel, volume));
         }
 
-        // 7. Financial comparison (Outstanding vs Collected)
-        BigDecimal totalCharges = shipmentRepository.sumTotalShipmentCharges();
-        BigDecimal totalCollected = shipmentRepository.sumTotalPayments();
+        // 7. Financial comparison (Outstanding vs Collected) for this cycle
+        BigDecimal totalCharges = shipmentRepository.sumTotalShipmentChargesBetween(cycleStart, cycleEnd);
+        BigDecimal totalCollected = shipmentRepository.sumTotalPaymentsBetween(cycleStart, cycleEnd);
         BigDecimal outstanding = totalCharges.subtract(totalCollected);
         if (outstanding.compareTo(BigDecimal.ZERO) < 0) {
             outstanding = BigDecimal.ZERO;
