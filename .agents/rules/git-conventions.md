@@ -88,6 +88,7 @@ All AI coding assistants and subagents must strictly adhere to these rules:
 - **Never Stage Automatically:** NEVER execute `git add` or `git add .` unless the user explicitly commands you to stage or add files in their prompt.
 - **Leave Working Directory Unstaged:** After creating files, editing code, or running test suites, leave all modified and new files unstaged in the working directory so the user can inspect changes with standard `git diff`.
 - **Do Not Initiate Staging/Commit Permissions:** Never run `git add`, `git commit`, or `git push` proactively. Do not trigger permission prompts for staging or committing unless explicitly asked.
+- **Direct Command Invocation (No Subshell Wrappers):** Always invoke commands (`mvn test`, `git`) directly in PowerShell. Never wrap or prefix commands in `cmd /c`, `cmd.exe /c`, or `powershell -c`. Subshell wrappers change the leading command token from `mvn` to `cmd`, which bypasses the configured permission allowlist and triggers unwanted interactive approval prompts.
 
 ---
 
