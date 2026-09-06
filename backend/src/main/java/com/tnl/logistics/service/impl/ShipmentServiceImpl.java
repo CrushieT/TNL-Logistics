@@ -36,6 +36,7 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final TrackingEventRepository trackingEventRepository;
     private final WaybillRepository waybillRepository;
     private final SseService sseService;
+    private final PrintEventRepository printEventRepository;
 
     public ShipmentServiceImpl(ShipmentRepository shipmentRepository,
                                ParcelUnitRepository parcelUnitRepository,
@@ -44,7 +45,8 @@ public class ShipmentServiceImpl implements ShipmentService {
                                AppUserRepository appUserRepository,
                                TrackingEventRepository trackingEventRepository,
                                WaybillRepository waybillRepository,
-                               SseService sseService) {
+                               SseService sseService,
+                               PrintEventRepository printEventRepository) {
         this.shipmentRepository = shipmentRepository;
         this.parcelUnitRepository = parcelUnitRepository;
         this.clientRepository = clientRepository;
@@ -53,6 +55,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         this.trackingEventRepository = trackingEventRepository;
         this.waybillRepository = waybillRepository;
         this.sseService = sseService;
+        this.printEventRepository = printEventRepository;
     }
 
     @Override
@@ -396,19 +399,48 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         int totalLabelsPrinted = parcel.getLabelStatus() == LabelStatus.PRINTED ? (1 + parcel.getReprintCount()) : 0;
 
+        Optional<PrintEvent> latestPrintOpt = printEventRepository.findTopByParcelUnit_TrackingIdOrderByPrintTimestampDescPrintIdDesc(trackingId);
+        String printStatus = parcel.getLabelStatus() == LabelStatus.PRINTED ? "Printed" : "Pending";
+        String printDate;
+        String printStaff;
+        String printPrinter;
+
+        if (latestPrintOpt.isPresent()) {
+            PrintEvent event = latestPrintOpt.get();
+            printDate = event.getPrintTimestamp() != null
+                    ? event.getPrintTimestamp().format(DATE_FORMATTER) + " · " + event.getPrintTimestamp().format(TIME_FORMATTER)
+                    : "—";
+            printStaff = event.getStaff() != null ? event.getStaff().getFullName() : "Office Staff";
+            printPrinter = event.getPrinterId() != null ? event.getPrinterId() : "Brother RJ-2035B";
+        } else if (parcel.getLabelStatus() == LabelStatus.PRINTED) {
+            printDate = shipment.getDateRegistered() != null
+                    ? shipment.getDateRegistered().format(DATE_FORMATTER) + " · " + shipment.getDateRegistered().format(TIME_FORMATTER)
+                    : "—";
+            printStaff = events.stream()
+                    .filter(e -> e.getStaff() != null)
+                    .map(e -> e.getStaff().getFullName())
+                    .findFirst()
+                    .orElse("Office Staff");
+            printPrinter = "Brother RJ-2035B";
+        } else {
+            printDate = "—";
+            printStaff = "—";
+            printPrinter = "—";
+        }
+
         resp.setPrinting(new PrintInfoDto(
-                parcel.getLabelStatus() == LabelStatus.PRINTED ? "Printed" : "Pending",
-                shipment.getDateRegistered() != null ? shipment.getDateRegistered().format(DATE_FORMATTER) + " · " + shipment.getDateRegistered().format(TIME_FORMATTER) : "Aug 24, 2026",
-                "Maria Santos",
-                "Brother RJ-2035B",
-                totalLabelsPrinted > 0 ? totalLabelsPrinted : 1
+                printStatus,
+                printDate,
+                printStaff,
+                printPrinter,
+                totalLabelsPrinted > 0 ? totalLabelsPrinted : 0
         ));
 
         return resp;
     }
 
     @Override
-    public void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUsername) {
+    public void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUsername, String printerId) {
         List<ParcelUnit> parcels;
         if (packageIds == null || packageIds.isEmpty()) {
             parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
@@ -416,15 +448,33 @@ public class ShipmentServiceImpl implements ShipmentService {
             parcels = parcelUnitRepository.findAllById(packageIds);
         }
 
+        AppUser actingStaff = null;
+        if (actingStaffUsername != null && !actingStaffUsername.isBlank()) {
+            actingStaff = appUserRepository.findByUsername(actingStaffUsername).orElse(null);
+        }
+        if (actingStaff == null) {
+            actingStaff = appUserRepository.findAll().stream().findFirst().orElse(null);
+        }
+
+        String assignedPrinter = (printerId != null && !printerId.isBlank()) ? printerId : "Brother RJ-2035B";
+
         for (ParcelUnit parcel : parcels) {
+            PrintKind printKind;
             if (parcel.getLabelStatus() == LabelStatus.NOT_PRINTED) {
                 // First print: marks as Printed, keeping reprintCount at 0
                 parcel.setLabelStatus(LabelStatus.PRINTED);
+                printKind = PrintKind.PRINT;
             } else {
                 // Subsequent prints: increment reprintCount (1, 2, 3...)
                 parcel.setReprintCount(parcel.getReprintCount() + 1);
+                printKind = PrintKind.REPRINT;
             }
-            parcelUnitRepository.save(parcel);
+            parcelUnitRepository.saveAndFlush(parcel);
+ 
+            if (actingStaff != null) {
+                PrintEvent printEvent = new PrintEvent(parcel, printKind, 1, actingStaff, assignedPrinter);
+                printEventRepository.saveAndFlush(printEvent);
+            }
         }
 
         try {
