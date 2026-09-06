@@ -24,11 +24,12 @@ export function getNearestThursday(baseDate = new Date()) {
  * @param {Date} thursdayDate
  * @returns {string}
  */
-export function formatCycleDateRange(thursdayDate) {
-  const end = new Date(thursdayDate);
+export function formatCycleDateRange(cycleEndDate) {
+  const end = new Date(cycleEndDate);
   const start = new Date(end);
   start.setDate(end.getDate() - 6);
 
+  const dayName = end.toLocaleDateString('en-US', { weekday: 'long' });
   const startMonth = start.toLocaleDateString('en-US', { month: 'short' });
   const endMonth = end.toLocaleDateString('en-US', { month: 'short' });
   const startYear = start.getFullYear();
@@ -38,11 +39,11 @@ export function formatCycleDateRange(thursdayDate) {
 
   if (startYear === endYear) {
     if (startMonth === endMonth) {
-      return `Thursday, ${startMonth} ${startDay}-${endDay}, ${endYear}`;
+      return `${dayName}, ${startMonth} ${startDay} – ${endDay}, ${endYear}`;
     }
-    return `Thursday, ${startMonth} ${startDay} – ${endMonth} ${endDay}, ${endYear}`;
+    return `${dayName}, ${startMonth} ${startDay} – ${endMonth} ${endDay}, ${endYear}`;
   }
-  return `Thursday, ${startMonth} ${startDay}, ${startYear} – ${endMonth} ${endDay}, ${endYear}`;
+  return `${dayName}, ${startMonth} ${startDay}, ${startYear} – ${endMonth} ${endDay}, ${endYear}`;
 }
 
 /**
