@@ -61,4 +61,6 @@ frontend-mobile/.expo-shared/
 *.pdf
 .agents/rules/answer.md
 .audit/
+.github/PR_DRAFT.md
+PR_DRAFT.md
 

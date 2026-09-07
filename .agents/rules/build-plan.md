@@ -204,8 +204,13 @@
 - Live recent activity feed with formatted tracking scans, staff attribution, and link to `/tracking-logs`.
 - Backend live aggregation endpoint `GET /api/v1/dashboard/summary` and real-time Server-Sent Events (SSE) synchronization.
 
-**5.3 — Global Tracking Logs Audit Feed (Screen 17)**
-- Company-wide real-time audit stream showing every parcel scan, timestamp, acting staff member, and vehicle assignment (auto-updating via SSE).
+**5.3 — Global Tracking Logs Audit Feed (Screen 17)** — **[COMPLETED]**
+- Company-wide real-time audit stream showing every parcel scan, timestamp, acting staff member, and vehicle assignment.
+- 4-card live operational metrics bar (Today's Total Scans, Active Couriers, Loaded on Truck Today, Handed to Hauler Today).
+- Multi-field search (tracking ID, shipment ID, staff name) with persistent status filter pills matching prototype aesthetic.
+- Server-side paginated audit table with configurable page sizes (10, 25, 50), clickable parcel inspection links, and CSV export.
+- Optimized Server-Sent Events (SSE) synchronization: smart in-place prepend on Page 1 and non-intrusive floating pill on Page > 1.
+- REST endpoints `GET /api/v1/tracking-events` and `GET /api/v1/tracking-events/metrics` protected by RBAC (`ADMIN`, `OFFICE_STAFF`), verified via `TrackingLogIntegrationTest`.
 
 **5.4 — Operational & Financial Reports (Screen 26)**
 - Date-range filterable reports: Daily shipment volume, revenue by client, status distributions, and exportable summaries.
