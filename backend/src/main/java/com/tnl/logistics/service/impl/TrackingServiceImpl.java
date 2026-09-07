@@ -1,8 +1,6 @@
 package com.tnl.logistics.service.impl;
 
-import com.tnl.logistics.dto.BatchTrackingScanRequest;
-import com.tnl.logistics.dto.TrackingScanRequest;
-import com.tnl.logistics.dto.TrackingScanResponse;
+import com.tnl.logistics.dto.*;
 import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.repository.ParcelUnitRepository;
@@ -10,10 +8,14 @@ import com.tnl.logistics.repository.TrackingEventRepository;
 import com.tnl.logistics.repository.VehicleRepository;
 import com.tnl.logistics.service.SseService;
 import com.tnl.logistics.service.TrackingService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -226,6 +228,85 @@ public class TrackingServiceImpl implements TrackingService {
             case QR_GENERATED: return "QR Generated";
             case LOADED_ON_TRUCK: return "Loaded on Truck";
             case ARRIVED_AT_TNL: return "Arrived at TNL";
+            case LOADED_TO_HAULER: return "Loaded to Hauler";
+            case COMPLETED: return "Completed";
+            case REGISTERED:
+            default: return "Registered";
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<TrackingLogEntryResponse> getTrackingLogs(String search, ParcelStatus status,
+                                                          LocalDate startDate, LocalDate endDate,
+                                                          Pageable pageable) {
+        String cleanSearch = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
+
+        LocalDateTime startDateTime = (startDate != null) ? startDate.atStartOfDay() : null;
+        LocalDateTime endDateTime = (endDate != null) ? endDate.atTime(23, 59, 59, 999999999) : null;
+
+        Page<TrackingEvent> eventsPage = trackingEventRepository.searchTrackingEvents(
+                cleanSearch, status, startDateTime, endDateTime, pageable);
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a", Locale.ENGLISH);
+
+        return eventsPage.map(event -> {
+            ParcelUnit parcel = event.getParcelUnit();
+            Shipment shipment = (parcel != null) ? parcel.getShipment() : null;
+            AppUser staff = event.getStaff();
+            Vehicle vehicle = event.getVehicle();
+
+            String packageDisplay = (parcel != null && shipment != null && shipment.getQuantity() != null)
+                    ? parcel.getSeq() + " of " + shipment.getQuantity()
+                    : "1 of 1";
+
+            String formattedTimestamp = (event.getEventTimestamp() != null)
+                    ? event.getEventTimestamp().format(formatter)
+                    : "";
+
+            String statusDisplay = formatStatusDisplay(event.getStatus());
+
+            return new TrackingLogEntryResponse(
+                    event.getEventId(),
+                    (parcel != null) ? parcel.getTrackingId() : null,
+                    (shipment != null) ? shipment.getShipmentId() : null,
+                    packageDisplay,
+                    (event.getStatus() != null) ? event.getStatus().name() : null,
+                    statusDisplay,
+                    (vehicle != null) ? vehicle.getVehicleId() : null,
+                    (vehicle != null) ? vehicle.getPlateNumber() : null,
+                    (staff != null) ? staff.getUsername() : null,
+                    (staff != null) ? staff.getFullName() : null,
+                    (staff != null && staff.getRole() != null) ? staff.getRole().name() : null,
+                    (staff != null && staff.getStaffType() != null) ? staff.getStaffType().name() : null,
+                    event.getRemarks(),
+                    event.getEventTimestamp(),
+                    formattedTimestamp
+            );
+        });
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public TrackingMetricsResponse getTodayTrackingMetrics() {
+        LocalDate today = LocalDate.now();
+        LocalDateTime startOfDay = today.atStartOfDay();
+        LocalDateTime endOfDay = today.atTime(23, 59, 59, 999999999);
+
+        long totalScans = trackingEventRepository.countOperationalScansBetween(startOfDay, endOfDay);
+        long activeCouriers = trackingEventRepository.countDistinctCouriersBetween(startOfDay, endOfDay);
+        long loadedOnTruck = trackingEventRepository.countStatusBetween(ParcelStatus.LOADED_ON_TRUCK, startOfDay, endOfDay);
+        long handedToHauler = trackingEventRepository.countStatusBetween(ParcelStatus.LOADED_TO_HAULER, startOfDay, endOfDay);
+
+        return new TrackingMetricsResponse(totalScans, activeCouriers, loadedOnTruck, handedToHauler);
+    }
+
+    private String formatStatusDisplay(ParcelStatus status) {
+        if (status == null) return "Registered";
+        switch (status) {
+            case QR_GENERATED: return "QR Generated";
+            case LOADED_ON_TRUCK: return "Loaded on Truck";
+            case ARRIVED_AT_TNL: return "Outload / Arrive TNL";
             case LOADED_TO_HAULER: return "Loaded to Hauler";
             case COMPLETED: return "Completed";
             case REGISTERED:
