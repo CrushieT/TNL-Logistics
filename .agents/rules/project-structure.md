@@ -41,13 +41,20 @@ tnl-logistics/
 │   │   │   ├── register.js          # Register Shipment (form + result view)
 │   │   │   ├── shipments/           # Shipments list and detail views
 │   │   │   ├── vehicles.js          # Vehicle fleet management
-│   │   │   ├── clients.js           # Client directory & profile view
-│   │   │   ├── waybills.js          # Waybills & printable manifest
+│   │   │   ├── clients/             # Client directory & profile views
+│   │   │   │   ├── index.js         # Screen 15 Client Directory Table
+│   │   │   │   └── [id].js          # Screen 16 Single Client Profile View
+│   │   │   ├── tracking-logs.js     # Screen 17 Global Tracking Logs audit stream
 │   │   │   ├── payments.js          # Screen 18 Payment recording & installment ledger
 │   │   │   ├── weekly-collections.js# Screen 19 Weekly Collections consolidation dashboard
 │   │   │   ├── statements.js        # Screen 20 Statement of Account (SOA) preview & deductions
-│   │   │   └── statements/
-│   │   │       └── print.js         # Screen 22 Dedicated isolated printable SOA document
+│   │   │   ├── statements/
+│   │   │   │   └── print.js         # Screen 22 Dedicated isolated printable SOA document
+│   │   │   ├── waybills/            # Waybills & printable manifest
+│   │   │   │   └── index.js         # Screens 23-25 Waybill workflow & printable manifest
+│   │   │   ├── reports.js           # Screen 26 Operational & Financial Reports
+│   │   │   ├── users.js             # Screen 27 User & Staff Management
+│   │   │   └── settings.js          # Screen 28 System Settings
 │   │   ├── components/              # Shared design system (common/ atoms, layout/ AppShell)
 │   │   ├── features/                # Domain feature modules (shipments, vehicles, clients, waybills, payments, collections)
 │   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sseClient.js)
@@ -61,26 +68,18 @@ tnl-logistics/
 ├── frontend-mobile/                  # React Native (Expo) Field Operations (JavaScript)
 │   ├── app/
 │   │   ├── (auth)/
-│   │   │   ├── login.js
-│   │   │   └── _layout.js
+│   │   │   └── login.js
 │   │   ├── (main)/
+│   │   │   ├── _layout.js
 │   │   │   ├── home.js
-│   │   │   ├── scan.js
-│   │   │   ├── history.js
-│   │   │   └── _layout.js
+│   │   │   └── scan.js
 │   │   └── _layout.js
 │   ├── api/
 │   │   └── client.js
-│   ├── components/
-│   │   ├── QRScanner.js
-│   │   ├── LabelPrinter.js
-│   │   └── common/
-│   ├── hooks/
 │   ├── app.json                      # Expo configuration
 │   ├── eas.json                      # EAS Build configuration
 │   ├── package.json
 │   ├── .env.example
-│   ├── .gitignore
 │   └── README.md
 │
 ├── docker-compose.yml                # Local dev: MySQL + Backend

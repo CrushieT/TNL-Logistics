@@ -25,7 +25,7 @@
 | **Phase 4.1** | Backend: Payments & Collections Engine (`POST /api/v1/payments`, Balance Recalculation, Multi-Search & Audit) | [COMPLETED] |
 | **Phase 4.2** | Backend: Thursday Weekly Collections Consolidation & SOA Generator (3 Deductions, Net Remittance) | [COMPLETED] |
 | **Phase 4.3** | Web: Billing, Collections & Printable SOA (Desktop Screens 18–22) | [COMPLETED] |
-| **Phase 5** | Web Console: Live Dashboard, Tracking Logs Stream, Reports, Users & Settings (Screens 01, 02, 17, 26–28) | [UPCOMING] |
+| **Phase 5** | Web Console: Live Dashboard, Tracking Logs Stream, Reports, Users & Settings (Screens 01, 02, 17, 26–28) | [IN PROGRESS] |
 | **Phase 6** | Role-Aware Mobile App: Scan-Only Field Staff vs. Authorized Office Mobile + Bluetooth Printing (Screens 29–53) | [UPCOMING] |
 
 ---
