@@ -2,7 +2,7 @@
 
 [![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.4.2-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![Java](https://img.shields.io/badge/Java-21%20%2F%2023-ED8B00?logo=openjdk&logoColor=white)](https://www.oracle.com/java/)
-[![Expo](https://img.shields.io/badge/Expo-52.0-000020?logo=expo&logoColor=white)](https://expo.dev/)
+[![Expo](https://img.shields.io/badge/Expo-51.0-000020?logo=expo&logoColor=white)](https://expo.dev/)
 [![React Native](https://img.shields.io/badge/React_Native-Web%20%26%20Mobile-61DAFB?logo=react&logoColor=black)](https://reactnative.dev/)
 [![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
 [![Flyway](https://img.shields.io/badge/Flyway-Database_Migrations-CC0200?logo=flyway&logoColor=white)](https://flywaydb.org/)
@@ -30,7 +30,7 @@ Commercial freight forwarding requires strict chain-of-custody tracking, legal p
 ```text
                                   ┌────────────────────────────────┐
                                   │       MySQL 8.0 Database       │
-                                  │   (Flyway Migrations V1-V8)    │
+                                  │   (Flyway Migrations V1-V16)   │
                                   └───────────────┬────────────────┘
                                                   │
                                                   ▼
@@ -76,12 +76,12 @@ Unlike simplistic CRUD apps that conflate tracking and accounting into a single 
 
 | Phase | Milestone Description | Status | Key Deliverables |
 | :--- | :--- | :---: | :--- |
-| **Phase 0** | **Foundation & Security** | `[COMPLETED]` | Spring Boot 3.4, Flyway migrations `V1`–`V9`, MySQL 8, JPA models, stateless JWT auth with 3 roles (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`). |
+| **Phase 0** | **Foundation & Security** | `[COMPLETED]` | Spring Boot 3.4, Flyway migrations `V1`–`V16`, MySQL 8, JPA models, stateless JWT auth with 3 roles (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`). |
 | **Phase 1** | **Shipment Registration & QR Labels** | `[COMPLETED]` | Sequential IDs (`SHP-YYYY-XXX`, `TRK-YYYY-XXXXXX`), volumetric weight ($\div 5000$) & $m^3$ calculations, vector thermal QR labels, paginated table, tracking inspection. |
 | **Phase 2** | **Status Flow, Real-Time SSE, Fleet & Client Management** | `[COMPLETED]` | Sequential 5-state transition engine, live SSE stream, vehicle fleet CRUD (`VH-XXX`), client directory & profile view (`CL-XXX`), smart deletion, composite indexing, and batch aggregation. |
 | **Phase 3** | **Waybills & Freight Manifest Handover** | `[COMPLETED]` | `WYB-YYYY-XXXX` auto-numbering, 4-state lifecycle (`Generated` → `Sent to Hauler` → `Signed/Completed`), and print-ready A4 3rd-party hauler manifest. |
 | **Phase 4** | **Billing, Collections & Statement of Account** | `[COMPLETED]` | Payment ledger (`/payments`), Thursday weekly collections consolidation (`/weekly-collections`), `SOA-YYYY-XXX-WXX` multi-page statement preview (`/statements`), isolated print architecture (`/statements/print`), deduction management, and dynamic active cycle filtering. |
-| **Phase 5** | **Web Console Administration & Reports** | `[IN PROGRESS]` | Desktop login with branded artwork, route guarding, and in-memory rate limiting (`[COMPLETED]`). Upcoming: Live operational dashboard metrics, audit tracking logs stream, staff management, and reports. |
+| **Phase 5** | **Web Console Administration & Reports** | `[IN PROGRESS]` | Desktop login with branded artwork, route guarding, and in-memory rate limiting (`[COMPLETED]`); live operational dashboard metrics (`[COMPLETED]`). Upcoming: Audit tracking logs stream, operational & financial reports, staff management, and system settings. |
 | **Phase 6** | **Role-Aware Mobile Courier Portal** | `[UPCOMING]` | Mobile PIN auth with role branching (scan-only field staff vs authorized office mobile), camera QR scanner, and Bluetooth thermal printer integration. |
 
 ---
@@ -99,8 +99,8 @@ logistics/
 │   │   ├── repository/                    # Spring Data Repositories & Group By Aggregations
 │   │   └── service/                       # Business Service Contracts & Implementations (impl/)
 │   └── src/main/resources/
-│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V12)
-│       └── application-dev.yml            # Environment Configuration
+│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V16)
+│       └── application-dev.properties     # Environment Configuration
 │
 ├── frontend-web/                          # Expo / React Native Web Admin Portal
 │   ├── src/
@@ -209,7 +209,7 @@ npx expo start --web
 cd backend
 mvn test
 ```
-*Runs all 21 unit, repository, security, and SSE integration tests.*
+*Runs the full suite of unit, repository, security, and integration tests.*
 
 ---
 
