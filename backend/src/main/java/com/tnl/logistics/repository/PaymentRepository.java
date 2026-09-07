@@ -26,6 +26,8 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     @Query("SELECT p FROM Payment p WHERE p.shipment.shipmentId IN :shipmentIds")
     List<Payment> findByShipment_ShipmentIdIn(@Param("shipmentIds") Collection<String> shipmentIds);
 
+    List<Payment> findByPaymentDateBetween(LocalDate startDate, LocalDate endDate);
+
     @Query("SELECT p FROM Payment p JOIN p.shipment s LEFT JOIN s.client c " +
            "WHERE (:search IS NULL OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "   OR LOWER(c.name) LIKE LOWER(CONCAT('%', :search, '%')) " +
