@@ -16,6 +16,8 @@ public interface SoaRepository extends JpaRepository<Soa, String> {
 
     java.util.List<Soa> findByStatementDate(LocalDate statementDate);
 
+    java.util.List<Soa> findByStatementDateBetween(LocalDate startDate, LocalDate endDate);
+
     @Query("SELECT MAX(s.soaNo) FROM Soa s WHERE s.soaNo LIKE :prefix")
     Optional<String> findMaxSoaNoWithPrefix(@Param("prefix") String prefix);
 }

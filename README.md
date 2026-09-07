@@ -81,7 +81,7 @@ Unlike simplistic CRUD apps that conflate tracking and accounting into a single 
 | **Phase 2** | **Status Flow, Real-Time SSE, Fleet & Client Management** | `[COMPLETED]` | Sequential 5-state transition engine, live SSE stream, vehicle fleet CRUD (`VH-XXX`), client directory & profile view (`CL-XXX`), smart deletion, composite indexing, and batch aggregation. |
 | **Phase 3** | **Waybills & Freight Manifest Handover** | `[COMPLETED]` | `WYB-YYYY-XXXX` auto-numbering, 4-state lifecycle (`Generated` → `Sent to Hauler` → `Signed/Completed`), and print-ready A4 3rd-party hauler manifest. |
 | **Phase 4** | **Billing, Collections & Statement of Account** | `[COMPLETED]` | Payment ledger (`/payments`), Thursday weekly collections consolidation (`/weekly-collections`), `SOA-YYYY-XXX-WXX` multi-page statement preview (`/statements`), isolated print architecture (`/statements/print`), deduction management, and dynamic active cycle filtering. |
-| **Phase 5** | **Web Console Administration & Reports** | `[IN PROGRESS]` | Desktop login with branded artwork, route guarding, and in-memory rate limiting (`[COMPLETED]`); live operational dashboard metrics (`[COMPLETED]`). Upcoming: Audit tracking logs stream, operational & financial reports, staff management, and system settings. |
+| **Phase 5** | **Web Console Administration & Reports** | `[IN PROGRESS]` | Desktop login with branded artwork, route guarding, and in-memory rate limiting (`[COMPLETED]`); live operational dashboard metrics (`[COMPLETED]`); tracking logs audit feed with live scan timeline (`[COMPLETED]`); operational & financial reports screen with dual-bar charts, Thursday collections snapshot, fluid full-width tables, empty days toggle, and A4 printable statements (`[COMPLETED]`). Upcoming: Staff management, and system settings. |
 | **Phase 6** | **Role-Aware Mobile Courier Portal** | `[UPCOMING]` | Mobile PIN auth with role branching (scan-only field staff vs authorized office mobile), camera QR scanner, and Bluetooth thermal printer integration. |
 
 ---
@@ -93,7 +93,7 @@ logistics/
 ├── backend/                               # Spring Boot 3.4.2 REST API
 │   ├── src/main/java/com/tnl/logistics/
 │   │   ├── config/                        # SecurityConfig, JWT Provider, WebMvcConfig
-│   │   ├── controller/                    # REST API Controllers (Shipments, Vehicles, Clients, Payments, Collections, SOA)
+│   │   ├── controller/                    # REST API Controllers (Shipments, Vehicles, Clients, Payments, Collections, SOA, Reports, Tracking Events)
 │   │   ├── dto/                           # Request & Response Data Transfer Objects
 │   │   ├── model/                         # JPA Entities (Shipment, ParcelUnit, Vehicle, Client, Payment, Soa, WeeklyCollection)
 │   │   ├── repository/                    # Spring Data Repositories & Group By Aggregations
@@ -104,9 +104,9 @@ logistics/
 │
 ├── frontend-web/                          # Expo / React Native Web Admin Portal
 │   ├── src/
-│   │   ├── app/                           # Expo Router Screens (/, /shipments, /vehicles, /clients, /payments, /weekly-collections, /statements, /statements/print)
+│   │   ├── app/                           # Expo Router Screens (/, /shipments, /vehicles, /clients, /payments, /weekly-collections, /statements, /tracking-logs, /reports)
 │   │   ├── components/                    # Common UI Components (Cards, Buttons, Badges, Layout Shell)
-│   │   ├── features/                      # Domain Features (shipments, vehicles, clients, payments, collections)
+│   │   ├── features/                      # Domain Features (shipments, vehicles, clients, payments, collections, tracking-logs, reports)
 │   │   ├── services/api/                  # Axios Client with Self-Healing JWT Auto-Auth & SSE Event Subscriptions
 │   │   └── theme/                         # Design System Tokens (Colors, Typography, Spacing)
 │   └── package.json
@@ -170,6 +170,10 @@ When field staff scan a parcel with their phone, an append-only event is committ
 | `/api/v1/soa/preview` | `GET` | Office/Admin | Statement of Account preview with itemized shipments and financial rollup |
 | `/api/v1/soa/save` | `POST` | Office/Admin | Persist statement with deductions, notes, and authorized collector |
 | `/api/v1/soa/collectors` | `GET` | Office/Admin | List of active authorized collectors for statement attribution |
+| `/api/v1/tracking-events` | `GET` | Office/Admin | Paginated audit tracking logs feed with debounced search & status filters |
+| `/api/v1/tracking-events/metrics` | `GET` | Office/Admin | Real-time tracking metrics (scans today, active couriers, truck loads, hauler handoffs) |
+| `/api/v1/reports/summary` | `GET` | Office/Admin | Full operational & financial reports breakdown (KPIs, dual-bar chart, daily volume, revenue, aging, payment methods, deductions) |
+| `/api/v1/reports/kpis` | `GET` | Office/Admin | Standalone top-level KPI metrics summary |
 | `/api/v1/events/stream` | `GET` | All Staff | Server-Sent Events real-time event subscription stream |
 
 ---

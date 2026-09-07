@@ -53,8 +53,10 @@ frontend-web/
 │   │   ├── payments.js               # Screen 18 Payment recording & installment ledger
 │   │   ├── weekly-collections.js     # Screen 19 Weekly Collections consolidation dashboard
 │   │   ├── statements.js             # Screen 20 Statements of Account (SOA) preview & deductions
-│   │   └── statements/
-│   │       └── print.js              # Screen 22 Dedicated isolated printable SOA document
+│   │   ├── statements/
+│   │   │   └── print.js              # Screen 22 Dedicated isolated printable SOA document
+│   │   ├── tracking-logs.js          # Screen 17 Global tracking logs audit feed & real-time SSE scan stream
+│   │   └── reports.js                # Screen 26 Operational & financial reports with dual-bar charts & A4 print modal
 │   │
 │   ├── components/                   # Common UI Components
 │   │   ├── layout/
@@ -69,7 +71,9 @@ frontend-web/
 │   │   ├── clients/                  # Client directory, profile view, rate models
 │   │   ├── waybills/                 # Waybill manifest cards, hauler assignment
 │   │   ├── payments/                 # Record payment modal, installment ledger modal
-│   │   └── collections/              # Weekly table, Batch SOA modal, Statement paper card
+│   │   ├── collections/              # Weekly table, Batch SOA modal, Statement paper card
+│   │   ├── tracking-logs/            # Audit event table, metrics bar, debounced filters
+│   │   └── reports/                  # Dual-bar chart, Thursday card, KPI strip, multi-domain tabs
 │   │
 │   ├── services/
 │   │   └── api/
@@ -103,3 +107,5 @@ Key choices lifted from the prototype:
 5. **Weekly Collections Consolidation (Screen 19):** Thursday consolidation dashboard, active cycle dropdown filters, and single & batch SOA generation triggers.
 6. **Statement of Account Document & Print (Screens 20, 22):** Multi-page A4 printable document with dynamic pagination, continuation headers, deduction adjustments, authorized collector selection, and isolated browser printing.
 7. **Authentication & Session Protection (Screen 01):** Desktop login with brand artwork, central route guarding with return URL redirection, in-memory rate limit lockout with live countdown, and sidebar user session controls.
+8. **Global Tracking Logs Feed (Screen 17):** Real-time SSE scan stream with monospaced burnt-orange badges, 4-card live metrics strip, debounced search & status pills, and standardized pagination footer.
+9. **Operational & Financial Reports (Screen 26):** Dual-bar chart comparing client charges vs collections, Thursday collection cycle summary card, top 5 KPIs, date range filter presets, fluid 100% full-width tables, daily operations timeline with empty days toggle and reverse chronological ordering, client receivables aging breakdown, and browser A4 printable document modal.
