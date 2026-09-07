@@ -2,13 +2,13 @@ import React from 'react';
 import {
   View,
   Text,
-  Pressable,
   StyleSheet,
   ActivityIndicator,
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import Card from '../../../components/common/Card';
+import Button from '../../../components/common/Button';
 import { colors, fonts, spacing, radius } from '../../../theme';
 
 export default function TrackingLogsTable({
@@ -31,9 +31,6 @@ export default function TrackingLogsTable({
       router.push(`/shipments?search=${encodeURIComponent(log.trackingId)}`);
     }
   };
-
-  const startRecord = totalElements === 0 ? 0 : page * pageSize + 1;
-  const endRecord = Math.min((page + 1) * pageSize, totalElements);
 
   return (
     <Card style={styles.card}>
@@ -130,87 +127,65 @@ export default function TrackingLogsTable({
       {/* Pagination Footer */}
       {totalElements > 0 ? (
         <View style={styles.paginationFooter}>
-          <View style={styles.paginationInfo}>
-            <Text style={styles.paginationInfoText}>
-              Showing <Text style={styles.paginationInfoBold}>{startRecord}</Text>–
-              <Text style={styles.paginationInfoBold}>{endRecord}</Text> of{' '}
-              <Text style={styles.paginationInfoBold}>{totalElements}</Text> events
+          <View style={styles.paginationMeta}>
+            <Text style={styles.paginationText}>
+              Showing <Text style={styles.paginationStrong}>{logs.length}</Text> of{' '}
+              <Text style={styles.paginationStrong}>{totalElements}</Text> events
+              <Text style={styles.paginationDot}> · </Text>
+              Page <Text style={styles.paginationStrong}>{page + 1}</Text> of{' '}
+              <Text style={styles.paginationStrong}>{totalPages || 1}</Text>
             </Text>
-
-            {/* Page Size Selector */}
-            <View style={styles.pageSizeWrapper}>
-              <Text style={styles.pageSizeLabel}>Rows:</Text>
-              {[10, 25, 50].map((size) => (
-                <Pressable
-                  key={size}
-                  style={[
-                    styles.pageSizeBtn,
-                    pageSize === size && styles.pageSizeBtnActive,
-                  ]}
-                  onPress={() => onPageSizeChange(size)}
-                >
-                  <Text
-                    style={[
-                      styles.pageSizeBtnText,
-                      pageSize === size && styles.pageSizeBtnTextActive,
-                    ]}
-                  >
-                    {size}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
           </View>
 
-          {/* Prev / Next Controls */}
-          <View style={styles.paginationControls}>
-            <Pressable
-              style={[
-                styles.pageButton,
-                page <= 0 && styles.pageButtonDisabled,
-              ]}
+          <View style={styles.paginationActions}>
+            {Platform.OS === 'web' && onPageSizeChange ? (
+              <View style={styles.pageSizeSelectWrap}>
+                <select
+                  value={pageSize}
+                  onChange={(e) => onPageSizeChange(Number(e.target.value))}
+                  style={webSelectStyle}
+                >
+                  <option value={10}>10 / page</option>
+                  <option value={20}>20 / page</option>
+                  <option value={25}>25 / page</option>
+                  <option value={50}>50 / page</option>
+                </select>
+              </View>
+            ) : null}
+
+            <Button
+              label="← Previous"
+              variant="secondary"
               disabled={page <= 0 || loading}
-              onPress={() => onPageChange(page - 1)}
-            >
-              <Text
-                style={[
-                  styles.pageButtonText,
-                  page <= 0 && styles.pageButtonTextDisabled,
-                ]}
-              >
-                ← Prev
-              </Text>
-            </Pressable>
+              onPress={() => onPageChange?.(page - 1)}
+              style={styles.pageBtn}
+            />
 
-            <View style={styles.pageIndicator}>
-              <Text style={styles.pageIndicatorText}>
-                Page {page + 1} of {Math.max(1, totalPages)}
-              </Text>
-            </View>
-
-            <Pressable
-              style={[
-                styles.pageButton,
-                page >= totalPages - 1 && styles.pageButtonDisabled,
-              ]}
+            <Button
+              label="Next →"
+              variant="secondary"
               disabled={page >= totalPages - 1 || loading}
-              onPress={() => onPageChange(page + 1)}
-            >
-              <Text
-                style={[
-                  styles.pageButtonText,
-                  page >= totalPages - 1 && styles.pageButtonTextDisabled,
-                ]}
-              >
-                Next →
-              </Text>
-            </Pressable>
+              onPress={() => onPageChange?.(page + 1)}
+              style={styles.pageBtn}
+            />
           </View>
         </View>
       ) : null}
     </Card>
   );
 }
+
+const webSelectStyle = {
+  fontFamily: fonts.mono,
+  fontSize: 11.5,
+  color: colors.ink,
+  border: `1px solid ${colors.border}`,
+  backgroundColor: '#FFFFFF',
+  padding: '6px 8px',
+  borderRadius: 3,
+  outline: 'none',
+  cursor: 'pointer',
+};
 
 const styles = StyleSheet.create({
   card: {
@@ -351,92 +326,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: '#FAF9F5',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: spacing.md,
   },
-  paginationInfo: {
+  paginationMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
   },
-  paginationInfoText: {
+  paginationText: {
     fontFamily: fonts.sans,
     fontSize: 12,
     color: colors.inkSoft,
   },
-  paginationInfoBold: {
+  paginationStrong: {
     fontFamily: fonts.mono,
     fontWeight: '700',
     color: colors.ink,
   },
-  pageSizeWrapper: {
+  paginationActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.sm,
   },
-  pageSizeLabel: {
-    fontFamily: fonts.sans,
-    fontSize: 11,
-    color: colors.inkFaint,
-    fontWeight: '600',
+  pageSizeSelectWrap: {
+    marginRight: spacing.xs,
   },
-  pageSizeBtn: {
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: '#FFFFFF',
-  },
-  pageSizeBtnActive: {
-    backgroundColor: colors.ink,
-    borderColor: colors.ink,
-  },
-  pageSizeBtnText: {
-    fontFamily: fonts.mono,
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.inkSoft,
-  },
-  pageSizeBtnTextActive: {
-    color: '#FFFFFF',
-  },
-  paginationControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  pageButton: {
+  pageBtn: {
     paddingVertical: 6,
     paddingHorizontal: 12,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: '#FFFFFF',
-  },
-  pageButtonDisabled: {
-    opacity: 0.4,
-  },
-  pageButtonText: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.ink,
-  },
-  pageButtonTextDisabled: {
-    color: colors.inkFaint,
-  },
-  pageIndicator: {
-    paddingHorizontal: 8,
-  },
-  pageIndicatorText: {
-    fontFamily: fonts.mono,
-    fontSize: 12,
-    color: colors.inkSoft,
+    minHeight: 32,
   },
 });
