@@ -1,15 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { colors, fonts } from '../../../theme';
 import { exportDailyVolumeToCsv } from '../utils/exportReportsCsv';
 import TablePaginationFooter from './TablePaginationFooter';
 
 export default function OperationalVolumeTab({ dailyVolume = [], statusDistribution = [], dateRangeStr = '' }) {
+  const [hideEmptyDays, setHideEmptyDays] = useState(true);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(15);
 
-  const totalDays = (dailyVolume || []).length;
-  const pagedDays = (dailyVolume || []).slice(page * pageSize, (page + 1) * pageSize);
+  // Reverse so latest date is at the top (descending chronological order)
+  const sortedDays = useMemo(() => {
+    return [...(dailyVolume || [])].sort((a, b) => {
+      const dateA = a.date || '';
+      const dateB = b.date || '';
+      return dateB.localeCompare(dateA);
+    });
+  }, [dailyVolume]);
+
+  const filteredDays = useMemo(() => {
+    if (!hideEmptyDays) return sortedDays;
+    return sortedDays.filter((d) => (d.shipmentsCount || 0) > 0);
+  }, [sortedDays, hideEmptyDays]);
+
+  const pagedDays = filteredDays.slice(page * pageSize, (page + 1) * pageSize);
 
   // Grand totals across all days in the period
   const totalShipments = (dailyVolume || []).reduce((sum, d) => sum + Number(d.shipmentsCount || 0), 0);
@@ -31,16 +45,35 @@ export default function OperationalVolumeTab({ dailyVolume = [], statusDistribut
 
   return (
     <View style={styles.container}>
-      {/* Top Controls */}
+      {/* Top Controls: Section Heading, Toggle Filter, and Export */}
       <View style={styles.tableControls}>
         <Text style={styles.sectionHeading}>DAILY OPERATIONS TIMELINE</Text>
-        <TouchableOpacity
-          style={styles.exportButton}
-          onPress={() => exportDailyVolumeToCsv(dailyVolume, dateRangeStr)}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.exportButtonText}>Export CSV</Text>
-        </TouchableOpacity>
+
+        <View style={styles.rightControls}>
+          <TouchableOpacity
+            style={[styles.toggleFilterBtn, hideEmptyDays && styles.toggleFilterBtnActive]}
+            onPress={() => {
+              setHideEmptyDays((prev) => !prev);
+              setPage(0);
+            }}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.checkboxIndicator, hideEmptyDays && styles.checkboxIndicatorActive]}>
+              {hideEmptyDays ? <Text style={styles.checkmark}>✓</Text> : null}
+            </View>
+            <Text style={[styles.toggleFilterText, hideEmptyDays && styles.toggleFilterTextActive]}>
+              Hide empty days
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.exportButton}
+            onPress={() => exportDailyVolumeToCsv(filteredDays, dateRangeStr)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.exportButtonText}>Export CSV</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Daily Volume Table Card */}
@@ -87,9 +120,11 @@ export default function OperationalVolumeTab({ dailyVolume = [], statusDistribut
             )}
 
             {/* Total Footer Row (Reconciles entire period volume) */}
-            {totalDays > 0 && (
+            {filteredDays.length > 0 && (
               <View style={styles.totalRow}>
-                <Text style={[styles.totalText, styles.dateCol]}>Total ({totalDays} days)</Text>
+                <Text style={[styles.totalText, styles.dateCol]}>
+                  Total ({filteredDays.length} {hideEmptyDays ? 'active days' : 'days'})
+                </Text>
                 <Text style={[styles.totalNum, styles.numCol]}>{totalShipments}</Text>
                 <Text style={[styles.totalNum, styles.numCol]}>{totalParcels}</Text>
                 <Text style={[styles.totalNum, styles.numCol]}>{totalWeight.toFixed(2)}</Text>
@@ -101,9 +136,9 @@ export default function OperationalVolumeTab({ dailyVolume = [], statusDistribut
         </ScrollView>
 
         {/* Client-side Pagination Footer */}
-        {totalDays > 0 && (
+        {filteredDays.length > 0 && (
           <TablePaginationFooter
-            totalItems={totalDays}
+            totalItems={filteredDays.length}
             currentCount={pagedDays.length}
             page={page}
             pageSize={pageSize}
@@ -113,7 +148,7 @@ export default function OperationalVolumeTab({ dailyVolume = [], statusDistribut
               setPage(0);
             }}
             pageSizeOptions={[15, 30, 60]}
-            itemLabel="days"
+            itemLabel={hideEmptyDays ? 'active days' : 'days'}
           />
         )}
       </View>
@@ -166,6 +201,56 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.inkFaint,
     letterSpacing: 1.1,
+  },
+  rightControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  toggleFilterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  toggleFilterBtnActive: {
+    backgroundColor: '#F8F7F3',
+    borderColor: colors.borderStrong,
+  },
+  checkboxIndicator: {
+    width: 16,
+    height: 16,
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxIndicatorActive: {
+    backgroundColor: colors.ink,
+    borderColor: colors.ink,
+  },
+  checkmark: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+    lineHeight: 12,
+  },
+  toggleFilterText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.inkSoft,
+  },
+  toggleFilterTextActive: {
+    color: colors.ink,
   },
   exportButton: {
     backgroundColor: '#FFFFFF',
