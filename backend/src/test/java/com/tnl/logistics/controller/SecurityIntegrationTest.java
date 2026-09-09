@@ -238,4 +238,20 @@ public class SecurityIntegrationTest {
                         .content(objectMapper.writeValueAsString(validRequest)))
                 .andExpect(status().isOk());
     }
+
+    @Test
+    public void testDeactivatedUserTokenIsRejected() throws Exception {
+        // Create an office user and mark as deactivated
+        AppUser inactiveUser = new AppUser("USR-INACTIVE", "inactive_user", passwordEncoder.encode("pass123"), "Inactive Staff", UserRole.OFFICE_STAFF);
+        inactiveUser.setActive(false);
+        appUserRepository.save(inactiveUser);
+
+        // Generate a cryptographically valid token for the inactive user
+        String token = "Bearer " + com.tnl.logistics.config.JwtTokenProvider.generateToken("inactive_user", "OFFICE_STAFF");
+
+        // Attempting to access protected office endpoint must be rejected (403 Forbidden)
+        mockMvc.perform(get("/api/v1/test/office")
+                        .header("Authorization", token))
+                .andExpect(status().isForbidden());
+    }
 }
