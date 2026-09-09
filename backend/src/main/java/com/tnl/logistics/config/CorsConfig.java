@@ -1,14 +1,16 @@
 package com.tnl.logistics.config;
 
 import java.util.Arrays;
+import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.config.annotation.CorsRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
- * Global CORS configuration.
+ * Global CORS configuration for Spring Security and Spring MVC.
  * Configured via CORS_ALLOWED_ORIGINS environment variable.
  */
 @Configuration
@@ -18,23 +20,23 @@ public class CorsConfig {
 	private String allowedOrigins;
 
 	@Bean
-	public WebMvcConfigurer corsConfigurer() {
-		return new WebMvcConfigurer() {
-			@Override
-			public void addCorsMappings(CorsRegistry registry) {
-				String[] patterns = Arrays.stream(allowedOrigins.split(","))
-						.map(String::trim)
-						.filter(origin -> !origin.isEmpty())
-						.toArray(String[]::new);
+	public CorsConfigurationSource corsConfigurationSource() {
+		List<String> patterns = Arrays.stream(allowedOrigins.split(","))
+				.map(String::trim)
+				.filter(origin -> !origin.isEmpty())
+				.toList();
 
-				registry.addMapping("/**")
-						.allowedOriginPatterns(patterns)
-						.allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
-						.allowedHeaders("*")
-						.allowCredentials(true)
-						.maxAge(3600);
-			}
-		};
+		CorsConfiguration configuration = new CorsConfiguration();
+		configuration.setAllowedOriginPatterns(patterns);
+		configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
+		configuration.setAllowedHeaders(List.of("*"));
+		configuration.setExposedHeaders(List.of("Authorization", "Link", "X-Total-Count"));
+		configuration.setAllowCredentials(true);
+		configuration.setMaxAge(3600L);
+
+		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+		source.registerCorsConfiguration("/**", configuration);
+		return source;
 	}
 
 }
