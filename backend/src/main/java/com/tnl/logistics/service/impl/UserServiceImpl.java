@@ -58,9 +58,10 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public synchronized UserResponse createUser(UserCreateRequest request) {
-        if (appUserRepository.findByUsername(request.getUsername()).isPresent()) {
+        String normalizedUsername = request.getUsername() != null ? request.getUsername().trim().toLowerCase() : null;
+        if (appUserRepository.findByUsername(normalizedUsername).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Username '" + request.getUsername() + "' is already taken.");
+                    "Username '" + normalizedUsername + "' is already taken.");
         }
 
         if (request.getRole() == UserRole.FIELD_STAFF && request.getStaffType() == null) {
@@ -72,7 +73,7 @@ public class UserServiceImpl implements UserService {
 
         AppUser user = new AppUser(
                 userId,
-                request.getUsername(),
+                normalizedUsername,
                 passwordEncoder.encode(request.getPassword()),
                 request.getFullName(),
                 request.getRole()
@@ -96,10 +97,11 @@ public class UserServiceImpl implements UserService {
         guardSelfModification(userId, requestingUserId);
         AppUser user = findUserOrThrow(userId);
 
-        appUserRepository.findByUsername(request.getUsername()).ifPresent(existing -> {
+        String normalizedUsername = request.getUsername() != null ? request.getUsername().trim().toLowerCase() : null;
+        appUserRepository.findByUsername(normalizedUsername).ifPresent(existing -> {
             if (!existing.getUserId().equals(userId)) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Username '" + request.getUsername() + "' is already taken.");
+                        "Username '" + normalizedUsername + "' is already taken.");
             }
         });
 
@@ -109,7 +111,7 @@ public class UserServiceImpl implements UserService {
         }
 
         user.setFullName(request.getFullName());
-        user.setUsername(request.getUsername());
+        user.setUsername(normalizedUsername);
         user.setRole(request.getRole());
         user.setActive(request.getActive());
 

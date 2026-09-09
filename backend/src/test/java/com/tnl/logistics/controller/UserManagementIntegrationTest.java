@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tnl.logistics.dto.AdminPasswordResetRequest;
 import com.tnl.logistics.dto.AdminPinResetRequest;
 import com.tnl.logistics.dto.UserCreateRequest;
+import com.tnl.logistics.dto.UserUpdateRequest;
 import com.tnl.logistics.model.StaffType;
 import com.tnl.logistics.model.UserRole;
 import org.junit.jupiter.api.Test;
@@ -240,5 +241,63 @@ public class UserManagementIntegrationTest {
         mockMvc.perform(get("/api/v1/users/" + newUserId).contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.active").value(false));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testCreateUserNormalizesUsernameTrimmingAndLowercasing() throws Exception {
+        UserCreateRequest request = new UserCreateRequest();
+        request.setFullName("Normalized Staff");
+        request.setUsername("  PaddedUsername01  ");
+        request.setPassword("pass123");
+        request.setRole(UserRole.OFFICE_STAFF);
+
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.username").value("paddedusername01"));
+
+        // Verify duplicate with different casing is rejected
+        UserCreateRequest duplicateReq = new UserCreateRequest();
+        duplicateReq.setFullName("Duplicate Staff");
+        duplicateReq.setUsername("PADDEDUSERNAME01");
+        duplicateReq.setPassword("pass123");
+        duplicateReq.setRole(UserRole.OFFICE_STAFF);
+
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(duplicateReq)))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testUpdateUserNormalizesUsernameTrimmingAndLowercasing() throws Exception {
+        UserCreateRequest createReq = new UserCreateRequest();
+        createReq.setFullName("Staff To Update");
+        createReq.setUsername("updatable001");
+        createReq.setPassword("pass123");
+        createReq.setRole(UserRole.OFFICE_STAFF);
+
+        String body = mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createReq)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+
+        String newUserId = objectMapper.readTree(body).get("userId").asText();
+
+        UserUpdateRequest updateReq = new UserUpdateRequest();
+        updateReq.setFullName("Staff With Padded Name");
+        updateReq.setUsername("  RenamedStaff001  ");
+        updateReq.setRole(UserRole.OFFICE_STAFF);
+        updateReq.setActive(true);
+
+        mockMvc.perform(put("/api/v1/users/" + newUserId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateReq)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("renamedstaff001"));
     }
 }
