@@ -4,4 +4,5 @@ export { default as ViewUserModal } from './components/ViewUserModal';
 export { default as DeleteUserModal } from './components/DeleteUserModal';
 export { default as ResetPasswordModal } from './components/ResetPasswordModal';
 export { default as ResetPinModal } from './components/ResetPinModal';
+export { default as ConfirmActionModal } from './components/ConfirmActionModal';
 export * from './api/usersApi';

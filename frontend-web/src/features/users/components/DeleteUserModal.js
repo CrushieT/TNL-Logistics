@@ -1,18 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Modal, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
-import { colors, fonts, spacing, radius } from '../../../theme';
+import { View, Text, TextInput, Modal, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { colors, fonts, spacing, radius, type } from '../../../theme';
 
 export default function DeleteUserModal({ visible, user, onClose, onConfirm }) {
+  const [typedUserId, setTypedUserId] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    setError(null);
+    if (visible) {
+      setTypedUserId('');
+      setError(null);
+    }
   }, [visible, user]);
 
   if (!visible || !user) return null;
 
+  const targetUserId = (user.userId || '').trim().toUpperCase();
+  const isMatch = typedUserId.trim().toUpperCase() === targetUserId;
+
   const handleConfirm = async () => {
+    if (!isMatch || deleting) return;
+
     try {
       setDeleting(true);
       setError(null);
@@ -67,16 +76,36 @@ export default function DeleteUserModal({ visible, user, onClose, onConfirm }) {
             <Text style={styles.confirmNote}>
               The account will no longer be able to log in after this action.
             </Text>
+
+            {/* Input Verification Prompt */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>
+                TYPE USER ID <Text style={styles.requiredTarget}>{targetUserId}</Text> TO CONFIRM *
+              </Text>
+              <TextInput
+                style={[styles.input, styles.monoInput]}
+                placeholder={`Type ${targetUserId}`}
+                placeholderTextColor={colors.inkFaint}
+                value={typedUserId}
+                onChangeText={setTypedUserId}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                autoFocus
+              />
+            </View>
           </View>
 
           <View style={styles.footer}>
-            <Pressable style={styles.cancelBtn} onPress={onClose}>
+            <Pressable style={styles.cancelBtn} onPress={onClose} disabled={deleting}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </Pressable>
             <Pressable
-              style={[styles.confirmBtn, deleting && styles.btnDisabled]}
+              style={[
+                styles.confirmBtn,
+                (!isMatch || deleting) && styles.btnDisabled,
+              ]}
               onPress={handleConfirm}
-              disabled={deleting}
+              disabled={!isMatch || deleting}
             >
               {deleting
                 ? <ActivityIndicator size="small" color="#FFFFFF" />
@@ -183,6 +212,38 @@ const styles = StyleSheet.create({
     color: colors.inkSoft,
     fontStyle: 'italic',
   },
+  fieldGroup: {
+    gap: 6,
+    marginTop: spacing.sm,
+  },
+  fieldLabel: {
+    ...type.label,
+    fontSize: 10,
+    color: colors.inkFaint,
+    letterSpacing: 0.7,
+  },
+  requiredTarget: {
+    fontFamily: fonts.mono,
+    fontWeight: '800',
+    color: colors.danger,
+  },
+  input: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    color: colors.ink,
+    backgroundColor: '#FAF9F5',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 9,
+  },
+  monoInput: {
+    fontFamily: fonts.mono,
+    fontWeight: '800',
+    fontSize: 14,
+    letterSpacing: 0.5,
+  },
   footer: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
@@ -224,5 +285,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  btnDisabled: { opacity: 0.5 },
+  btnDisabled: { opacity: 0.35 },
 });

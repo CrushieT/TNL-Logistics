@@ -16,7 +16,7 @@ const ROLE_LABELS = {
   FIELD_STAFF: 'Field Staff',
 };
 
-export default function ResetPinModal({ visible, user, onClose, onConfirm }) {
+export default function ResetPinModal({ visible, user, onClose, onRequestConfirm, onConfirm }) {
   const [showManualOverride, setShowManualOverride] = useState(false);
   const [pinDigits, setPinDigits] = useState(['', '', '', '']);
   const [submitting, setSubmitting] = useState(false);
@@ -51,10 +51,16 @@ export default function ResetPinModal({ visible, user, onClose, onConfirm }) {
   };
 
   const handleClearPin = async () => {
+    if (onRequestConfirm) {
+      onClose();
+      onRequestConfirm(user, { clearPin: true, pin: null });
+      return;
+    }
+
     try {
       setSubmitting(true);
       setError(null);
-      await onConfirm(user.userId, null, true);
+      await onConfirm?.(user.userId, null, true);
       onClose();
     } catch (err) {
       setError(err?.message || 'Failed to clear mobile PIN.');
@@ -70,10 +76,16 @@ export default function ResetPinModal({ visible, user, onClose, onConfirm }) {
       return;
     }
 
+    if (onRequestConfirm) {
+      onClose();
+      onRequestConfirm(user, { clearPin: false, pin: pinString });
+      return;
+    }
+
     try {
       setSubmitting(true);
       setError(null);
-      await onConfirm(user.userId, pinString, false);
+      await onConfirm?.(user.userId, pinString, false);
       onClose();
     } catch (err) {
       setError(err?.message || 'Failed to update mobile PIN.');

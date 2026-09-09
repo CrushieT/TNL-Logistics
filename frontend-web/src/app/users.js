@@ -26,6 +26,7 @@ import {
   DeleteUserModal,
   ResetPasswordModal,
   ResetPinModal,
+  ConfirmActionModal,
 } from '../features/users';
 import { colors, fonts, spacing, radius, type } from '../theme';
 
@@ -83,6 +84,7 @@ export default function UsersScreen() {
   const [userToDelete, setUserToDelete] = useState(null);
   const [userToResetPassword, setUserToResetPassword] = useState(null);
   const [userToResetPin, setUserToResetPin] = useState(null);
+  const [actionConfirmationConfig, setActionConfirmationConfig] = useState(null);
   const [activeActionMenuUserId, setActiveActionMenuUserId] = useState(null);
   const actionMenuContainerRef = useRef(null);
 
@@ -474,6 +476,25 @@ export default function UsersScreen() {
         visible={Boolean(userToResetPassword)}
         user={userToResetPassword}
         onClose={() => setUserToResetPassword(null)}
+        onRequestConfirm={(u, newPass) => {
+          setUserToResetPassword(null);
+          setActionConfirmationConfig({
+            title: 'CONFIRM PASSWORD RESET',
+            warningTitle: 'SECURITY ACTION: CREDENTIAL RESET',
+            user: u,
+            description: `You are about to reset the password for ${u.fullName} (@${u.username}).`,
+            bulletPoints: [
+              `A temporary password (${newPass}) will be assigned to this account.`,
+              'All existing active sessions across all devices will be immediately revoked.',
+              'The staff member will be required to choose a new password upon their next login.',
+            ],
+            confirmLabel: 'Confirm Password Reset',
+            confirmVariant: 'primary',
+            onConfirm: async () => {
+              await handleResetPassword(u.userId, newPass);
+            },
+          });
+        }}
         onConfirm={handleResetPassword}
       />
 
@@ -481,8 +502,61 @@ export default function UsersScreen() {
         visible={Boolean(userToResetPin)}
         user={userToResetPin}
         onClose={() => setUserToResetPin(null)}
+        onRequestConfirm={(u, { clearPin, pin }) => {
+          setUserToResetPin(null);
+          if (clearPin) {
+            setActionConfirmationConfig({
+              title: 'CONFIRM PIN CLEAR',
+              warningTitle: 'SECURITY ACTION: CLEAR MOBILE PIN',
+              user: u,
+              description: `You are about to clear the mobile PIN for ${u.fullName} (@${u.username}).`,
+              bulletPoints: [
+                'The enrolled 4-digit PIN will be removed from this account.',
+                'All active mobile sessions for this user will be revoked immediately.',
+                'The staff member must configure a new secret PIN upon their next mobile login.',
+              ],
+              confirmLabel: 'Clear PIN & Revoke Sessions',
+              confirmVariant: 'danger',
+              onConfirm: async () => {
+                await handleResetPin(u.userId, null, true);
+              },
+            });
+          } else {
+            setActionConfirmationConfig({
+              title: 'CONFIRM PIN ASSIGNMENT',
+              warningTitle: 'SECURITY ACTION: MANUAL PIN ASSIGNMENT',
+              user: u,
+              description: `You are about to manually assign a new 4-digit PIN for ${u.fullName} (@${u.username}).`,
+              bulletPoints: [
+                'The previous PIN will be overwritten with the manually assigned 4-digit PIN.',
+                'All active mobile sessions for this user will be revoked immediately.',
+                'Only use this manual override if the courier cannot complete initial setup on their terminal.',
+              ],
+              confirmLabel: 'Assign PIN & Revoke Sessions',
+              confirmVariant: 'primary',
+              onConfirm: async () => {
+                await handleResetPin(u.userId, pin, false);
+              },
+            });
+          }
+        }}
         onConfirm={handleResetPin}
       />
+
+      {actionConfirmationConfig && (
+        <ConfirmActionModal
+          visible={Boolean(actionConfirmationConfig)}
+          user={actionConfirmationConfig.user}
+          title={actionConfirmationConfig.title}
+          warningTitle={actionConfirmationConfig.warningTitle}
+          description={actionConfirmationConfig.description}
+          bulletPoints={actionConfirmationConfig.bulletPoints}
+          confirmLabel={actionConfirmationConfig.confirmLabel}
+          confirmVariant={actionConfirmationConfig.confirmVariant}
+          onClose={() => setActionConfirmationConfig(null)}
+          onConfirm={actionConfirmationConfig.onConfirm}
+        />
+      )}
 
       <ViewUserModal
         visible={Boolean(userToView)}
