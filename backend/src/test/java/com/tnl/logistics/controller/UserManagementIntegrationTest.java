@@ -110,6 +110,52 @@ public class UserManagementIntegrationTest {
 
     @Test
     @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testCreateAdminUserReturnsBadRequest() throws Exception {
+        UserCreateRequest request = new UserCreateRequest();
+        request.setFullName("Admin Attempt");
+        request.setUsername("adminattempt001");
+        request.setPassword("pass123");
+        request.setRole(UserRole.ADMIN);
+
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testPromoteStaffToAdminReturnsBadRequest() throws Exception {
+        UserUpdateRequest updateReq = new UserUpdateRequest();
+        updateReq.setFullName("Office Staff Elevated");
+        updateReq.setUsername("office");
+        updateReq.setRole(UserRole.ADMIN);
+        updateReq.setActive(true);
+
+        mockMvc.perform(put("/api/v1/users/USR-OFFICE")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateReq)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testDeleteAdminUserBySelfReturnsForbidden() throws Exception {
+        mockMvc.perform(delete("/api/v1/users/USR-ADMIN")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "othercaller", roles = {"ADMIN"})
+    void testDeleteAdminUserByOtherReturnsBadRequest() throws Exception {
+        mockMvc.perform(delete("/api/v1/users/USR-ADMIN")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
     void testCreateFieldStaffWithoutStaffTypeReturns400() throws Exception {
         UserCreateRequest request = new UserCreateRequest();
         request.setFullName("Incomplete Field Staff");

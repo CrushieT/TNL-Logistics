@@ -58,6 +58,11 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public synchronized UserResponse createUser(UserCreateRequest request) {
+        if (request.getRole() == UserRole.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Administrator account creation is not permitted. Only one system administrator account is allowed.");
+        }
+
         String normalizedUsername = request.getUsername() != null ? request.getUsername().trim().toLowerCase() : null;
         if (appUserRepository.findByUsername(normalizedUsername).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -97,6 +102,16 @@ public class UserServiceImpl implements UserService {
         guardSelfModification(userId, requestingUserId);
         AppUser user = findUserOrThrow(userId);
 
+        if (user.getRole() != UserRole.ADMIN && request.getRole() == UserRole.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Cannot promote account to administrator. Only one system administrator account is allowed.");
+        }
+
+        if (user.getRole() == UserRole.ADMIN && request.getRole() != UserRole.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "The administrator account role cannot be changed.");
+        }
+
         String normalizedUsername = request.getUsername() != null ? request.getUsername().trim().toLowerCase() : null;
         appUserRepository.findByUsername(normalizedUsername).ifPresent(existing -> {
             if (!existing.getUserId().equals(userId)) {
@@ -129,6 +144,11 @@ public class UserServiceImpl implements UserService {
     public void deleteUser(String userId, String requestingUserId) {
         guardSelfModification(userId, requestingUserId);
         AppUser user = findUserOrThrow(userId);
+
+        if (user.getRole() == UserRole.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "The system administrator account cannot be deleted or deactivated.");
+        }
 
         long linkedRecords = appUserRepository.countTrackingEventsByStaff(userId)
                 + appUserRepository.countPaymentsByStaff(userId)

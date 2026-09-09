@@ -160,7 +160,7 @@ export default function UsersScreen() {
 
   const handleCreateUser = async (payload) => {
     const created = await createUser(payload);
-    showFeedback(`Account ${created?.userId} (${created?.username}) created successfully.`);
+    showFeedback(`Account ${created?.userId} (${created?.username}) created successfully. Temporary password assigned.`);
     await loadUsers(false);
   };
 
@@ -267,7 +267,13 @@ export default function UsersScreen() {
       </Card>
 
       {/* Users Table */}
-      <Card style={styles.tableCard}>
+      <Card
+        style={[
+          styles.tableCard,
+          activeActionMenuUserId && styles.tableCardActive,
+        ]}
+        bodyStyle={styles.tableCardBody}
+      >
         {/* Table Header */}
         <View style={styles.tableHeader}>
           <Text style={[styles.col, styles.colId, styles.headerText]}>ID</Text>
@@ -315,7 +321,10 @@ export default function UsersScreen() {
                   <Text style={styles.actionBtnText}>Edit</Text>
                 </Pressable>
                 <View
-                  style={styles.moreActionWrapper}
+                  style={[
+                    styles.moreActionWrapper,
+                    activeActionMenuUserId === user.userId && styles.moreActionWrapperActive,
+                  ]}
                   ref={activeActionMenuUserId === user.userId ? actionMenuContainerRef : undefined}
                 >
                   <Pressable
@@ -332,7 +341,14 @@ export default function UsersScreen() {
                     <Text style={styles.actionBtnText}>More ▾</Text>
                   </Pressable>
                   {activeActionMenuUserId === user.userId && (
-                    <View style={styles.actionPopover}>
+                    <View
+                      style={[
+                        styles.actionPopover,
+                        idx === filteredUsers.length - 1 && filteredUsers.length >= 3
+                          ? styles.actionPopoverUpward
+                          : styles.actionPopoverDownward,
+                      ]}
+                    >
                       <Pressable
                         style={({ hovered }) => [
                           styles.popoverItem,
@@ -359,21 +375,25 @@ export default function UsersScreen() {
                           <Text style={styles.popoverItemText}>Reset Mobile PIN</Text>
                         </Pressable>
                       ) : null}
-                      <View style={styles.popoverDivider} />
-                      <Pressable
-                        style={({ hovered }) => [
-                          styles.popoverItem,
-                          hovered && styles.popoverItemDangerHovered,
-                        ]}
-                        onPress={() => {
-                          setActiveActionMenuUserId(null);
-                          setUserToDelete(user);
-                        }}
-                      >
-                        <Text style={[styles.popoverItemText, styles.popoverItemTextDanger]}>
-                          Delete Account
-                        </Text>
-                      </Pressable>
+                      {user.role !== 'ADMIN' ? (
+                        <>
+                          <View style={styles.popoverDivider} />
+                          <Pressable
+                            style={({ hovered }) => [
+                              styles.popoverItem,
+                              hovered && styles.popoverItemDangerHovered,
+                            ]}
+                            onPress={() => {
+                              setActiveActionMenuUserId(null);
+                              setUserToDelete(user);
+                            }}
+                          >
+                            <Text style={[styles.popoverItemText, styles.popoverItemTextDanger]}>
+                              Delete Account
+                            </Text>
+                          </Pressable>
+                        </>
+                      ) : null}
                     </View>
                   )}
                 </View>
@@ -415,7 +435,7 @@ export default function UsersScreen() {
             </View>
           ))}
           <Text style={styles.capabilityNote}>
-            Administrator = full administrative and operational access across desktop and mobile.
+            System Owner — single administrator account with full administrative and operational access across desktop and mobile.
           </Text>
         </View>
 
@@ -649,7 +669,20 @@ const styles = StyleSheet.create({
   filterPillActive: { backgroundColor: colors.black, borderColor: colors.black },
   filterPillText: { fontFamily: fonts.sans, fontSize: 11.5, fontWeight: '600', color: colors.ink },
   filterPillTextActive: { color: '#FFFFFF' },
-  tableCard: { marginBottom: spacing.lg, padding: 0, overflow: 'visible' },
+  tableCard: {
+    marginBottom: spacing.lg,
+    padding: 0,
+    overflow: 'visible',
+    position: 'relative',
+    zIndex: 10,
+  },
+  tableCardActive: {
+    zIndex: 50,
+  },
+  tableCardBody: {
+    padding: 0,
+    overflow: 'visible',
+  },
   tableHeader: {
     flexDirection: 'row',
     backgroundColor: '#FAF9F5',
@@ -704,10 +737,13 @@ const styles = StyleSheet.create({
   actionBtnTextDanger: { color: colors.danger },
   moreActionWrapper: {
     position: 'relative',
+    zIndex: 1,
+  },
+  moreActionWrapperActive: {
+    zIndex: 1002,
   },
   actionPopover: {
     position: 'absolute',
-    top: 26,
     right: 0,
     minWidth: 165,
     backgroundColor: '#FFFFFF',
@@ -716,11 +752,18 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     shadowColor: '#000000',
     shadowOpacity: 0.12,
-    shadowOffset: { width: 0, height: 4 },
     shadowRadius: 10,
     elevation: 10,
-    zIndex: 1001,
+    zIndex: 1003,
     paddingVertical: 4,
+  },
+  actionPopoverDownward: {
+    top: 26,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  actionPopoverUpward: {
+    bottom: 26,
+    shadowOffset: { width: 0, height: -4 },
   },
   popoverItem: {
     paddingVertical: 8,
@@ -756,6 +799,8 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
     marginBottom: spacing.xl,
     flexWrap: 'wrap',
+    position: 'relative',
+    zIndex: 1,
   },
   capabilityCard: {
     borderWidth: 1,

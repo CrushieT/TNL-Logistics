@@ -11,8 +11,7 @@ import {
 } from 'react-native';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
 
-const ROLE_OPTIONS = [
-  { label: 'Administrator', value: 'ADMIN' },
+const STAFF_ROLE_OPTIONS = [
   { label: 'Office Staff', value: 'OFFICE_STAFF' },
   { label: 'Field Staff', value: 'FIELD_STAFF' },
 ];
@@ -109,19 +108,30 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
 
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>ROLE *</Text>
-              <View style={styles.pillRow}>
-                {ROLE_OPTIONS.map((opt) => (
-                  <Pressable
-                    key={opt.value}
-                    style={[styles.pill, role === opt.value && styles.pillActive]}
-                    onPress={() => setRole(opt.value)}
-                  >
-                    <Text style={[styles.pillText, role === opt.value && styles.pillTextActive]}>
-                      {opt.label}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
+              {userToEdit.role === 'ADMIN' ? (
+                <View style={styles.readOnlyRoleBox}>
+                  <View style={[styles.pill, styles.pillActive]}>
+                    <Text style={[styles.pillText, styles.pillTextActive]}>Administrator (Owner)</Text>
+                  </View>
+                  <Text style={styles.readOnlyRoleHint}>
+                    System owner role cannot be changed.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.pillRow}>
+                  {STAFF_ROLE_OPTIONS.map((opt) => (
+                    <Pressable
+                      key={opt.value}
+                      style={[styles.pill, role === opt.value && styles.pillActive]}
+                      onPress={() => setRole(opt.value)}
+                    >
+                      <Text style={[styles.pillText, role === opt.value && styles.pillTextActive]}>
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
             </View>
 
             {role === 'FIELD_STAFF' ? (
@@ -301,6 +311,18 @@ const styles = StyleSheet.create({
   pillActive: { backgroundColor: colors.black, borderColor: colors.black },
   pillText: { fontFamily: fonts.sans, fontSize: 12, fontWeight: '600', color: colors.ink },
   pillTextActive: { color: '#FFFFFF' },
+  readOnlyRoleBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  readOnlyRoleHint: {
+    fontFamily: fonts.sans,
+    fontSize: 11.5,
+    color: colors.inkSoft,
+    fontStyle: 'italic',
+  },
   securitySection: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
