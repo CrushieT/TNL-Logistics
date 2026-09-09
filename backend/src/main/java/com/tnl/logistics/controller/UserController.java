@@ -80,7 +80,11 @@ public class UserController {
             @Valid @RequestBody AdminPinResetRequest request) {
         String requestingUserId = resolveCurrentUserId();
         userService.resetPin(userId, request, requestingUserId);
-        return ResponseEntity.ok(Map.of("message", "Mobile PIN updated successfully."));
+        boolean isCleared = Boolean.TRUE.equals(request.getClearPin()) || request.getPin() == null || request.getPin().isBlank();
+        String message = isCleared
+                ? "Mobile PIN cleared. Staff member must configure a new PIN on next mobile login."
+                : "Mobile PIN updated successfully.";
+        return ResponseEntity.ok(Map.of("message", message));
     }
 
     private String resolveCurrentUserId() {

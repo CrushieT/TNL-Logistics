@@ -22,19 +22,12 @@ const STAFF_TYPE_OPTIONS = [
   { label: 'Hauler Staff', value: 'HAULER_STAFF' },
 ];
 
-export default function EditUserModal({ visible, userToEdit, onClose, onSaved, onResetPassword, onResetPin }) {
+export default function EditUserModal({ visible, userToEdit, onClose, onSaved, onRequestResetPassword, onRequestResetPin }) {
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [role, setRole] = useState('OFFICE_STAFF');
   const [staffType, setStaffType] = useState('INTERNAL_TRUCK');
   const [active, setActive] = useState(true);
-
-  // Inline reset sub-panels
-  const [showPasswordReset, setShowPasswordReset] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
-  const [showPinReset, setShowPinReset] = useState(false);
-  const [newPin, setNewPin] = useState(['', '', '', '']);
-  const pinRefs = [useRef(null), useRef(null), useRef(null), useRef(null)];
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -46,23 +39,11 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
       setRole(userToEdit.role || 'OFFICE_STAFF');
       setStaffType(userToEdit.staffType || 'INTERNAL_TRUCK');
       setActive(userToEdit.active !== false);
-      setShowPasswordReset(false);
-      setShowPinReset(false);
-      setNewPassword('');
-      setNewPin(['', '', '', '']);
       setError(null);
     }
   }, [userToEdit, visible]);
 
   if (!visible || !userToEdit) return null;
-
-  const handlePinChange = (index, value) => {
-    if (!/^\d*$/.test(value)) return;
-    const next = [...newPin];
-    next[index] = value.slice(-1);
-    setNewPin(next);
-    if (value && index < 3) pinRefs[index + 1]?.current?.focus();
-  };
 
   const handleSubmit = async () => {
     if (!fullName.trim()) { setError('Full name is required.'); return; }
@@ -82,40 +63,6 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
       onClose();
     } catch (err) {
       setError(err?.message || 'Failed to update user.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handlePasswordReset = async () => {
-    if (!newPassword || newPassword.length < 6) {
-      setError('New password must be at least 6 characters.');
-      return;
-    }
-    try {
-      setSaving(true);
-      setError(null);
-      await onResetPassword(userToEdit.userId, newPassword);
-      setShowPasswordReset(false);
-      setNewPassword('');
-    } catch (err) {
-      setError(err?.message || 'Failed to reset password.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handlePinReset = async () => {
-    const pinValue = newPin.join('');
-    if (pinValue.length !== 4) { setError('PIN must be exactly 4 digits.'); return; }
-    try {
-      setSaving(true);
-      setError(null);
-      await onResetPin(userToEdit.userId, pinValue);
-      setShowPinReset(false);
-      setNewPin(['', '', '', '']);
-    } catch (err) {
-      setError(err?.message || 'Failed to reset PIN.');
     } finally {
       setSaving(false);
     }
@@ -213,75 +160,34 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
               </View>
             </View>
 
-            {/* Password Reset Sub-Panel */}
-            <View style={styles.resetSection}>
-              <Pressable
-                style={styles.resetToggle}
-                onPress={() => { setShowPasswordReset(!showPasswordReset); setShowPinReset(false); }}
-              >
-                <Text style={styles.resetToggleText}>
-                  {showPasswordReset ? '— Cancel Password Reset' : '+ Reset Password'}
-                </Text>
-              </Pressable>
-              {showPasswordReset ? (
-                <View style={styles.resetPanel}>
-                  <Text style={styles.fieldLabel}>NEW TEMPORARY PASSWORD *</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Min. 6 characters"
-                    placeholderTextColor={colors.inkFaint}
-                    value={newPassword}
-                    onChangeText={setNewPassword}
-                    secureTextEntry
-                  />
+            {/* Security Shortcuts */}
+            <View style={styles.securitySection}>
+              <Text style={styles.fieldLabel}>SECURITY & CREDENTIALS</Text>
+              <Text style={styles.securityText}>
+                Passwords and Mobile PINs are managed through dedicated quick-action dialogs.
+              </Text>
+              <View style={styles.securityBtnRow}>
+                <Pressable
+                  style={styles.securityBtn}
+                  onPress={() => {
+                    onClose();
+                    onRequestResetPassword?.(userToEdit);
+                  }}
+                >
+                  <Text style={styles.securityBtnText}>Reset Password</Text>
+                </Pressable>
+                {role !== 'ADMIN' ? (
                   <Pressable
-                    style={[styles.resetApplyBtn, saving && styles.btnDisabled]}
-                    onPress={handlePasswordReset}
-                    disabled={saving}
+                    style={styles.securityBtn}
+                    onPress={() => {
+                      onClose();
+                      onRequestResetPin?.(userToEdit);
+                    }}
                   >
-                    <Text style={styles.resetApplyBtnText}>Apply Reset</Text>
+                    <Text style={styles.securityBtnText}>Reset Mobile PIN</Text>
                   </Pressable>
-                </View>
-              ) : null}
-            </View>
-
-            {/* PIN Reset Sub-Panel */}
-            <View style={styles.resetSection}>
-              <Pressable
-                style={styles.resetToggle}
-                onPress={() => { setShowPinReset(!showPinReset); setShowPasswordReset(false); }}
-              >
-                <Text style={styles.resetToggleText}>
-                  {showPinReset ? '— Cancel PIN Reset' : '+ Reset Mobile PIN'}
-                </Text>
-              </Pressable>
-              {showPinReset ? (
-                <View style={styles.resetPanel}>
-                  <Text style={styles.fieldLabel}>NEW 4-DIGIT PIN</Text>
-                  <View style={styles.pinRow}>
-                    {newPin.map((digit, i) => (
-                      <TextInput
-                        key={i}
-                        ref={pinRefs[i]}
-                        style={styles.pinBox}
-                        value={digit}
-                        onChangeText={(v) => handlePinChange(i, v)}
-                        keyboardType="number-pad"
-                        maxLength={1}
-                        secureTextEntry
-                        textAlign="center"
-                      />
-                    ))}
-                  </View>
-                  <Pressable
-                    style={[styles.resetApplyBtn, saving && styles.btnDisabled]}
-                    onPress={handlePinReset}
-                    disabled={saving}
-                  >
-                    <Text style={styles.resetApplyBtnText}>Apply PIN Reset</Text>
-                  </Pressable>
-                </View>
-              ) : null}
+                ) : null}
+              </View>
             </View>
           </ScrollView>
 
@@ -395,46 +301,39 @@ const styles = StyleSheet.create({
   pillActive: { backgroundColor: colors.black, borderColor: colors.black },
   pillText: { fontFamily: fonts.sans, fontSize: 12, fontWeight: '600', color: colors.ink },
   pillTextActive: { color: '#FFFFFF' },
-  resetSection: {
+  securitySection: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingTop: spacing.md,
     gap: spacing.sm,
   },
-  resetToggle: { alignSelf: 'flex-start' },
-  resetToggleText: {
+  securityText: {
     fontFamily: fonts.sans,
     fontSize: 12,
-    fontWeight: '700',
     color: colors.inkSoft,
+    lineHeight: 18,
   },
-  resetPanel: { gap: spacing.sm, paddingTop: spacing.sm },
-  resetApplyBtn: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#1d4ed8',
-    borderRadius: radius.sm,
-    paddingVertical: 7,
-    paddingHorizontal: 16,
+  securityBtnRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: 2,
+    flexWrap: 'wrap',
   },
-  resetApplyBtnText: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  pinRow: { flexDirection: 'row', gap: spacing.sm },
-  pinBox: {
-    width: 48,
-    height: 52,
+  securityBtn: {
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.sm,
-    backgroundColor: '#FAF9F5',
-    fontFamily: fonts.mono,
-    fontSize: 20,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  securityBtnText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
     fontWeight: '700',
     color: colors.ink,
-    textAlign: 'center',
   },
   footer: {
     flexDirection: 'row',

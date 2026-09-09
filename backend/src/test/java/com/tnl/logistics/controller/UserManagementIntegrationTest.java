@@ -161,6 +161,79 @@ public class UserManagementIntegrationTest {
 
     @Test
     @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testAdminClearPinSetsHasPinSetFalse() throws Exception {
+        AdminPinResetRequest pinRequest = new AdminPinResetRequest();
+        pinRequest.setPin("9876");
+
+        mockMvc.perform(put("/api/v1/users/USR-FIELD/reset-pin")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(pinRequest)))
+                .andExpect(status().isOk());
+
+        AdminPinResetRequest clearRequest = new AdminPinResetRequest();
+        clearRequest.setClearPin(true);
+
+        mockMvc.perform(put("/api/v1/users/USR-FIELD/reset-pin")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(clearRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Mobile PIN cleared. Staff member must configure a new PIN on next mobile login."));
+
+        mockMvc.perform(get("/api/v1/users/USR-FIELD").contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hasPinSet").value(false));
+    }
+
+    @Test
+    void testAdminResetPasswordInvalidatesExistingToken() throws Exception {
+        var user = appUserRepository.findById("USR-OFFICE").orElseThrow();
+        int initialVersion = user.getTokenVersion() != null ? user.getTokenVersion() : 1;
+        String oldToken = com.tnl.logistics.config.JwtTokenProvider.generateToken(user.getUsername(), user.getRole().name(), initialVersion);
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + oldToken))
+                .andExpect(status().isOk());
+
+        AdminPasswordResetRequest resetReq = new AdminPasswordResetRequest();
+        resetReq.setNewPassword("TempPass123");
+
+        String adminToken = com.tnl.logistics.config.JwtTokenProvider.generateToken("admin", "ADMIN", 1);
+        mockMvc.perform(put("/api/v1/users/USR-OFFICE/reset-password")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(resetReq)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + oldToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void testAdminResetPinInvalidatesExistingToken() throws Exception {
+        var user = appUserRepository.findById("USR-FIELD").orElseThrow();
+        int initialVersion = user.getTokenVersion() != null ? user.getTokenVersion() : 1;
+        String oldToken = com.tnl.logistics.config.JwtTokenProvider.generateToken(user.getUsername(), user.getRole().name(), initialVersion);
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + oldToken))
+                .andExpect(status().isOk());
+
+        AdminPinResetRequest clearReq = new AdminPinResetRequest(true);
+        String adminToken = com.tnl.logistics.config.JwtTokenProvider.generateToken("admin", "ADMIN", 1);
+        mockMvc.perform(put("/api/v1/users/USR-FIELD/reset-pin")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(clearReq)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + oldToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
     void testDeleteUserWithLinkedRecordsDeactivatesInsteadOfDeletes() throws Exception {
         var staff = appUserRepository.findById("USR-FIELD").orElseThrow();
         var shipment = shipmentRepository.findAll().get(0);

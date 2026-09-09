@@ -151,6 +151,7 @@ public class UserServiceImpl implements UserService {
         AppUser user = findUserOrThrow(userId);
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         user.setMustChangePassword(true);
+        user.incrementTokenVersion();
         appUserRepository.save(user);
     }
 
@@ -158,7 +159,12 @@ public class UserServiceImpl implements UserService {
     public void resetPin(String userId, AdminPinResetRequest request, String requestingUserId) {
         guardSelfModification(userId, requestingUserId);
         AppUser user = findUserOrThrow(userId);
-        user.setPinHash(passwordEncoder.encode(request.getPin()));
+        if (Boolean.TRUE.equals(request.getClearPin()) || request.getPin() == null || request.getPin().isBlank()) {
+            user.setPinHash(null);
+        } else {
+            user.setPinHash(passwordEncoder.encode(request.getPin()));
+        }
+        user.incrementTokenVersion();
         appUserRepository.save(user);
     }
 

@@ -24,6 +24,8 @@ import {
   EditUserModal,
   ViewUserModal,
   DeleteUserModal,
+  ResetPasswordModal,
+  ResetPinModal,
 } from '../features/users';
 import { colors, fonts, spacing, radius, type } from '../theme';
 
@@ -38,7 +40,7 @@ const ROLE_LABELS = {
 
 const PLATFORM_ACCESS = {
   ADMIN: 'Full access · shared system',
-  OFFICE_STAFF: 'Desktop + Mobile (office) · shared system',
+  OFFICE_STAFF: 'Mobile only (office workflows) · shared system',
   FIELD_STAFF: 'Mobile (scan-only) · shared system',
 };
 
@@ -79,6 +81,32 @@ export default function UsersScreen() {
   const [userToEdit, setUserToEdit] = useState(null);
   const [userToView, setUserToView] = useState(null);
   const [userToDelete, setUserToDelete] = useState(null);
+  const [userToResetPassword, setUserToResetPassword] = useState(null);
+  const [userToResetPin, setUserToResetPin] = useState(null);
+  const [activeActionMenuUserId, setActiveActionMenuUserId] = useState(null);
+  const actionMenuContainerRef = useRef(null);
+
+  // Close more action popover on outside click in web
+  useEffect(() => {
+    if (!activeActionMenuUserId || typeof document === 'undefined') return;
+
+    const handleClickOutside = (event) => {
+      if (actionMenuContainerRef.current) {
+        const domNode = actionMenuContainerRef.current;
+        if (domNode.contains && !domNode.contains(event.target)) {
+          setActiveActionMenuUserId(null);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [activeActionMenuUserId]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
@@ -148,12 +176,17 @@ export default function UsersScreen() {
 
   const handleResetPassword = async (userId, newPasswordValue) => {
     await resetPassword(userId, newPasswordValue);
-    showFeedback(`Password reset for ${userId}. They will be prompted to change it on next login.`);
+    showFeedback(`Password reset for ${userId}. Active sessions revoked; temporary password assigned.`);
+    await loadUsers(false);
   };
 
-  const handleResetPin = async (userId, pinValue) => {
-    await resetPin(userId, pinValue);
-    showFeedback(`Mobile PIN updated for ${userId}.`);
+  const handleResetPin = async (userId, pinValue, clearPin = false) => {
+    await resetPin(userId, pinValue, clearPin);
+    const feedbackMessage = clearPin
+      ? `Mobile PIN cleared for ${userId}. Active sessions revoked; courier must configure PIN on next mobile login.`
+      : `Mobile PIN updated for ${userId}. Active sessions revoked.`;
+    showFeedback(feedbackMessage);
+    await loadUsers(false);
   };
 
   return (
@@ -255,7 +288,11 @@ export default function UsersScreen() {
           filteredUsers.map((user, idx) => (
             <View
               key={user.userId}
-              style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}
+              style={[
+                styles.tableRow,
+                idx % 2 === 1 && styles.tableRowAlt,
+                activeActionMenuUserId === user.userId && { zIndex: 100 },
+              ]}
             >
               <Text style={[styles.col, styles.colId, styles.monoText]}>{user.userId}</Text>
               <Text style={[styles.col, styles.colName, styles.cellText]}>{user.fullName}</Text>
@@ -275,12 +312,69 @@ export default function UsersScreen() {
                 <Pressable style={styles.actionBtn} onPress={() => setUserToEdit(user)}>
                   <Text style={styles.actionBtnText}>Edit</Text>
                 </Pressable>
-                <Pressable
-                  style={[styles.actionBtn, styles.actionBtnDanger]}
-                  onPress={() => setUserToDelete(user)}
+                <View
+                  style={styles.moreActionWrapper}
+                  ref={activeActionMenuUserId === user.userId ? actionMenuContainerRef : undefined}
                 >
-                  <Text style={[styles.actionBtnText, styles.actionBtnTextDanger]}>Delete</Text>
-                </Pressable>
+                  <Pressable
+                    style={[
+                      styles.actionBtn,
+                      activeActionMenuUserId === user.userId && styles.actionBtnActive,
+                    ]}
+                    onPress={() =>
+                      setActiveActionMenuUserId(
+                        activeActionMenuUserId === user.userId ? null : user.userId
+                      )
+                    }
+                  >
+                    <Text style={styles.actionBtnText}>More ▾</Text>
+                  </Pressable>
+                  {activeActionMenuUserId === user.userId && (
+                    <View style={styles.actionPopover}>
+                      <Pressable
+                        style={({ hovered }) => [
+                          styles.popoverItem,
+                          hovered && styles.popoverItemHovered,
+                        ]}
+                        onPress={() => {
+                          setActiveActionMenuUserId(null);
+                          setUserToResetPassword(user);
+                        }}
+                      >
+                        <Text style={styles.popoverItemText}>Reset Password</Text>
+                      </Pressable>
+                      {user.role !== 'ADMIN' ? (
+                        <Pressable
+                          style={({ hovered }) => [
+                            styles.popoverItem,
+                            hovered && styles.popoverItemHovered,
+                          ]}
+                          onPress={() => {
+                            setActiveActionMenuUserId(null);
+                            setUserToResetPin(user);
+                          }}
+                        >
+                          <Text style={styles.popoverItemText}>Reset Mobile PIN</Text>
+                        </Pressable>
+                      ) : null}
+                      <View style={styles.popoverDivider} />
+                      <Pressable
+                        style={({ hovered }) => [
+                          styles.popoverItem,
+                          hovered && styles.popoverItemDangerHovered,
+                        ]}
+                        onPress={() => {
+                          setActiveActionMenuUserId(null);
+                          setUserToDelete(user);
+                        }}
+                      >
+                        <Text style={[styles.popoverItemText, styles.popoverItemTextDanger]}>
+                          Delete Account
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
               </View>
             </View>
           ))
@@ -302,14 +396,16 @@ export default function UsersScreen() {
       {/* Role Capability Reference Cards */}
       <View style={styles.capabilityRow}>
         <View style={[styles.capabilityCard, { flex: 1 }]}>
-          <Text style={styles.capabilityTitle}>ADMINISTRATOR / OFFICE STAFF</Text>
+          <Text style={styles.capabilityTitle}>ADMINISTRATOR</Text>
           {[
             'Register clients, shipments & parcels',
             'Generate QR + manage QR / label printing',
             'Register & manage vehicles (trucks)',
             'Record payments, weekly collections & SOA (deductions, Collected By)',
             'Generate & manage waybills',
-            'Tracking monitoring & reports',
+            'Tracking monitoring & financial/operational reports',
+            'User & staff account administration',
+            'System configuration & settings',
           ].map((item) => (
             <View key={item} style={styles.capabilityItem}>
               <Text style={styles.capabilityCheck}>✓</Text>
@@ -317,7 +413,24 @@ export default function UsersScreen() {
             </View>
           ))}
           <Text style={styles.capabilityNote}>
-            Office Staff use the same mobile app (authorized Office workflows). Administrator = full access.
+            Administrator = full administrative and operational access across desktop and mobile.
+          </Text>
+        </View>
+
+        <View style={[styles.capabilityCard, { flex: 1 }]}>
+          <Text style={styles.capabilityTitle}>OFFICE STAFF</Text>
+          {[
+            'Login · Change Password · Logout',
+            'Register clients, shipments & parcels (mobile app)',
+            'Generate QR + manage QR / label printing (Bluetooth thermal printer)',
+          ].map((item) => (
+            <View key={item} style={styles.capabilityItem}>
+              <Text style={styles.capabilityCheck}>✓</Text>
+              <Text style={styles.capabilityText}>{item}</Text>
+            </View>
+          ))}
+          <Text style={styles.capabilityNote}>
+            Mobile app only (authorized shipment registration & label printing). Blocked from billing, reports, and administration.
           </Text>
         </View>
 
@@ -353,8 +466,22 @@ export default function UsersScreen() {
         userToEdit={userToEdit}
         onClose={() => setUserToEdit(null)}
         onSaved={handleUpdateUser}
-        onResetPassword={handleResetPassword}
-        onResetPin={handleResetPin}
+        onRequestResetPassword={(u) => setUserToResetPassword(u)}
+        onRequestResetPin={(u) => setUserToResetPin(u)}
+      />
+
+      <ResetPasswordModal
+        visible={Boolean(userToResetPassword)}
+        user={userToResetPassword}
+        onClose={() => setUserToResetPassword(null)}
+        onConfirm={handleResetPassword}
+      />
+
+      <ResetPinModal
+        visible={Boolean(userToResetPin)}
+        user={userToResetPin}
+        onClose={() => setUserToResetPin(null)}
+        onConfirm={handleResetPin}
       />
 
       <ViewUserModal
@@ -448,7 +575,7 @@ const styles = StyleSheet.create({
   filterPillActive: { backgroundColor: colors.black, borderColor: colors.black },
   filterPillText: { fontFamily: fonts.sans, fontSize: 11.5, fontWeight: '600', color: colors.ink },
   filterPillTextActive: { color: '#FFFFFF' },
-  tableCard: { marginBottom: spacing.lg, padding: 0 },
+  tableCard: { marginBottom: spacing.lg, padding: 0, overflow: 'visible' },
   tableHeader: {
     flexDirection: 'row',
     backgroundColor: '#FAF9F5',
@@ -472,6 +599,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight || colors.border,
     alignItems: 'center',
+    overflow: 'visible',
   },
   tableRowAlt: { backgroundColor: '#FAFAF8' },
   col: { paddingHorizontal: 4 },
@@ -493,9 +621,59 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     backgroundColor: '#FFFFFF',
   },
+  actionBtnActive: {
+    backgroundColor: '#FAF9F5',
+    borderColor: colors.ink,
+  },
   actionBtnDanger: { borderColor: '#FCA5A5', backgroundColor: '#FFF5F5' },
   actionBtnText: { fontFamily: fonts.sans, fontSize: 11, fontWeight: '600', color: colors.ink },
   actionBtnTextDanger: { color: colors.danger },
+  moreActionWrapper: {
+    position: 'relative',
+  },
+  actionPopover: {
+    position: 'absolute',
+    top: 26,
+    right: 0,
+    minWidth: 165,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    shadowColor: '#000000',
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 10,
+    elevation: 10,
+    zIndex: 1001,
+    paddingVertical: 4,
+  },
+  popoverItem: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  popoverItemHovered: {
+    backgroundColor: '#F3F2EB',
+  },
+  popoverItemDangerHovered: {
+    backgroundColor: colors.dangerSoft,
+  },
+  popoverItemText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.ink,
+  },
+  popoverItemTextDanger: {
+    color: colors.danger,
+  },
+  popoverDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 4,
+  },
   loadingRow: { paddingVertical: 40, alignItems: 'center' },
   emptyRow: { paddingVertical: 40, alignItems: 'center' },
   emptyText: { fontFamily: fonts.sans, fontSize: 13, color: colors.inkSoft },

@@ -33,7 +33,8 @@ export async function resetPassword(userId, newPassword) {
   return data;
 }
 
-export async function resetPin(userId, pin) {
-  const { data } = await apiClient.put(`/users/${userId}/reset-pin`, { pin });
+export async function resetPin(userId, pin, clearPin = false) {
+  const payload = clearPin ? { clearPin: true } : { pin, clearPin: false };
+  const { data } = await apiClient.put(`/users/${userId}/reset-pin`, payload);
   return data;
 }

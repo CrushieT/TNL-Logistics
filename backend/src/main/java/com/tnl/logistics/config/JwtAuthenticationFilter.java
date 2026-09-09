@@ -44,17 +44,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (token != null && JwtTokenProvider.validateToken(token)) {
             String username = JwtTokenProvider.getUsernameFromToken(token);
             String role = JwtTokenProvider.getRoleFromToken(token);
+            Integer tokenVer = JwtTokenProvider.getTokenVersionFromToken(token);
 
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 var userOpt = appUserRepository.findByUsername(username);
                 if (userOpt.isPresent() && Boolean.TRUE.equals(userOpt.get().getActive())) {
                     AppUser user = userOpt.get();
-                    String effectiveRole = user.getRole() != null ? user.getRole().name() : role;
-                    SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + effectiveRole);
-                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                            username, null, Collections.singletonList(authority));
-                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    int currentVersion = user.getTokenVersion() != null ? user.getTokenVersion() : 1;
+                    if (tokenVer >= currentVersion) {
+                        String effectiveRole = user.getRole() != null ? user.getRole().name() : role;
+                        SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + effectiveRole);
+                        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                                username, null, Collections.singletonList(authority));
+                        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        SecurityContextHolder.getContext().setAuthentication(authentication);
+                    }
                 }
             }
         }
