@@ -20,5 +20,5 @@ COPY --from=build /app/target/logistics-0.0.1-SNAPSHOT.jar app.jar
 # Expose backend port
 EXPOSE 8080
 
-# Run JVM with performance configurations
-ENTRYPOINT ["java", "-jar", "-Dspring.profiles.active=prod", "app.jar"]
+# Run JVM with low-memory container configurations
+ENTRYPOINT ["java", "-XX:+UseSerialGC", "-Xss512k", "-Xmx384m", "-jar", "-Dspring.profiles.active=prod", "app.jar"]
