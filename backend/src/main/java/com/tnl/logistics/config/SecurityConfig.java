@@ -21,6 +21,12 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableMethodSecurity
 public class SecurityConfig {
 
+	private final com.tnl.logistics.repository.AppUserRepository appUserRepository;
+
+	public SecurityConfig(com.tnl.logistics.repository.AppUserRepository appUserRepository) {
+		this.appUserRepository = appUserRepository;
+	}
+
 	@Bean
 	public BCryptPasswordEncoder passwordEncoder() {
 		return new BCryptPasswordEncoder();
@@ -52,7 +58,7 @@ public class SecurityConfig {
 				.anyRequest().authenticated()
 			)
 			// Wire the JWT token verification filter
-			.addFilterBefore(new JwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+			.addFilterBefore(new JwtAuthenticationFilter(appUserRepository), UsernamePasswordAuthenticationFilter.class);
 
 		return http.build();
 	}

@@ -42,9 +42,16 @@ public class AppUser {
     @Column(name = "hauler_company", length = 100)
     private String haulerCompany;
 
+    @Column(name = "pin_hash", length = 255)
+    private String pinHash;
+
+    @Column(name = "token_version", nullable = false)
+    private Integer tokenVersion = 1;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
 
     public AppUser() {}
 
@@ -72,6 +79,10 @@ public class AppUser {
 
     public String getHaulerCompany() { return haulerCompany; }
     public void setHaulerCompany(String haulerCompany) { this.haulerCompany = haulerCompany; }
+
+    public String getPinHash() { return pinHash; }
+    public void setPinHash(String pinHash) { this.pinHash = pinHash; }
+
     public String getUserId() { return userId; }
     public void setUserId(String userId) { this.userId = userId; }
 
@@ -92,6 +103,10 @@ public class AppUser {
 
     public Boolean getMustChangePassword() { return mustChangePassword; }
     public void setMustChangePassword(Boolean mustChangePassword) { this.mustChangePassword = mustChangePassword; }
+
+    public Integer getTokenVersion() { return tokenVersion != null ? tokenVersion : 1; }
+    public void setTokenVersion(Integer tokenVersion) { this.tokenVersion = tokenVersion != null ? tokenVersion : 1; }
+    public void incrementTokenVersion() { this.tokenVersion = (this.tokenVersion != null ? this.tokenVersion : 1) + 1; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
 

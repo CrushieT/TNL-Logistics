@@ -32,6 +32,10 @@ public class JwtTokenProvider {
     }
 
     public static String generateToken(String username, String role) {
+        return generateToken(username, role, 1);
+    }
+
+    public static String generateToken(String username, String role, Integer tokenVersion) {
         try {
             Map<String, Object> header = new HashMap<>();
             header.put("alg", "HS256");
@@ -40,6 +44,7 @@ public class JwtTokenProvider {
             Map<String, Object> payload = new HashMap<>();
             payload.put("sub", username);
             payload.put("role", role);
+            payload.put("ver", tokenVersion != null ? tokenVersion : 1);
             payload.put("iat", System.currentTimeMillis() / 1000);
             payload.put("exp", (System.currentTimeMillis() + EXPIRATION_TIME_MS) / 1000);
 
@@ -116,6 +121,19 @@ public class JwtTokenProvider {
             return (String) claims.get("role");
         } catch (Exception e) {
             throw new RuntimeException("Failed to extract role", e);
+        }
+    }
+
+    public static Integer getTokenVersionFromToken(String token) {
+        try {
+            String[] parts = token.split("\\.");
+            String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> claims = objectMapper.readValue(payloadJson, Map.class);
+            Number ver = (Number) claims.get("ver");
+            return ver != null ? ver.intValue() : 1;
+        } catch (Exception e) {
+            return 1;
         }
     }
 

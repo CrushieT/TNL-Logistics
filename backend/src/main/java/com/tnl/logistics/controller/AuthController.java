@@ -73,7 +73,7 @@ public class AuthController {
 
         rateLimiterService.recordSuccess(clientIp);
 
-        String token = JwtTokenProvider.generateToken(user.getUsername(), user.getRole().name());
+        String token = JwtTokenProvider.generateToken(user.getUsername(), user.getRole().name(), user.getTokenVersion());
 
         LoginResponse response = new LoginResponse(
                 token,
@@ -113,6 +113,7 @@ public class AuthController {
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         user.setMustChangePassword(false);
+        user.incrementTokenVersion();
         appUserRepository.save(user);
 
         return ResponseEntity.ok(Map.of("message", "Password updated successfully"));

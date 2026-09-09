@@ -212,8 +212,14 @@
 - Optimized Server-Sent Events (SSE) synchronization: smart in-place prepend on Page 1 and non-intrusive floating pill on Page > 1.
 - REST endpoints `GET /api/v1/tracking-events` and `GET /api/v1/tracking-events/metrics` protected by RBAC (`ADMIN`, `OFFICE_STAFF`), verified via `TrackingLogIntegrationTest`.
 
-**5.4 — Operational & Financial Reports (Screen 26)**
-- Date-range filterable reports: Daily shipment volume, revenue by client, status distributions, and exportable summaries.
+**5.4 — Operational & Financial Reports (Screen 26)** — **[COMPLETED]**
+- Implemented complete reporting hub (`frontend-web/src/app/reports.js`) with grouped dual-bar chart (charges vs collections), Thursday collection cycle summary card, and top 5 KPI cards with period filtering (`Today`, `This Week`, `This Month`, `Last 30 Days`, `Custom`).
+- Multi-domain reporting tabs: Financial & Revenue (`FinancialRevenueTab.js`), Operational Volume (`OperationalVolumeTab.js`), and Client Receivables Aging (`ReceivablesAgingTab.js`).
+- Interactive `[✓] Hide empty days` toggle on the Daily Operations Timeline (enabled by default), with reverse chronological date ordering (latest date at top) and dynamic grand total label (`Total (X active days)` vs `Total (X days)`).
+- Standardized pagination footer across all report tables and Tracking Logs matching the canonical `Showing N of T · Page X of Y [N / page ▾] [← Previous] [Next →]` pattern established in Shipments, Vehicles, and Payments.
+- CSV export per tab and browser A4 printable document modal (`PrintableReportModal.js`).
+- Real-time SSE synchronization (`STATUS_UPDATE`, `SHIPMENT_CREATED`, `PAYMENT_RECORDED`, `SOA_GENERATED`) with 300ms debounced silent reloads and window focus re-sync.
+- Backend aggregation endpoints `GET /api/v1/reports/summary` and `GET /api/v1/reports/kpis` protected by `@PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")`, verified via `ReportIntegrationTest` (5/5 passing).
 
 **5.5 — User & Staff Management (Screen 27)**
 - Staff directory (`/users`), create user modal, role assignment (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`), and password reset.
