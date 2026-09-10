@@ -6,6 +6,7 @@ import com.tnl.logistics.dto.StatementPreviewResponse;
 import com.tnl.logistics.dto.StatementShipmentItem;
 import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.*;
+import com.tnl.logistics.service.CollectionsService;
 import com.tnl.logistics.service.SoaService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +34,7 @@ public class SoaServiceImpl implements SoaService {
     private final WeeklyCollectionRepository weeklyCollectionRepository;
     private final SoaBatchRepository soaBatchRepository;
     private final AppUserRepository appUserRepository;
+    private final CollectionsService collectionsService;
 
     public SoaServiceImpl(ClientRepository clientRepository,
                           ShipmentRepository shipmentRepository,
@@ -40,7 +42,8 @@ public class SoaServiceImpl implements SoaService {
                           SoaRepository soaRepository,
                           WeeklyCollectionRepository weeklyCollectionRepository,
                           SoaBatchRepository soaBatchRepository,
-                          AppUserRepository appUserRepository) {
+                          AppUserRepository appUserRepository,
+                          CollectionsService collectionsService) {
         this.clientRepository = clientRepository;
         this.shipmentRepository = shipmentRepository;
         this.paymentRepository = paymentRepository;
@@ -48,6 +51,7 @@ public class SoaServiceImpl implements SoaService {
         this.weeklyCollectionRepository = weeklyCollectionRepository;
         this.soaBatchRepository = soaBatchRepository;
         this.appUserRepository = appUserRepository;
+        this.collectionsService = collectionsService;
     }
 
     @Override
@@ -316,6 +320,12 @@ public class SoaServiceImpl implements SoaService {
     }
 
     private LocalDate calculateActiveThursday(LocalDate baseDate) {
+        if (baseDate == null) {
+            baseDate = LocalDate.now();
+        }
+        if (collectionsService != null) {
+            return collectionsService.calculateActiveCycleDate(baseDate);
+        }
         int dayOfWeek = baseDate.getDayOfWeek().getValue(); // 1 = Mon, 4 = Thu, 7 = Sun
         int daysUntilThursday = (4 - dayOfWeek + 7) % 7;
         return baseDate.plusDays(daysUntilThursday);

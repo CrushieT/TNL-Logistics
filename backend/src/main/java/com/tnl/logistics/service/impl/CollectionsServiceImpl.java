@@ -31,15 +31,18 @@ public class CollectionsServiceImpl implements CollectionsService {
     private final ShipmentRepository shipmentRepository;
     private final PaymentRepository paymentRepository;
     private final SoaRepository soaRepository;
+    private final com.tnl.logistics.service.SystemSettingService systemSettingService;
 
     public CollectionsServiceImpl(ClientRepository clientRepository,
                                   ShipmentRepository shipmentRepository,
                                   PaymentRepository paymentRepository,
-                                  SoaRepository soaRepository) {
+                                  SoaRepository soaRepository,
+                                  com.tnl.logistics.service.SystemSettingService systemSettingService) {
         this.clientRepository = clientRepository;
         this.shipmentRepository = shipmentRepository;
         this.paymentRepository = paymentRepository;
         this.soaRepository = soaRepository;
+        this.systemSettingService = systemSettingService;
     }
 
     @Override
@@ -162,8 +165,7 @@ public class CollectionsServiceImpl implements CollectionsService {
 
     @Override
     public DayOfWeek getCollectionDayOfWeek() {
-        // Default operational collection day is Thursday; Phase 5.6 Settings will wire this dynamically
-        return DayOfWeek.THURSDAY;
+        return systemSettingService != null ? systemSettingService.getCollectionDay() : DayOfWeek.THURSDAY;
     }
 
     @Override
