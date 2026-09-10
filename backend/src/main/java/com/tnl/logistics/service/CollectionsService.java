@@ -20,11 +20,22 @@ public interface CollectionsService {
     WeeklyCollectionsResponse getWeeklyCollections(LocalDate targetDate);
 
     /**
-     * Retrieve a distinct, sorted list of Thursday cycle dates that actually contain shipments.
+     * Retrieve a distinct, sorted list of active cycle closing dates that actually contain shipments or finalized SOAs.
      *
-     * @return list of Thursday dates (newest first) with registered shipments
+     * @return list of cycle closing dates (newest first)
      */
-    List<LocalDate> getActiveCycleThursdays();
+    List<LocalDate> getActiveCycleDates();
+
+    /**
+     * Legacy alias for {@link #getActiveCycleDates()}.
+     *
+     * @return list of cycle closing dates (newest first)
+     * @deprecated Use {@link #getActiveCycleDates()} instead.
+     */
+    @Deprecated
+    default List<LocalDate> getActiveCycleThursdays() {
+        return getActiveCycleDates();
+    }
 
     /**
      * Retrieve the configured weekly collection closing day of the week (default Thursday).
@@ -40,4 +51,14 @@ public interface CollectionsService {
      * @return LocalDate of the cycle closing day
      */
     LocalDate calculateActiveCycleDate(LocalDate baseDate);
+
+    /**
+     * Calculate the dynamic cycle start date for the given cycle closing date.
+     * The start date is anchored to the day immediately following the preceding cycle,
+     * or defaults to cycleEndDate minus 6 days if no preceding cycle exists.
+     *
+     * @param cycleEndDate the cycle closing date
+     * @return LocalDate of the cycle start day
+     */
+    LocalDate calculateCycleStartDate(LocalDate cycleEndDate);
 }

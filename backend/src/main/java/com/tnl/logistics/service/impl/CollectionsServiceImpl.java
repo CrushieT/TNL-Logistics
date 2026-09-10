@@ -10,6 +10,7 @@ import com.tnl.logistics.repository.ClientRepository;
 import com.tnl.logistics.repository.PaymentRepository;
 import com.tnl.logistics.repository.ShipmentRepository;
 import com.tnl.logistics.repository.SoaRepository;
+import com.tnl.logistics.repository.WeeklyCollectionRepository;
 import com.tnl.logistics.service.CollectionsService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,15 +51,31 @@ public class CollectionsServiceImpl implements CollectionsService {
     public WeeklyCollectionsResponse getWeeklyCollections(LocalDate targetDate) {
         LocalDate targetThursday = (targetDate != null) ? targetDate : calculateActiveCycleDate(LocalDate.now());
 
-        // 7-day Friday-to-Thursday cycle window
-        LocalDateTime cycleStart = targetThursday.minusDays(6).atStartOfDay();
+        LocalDate cycleStartLocalDate = calculateCycleStartDate(targetThursday);
+        LocalDateTime cycleStart = cycleStartLocalDate.atStartOfDay();
         LocalDateTime cycleEnd = targetThursday.atTime(23, 59, 59, 999999999);
 
         List<Client> clients = clientRepository.findAll();
-        List<Shipment> cycleShipments = shipmentRepository.findByDateRegisteredBetweenOrderByDateRegisteredDesc(cycleStart, cycleEnd);
+        List<Shipment> rawShipments = shipmentRepository.findByDateRegisteredBetweenOrderByDateRegisteredDesc(cycleStart, cycleEnd);
+
+        // Exclude shipments already billed to an SOA from a different cycle
+        Set<String> cycleSoaNos = soaRepository.findByStatementDate(targetThursday).stream()
+                .map(Soa::getSoaNo)
+                .collect(Collectors.toSet());
+
+        List<Shipment> cycleShipments = rawShipments.stream()
+                .filter(s -> {
+                    if (s.getClient() == null) {
+                        return false;
+                    }
+                    if (s.getStatementId() != null && !s.getStatementId().trim().isEmpty()) {
+                        return cycleSoaNos.contains(s.getStatementId());
+                    }
+                    return true;
+                })
+                .collect(Collectors.toList());
 
         Map<String, List<Shipment>> shipmentsByClient = cycleShipments.stream()
-                .filter(s -> s.getClient() != null)
                 .collect(Collectors.groupingBy(s -> s.getClient().getClientId()));
 
         List<WeeklyClientCollectionItem> items = new ArrayList<>();
@@ -144,23 +161,106 @@ public class CollectionsServiceImpl implements CollectionsService {
         );
     }
 
+    private LocalDate resolveCycleStartDate(LocalDate cycleEndDate, Collection<LocalDate> knownCycles) {
+        if (cycleEndDate == null) {
+            return null;
+        }
+        LocalDate defaultStart = cycleEndDate.minusDays(6);
+        if (knownCycles != null) {
+            Optional<LocalDate> prevCycleOpt = knownCycles.stream()
+                    .filter(d -> d != null && d.isBefore(cycleEndDate))
+                    .max(LocalDate::compareTo);
+            if (prevCycleOpt.isPresent()) {
+                LocalDate anchoredStart = prevCycleOpt.get().plusDays(1);
+                if (anchoredStart.isAfter(defaultStart)) {
+                    return anchoredStart;
+                }
+            }
+        }
+        return defaultStart;
+    }
+
+    @Override
+    public LocalDate calculateCycleStartDate(LocalDate cycleEndDate) {
+        if (cycleEndDate == null) {
+            return null;
+        }
+        return resolveCycleStartDate(cycleEndDate, getActiveCycleDates());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LocalDate> getActiveCycleDates() {
+        LocalDate currentCycleEnd = calculateActiveCycleDate(LocalDate.now());
+
+        Set<LocalDate> activeCycles = new TreeSet<>(Comparator.reverseOrder());
+
+        // 1. Always include the current ongoing cycle closing day
+        activeCycles.add(currentCycleEnd);
+
+        // 2. Add all immutable historical statement dates from generated SOAs
+        List<LocalDate> soaDates = soaRepository.findDistinctStatementDates();
+        activeCycles.addAll(soaDates);
+
+        // Find the latest finalized historical cycle date if any exists
+        LocalDate latestFinalizedCycleDate = null;
+        for (LocalDate cycleDate : activeCycles) {
+            if (!cycleDate.equals(currentCycleEnd)) {
+                if (latestFinalizedCycleDate == null || cycleDate.isAfter(latestFinalizedCycleDate)) {
+                    latestFinalizedCycleDate = cycleDate;
+                }
+            }
+        }
+
+        LocalDate currentCycleStart = resolveCycleStartDate(currentCycleEnd, activeCycles);
+
+        // 3. Incorporate candidate historical cycles from raw shipments strictly prior to the active cycle window
+        List<LocalDate> registrationDates = shipmentRepository.findDistinctRegistrationDates();
+        for (LocalDate regDate : registrationDates) {
+            if (regDate == null) {
+                continue;
+            }
+            // Shipments registered after the latest finalized cycle roll into the current active cycle
+            if (latestFinalizedCycleDate != null && regDate.isAfter(latestFinalizedCycleDate)) {
+                continue;
+            }
+            // Shipments on or after current active cycle start roll into the current active cycle
+            if (!regDate.isBefore(currentCycleStart)) {
+                continue;
+            }
+
+            // Check if covered by any existing cycle window [winStart, cycleDate]
+            boolean coveredByExistingCycle = false;
+            for (LocalDate cycleDate : activeCycles) {
+                LocalDate winStart = cycleDate.minusDays(6);
+                if (!regDate.isBefore(winStart) && !regDate.isAfter(cycleDate)) {
+                    coveredByExistingCycle = true;
+                    break;
+                }
+            }
+            if (!coveredByExistingCycle) {
+                // Historical shipments prior to finalized cycles anchor to historical Thursday
+                int currentDayVal = regDate.getDayOfWeek().getValue();
+                int daysUntilThursday = (DayOfWeek.THURSDAY.getValue() - currentDayVal + 7) % 7;
+                LocalDate candidateDate = regDate.plusDays(daysUntilThursday);
+
+                if (!activeCycles.contains(candidateDate) && candidateDate.isBefore(currentCycleStart)) {
+                    LocalDate candidateStart = candidateDate.minusDays(6);
+                    LocalDateTime startDt = candidateStart.atStartOfDay();
+                    LocalDateTime endDt = candidateDate.atTime(23, 59, 59, 999999999);
+                    if (shipmentRepository.countUnbilledShipmentsBetween(startDt, endDt) > 0) {
+                        activeCycles.add(candidateDate);
+                    }
+                }
+            }
+        }
+        return new ArrayList<>(activeCycles);
+    }
+
     @Override
     @Transactional(readOnly = true)
     public List<LocalDate> getActiveCycleThursdays() {
-        LocalDate currentThursday = calculateActiveCycleDate(LocalDate.now());
-        List<LocalDate> registrationDates = shipmentRepository.findDistinctRegistrationDates();
-        Set<LocalDate> activeThursdays = new TreeSet<>(Comparator.reverseOrder());
-
-        // Always include the current ongoing cycle closing day
-        activeThursdays.add(currentThursday);
-
-        // Include past cycle closing days only if they contain registered shipments
-        for (LocalDate date : registrationDates) {
-            if (date != null) {
-                activeThursdays.add(calculateActiveCycleDate(date));
-            }
-        }
-        return new ArrayList<>(activeThursdays);
+        return getActiveCycleDates();
     }
 
     @Override

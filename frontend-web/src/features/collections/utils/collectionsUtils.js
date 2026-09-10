@@ -23,14 +23,15 @@ export function getNearestThursday(baseDate = new Date(), targetDayOfWeek = 4) {
 export const getNearestCycleDay = getNearestThursday;
 
 /**
- * Format a Thursday cycle date into "Thursday, MMM D-D, YYYY" (e.g. "Thursday, Aug 21-27, 2026")
- * @param {Date} thursdayDate
+ * Format cycle date range from explicit start and end dates.
+ * Example: "Thursday, Aug 28 – Sep 3, 2026" or "Monday, Sep 8 – 14, 2026"
+ * @param {Date|string} startDate
+ * @param {Date|string} endDate
  * @returns {string}
  */
-export function formatCycleDateRange(cycleEndDate) {
-  const end = new Date(cycleEndDate);
-  const start = new Date(end);
-  start.setDate(end.getDate() - 6);
+export function formatCycleDateRangeFromDates(startDate, endDate) {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
 
   const dayName = end.toLocaleDateString('en-US', { weekday: 'long' });
   const startMonth = start.toLocaleDateString('en-US', { month: 'short' });
@@ -47,6 +48,18 @@ export function formatCycleDateRange(cycleEndDate) {
     return `${dayName}, ${startMonth} ${startDay} – ${endMonth} ${endDay}, ${endYear}`;
   }
   return `${dayName}, ${startMonth} ${startDay}, ${startYear} – ${endMonth} ${endDay}, ${endYear}`;
+}
+
+/**
+ * Format a cycle date into "DayOfWeek, MMM D – D, YYYY" (defaults to 7-day lookback).
+ * @param {Date} cycleEndDate
+ * @returns {string}
+ */
+export function formatCycleDateRange(cycleEndDate) {
+  const end = new Date(cycleEndDate);
+  const start = new Date(end);
+  start.setDate(end.getDate() - 6);
+  return formatCycleDateRangeFromDates(start, end);
 }
 
 /**

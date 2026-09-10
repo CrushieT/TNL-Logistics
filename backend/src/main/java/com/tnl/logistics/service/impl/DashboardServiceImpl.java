@@ -61,7 +61,8 @@ public class DashboardServiceImpl implements DashboardService {
                 ? targetCycleDate
                 : collectionsService.calculateActiveCycleDate(today);
 
-        LocalDateTime cycleStart = activeCycleEnd.minusDays(6).atStartOfDay();
+        LocalDate cycleStartLocalDate = collectionsService.calculateCycleStartDate(activeCycleEnd);
+        LocalDateTime cycleStart = cycleStartLocalDate.atStartOfDay();
         LocalDateTime cycleEnd = activeCycleEnd.atTime(23, 59, 59, 999999999);
 
         // 1. Cycle-scoped counts
