@@ -10,14 +10,17 @@
  * @param {Date} [baseDate=new Date()]
  * @returns {Date}
  */
-export function getNearestThursday(baseDate = new Date()) {
+export function getNearestThursday(baseDate = new Date(), targetDayOfWeek = 4) {
   const date = new Date(baseDate);
   const day = date.getDay(); // 0 = Sun, 1 = Mon, 2 = Tue, 3 = Wed, 4 = Thu, 5 = Fri, 6 = Sat
-  const daysUntilThursday = (4 - day + 7) % 7;
-  date.setDate(date.getDate() + daysUntilThursday);
+  const targetDay = typeof targetDayOfWeek === 'number' ? targetDayOfWeek : 4;
+  const daysUntilTarget = (targetDay - day + 7) % 7;
+  date.setDate(date.getDate() + daysUntilTarget);
   date.setHours(0, 0, 0, 0);
   return date;
 }
+
+export const getNearestCycleDay = getNearestThursday;
 
 /**
  * Format a Thursday cycle date into "Thursday, MMM D-D, YYYY" (e.g. "Thursday, Aug 21-27, 2026")

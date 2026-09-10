@@ -1,11 +1,26 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { colors, fonts, spacing, radius } from '../../../theme';
+import { getCompanyBranding } from '../../settings/services/settingsApi';
 
 /**
  * Waybill Manifest Card component strictly matching prototype waybills page.png
  */
 export default function WaybillManifestCard({ manifest, selectedHauler }) {
+  const [branding, setBranding] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    getCompanyBranding()
+      .then((res) => {
+        if (mounted && res) setBranding(res);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   if (!manifest) {
     return (
       <View style={styles.emptyCard}>
@@ -108,8 +123,10 @@ export default function WaybillManifestCard({ manifest, selectedHauler }) {
             <Text style={styles.logoMarkText}>T</Text>
           </View>
           <View style={styles.brandInfo}>
-            <Text style={styles.brandTitle}>TNL LOGISTICS</Text>
-            <Text style={styles.brandSub}>Manila Central Hub · 0917-555-0000</Text>
+            <Text style={styles.brandTitle}>{(branding?.companyName || 'TNL LOGISTICS').toUpperCase()}</Text>
+            <Text style={styles.brandSub}>
+              {branding?.companyAddress || 'Manila Central Hub'} · {branding?.companyContact || '0917-555-0000'}
+            </Text>
           </View>
         </View>
 
