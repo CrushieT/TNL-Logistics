@@ -232,12 +232,16 @@
 **5.6 — System Settings (Screen 28)** — **[COMPLETED]**
 - Flyway migration `V19__create_system_settings_table.sql` creating `system_setting` singleton configuration table with defaults.
 - Dynamic Weekly Collection Day integration across `CollectionsService`, `SoaService`, `DashboardService`, and frontend cycle dropdowns, shifting active closing dates while preserving historical finalized SOAs.
+- Dynamic cycle start date calculation (`calculateCycleStartDate`) anchored to the day following the preceding cycle (clamped to 7-day lookback floor), eliminating date overlaps during collection day transitions.
+- Intermediate ghost cycle elimination by bounding candidate historical cycle discovery strictly to pre-active windows.
+- N+1 database query optimization in `CollectionsServiceImpl.getWeeklyCollections()` by pre-fetching statement numbers into a fast in-memory lookup set.
+- Replaced legacy `getActiveCycleThursdays()` with `getActiveCycleDates()`, retaining the former as a deprecated backward-compatible delegator.
 - Dynamic volumetric divisor calculation in `ShipmentService` and reactive calculation preview formula in Settings (`e.g. 50×40×30 = 60,000 cm³ ÷ divisor = kg`).
 - Dynamic company branding (Business Name, Address, Contact, Billing Email) propagating to Statement of Account printouts, Waybill manifests, and Admin Console screens.
 - RBAC protection: Admin-only access for `/api/v1/settings` (`GET`, `PUT`) and staff-accessible `/api/v1/settings/branding`.
 - Real-time Server-Sent Events (`SETTINGS_UPDATED`) for zero-reload configuration synchronization.
 - Frontend Settings screen (`frontend-web/src/app/settings.js`) matching prototype layout with 2-card desktop grid, provisional billable weight callout, and read-only sequential ID format previews (`TRK-YYYY-`, `SHP-YYYY-`).
-- Verified via 10 integration tests in `SystemSettingIntegrationTest.java` (10/10 passing).
+- Verified via 12 integration tests in `SystemSettingIntegrationTest.java` (12/12 passing, and 102/102 backend tests passing total).
 
 ---
 
