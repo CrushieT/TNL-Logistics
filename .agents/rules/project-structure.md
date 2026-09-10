@@ -27,7 +27,7 @@ tnl-logistics/
 │   │   │   └── resources/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
-│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V16)
+│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V18)
 │   │   └── test/                        # Integration and unit test suites
 │   └── pom.xml
 │
@@ -56,7 +56,7 @@ tnl-logistics/
 │   │   │   ├── users.js             # Screen 27 User & Staff Management
 │   │   │   └── settings.js          # Screen 28 System Settings
 │   │   ├── components/              # Shared design system (common/ atoms, layout/ AppShell)
-│   │   ├── features/                # Domain feature modules (shipments, vehicles, clients, waybills, payments, collections)
+│   │   ├── features/                # Domain feature modules (shipments, vehicles, clients, waybills, payments, collections, tracking-logs, reports, users)
 │   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sseClient.js)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
 │   │   └── utils/                   # Pure utilities (qr.js in-memory vector QR encoder)

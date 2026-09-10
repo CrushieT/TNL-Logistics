@@ -25,7 +25,7 @@
 | **Phase 4.1** | Backend: Payments & Collections Engine (`POST /api/v1/payments`, Balance Recalculation, Multi-Search & Audit) | [COMPLETED] |
 | **Phase 4.2** | Backend: Thursday Weekly Collections Consolidation & SOA Generator (3 Deductions, Net Remittance) | [COMPLETED] |
 | **Phase 4.3** | Web: Billing, Collections & Printable SOA (Desktop Screens 18–22) | [COMPLETED] |
-| **Phase 5** | Web Console: Live Dashboard, Tracking Logs Stream, Reports, Users & Settings (Screens 01, 02, 17, 26–28) | [IN PROGRESS] |
+| **Phase 5** | Web Console: Live Dashboard, Tracking Logs Stream, Reports, Users & Settings (Screens 01, 02, 17, 26–28) | [COMPLETED] |
 | **Phase 6** | Role-Aware Mobile App: Scan-Only Field Staff vs. Authorized Office Mobile + Bluetooth Printing (Screens 29–53) | [UPCOMING] |
 
 ---
@@ -221,11 +221,23 @@
 - Real-time SSE synchronization (`STATUS_UPDATE`, `SHIPMENT_CREATED`, `PAYMENT_RECORDED`, `SOA_GENERATED`) with 300ms debounced silent reloads and window focus re-sync.
 - Backend aggregation endpoints `GET /api/v1/reports/summary` and `GET /api/v1/reports/kpis` protected by `@PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")`, verified via `ReportIntegrationTest` (5/5 passing).
 
-**5.5 — User & Staff Management (Screen 27)**
-- Staff directory (`/users`), create user modal, role assignment (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`), and password reset.
+**5.5 — User & Staff Management (Screen 27)** — **[COMPLETED]**
+- Staff directory (`/users`) with server-side pagination, search by name, username, and ID, role and status filtering, platform access chips, and responsive design.
+- Credential management suite: auto-generated temporary passwords (`TNL-XXXX`) with clipboard copy feedback and re-roll button; mobile PIN setup (Option A "Require PIN setup on first mobile login" default + Option B collapsible manual 4-digit override); dedicated `ResetPasswordModal` and `ResetPinModal`.
+- Instant session revocation via `tokenVersion` claims and Flyway migrations `V17__add_user_pin_and_indexes.sql` and `V18__add_user_token_version.sql`.
+- Destructive action safety: `ConfirmActionModal` requiring typed User ID verification for deletion; soft-deactivation (`active = false`) for staff with linked operational audit history.
+- Single Administrator System Invariant: disallow creating additional admin accounts, prevent promoting staff to admin, prevent altering admin role, and protect the system owner (`USR-ADMIN`) from deletion across UI and backend services.
+- Full REST endpoints in `UserController.java` (`POST /api/v1/users`, `GET /api/v1/users`, `PUT /api/v1/users/{id}`, `DELETE /api/v1/users/{id}`, `PUT /api/v1/users/{id}/reset-password`, `PUT /api/v1/users/{id}/reset-pin`) secured with `@PreAuthorize("hasRole('ADMIN')")`, verified via 20 integration tests in `UserManagementIntegrationTest.java`.
 
-**5.6 — System Settings (Screen 28)**
-- Company information, collection day configuration, and volumetric weight divisor adjustment (default $5000$).
+**5.6 — System Settings (Screen 28)** — **[COMPLETED]**
+- Flyway migration `V19__create_system_settings_table.sql` creating `system_setting` singleton configuration table with defaults.
+- Dynamic Weekly Collection Day integration across `CollectionsService`, `SoaService`, `DashboardService`, and frontend cycle dropdowns, shifting active closing dates while preserving historical finalized SOAs.
+- Dynamic volumetric divisor calculation in `ShipmentService` and reactive calculation preview formula in Settings (`e.g. 50×40×30 = 60,000 cm³ ÷ divisor = kg`).
+- Dynamic company branding (Business Name, Address, Contact, Billing Email) propagating to Statement of Account printouts, Waybill manifests, and Admin Console screens.
+- RBAC protection: Admin-only access for `/api/v1/settings` (`GET`, `PUT`) and staff-accessible `/api/v1/settings/branding`.
+- Real-time Server-Sent Events (`SETTINGS_UPDATED`) for zero-reload configuration synchronization.
+- Frontend Settings screen (`frontend-web/src/app/settings.js`) matching prototype layout with 2-card desktop grid, provisional billable weight callout, and read-only sequential ID format previews (`TRK-YYYY-`, `SHP-YYYY-`).
+- Verified via 10 integration tests in `SystemSettingIntegrationTest.java` (10/10 passing).
 
 ---
 
