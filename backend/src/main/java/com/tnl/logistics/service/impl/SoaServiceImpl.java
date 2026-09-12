@@ -60,7 +60,7 @@ public class SoaServiceImpl implements SoaService {
         Client client = clientRepository.findById(clientId)
                 .orElseThrow(() -> new IllegalArgumentException("Client not found with id: " + clientId));
 
-        LocalDate targetThursday = (targetDate != null) ? targetDate : calculateActiveThursday(LocalDate.now());
+        LocalDate targetThursday = resolveTargetCycleDate(targetDate);
 
         LocalDate cycleStartLocalDate = collectionsService.calculateCycleStartDate(targetThursday);
         LocalDateTime cycleStart = cycleStartLocalDate.atStartOfDay();
@@ -189,9 +189,7 @@ public class SoaServiceImpl implements SoaService {
         Client client = clientRepository.findById(request.getClientId())
                 .orElseThrow(() -> new IllegalArgumentException("Client not found: " + request.getClientId()));
 
-        LocalDate targetThursday = (request.getTargetDate() != null)
-                ? request.getTargetDate()
-                : calculateActiveThursday(LocalDate.now());
+        LocalDate targetThursday = resolveTargetCycleDate(request.getTargetDate());
         LocalDate cycleStartLocalDate = collectionsService.calculateCycleStartDate(targetThursday);
         LocalDateTime cycleStart = cycleStartLocalDate.atStartOfDay();
         LocalDateTime cycleEnd = targetThursday.atTime(23, 59, 59, 999999999);
@@ -346,6 +344,23 @@ public class SoaServiceImpl implements SoaService {
         int dayOfWeek = baseDate.getDayOfWeek().getValue(); // 1 = Mon, 4 = Thu, 7 = Sun
         int daysUntilThursday = (4 - dayOfWeek + 7) % 7;
         return baseDate.plusDays(daysUntilThursday);
+    }
+
+    private LocalDate resolveTargetCycleDate(LocalDate targetDate) {
+        if (targetDate == null) {
+            return calculateActiveThursday(LocalDate.now());
+        }
+        LocalDate currentActiveCycle = calculateActiveThursday(LocalDate.now());
+        if (targetDate.equals(currentActiveCycle)) {
+            return targetDate;
+        }
+        if (collectionsService != null && collectionsService.getActiveCycleDates().contains(targetDate)) {
+            return targetDate;
+        }
+        if (collectionsService != null && targetDate.getDayOfWeek() == collectionsService.getCollectionDayOfWeek()) {
+            return targetDate;
+        }
+        return calculateActiveThursday(targetDate);
     }
 
     private String formatPreviewSoaNo(String clientId, LocalDate targetThursday, int weekNumber) {
