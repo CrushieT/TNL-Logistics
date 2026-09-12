@@ -114,12 +114,25 @@ export async function checkFirstBootStatus() {
   }
 }
 
-export async function registerFirstBootAdmin({ fullName, username, password, confirmPassword }) {
+export async function registerFirstBootAdmin({
+  fullName,
+  username,
+  password,
+  confirmPassword,
+  companyName,
+  companyAddress,
+  companyContact,
+  billingEmail,
+}) {
   const response = await axios.post(`${BASE_URL}/auth/first-boot-admin`, {
     fullName,
     username,
     password,
     confirmPassword,
+    companyName,
+    companyAddress,
+    companyContact,
+    billingEmail,
   });
 
   const { token, userId, role, mustChangePassword } = response.data;

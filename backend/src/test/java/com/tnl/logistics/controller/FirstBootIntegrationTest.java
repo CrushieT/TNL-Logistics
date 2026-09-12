@@ -8,8 +8,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tnl.logistics.dto.FirstBootAdminRequest;
 import com.tnl.logistics.model.AppUser;
+import com.tnl.logistics.model.SystemSetting;
 import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.repository.AppUserRepository;
+import com.tnl.logistics.repository.SystemSettingRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -20,8 +22,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Integration test verifying first-boot admin registration, status detection,
- * input validations, single-admin ID assignment, and conflict rejection.
+ * Integration test verifying first-boot admin registration, company branding persistence,
+ * status detection, input validations, single-admin ID assignment, and conflict rejection.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -37,6 +39,9 @@ public class FirstBootIntegrationTest {
 
     @Autowired
     private AppUserRepository appUserRepository;
+
+    @Autowired
+    private SystemSettingRepository systemSettingRepository;
 
     @Test
     void testFirstBootStatusAndRegistrationLifecycle() throws Exception {
@@ -78,9 +83,16 @@ public class FirstBootIntegrationTest {
                 .content(objectMapper.writeValueAsString(missingNameReq)))
                 .andExpect(status().isBadRequest());
 
-        // 5. Successful registration of primary administrator
+        // 5. Successful registration of primary administrator and company branding
         FirstBootAdminRequest validReq = new FirstBootAdminRequest(
-                "Maria Santos", "primaryadmin", "AdminPass123!", "AdminPass123!"
+                "Maria Santos",
+                "primaryadmin",
+                "AdminPass123!",
+                "AdminPass123!",
+                "TNL Logistics Express",
+                "Baguio City Hub",
+                "0918-111-2222",
+                "accounts@tnllogistics.ph"
         );
         mockMvc.perform(post("/api/v1/auth/first-boot-admin")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -100,6 +112,14 @@ public class FirstBootIntegrationTest {
         assertFalse(persistedAdmin.getMustChangePassword());
         assertTrue(persistedAdmin.getActive());
 
+        // Verify company branding persisted in system_setting
+        SystemSetting savedSetting = systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID).orElseThrow();
+        assertEquals("TNL Logistics Express", savedSetting.getCompanyName());
+        assertEquals("Baguio City Hub", savedSetting.getCompanyAddress());
+        assertEquals("0918-111-2222", savedSetting.getCompanyContact());
+        assertEquals("accounts@tnllogistics.ph", savedSetting.getBillingEmail());
+        assertEquals("USR-ADMIN", savedSetting.getUpdatedBy());
+
         // 6. Probe status again: should indicate first-boot is no longer needed
         mockMvc.perform(get("/api/v1/auth/first-boot-status"))
                 .andExpect(status().isOk())
@@ -111,5 +131,17 @@ public class FirstBootIntegrationTest {
                 .content(objectMapper.writeValueAsString(validReq)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value("First boot setup has already been completed."));
+    }
+
+    @Test
+    void testFirstBootAdminRequestDefaultBranding() {
+        FirstBootAdminRequest defaultBrandingReq = new FirstBootAdminRequest(
+                "Default Admin", "adminuser", "AdminPass123!", "AdminPass123!"
+        );
+
+        assertEquals("TC & CT Integrated Logistics", defaultBrandingReq.getCompanyName());
+        assertEquals("Labo, Camarines Norte", defaultBrandingReq.getCompanyAddress());
+        assertEquals("0917-555-0000", defaultBrandingReq.getCompanyContact());
+        assertEquals("billing@tnllogistics.ph", defaultBrandingReq.getBillingEmail());
     }
 }

@@ -7,15 +7,19 @@ import com.tnl.logistics.dto.LoginRequest;
 import com.tnl.logistics.dto.LoginResponse;
 import com.tnl.logistics.dto.PasswordChangeRequest;
 import com.tnl.logistics.model.AppUser;
+import com.tnl.logistics.model.SystemSetting;
 import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.repository.AppUserRepository;
+import com.tnl.logistics.repository.SystemSettingRepository;
 import com.tnl.logistics.service.LoginRateLimiterService;
+import com.tnl.logistics.service.SseService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -30,14 +34,20 @@ public class AuthController {
     private final AppUserRepository appUserRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final LoginRateLimiterService rateLimiterService;
+    private final SystemSettingRepository systemSettingRepository;
+    private final SseService sseService;
 
     public AuthController(
             AppUserRepository appUserRepository,
             BCryptPasswordEncoder passwordEncoder,
-            LoginRateLimiterService rateLimiterService) {
+            LoginRateLimiterService rateLimiterService,
+            SystemSettingRepository systemSettingRepository,
+            SseService sseService) {
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
         this.rateLimiterService = rateLimiterService;
+        this.systemSettingRepository = systemSettingRepository;
+        this.sseService = sseService;
     }
 
     @PostMapping("/login")
@@ -149,6 +159,7 @@ public class AuthController {
     }
 
     @PostMapping("/first-boot-admin")
+    @Transactional
     public ResponseEntity<?> registerFirstBootAdmin(@Valid @RequestBody FirstBootAdminRequest request) {
         if (appUserRepository.existsByRole(UserRole.ADMIN)) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
@@ -180,6 +191,41 @@ public class AuthController {
         adminUser.setTokenVersion(1);
 
         appUserRepository.save(adminUser);
+
+        // Update company branding in system_setting singleton
+        SystemSetting setting = systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID)
+                .orElseGet(() -> new SystemSetting(
+                        SystemSetting.DEFAULT_SETTING_ID,
+                        "TC & CT Integrated Logistics",
+                        "Labo, Camarines Norte",
+                        "0917-555-0000",
+                        "billing@tnllogistics.ph",
+                        java.time.DayOfWeek.THURSDAY,
+                        5000,
+                        "TRK",
+                        "SHP"
+                ));
+
+        if (request.getCompanyName() != null && !request.getCompanyName().isBlank()) {
+            setting.setCompanyName(request.getCompanyName().trim());
+        }
+        if (request.getCompanyAddress() != null && !request.getCompanyAddress().isBlank()) {
+            setting.setCompanyAddress(request.getCompanyAddress().trim());
+        }
+        if (request.getCompanyContact() != null && !request.getCompanyContact().isBlank()) {
+            setting.setCompanyContact(request.getCompanyContact().trim());
+        }
+        if (request.getBillingEmail() != null && !request.getBillingEmail().isBlank()) {
+            setting.setBillingEmail(request.getBillingEmail().trim());
+        }
+        setting.setUpdatedBy("USR-ADMIN");
+        systemSettingRepository.save(setting);
+
+        try {
+            sseService.broadcastEvent("SETTINGS_UPDATED", setting);
+        } catch (Exception e) {
+            // Non-blocking SSE broadcast exception shielding
+        }
 
         String token = JwtTokenProvider.generateToken(adminUser.getUsername(), adminUser.getRole().name(), adminUser.getTokenVersion());
 

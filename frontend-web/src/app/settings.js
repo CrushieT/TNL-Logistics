@@ -24,8 +24,8 @@ export default function SettingsScreen() {
   const isDesktop = width >= 1024;
 
   const [form, setForm] = useState({
-    companyName: 'TNL Logistics',
-    companyAddress: 'Manila Central Hub',
+    companyName: 'TC & CT Integrated Logistics',
+    companyAddress: 'Labo, Camarines Norte',
     companyContact: '0917-555-0000',
     billingEmail: 'billing@tnllogistics.ph',
     collectionDay: 'THURSDAY',
