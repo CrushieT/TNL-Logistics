@@ -226,4 +226,17 @@ export async function validateSession() {
   }
 }
 
+export async function changePassword(oldPassword, newPassword) {
+  const response = await apiClient.post('/auth/password-change', {
+    oldPassword,
+    newPassword,
+  });
+
+  if (response.data?.token) {
+    setToken(response.data.token);
+  }
+
+  return response.data;
+}
+
 export default apiClient;

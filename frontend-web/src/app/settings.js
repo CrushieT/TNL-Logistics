@@ -15,6 +15,7 @@ import {
   updateSystemSettings,
   CompanyBrandingCard,
   CollectionWeightTrackingCard,
+  AdminSecurityCard,
 } from '../features/settings';
 import { subscribeRealtimeEvents } from '../features/shipments';
 import { colors, fonts, spacing, radius, type } from '../theme';
@@ -201,19 +202,27 @@ export default function SettingsScreen() {
           </View>
         ) : (
           <View style={[styles.cardsGrid, !isDesktop && styles.cardsGridStacked]}>
-            <CompanyBrandingCard
-              form={form}
-              errors={errors}
-              onChangeField={handleChangeField}
-            />
+            {/* Left Column: Company Branding + Admin Security */}
+            <View style={styles.leftColumn}>
+              <CompanyBrandingCard
+                form={form}
+                errors={errors}
+                onChangeField={handleChangeField}
+              />
 
-            <CollectionWeightTrackingCard
-              form={form}
-              errors={errors}
-              onChangeField={handleChangeField}
-              onSave={handleSave}
-              saving={saving}
-            />
+              <AdminSecurityCard />
+            </View>
+
+            {/* Right Column: Operational & Tracking Configuration */}
+            <View style={styles.rightColumn}>
+              <CollectionWeightTrackingCard
+                form={form}
+                errors={errors}
+                onChangeField={handleChangeField}
+                onSave={handleSave}
+                saving={saving}
+              />
+            </View>
           </View>
         )}
       </ScrollView>
@@ -252,6 +261,15 @@ const styles = StyleSheet.create({
   cardsGridStacked: {
     flexDirection: 'column',
     gap: spacing.lg,
+  },
+  leftColumn: {
+    flex: 1,
+    minWidth: 320,
+    gap: spacing.xl,
+  },
+  rightColumn: {
+    flex: 1,
+    minWidth: 320,
   },
   successBanner: {
     backgroundColor: '#F0FDF4',

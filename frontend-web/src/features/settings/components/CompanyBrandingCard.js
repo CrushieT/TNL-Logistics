@@ -54,8 +54,7 @@ export default function CompanyBrandingCard({
 
 const styles = StyleSheet.create({
   card: {
-    flex: 1,
-    minWidth: 320,
+    width: '100%',
   },
   field: {
     marginBottom: spacing.md,

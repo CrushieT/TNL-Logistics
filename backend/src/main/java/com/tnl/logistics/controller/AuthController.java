@@ -123,12 +123,27 @@ public class AuthController {
                     .body(Map.of("message", "Incorrect current password"));
         }
 
+        if (request.getOldPassword().equals(request.getNewPassword()) ||
+                passwordEncoder.matches(request.getNewPassword(), user.getPasswordHash())) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", "New password must be different from current password."));
+        }
+
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         user.setMustChangePassword(false);
         user.incrementTokenVersion();
         appUserRepository.save(user);
 
-        return ResponseEntity.ok(Map.of("message", "Password updated successfully"));
+        String newToken = JwtTokenProvider.generateToken(user.getUsername(), user.getRole().name(), user.getTokenVersion());
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Password updated successfully",
+                "token", newToken,
+                "userId", user.getUserId(),
+                "username", user.getUsername(),
+                "role", user.getRole().name(),
+                "mustChangePassword", user.getMustChangePassword()
+        ));
     }
 
     @GetMapping("/me")

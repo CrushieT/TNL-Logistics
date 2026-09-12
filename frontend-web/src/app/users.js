@@ -320,48 +320,48 @@ export default function UsersScreen() {
                 <Pressable style={styles.actionBtn} onPress={() => setUserToEdit(user)}>
                   <Text style={styles.actionBtnText}>Edit</Text>
                 </Pressable>
-                <View
-                  style={[
-                    styles.moreActionWrapper,
-                    activeActionMenuUserId === user.userId && styles.moreActionWrapperActive,
-                  ]}
-                  ref={activeActionMenuUserId === user.userId ? actionMenuContainerRef : undefined}
-                >
-                  <Pressable
+                {user.role !== 'ADMIN' && (
+                  <View
                     style={[
-                      styles.actionBtn,
-                      activeActionMenuUserId === user.userId && styles.actionBtnActive,
+                      styles.moreActionWrapper,
+                      activeActionMenuUserId === user.userId && styles.moreActionWrapperActive,
                     ]}
-                    onPress={() =>
-                      setActiveActionMenuUserId(
-                        activeActionMenuUserId === user.userId ? null : user.userId
-                      )
-                    }
+                    ref={activeActionMenuUserId === user.userId ? actionMenuContainerRef : undefined}
                   >
-                    <Text style={styles.actionBtnText}>More ▾</Text>
-                  </Pressable>
-                  {activeActionMenuUserId === user.userId && (
-                    <View
+                    <Pressable
                       style={[
-                        styles.actionPopover,
-                        idx === filteredUsers.length - 1 && filteredUsers.length >= 3
-                          ? styles.actionPopoverUpward
-                          : styles.actionPopoverDownward,
+                        styles.actionBtn,
+                        activeActionMenuUserId === user.userId && styles.actionBtnActive,
                       ]}
+                      onPress={() =>
+                        setActiveActionMenuUserId(
+                          activeActionMenuUserId === user.userId ? null : user.userId
+                        )
+                      }
                     >
-                      <Pressable
-                        style={({ hovered }) => [
-                          styles.popoverItem,
-                          hovered && styles.popoverItemHovered,
+                      <Text style={styles.actionBtnText}>More ▾</Text>
+                    </Pressable>
+                    {activeActionMenuUserId === user.userId && (
+                      <View
+                        style={[
+                          styles.actionPopover,
+                          idx === filteredUsers.length - 1 && filteredUsers.length >= 3
+                            ? styles.actionPopoverUpward
+                            : styles.actionPopoverDownward,
                         ]}
-                        onPress={() => {
-                          setActiveActionMenuUserId(null);
-                          setUserToResetPassword(user);
-                        }}
                       >
-                        <Text style={styles.popoverItemText}>Reset Password</Text>
-                      </Pressable>
-                      {user.role !== 'ADMIN' ? (
+                        <Pressable
+                          style={({ hovered }) => [
+                            styles.popoverItem,
+                            hovered && styles.popoverItemHovered,
+                          ]}
+                          onPress={() => {
+                            setActiveActionMenuUserId(null);
+                            setUserToResetPassword(user);
+                          }}
+                        >
+                          <Text style={styles.popoverItemText}>Reset Password</Text>
+                        </Pressable>
                         <Pressable
                           style={({ hovered }) => [
                             styles.popoverItem,
@@ -374,29 +374,25 @@ export default function UsersScreen() {
                         >
                           <Text style={styles.popoverItemText}>Reset Mobile PIN</Text>
                         </Pressable>
-                      ) : null}
-                      {user.role !== 'ADMIN' ? (
-                        <>
-                          <View style={styles.popoverDivider} />
-                          <Pressable
-                            style={({ hovered }) => [
-                              styles.popoverItem,
-                              hovered && styles.popoverItemDangerHovered,
-                            ]}
-                            onPress={() => {
-                              setActiveActionMenuUserId(null);
-                              setUserToDelete(user);
-                            }}
-                          >
-                            <Text style={[styles.popoverItemText, styles.popoverItemTextDanger]}>
-                              Delete Account
-                            </Text>
-                          </Pressable>
-                        </>
-                      ) : null}
-                    </View>
-                  )}
-                </View>
+                        <View style={styles.popoverDivider} />
+                        <Pressable
+                          style={({ hovered }) => [
+                            styles.popoverItem,
+                            hovered && styles.popoverItemDangerHovered,
+                          ]}
+                          onPress={() => {
+                            setActiveActionMenuUserId(null);
+                            setUserToDelete(user);
+                          }}
+                        >
+                          <Text style={[styles.popoverItemText, styles.popoverItemTextDanger]}>
+                            Delete Account
+                          </Text>
+                        </Pressable>
+                      </View>
+                    )}
+                  </View>
+                )}
               </View>
             </View>
           ))

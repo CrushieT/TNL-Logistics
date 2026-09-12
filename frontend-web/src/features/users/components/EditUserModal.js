@@ -171,34 +171,36 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
             </View>
 
             {/* Security Shortcuts */}
-            <View style={styles.securitySection}>
-              <Text style={styles.fieldLabel}>SECURITY & CREDENTIALS</Text>
-              <Text style={styles.securityText}>
-                Passwords and Mobile PINs are managed through dedicated quick-action dialogs.
-              </Text>
-              <View style={styles.securityBtnRow}>
-                <Pressable
-                  style={styles.securityBtn}
-                  onPress={() => {
-                    onClose();
-                    onRequestResetPassword?.(userToEdit);
-                  }}
-                >
-                  <Text style={styles.securityBtnText}>Reset Password</Text>
-                </Pressable>
-                {role !== 'ADMIN' ? (
+            {userToEdit.role !== 'ADMIN' && (
+              <View style={styles.securitySection}>
+                <Text style={styles.fieldLabel}>SECURITY & CREDENTIALS</Text>
+                <Text style={styles.securityText}>
+                  Passwords and Mobile PINs are managed through dedicated quick-action dialogs.
+                </Text>
+                <View style={styles.securityBtnRow}>
                   <Pressable
                     style={styles.securityBtn}
                     onPress={() => {
                       onClose();
-                      onRequestResetPin?.(userToEdit);
+                      onRequestResetPassword?.(userToEdit);
                     }}
                   >
-                    <Text style={styles.securityBtnText}>Reset Mobile PIN</Text>
+                    <Text style={styles.securityBtnText}>Reset Password</Text>
                   </Pressable>
-                ) : null}
+                  {role !== 'ADMIN' ? (
+                    <Pressable
+                      style={styles.securityBtn}
+                      onPress={() => {
+                        onClose();
+                        onRequestResetPin?.(userToEdit);
+                      }}
+                    >
+                      <Text style={styles.securityBtnText}>Reset Mobile PIN</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               </View>
-            </View>
+            )}
           </ScrollView>
 
           <View style={styles.footer}>

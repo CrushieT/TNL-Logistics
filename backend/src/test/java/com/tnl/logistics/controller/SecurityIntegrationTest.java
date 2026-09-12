@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -120,13 +121,32 @@ public class SecurityIntegrationTest {
                         .header("Authorization", adminToken))
                 .andExpect(status().isForbidden());
 
-        // 6. Password Change with correct current password succeeds
+        // 6a. Password Change with same password fails (400 Bad Request)
+        PasswordChangeRequest samePasswordRequest = new PasswordChangeRequest("admin123", "admin123");
+        mockMvc.perform(post("/api/v1/auth/password-change")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(samePasswordRequest)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("New password must be different from current password."));
+
+        // 6b. Password Change with short password fails (400 Bad Request)
+        PasswordChangeRequest shortPasswordRequest = new PasswordChangeRequest("admin123", "short");
+        mockMvc.perform(post("/api/v1/auth/password-change")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(shortPasswordRequest)))
+                .andExpect(status().isBadRequest());
+
+        // 6c. Password Change with correct current password succeeds and returns refreshed token
         PasswordChangeRequest changeRequest = new PasswordChangeRequest("admin123", "newAdmin123");
         mockMvc.perform(post("/api/v1/auth/password-change")
                         .header("Authorization", adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(changeRequest)))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").exists())
+                .andExpect(jsonPath("$.message").value("Password updated successfully"));
 
         // Verify login with new password works
         LoginRequest newLogin = new LoginRequest("admin", "newAdmin123");
