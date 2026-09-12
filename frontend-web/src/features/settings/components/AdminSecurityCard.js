@@ -10,6 +10,7 @@ import {
 import Card from '../../../components/common/Card';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
 import { changePassword } from '../../../services/api/client';
+import ConfirmPasswordModal from './ConfirmPasswordModal';
 
 function EyeIcon({ visible, size = 18, color = colors.inkSoft }) {
   if (visible) {
@@ -29,26 +30,19 @@ function EyeIcon({ visible, size = 18, color = colors.inkSoft }) {
 }
 
 export default function AdminSecurityCard() {
-  const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const [submitting, setSubmitting] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  const handleSubmit = async () => {
+  const handleOpenModal = () => {
     setError(null);
     setSuccess(null);
-
-    if (!oldPassword) {
-      setError('Current password is required.');
-      return;
-    }
 
     if (!newPassword) {
       setError('New password is required.');
@@ -57,11 +51,6 @@ export default function AdminSecurityCard() {
 
     if (newPassword.length < 8) {
       setError('New password must be at least 8 characters long.');
-      return;
-    }
-
-    if (newPassword === oldPassword) {
-      setError('New password must be different from current password.');
       return;
     }
 
@@ -75,36 +64,28 @@ export default function AdminSecurityCard() {
       return;
     }
 
-    try {
-      setSubmitting(true);
-      const response = await changePassword(oldPassword, newPassword);
+    setIsModalOpen(true);
+  };
 
-      setOldPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      setShowOldPassword(false);
-      setShowNewPassword(false);
-      setShowConfirmPassword(false);
+  const handleConfirmUpdate = async (currentPassword) => {
+    const response = await changePassword(currentPassword, newPassword);
 
-      const successMessage = response?.message
-        ? `${response.message}. Session token refreshed.`
-        : 'Password updated successfully. Session token refreshed.';
-      setSuccess(successMessage);
-    } catch (err) {
-      const serverMessage =
-        err?.response?.data?.message ||
-        err?.message ||
-        'Failed to update password. Please check your credentials and try again.';
-      setError(serverMessage);
-    } finally {
-      setSubmitting(false);
-    }
+    setIsModalOpen(false);
+    setNewPassword('');
+    setConfirmPassword('');
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+
+    const successMessage = response?.message
+      ? `${response.message}. Session token refreshed.`
+      : 'Password updated successfully. Session token refreshed.';
+    setSuccess(successMessage);
   };
 
   return (
     <Card title="ADMIN SECURITY / CHANGE PASSWORD" style={styles.card}>
       <Text style={styles.subtitle}>
-        Manage primary administrator console credentials. Updating credentials increments the security token version and seamlessly refreshes your active session.
+        Manage primary administrator console credentials. Set a new password below and authorize the change with your current credentials.
       </Text>
 
       {/* Success Alert Banner */}
@@ -124,35 +105,6 @@ export default function AdminSecurityCard() {
       )}
 
       <View style={styles.form}>
-        {/* Current Password */}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>CURRENT PASSWORD *</Text>
-          <View style={styles.passwordWrapper}>
-            <TextInput
-              style={[styles.input, styles.passwordInput]}
-              value={oldPassword}
-              onChangeText={(text) => {
-                setOldPassword(text);
-                if (error) setError(null);
-                if (success) setSuccess(null);
-              }}
-              placeholder="Enter current administrator password"
-              placeholderTextColor={colors.inkFaint}
-              secureTextEntry={!showOldPassword}
-              autoCapitalize="none"
-              editable={!submitting}
-              returnKeyType="next"
-            />
-            <TouchableOpacity
-              style={styles.eyeButton}
-              onPress={() => setShowOldPassword(!showOldPassword)}
-              accessibilityLabel={showOldPassword ? 'Hide current password' : 'Show current password'}
-            >
-              <EyeIcon visible={showOldPassword} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
         {/* New Password */}
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>NEW PASSWORD *</Text>
@@ -169,7 +121,6 @@ export default function AdminSecurityCard() {
               placeholderTextColor={colors.inkFaint}
               secureTextEntry={!showNewPassword}
               autoCapitalize="none"
-              editable={!submitting}
               returnKeyType="next"
             />
             <TouchableOpacity
@@ -201,9 +152,8 @@ export default function AdminSecurityCard() {
               placeholderTextColor={colors.inkFaint}
               secureTextEntry={!showConfirmPassword}
               autoCapitalize="none"
-              editable={!submitting}
               returnKeyType="go"
-              onSubmitEditing={handleSubmit}
+              onSubmitEditing={handleOpenModal}
             />
             <TouchableOpacity
               style={styles.eyeButton}
@@ -218,22 +168,27 @@ export default function AdminSecurityCard() {
         {/* Action Button */}
         <View style={styles.actionRow}>
           <TouchableOpacity
-            style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
-            onPress={handleSubmit}
-            disabled={submitting}
+            style={styles.submitButton}
+            onPress={handleOpenModal}
             activeOpacity={0.85}
           >
-            {submitting ? (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator size="small" color="#FFFFFF" />
-                <Text style={styles.submitButtonText}>UPDATING PASSWORD...</Text>
-              </View>
-            ) : (
-              <Text style={styles.submitButtonText}>UPDATE PASSWORD</Text>
-            )}
+            <Text style={styles.submitButtonText}>UPDATE PASSWORD</Text>
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Password Authorization Modal */}
+      <ConfirmPasswordModal
+        visible={isModalOpen}
+        title="AUTHORIZE PASSWORD UPDATE"
+        warningTitle="CREDENTIAL SECURITY"
+        description="Updating administrator credentials increments the security token version and seamlessly refreshes your active session. Enter your current administrator password to confirm."
+        passwordLabel="CURRENT PASSWORD *"
+        confirmLabel="Update Password"
+        confirmVariant="accent"
+        onClose={() => setIsModalOpen(false)}
+        onConfirm={handleConfirmUpdate}
+      />
     </Card>
   );
 }

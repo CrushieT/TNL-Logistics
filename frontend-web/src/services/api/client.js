@@ -239,4 +239,9 @@ export async function changePassword(oldPassword, newPassword) {
   return response.data;
 }
 
+export async function verifyPassword(password) {
+  const response = await apiClient.post('/auth/verify-password', { password });
+  return response.data;
+}
+
 export default apiClient;

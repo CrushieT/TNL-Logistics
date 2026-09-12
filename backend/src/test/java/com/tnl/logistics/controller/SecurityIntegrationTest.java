@@ -4,10 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tnl.logistics.dto.LoginRequest;
 import com.tnl.logistics.dto.LoginResponse;
 import com.tnl.logistics.dto.PasswordChangeRequest;
+import com.tnl.logistics.dto.PasswordVerificationRequest;
 import com.tnl.logistics.model.AppUser;
 import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.service.LoginRateLimiterService;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -158,6 +160,70 @@ public class SecurityIntegrationTest {
 
         LoginResponse newResponseDto = objectMapper.readValue(newLoginResult.getResponse().getContentAsString(), LoginResponse.class);
         assertFalse(newResponseDto.isMustChangePassword()); // Changed to false on successful update
+    }
+
+    @Test
+    public void testVerifyPasswordEndpoint() throws Exception {
+        LoginRequest loginRequest = new LoginRequest("admin", "admin123");
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        LoginResponse loginResponse = objectMapper.readValue(loginResult.getResponse().getContentAsString(), LoginResponse.class);
+        String adminToken = "Bearer " + loginResponse.getToken();
+
+        // 1. Unauthenticated call fails with 403
+        mockMvc.perform(post("/api/v1/auth/verify-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PasswordVerificationRequest("admin123"))))
+                .andExpect(status().isForbidden());
+
+        // 2. Incorrect password returns 400 Bad Request
+        mockMvc.perform(post("/api/v1/auth/verify-password")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PasswordVerificationRequest("wrongPassword"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Incorrect administrator password."));
+
+        // 3. Blank password returns 400 Bad Request via @NotBlank
+        mockMvc.perform(post("/api/v1/auth/verify-password")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PasswordVerificationRequest(""))))
+                .andExpect(status().isBadRequest());
+
+        // 4. Correct password returns 200 OK with valid: true
+        mockMvc.perform(post("/api/v1/auth/verify-password")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PasswordVerificationRequest("admin123"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(true))
+                .andExpect(jsonPath("$.message").value("Password verified successfully"));
+
+        // 5. Rate limiter blocks after 5 failed verification attempts from same IP
+        String testIp = "192.168.1.99";
+        for (int i = 1; i <= 5; i++) {
+            mockMvc.perform(post("/api/v1/auth/verify-password")
+                            .header("Authorization", adminToken)
+                            .with(req -> { req.setRemoteAddr(testIp); return req; })
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(new PasswordVerificationRequest("wrongPassword"))))
+                    .andExpect(status().isBadRequest());
+        }
+
+        // 6th attempt is blocked with 429 Too Many Requests
+        mockMvc.perform(post("/api/v1/auth/verify-password")
+                        .header("Authorization", adminToken)
+                        .with(req -> { req.setRemoteAddr(testIp); return req; })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PasswordVerificationRequest("admin123"))))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.retryAfterSeconds").exists());
     }
 
     @Test

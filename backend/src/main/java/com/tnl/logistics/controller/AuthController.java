@@ -6,6 +6,7 @@ import com.tnl.logistics.dto.FirstBootStatusResponse;
 import com.tnl.logistics.dto.LoginRequest;
 import com.tnl.logistics.dto.LoginResponse;
 import com.tnl.logistics.dto.PasswordChangeRequest;
+import com.tnl.logistics.dto.PasswordVerificationRequest;
 import com.tnl.logistics.model.AppUser;
 import com.tnl.logistics.model.SystemSetting;
 import com.tnl.logistics.model.UserRole;
@@ -143,6 +144,46 @@ public class AuthController {
                 "username", user.getUsername(),
                 "role", user.getRole().name(),
                 "mustChangePassword", user.getMustChangePassword()
+        ));
+    }
+
+    @PostMapping("/verify-password")
+    public ResponseEntity<?> verifyPassword(
+            @Valid @RequestBody PasswordVerificationRequest request,
+            HttpServletRequest servletRequest) {
+        String clientIp = extractClientIp(servletRequest);
+
+        if (rateLimiterService.isBlocked(clientIp)) {
+            long retryAfter = rateLimiterService.getRemainingBlockSeconds(clientIp);
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header("Retry-After", String.valueOf(retryAfter))
+                    .body(Map.of(
+                            "message", "Too many failed attempts. Access is locked. Please try again in " + retryAfter + " seconds.",
+                            "retryAfterSeconds", retryAfter
+                    ));
+        }
+
+        String username = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+
+        AppUser user = appUserRepository.findByUsername(username)
+                .orElse(null);
+
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "User not found"));
+        }
+
+        if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            rateLimiterService.recordFailure(clientIp);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", "Incorrect administrator password."));
+        }
+
+        rateLimiterService.recordSuccess(clientIp);
+
+        return ResponseEntity.ok(Map.of(
+                "valid", true,
+                "message", "Password verified successfully"
         ));
     }
 
