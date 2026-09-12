@@ -120,5 +120,8 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
 
     @Query("SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered <= :cycleEnd")
     java.math.BigDecimal sumTotalPaymentsBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart, @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
+
+    @Query("SELECT COUNT(s) FROM Shipment s WHERE s.dateRegistered >= :cycleStart AND s.dateRegistered <= :cycleEnd AND (s.statementId IS NULL OR TRIM(s.statementId) = '')")
+    long countUnbilledShipmentsBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart, @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
 }
 

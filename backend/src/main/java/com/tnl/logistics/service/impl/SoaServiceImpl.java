@@ -6,6 +6,7 @@ import com.tnl.logistics.dto.StatementPreviewResponse;
 import com.tnl.logistics.dto.StatementShipmentItem;
 import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.*;
+import com.tnl.logistics.service.CollectionsService;
 import com.tnl.logistics.service.SoaService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +34,7 @@ public class SoaServiceImpl implements SoaService {
     private final WeeklyCollectionRepository weeklyCollectionRepository;
     private final SoaBatchRepository soaBatchRepository;
     private final AppUserRepository appUserRepository;
+    private final CollectionsService collectionsService;
 
     public SoaServiceImpl(ClientRepository clientRepository,
                           ShipmentRepository shipmentRepository,
@@ -40,7 +42,8 @@ public class SoaServiceImpl implements SoaService {
                           SoaRepository soaRepository,
                           WeeklyCollectionRepository weeklyCollectionRepository,
                           SoaBatchRepository soaBatchRepository,
-                          AppUserRepository appUserRepository) {
+                          AppUserRepository appUserRepository,
+                          CollectionsService collectionsService) {
         this.clientRepository = clientRepository;
         this.shipmentRepository = shipmentRepository;
         this.paymentRepository = paymentRepository;
@@ -48,6 +51,7 @@ public class SoaServiceImpl implements SoaService {
         this.weeklyCollectionRepository = weeklyCollectionRepository;
         this.soaBatchRepository = soaBatchRepository;
         this.appUserRepository = appUserRepository;
+        this.collectionsService = collectionsService;
     }
 
     @Override
@@ -56,17 +60,25 @@ public class SoaServiceImpl implements SoaService {
         Client client = clientRepository.findById(clientId)
                 .orElseThrow(() -> new IllegalArgumentException("Client not found with id: " + clientId));
 
-        LocalDate targetThursday = (targetDate != null) ? targetDate : calculateActiveThursday(LocalDate.now());
+        LocalDate targetThursday = resolveTargetCycleDate(targetDate);
 
-        // 7-day Friday-to-Thursday cycle window
-        LocalDateTime cycleStart = targetThursday.minusDays(6).atStartOfDay();
+        LocalDate cycleStartLocalDate = collectionsService.calculateCycleStartDate(targetThursday);
+        LocalDateTime cycleStart = cycleStartLocalDate.atStartOfDay();
         LocalDateTime cycleEnd = targetThursday.atTime(23, 59, 59, 999999999);
-        LocalDate cycleFriday = targetThursday.minusDays(6);
 
         int weekNumber = targetThursday.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR);
-        String cycleRangeLabel = formatCycleRange(cycleFriday, targetThursday);
+        String cycleRangeLabel = formatCycleRange(cycleStartLocalDate, targetThursday);
 
-        List<Shipment> shipments = shipmentRepository.findByClient_ClientIdAndDateRegisteredBetween(clientId, cycleStart, cycleEnd);
+        Optional<Soa> existingSoa = soaRepository.findByClient_ClientIdAndStatementDate(clientId, targetThursday);
+        List<Shipment> rawShipments = shipmentRepository.findByClient_ClientIdAndDateRegisteredBetween(clientId, cycleStart, cycleEnd);
+        List<Shipment> shipments = rawShipments.stream()
+                .filter(s -> {
+                    if (s.getStatementId() != null && !s.getStatementId().trim().isEmpty()) {
+                        return existingSoa.isPresent() && s.getStatementId().equals(existingSoa.get().getSoaNo());
+                    }
+                    return true;
+                })
+                .collect(Collectors.toList());
 
         List<StatementShipmentItem> items = new ArrayList<>();
         BigDecimal totalCharges = BigDecimal.ZERO;
@@ -108,8 +120,6 @@ public class SoaServiceImpl implements SoaService {
                     bal
             ));
         }
-
-        Optional<Soa> existingSoa = soaRepository.findByClient_ClientIdAndStatementDate(clientId, targetThursday);
 
         String soaNo;
         BigDecimal deductionAmount;
@@ -179,8 +189,9 @@ public class SoaServiceImpl implements SoaService {
         Client client = clientRepository.findById(request.getClientId())
                 .orElseThrow(() -> new IllegalArgumentException("Client not found: " + request.getClientId()));
 
-        LocalDate targetThursday = calculateActiveThursday(request.getTargetDate());
-        LocalDateTime cycleStart = targetThursday.minusDays(6).atStartOfDay();
+        LocalDate targetThursday = resolveTargetCycleDate(request.getTargetDate());
+        LocalDate cycleStartLocalDate = collectionsService.calculateCycleStartDate(targetThursday);
+        LocalDateTime cycleStart = cycleStartLocalDate.atStartOfDay();
         LocalDateTime cycleEnd = targetThursday.atTime(23, 59, 59, 999999999);
 
         // 1. Ensure WeeklyCollection record exists
@@ -190,7 +201,7 @@ public class SoaServiceImpl implements SoaService {
                     WeeklyCollection newCol = new WeeklyCollection(
                             collectionId,
                             client,
-                            targetThursday.minusDays(6),
+                            cycleStartLocalDate,
                             targetThursday,
                             BigDecimal.ZERO,
                             BigDecimal.ZERO,
@@ -218,7 +229,16 @@ public class SoaServiceImpl implements SoaService {
                 });
 
         // 3. Compute charges and payments for cycle shipments
-        List<Shipment> shipments = shipmentRepository.findByClient_ClientIdAndDateRegisteredBetween(client.getClientId(), cycleStart, cycleEnd);
+        Optional<Soa> existingOpt = soaRepository.findByClient_ClientIdAndStatementDate(client.getClientId(), targetThursday);
+        List<Shipment> rawShipments = shipmentRepository.findByClient_ClientIdAndDateRegisteredBetween(client.getClientId(), cycleStart, cycleEnd);
+        List<Shipment> shipments = rawShipments.stream()
+                .filter(s -> {
+                    if (s.getStatementId() != null && !s.getStatementId().trim().isEmpty()) {
+                        return existingOpt.isPresent() && s.getStatementId().equals(existingOpt.get().getSoaNo());
+                    }
+                    return true;
+                })
+                .collect(Collectors.toList());
         BigDecimal currentCharges = shipments.stream()
                 .map(Shipment::getTotalAmount)
                 .filter(Objects::nonNull)
@@ -252,7 +272,6 @@ public class SoaServiceImpl implements SoaService {
         String soaNo = formatPreviewSoaNo(client.getClientId(), targetThursday, weekNumber);
 
         // 4. Create or update Soa entity
-        Optional<Soa> existingOpt = soaRepository.findByClient_ClientIdAndStatementDate(client.getClientId(), targetThursday);
         Soa soa;
         if (existingOpt.isPresent()) {
             soa = existingOpt.get();
@@ -316,9 +335,32 @@ public class SoaServiceImpl implements SoaService {
     }
 
     private LocalDate calculateActiveThursday(LocalDate baseDate) {
+        if (baseDate == null) {
+            baseDate = LocalDate.now();
+        }
+        if (collectionsService != null) {
+            return collectionsService.calculateActiveCycleDate(baseDate);
+        }
         int dayOfWeek = baseDate.getDayOfWeek().getValue(); // 1 = Mon, 4 = Thu, 7 = Sun
         int daysUntilThursday = (4 - dayOfWeek + 7) % 7;
         return baseDate.plusDays(daysUntilThursday);
+    }
+
+    private LocalDate resolveTargetCycleDate(LocalDate targetDate) {
+        if (targetDate == null) {
+            return calculateActiveThursday(LocalDate.now());
+        }
+        LocalDate currentActiveCycle = calculateActiveThursday(LocalDate.now());
+        if (targetDate.equals(currentActiveCycle)) {
+            return targetDate;
+        }
+        if (collectionsService != null && collectionsService.getActiveCycleDates().contains(targetDate)) {
+            return targetDate;
+        }
+        if (collectionsService != null && targetDate.getDayOfWeek() == collectionsService.getCollectionDayOfWeek()) {
+            return targetDate;
+        }
+        return calculateActiveThursday(targetDate);
     }
 
     private String formatPreviewSoaNo(String clientId, LocalDate targetThursday, int weekNumber) {

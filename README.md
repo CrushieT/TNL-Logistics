@@ -30,7 +30,7 @@ Commercial freight forwarding requires strict chain-of-custody tracking, legal p
 ```text
                                   ┌────────────────────────────────┐
                                   │       MySQL 8.0 Database       │
-                                  │   (Flyway Migrations V1-V16)   │
+                                  │   (Flyway Migrations V1-V19)   │
                                   └───────────────┬────────────────┘
                                                   │
                                                   ▼
@@ -43,10 +43,11 @@ Commercial freight forwarding requires strict chain-of-custody tracking, legal p
                    HTTP REST / SSE    │                      │  HTTP REST / SSE
                                       ▼                      ▼
 ┌──────────────────────────────────────────────┐    ┌─────────────────────────────────────────────┐
-│       Frontend Web Portal (Expo Web)         │    │       Frontend Mobile App (Expo Mobile)     │
-│   • Operations: Shipments, Fleet, Tracking   │    │   • Camera Barcode / QR Scanner             │
-│   • Billing: Collections, Waybills, SOA      │    │   • Active Vehicle Pickup on Truck Load     │
-│   • Admin: Metrics, Reports, User Staff      │    │   • Offline Scan Queue (SQLite fallback)    │
+│          Admin Web Portal (Desktop)          │    │         Mobile Courier App (Field)          │
+│   • React Native Web / Expo Router (8081)    │    │   • React Native / Expo Go / Prebuild       │
+│   • In-Memory Vector QR Thermal Printing     │    │   • Camera QR Scanner & Bluetooth Thermal   │
+│   • A4 Manifests & Multi-Page Statement Docs │    │   • Mobile PIN Auth & Offline SQLite Sync   │
+│   • SSE Real-Time Data Synchronization       │    │   • Role-Branching (Field vs Office Mobile) │
 └──────────────────────────────────────────────┘    └─────────────────────────────────────────────┘
 ```
 
@@ -76,12 +77,12 @@ Unlike simplistic CRUD apps that conflate tracking and accounting into a single 
 
 | Phase | Milestone Description | Status | Key Deliverables |
 | :--- | :--- | :---: | :--- |
-| **Phase 0** | **Foundation & Security** | `[COMPLETED]` | Spring Boot 3.4, Flyway migrations `V1`–`V16`, MySQL 8, JPA models, stateless JWT auth with 3 roles (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`). |
+| **Phase 0** | **Foundation & Security** | `[COMPLETED]` | Spring Boot 3.4, Flyway migrations `V1`–`V19`, MySQL 8, JPA models, stateless JWT auth with 3 roles (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`). |
 | **Phase 1** | **Shipment Registration & QR Labels** | `[COMPLETED]` | Sequential IDs (`SHP-YYYY-XXX`, `TRK-YYYY-XXXXXX`), volumetric weight ($\div 5000$) & $m^3$ calculations, vector thermal QR labels, paginated table, tracking inspection. |
 | **Phase 2** | **Status Flow, Real-Time SSE, Fleet & Client Management** | `[COMPLETED]` | Sequential 5-state transition engine, live SSE stream, vehicle fleet CRUD (`VH-XXX`), client directory & profile view (`CL-XXX`), smart deletion, composite indexing, and batch aggregation. |
 | **Phase 3** | **Waybills & Freight Manifest Handover** | `[COMPLETED]` | `WYB-YYYY-XXXX` auto-numbering, 4-state lifecycle (`Generated` → `Sent to Hauler` → `Signed/Completed`), and print-ready A4 3rd-party hauler manifest. |
 | **Phase 4** | **Billing, Collections & Statement of Account** | `[COMPLETED]` | Payment ledger (`/payments`), Thursday weekly collections consolidation (`/weekly-collections`), `SOA-YYYY-XXX-WXX` multi-page statement preview (`/statements`), isolated print architecture (`/statements/print`), deduction management, and dynamic active cycle filtering. |
-| **Phase 5** | **Web Console Administration & Reports** | `[IN PROGRESS]` | Desktop login with branded artwork, route guarding, and in-memory rate limiting (`[COMPLETED]`); live operational dashboard metrics (`[COMPLETED]`); tracking logs audit feed with live scan timeline (`[COMPLETED]`); operational & financial reports screen with dual-bar charts, Thursday collections snapshot, fluid full-width tables, empty days toggle, and A4 printable statements (`[COMPLETED]`). Upcoming: Staff management, and system settings. |
+| **Phase 5** | **Web Console Administration & Reports** | `[COMPLETED]` | Desktop login with branded artwork, route guarding, and rate limiting (`[COMPLETED]`); live operational dashboard metrics (`[COMPLETED]`); tracking logs audit feed (`[COMPLETED]`); operational & financial reports screen (`[COMPLETED]`); user & staff management (`[COMPLETED]`); system settings with dynamic collection day, volumetric divisor calculation, branding propagation, and real-time SSE updates (`[COMPLETED]`). |
 | **Phase 6** | **Role-Aware Mobile Courier Portal** | `[UPCOMING]` | Mobile PIN auth with role branching (scan-only field staff vs authorized office mobile), camera QR scanner, and Bluetooth thermal printer integration. |
 
 ---
@@ -93,20 +94,20 @@ logistics/
 ├── backend/                               # Spring Boot 3.4.2 REST API
 │   ├── src/main/java/com/tnl/logistics/
 │   │   ├── config/                        # SecurityConfig, JWT Provider, WebMvcConfig
-│   │   ├── controller/                    # REST API Controllers (Shipments, Vehicles, Clients, Payments, Collections, SOA, Reports, Tracking Events)
+│   │   ├── controller/                    # REST API Controllers (Shipments, Vehicles, Clients, Payments, Collections, SOA, Reports, Tracking Events, Users, Settings)
 │   │   ├── dto/                           # Request & Response Data Transfer Objects
-│   │   ├── model/                         # JPA Entities (Shipment, ParcelUnit, Vehicle, Client, Payment, Soa, WeeklyCollection)
+│   │   ├── model/                         # JPA Entities (Shipment, ParcelUnit, Vehicle, Client, Payment, Soa, WeeklyCollection, AppUser, SystemSetting)
 │   │   ├── repository/                    # Spring Data Repositories & Group By Aggregations
 │   │   └── service/                       # Business Service Contracts & Implementations (impl/)
 │   └── src/main/resources/
-│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V16)
+│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V19)
 │       └── application-dev.properties     # Environment Configuration
 │
 ├── frontend-web/                          # Expo / React Native Web Admin Portal
 │   ├── src/
-│   │   ├── app/                           # Expo Router Screens (/, /shipments, /vehicles, /clients, /payments, /weekly-collections, /statements, /tracking-logs, /reports)
+│   │   ├── app/                           # Expo Router Screens (/, /shipments, /vehicles, /clients, /payments, /weekly-collections, /statements, /tracking-logs, /reports, /users, /settings)
 │   │   ├── components/                    # Common UI Components (Cards, Buttons, Badges, Layout Shell)
-│   │   ├── features/                      # Domain Features (shipments, vehicles, clients, payments, collections, tracking-logs, reports)
+│   │   ├── features/                      # Domain Features (shipments, vehicles, clients, payments, collections, tracking-logs, reports, users, settings)
 │   │   ├── services/api/                  # Axios Client with Self-Healing JWT Auto-Auth & SSE Event Subscriptions
 │   │   └── theme/                         # Design System Tokens (Colors, Typography, Spacing)
 │   └── package.json
@@ -165,8 +166,8 @@ When field staff scan a parcel with their phone, an append-only event is committ
 | `/api/v1/clients/{id}` | `DELETE` | Office/Admin | Smart Delete client (Hard delete unused / Soft deactivation) |
 | `/api/v1/payments` | `GET` | Office/Admin | Paginated payment transactions directory with status filters |
 | `/api/v1/payments` | `POST` | Office/Admin | Record payment transaction (Cash, GCash, Bank Transfer, Cheque) |
-| `/api/v1/collections/weekly` | `GET` | Office/Admin | Thursday weekly collections consolidation summary and itemized client list |
-| `/api/v1/collections/cycles` | `GET` | Office/Admin | List of distinct Thursday cycles containing registered shipments |
+| `/api/v1/collections/weekly` | `GET` | Office/Admin | Weekly collections consolidation summary and itemized client list for active/target cycle |
+| `/api/v1/collections/cycles` | `GET` | Office/Admin | List of distinct cycle closing dates containing registered shipments or finalized statements |
 | `/api/v1/soa/preview` | `GET` | Office/Admin | Statement of Account preview with itemized shipments and financial rollup |
 | `/api/v1/soa/save` | `POST` | Office/Admin | Persist statement with deductions, notes, and authorized collector |
 | `/api/v1/soa/collectors` | `GET` | Office/Admin | List of active authorized collectors for statement attribution |
@@ -174,6 +175,16 @@ When field staff scan a parcel with their phone, an append-only event is committ
 | `/api/v1/tracking-events/metrics` | `GET` | Office/Admin | Real-time tracking metrics (scans today, active couriers, truck loads, hauler handoffs) |
 | `/api/v1/reports/summary` | `GET` | Office/Admin | Full operational & financial reports breakdown (KPIs, dual-bar chart, daily volume, revenue, aging, payment methods, deductions) |
 | `/api/v1/reports/kpis` | `GET` | Office/Admin | Standalone top-level KPI metrics summary |
+| `/api/v1/users` | `GET` | Admin | Paginated staff directory search with role and status filters |
+| `/api/v1/users` | `POST` | Admin | Create operational staff account (`OFFICE_STAFF`, `FIELD_STAFF`) with temporary password |
+| `/api/v1/users/{id}` | `GET` | Admin | Retrieve staff profile details |
+| `/api/v1/users/{id}` | `PUT` | Admin | Update staff profile, role, and active status |
+| `/api/v1/users/{id}` | `DELETE` | Admin | Smart Delete staff (Hard delete unused / Soft deactivation for active records) |
+| `/api/v1/users/{id}/reset-password` | `PUT` | Admin | Reset user password and invalidate active JWT sessions via tokenVersion |
+| `/api/v1/users/{id}/reset-pin` | `PUT` | Admin | Reset or clear courier mobile PIN and invalidate active JWT sessions |
+| `/api/v1/settings` | `GET` | Admin | Retrieve global system settings (collection day, volumetric divisor, company branding) |
+| `/api/v1/settings` | `PUT` | Admin | Update global system settings with live SSE broadcast |
+| `/api/v1/settings/branding` | `GET` | All Staff | Retrieve public company branding metadata for document headers and printable views |
 | `/api/v1/events/stream` | `GET` | All Staff | Server-Sent Events real-time event subscription stream |
 
 ---
@@ -198,7 +209,7 @@ docker-compose up -d mysql
 cd backend
 mvn spring-boot:run
 ```
-*API will run at `http://localhost:8080` (Flyway auto-runs all migrations `V1` to `V16` on startup).*
+*API will run at `http://localhost:8080` (Flyway auto-runs all migrations `V1` to `V19` on startup).*
 
 ### 2. Start the Admin Web Dashboard
 ```bash

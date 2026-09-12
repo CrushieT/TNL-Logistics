@@ -56,7 +56,8 @@ frontend-web/
 │   │   ├── statements/
 │   │   │   └── print.js              # Screen 22 Dedicated isolated printable SOA document
 │   │   ├── tracking-logs.js          # Screen 17 Global tracking logs audit feed & real-time SSE scan stream
-│   │   └── reports.js                # Screen 26 Operational & financial reports with dual-bar charts & A4 print modal
+│   │   ├── reports.js                # Screen 26 Operational & financial reports with dual-bar charts & A4 print modal
+│   │   └── users.js                  # Screen 27 User & staff management directory, credential resets & security controls
 │   │
 │   ├── components/                   # Common UI Components
 │   │   ├── layout/
@@ -73,7 +74,8 @@ frontend-web/
 │   │   ├── payments/                 # Record payment modal, installment ledger modal
 │   │   ├── collections/              # Weekly table, Batch SOA modal, Statement paper card
 │   │   ├── tracking-logs/            # Audit event table, metrics bar, debounced filters
-│   │   └── reports/                  # Dual-bar chart, Thursday card, KPI strip, multi-domain tabs
+│   │   ├── reports/                  # Dual-bar chart, Thursday card, KPI strip, multi-domain tabs
+│   │   └── users/                    # Create/Edit/View modals, Reset Password & PIN dialogs, typed ID confirmation modal, usersApi
 │   │
 │   ├── services/
 │   │   └── api/
@@ -109,3 +111,4 @@ Key choices lifted from the prototype:
 7. **Authentication & Session Protection (Screen 01):** Desktop login with brand artwork, central route guarding with return URL redirection, in-memory rate limit lockout with live countdown, and sidebar user session controls.
 8. **Global Tracking Logs Feed (Screen 17):** Real-time SSE scan stream with monospaced burnt-orange badges, 4-card live metrics strip, debounced search & status pills, and standardized pagination footer.
 9. **Operational & Financial Reports (Screen 26):** Dual-bar chart comparing client charges vs collections, Thursday collection cycle summary card, top 5 KPIs, date range filter presets, fluid 100% full-width tables, daily operations timeline with empty days toggle and reverse chronological ordering, client receivables aging breakdown, and browser A4 printable document modal.
+10. **User & Staff Management (Screen 27):** Paginated staff table with role/status filters, auto-generated temporary password generation (`TNL-XXXX`) with clipboard copy feedback, dual mobile PIN setup (Option A default + Option B override), dedicated password/PIN reset modals with immediate token invalidation, destructive confirmation prompts with typed User ID verification, and single-admin invariant enforcement.

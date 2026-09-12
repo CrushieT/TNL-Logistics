@@ -37,6 +37,7 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final WaybillRepository waybillRepository;
     private final SseService sseService;
     private final PrintEventRepository printEventRepository;
+    private final com.tnl.logistics.service.SystemSettingService systemSettingService;
 
     public ShipmentServiceImpl(ShipmentRepository shipmentRepository,
                                ParcelUnitRepository parcelUnitRepository,
@@ -46,7 +47,8 @@ public class ShipmentServiceImpl implements ShipmentService {
                                TrackingEventRepository trackingEventRepository,
                                WaybillRepository waybillRepository,
                                SseService sseService,
-                               PrintEventRepository printEventRepository) {
+                               PrintEventRepository printEventRepository,
+                               com.tnl.logistics.service.SystemSettingService systemSettingService) {
         this.shipmentRepository = shipmentRepository;
         this.parcelUnitRepository = parcelUnitRepository;
         this.clientRepository = clientRepository;
@@ -56,6 +58,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         this.waybillRepository = waybillRepository;
         this.sseService = sseService;
         this.printEventRepository = printEventRepository;
+        this.systemSettingService = systemSettingService;
     }
 
     @Override
@@ -312,8 +315,11 @@ public class ShipmentServiceImpl implements ShipmentService {
         BigDecimal unitVolumeCm3 = length.multiply(width).multiply(height);
         BigDecimal totalVolumeCm3 = unitVolumeCm3.multiply(new BigDecimal(shipment.getQuantity()));
 
-        // Volumetric weight: totalVolumeCm3 / 5000
-        BigDecimal volumetricWeight = totalVolumeCm3.divide(new BigDecimal("5000"), 2, RoundingMode.HALF_UP);
+        // Volumetric weight: totalVolumeCm3 / divisor
+        int divisor = (systemSettingService != null && systemSettingService.getVolumetricDivisor() != null)
+                ? systemSettingService.getVolumetricDivisor()
+                : 5000;
+        BigDecimal volumetricWeight = totalVolumeCm3.divide(new BigDecimal(String.valueOf(divisor)), 2, RoundingMode.HALF_UP);
 
         // Billable weight: max(actualWeight, volumetricWeight)
         BigDecimal billableWeight = actualWeight.max(volumetricWeight);

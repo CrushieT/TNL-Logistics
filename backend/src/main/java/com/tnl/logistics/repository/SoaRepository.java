@@ -20,4 +20,7 @@ public interface SoaRepository extends JpaRepository<Soa, String> {
 
     @Query("SELECT MAX(s.soaNo) FROM Soa s WHERE s.soaNo LIKE :prefix")
     Optional<String> findMaxSoaNoWithPrefix(@Param("prefix") String prefix);
+
+    @Query("SELECT DISTINCT s.statementDate FROM Soa s WHERE s.statementDate IS NOT NULL ORDER BY s.statementDate DESC")
+    java.util.List<LocalDate> findDistinctStatementDates();
 }

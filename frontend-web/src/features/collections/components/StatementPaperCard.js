@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors, fonts, spacing, radius } from '../../../theme';
 import { formatCurrency } from '../utils/collectionsUtils';
+import { getCompanyBranding } from '../../settings/services/settingsApi';
 
 /**
  * Chunks shipments into physical A4 pages based on vertical capacity budgets.
@@ -60,8 +61,25 @@ export default function StatementPaperCard({
   liveDeduction = 0,
   liveDeductionNote = '',
   liveCollectedBy = '',
+  companyBranding = null,
 }) {
   if (!data) return null;
+
+  const [branding, setBranding] = React.useState(companyBranding || null);
+
+  React.useEffect(() => {
+    if (!companyBranding) {
+      let mounted = true;
+      getCompanyBranding()
+        .then((res) => {
+          if (mounted && res) setBranding(res);
+        })
+        .catch(() => {});
+      return () => {
+        mounted = false;
+      };
+    }
+  }, [companyBranding]);
 
   const {
     clientName = '—',
@@ -89,8 +107,14 @@ export default function StatementPaperCard({
     : '—';
 
   const formattedCollectionDate = collectionDate
-    ? `Thu, ${new Date(collectionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+    ? `${new Date(collectionDate).toLocaleDateString('en-US', { weekday: 'short' })}, ${new Date(collectionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
     : '—';
+
+  const brandName = (branding?.companyName || 'TNL LOGISTICS').toUpperCase();
+  const brandAddress = branding?.companyAddress || 'Manila Central Hub';
+  const brandContact = branding?.companyContact || '0917-555-0000';
+  const brandEmail = branding?.billingEmail || 'billing@tnllogistics.ph';
+  const brandSubtext = `${brandAddress} · ${brandContact} · ${brandEmail}`;
 
   // Paginate statement items into distinct physical A4 sheets
   const paginatedPages = useMemo(() => paginateStatementItems(items), [items]);
@@ -124,8 +148,8 @@ export default function StatementPaperCard({
                         <Text style={styles.logoMarkText}>T</Text>
                       </View>
                       <View>
-                        <Text style={styles.companyName}>TNL LOGISTICS</Text>
-                        <Text style={styles.companySubtext}>Manila Central Hub · 0917-555-0000 · billing@tnllogistics.ph</Text>
+                        <Text style={styles.companyName}>{brandName}</Text>
+                        <Text style={styles.companySubtext}>{brandSubtext}</Text>
                       </View>
                     </View>
                   </View>

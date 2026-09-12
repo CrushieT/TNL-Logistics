@@ -38,6 +38,6 @@ public class CollectionsController {
     @GetMapping("/cycles")
     @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
     public ResponseEntity<List<LocalDate>> getActiveCycles() {
-        return ResponseEntity.ok(collectionsService.getActiveCycleThursdays());
+        return ResponseEntity.ok(collectionsService.getActiveCycleDates());
     }
 }
