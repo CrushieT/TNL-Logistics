@@ -49,8 +49,12 @@ public class SecurityConfig {
 						"/swagger-ui/**",
 						"/swagger-ui.html"
 				).permitAll()
-				// Allow public access to Login auth endpoint
-				.requestMatchers("/api/v1/auth/login").permitAll()
+				// Allow public access to Login and First Boot auth endpoints
+				.requestMatchers(
+						"/api/v1/auth/login",
+						"/api/v1/auth/first-boot-status",
+						"/api/v1/auth/first-boot-admin"
+				).permitAll()
 				// Allow internal Spring Boot error dispatch
 				.requestMatchers("/error").permitAll()
 				// Secure all other REST API endpoints

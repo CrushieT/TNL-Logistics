@@ -25,7 +25,7 @@
 | **Phase 4.1** | Backend: Payments & Collections Engine (`POST /api/v1/payments`, Balance Recalculation, Multi-Search & Audit) | [COMPLETED] |
 | **Phase 4.2** | Backend: Thursday Weekly Collections Consolidation & SOA Generator (3 Deductions, Net Remittance) | [COMPLETED] |
 | **Phase 4.3** | Web: Billing, Collections & Printable SOA (Desktop Screens 18–22) | [COMPLETED] |
-| **Phase 5** | Web Console: Live Dashboard, Tracking Logs Stream, Reports, Users & Settings (Screens 01, 02, 17, 26–28) | [COMPLETED] |
+| **Phase 5** | Web Console: Live Dashboard, Tracking Logs Stream, Reports, Users, Settings & First Boot Setup (Screens 01, 02, 17, 26–28) | [IN PROGRESS] |
 | **Phase 6** | Role-Aware Mobile App: Scan-Only Field Staff vs. Authorized Office Mobile + Bluetooth Printing (Screens 29–53) | [UPCOMING] |
 
 ---
@@ -242,6 +242,13 @@
 - Real-time Server-Sent Events (`SETTINGS_UPDATED`) for zero-reload configuration synchronization.
 - Frontend Settings screen (`frontend-web/src/app/settings.js`) matching prototype layout with 2-card desktop grid, provisional billable weight callout, and read-only sequential ID format previews (`TRK-YYYY-`, `SHP-YYYY-`).
 - Verified via 12 integration tests in `SystemSettingIntegrationTest.java` (12/12 passing, and 102/102 backend tests passing total).
+
+**5.7 — First Boot Admin Registration & Setup Wizard** — **[UPCOMING]**
+- Public bootstrap status endpoint (`GET /api/v1/auth/bootstrap-status`) to dynamically report whether a system administrator account already exists (`existsByRole(ADMIN)`).
+- One-time initial admin registration endpoint (`POST /api/v1/auth/bootstrap-admin`) to securely create the primary administrator (`fullName`, `username`, `password`), returning HTTP 409 Conflict once an admin has been initialized.
+- Environment & seeder isolation: decouple hardcoded default admin credentials from clean production setups while preserving development convenience.
+- Web Setup Wizard (`frontend-web/src/app/setup.js`): automatic detection and redirection from `/login` when unbootstrapped, presenting initial admin onboarding before allowing login.
+- Alignment with Single Administrator Invariant: adhere to system rules protecting `USR-ADMIN` and preventing rogue admin creation.
 
 ---
 

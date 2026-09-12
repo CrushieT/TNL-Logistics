@@ -105,6 +105,37 @@ export async function login(username, password) {
   return response.data;
 }
 
+export async function checkFirstBootStatus() {
+  try {
+    const response = await axios.get(`${BASE_URL}/auth/first-boot-status`);
+    return Boolean(response.data?.isFirstBoot);
+  } catch (error) {
+    return false;
+  }
+}
+
+export async function registerFirstBootAdmin({ fullName, username, password, confirmPassword }) {
+  const response = await axios.post(`${BASE_URL}/auth/first-boot-admin`, {
+    fullName,
+    username,
+    password,
+    confirmPassword,
+  });
+
+  const { token, userId, role, mustChangePassword } = response.data;
+
+  setToken(token);
+  setCurrentUser({
+    userId,
+    username,
+    role,
+    fullName,
+    mustChangePassword,
+  });
+
+  return response.data;
+}
+
 export function logout() {
   clearToken();
   clearCurrentUser();

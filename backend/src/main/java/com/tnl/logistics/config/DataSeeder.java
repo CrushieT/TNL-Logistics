@@ -24,6 +24,12 @@ public class DataSeeder implements CommandLineRunner {
     private final BCryptPasswordEncoder passwordEncoder;
     private final JdbcTemplate jdbcTemplate;
 
+    @org.springframework.beans.factory.annotation.Value("${app.seed.admin:true}")
+    private boolean seedAdmin;
+
+    @org.springframework.beans.factory.annotation.Value("${app.seed.sample-data:true}")
+    private boolean seedSampleData;
+
     public DataSeeder(AppUserRepository appUserRepository,
                       ClientRepository clientRepository,
                       BCryptPasswordEncoder passwordEncoder,
@@ -37,21 +43,27 @@ public class DataSeeder implements CommandLineRunner {
     @Override
     public void run(String... args) throws Exception {
         if (appUserRepository.count() == 0) {
-            seedUser("USR-ADMIN", "admin", "admin123", "Maria Santos", UserRole.ADMIN, null, null);
-            seedUser("USR-OFFICE", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF, null, null);
-            seedUser("USR-FIELD", "field", "field123", "Carlos Mendoza", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.INTERNAL_TRUCK, null);
-            seedUser("USR-FIELD-2", "hauler1", "field123", "Rogelio Aquino", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.HAULER_STAFF, null);
-            seedUser("USR-FIELD-3", "hauler2", "field123", "Danilo Cruz", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.HAULER_STAFF, null);
+            if (seedAdmin) {
+                seedUser("USR-ADMIN", "admin", "admin123", "Maria Santos", UserRole.ADMIN, null, null);
+            }
+            if (seedSampleData) {
+                seedUser("USR-OFFICE", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF, null, null);
+                seedUser("USR-FIELD", "field", "field123", "Carlos Mendoza", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.INTERNAL_TRUCK, null);
+                seedUser("USR-FIELD-2", "hauler1", "field123", "Rogelio Aquino", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.HAULER_STAFF, null);
+                seedUser("USR-FIELD-3", "hauler2", "field123", "Danilo Cruz", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.HAULER_STAFF, null);
+            }
         }
 
-        if (clientRepository.count() == 0) {
+        if (seedSampleData && clientRepository.count() == 0) {
             seedClient("CL-001", "Northbridge Trading", "Unit 402, Trade Tower, Binondo, Manila", "0917-555-0148", "orders@northbridge.ph");
             seedClient("CL-002", "Sunrise Hardware", "88 Rizal St., Baguio City", "0918-555-0022", "acctg@sunrisehw.ph");
             seedClient("CL-003", "Metro Fashion House", "Session Road, Baguio City", "0999-555-0099", "metro@fashionhouse.ph");
             seedClient("CL-004", "Delacruz General Merchandise", "Magsaysay Ave, Baguio City", "0920-555-0077", null);
         }
 
-        seedPastCycleShipments();
+        if (seedSampleData) {
+            seedPastCycleShipments();
+        }
     }
 
     private void seedUser(String id, String username, String rawPassword, String fullName, UserRole role, com.tnl.logistics.model.StaffType staffType, String haulerCompany) {

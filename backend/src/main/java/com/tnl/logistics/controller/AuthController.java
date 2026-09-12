@@ -1,6 +1,8 @@
 package com.tnl.logistics.controller;
 
 import com.tnl.logistics.config.JwtTokenProvider;
+import com.tnl.logistics.dto.FirstBootAdminRequest;
+import com.tnl.logistics.dto.FirstBootStatusResponse;
 import com.tnl.logistics.dto.LoginRequest;
 import com.tnl.logistics.dto.LoginResponse;
 import com.tnl.logistics.dto.PasswordChangeRequest;
@@ -138,5 +140,57 @@ public class AuthController {
                 "role", user.getRole().name(),
                 "mustChangePassword", user.getMustChangePassword()
         ));
+    }
+
+    @GetMapping("/first-boot-status")
+    public ResponseEntity<FirstBootStatusResponse> getFirstBootStatus() {
+        boolean hasAdmin = appUserRepository.existsByRole(UserRole.ADMIN);
+        return ResponseEntity.ok(new FirstBootStatusResponse(!hasAdmin));
+    }
+
+    @PostMapping("/first-boot-admin")
+    public ResponseEntity<?> registerFirstBootAdmin(@Valid @RequestBody FirstBootAdminRequest request) {
+        if (appUserRepository.existsByRole(UserRole.ADMIN)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("message", "First boot setup has already been completed."));
+        }
+
+        if (!request.getPassword().equals(request.getConfirmPassword())) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", "Passwords do not match."));
+        }
+
+        String trimmedUsername = request.getUsername().trim();
+        if (appUserRepository.findByUsername(trimmedUsername).isPresent()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", "Username is already in use."));
+        }
+
+        AppUser adminUser = new AppUser(
+                "USR-ADMIN",
+                trimmedUsername,
+                passwordEncoder.encode(request.getPassword()),
+                request.getFullName().trim(),
+                UserRole.ADMIN,
+                null,
+                null
+        );
+        adminUser.setActive(true);
+        adminUser.setMustChangePassword(false);
+        adminUser.setTokenVersion(1);
+
+        appUserRepository.save(adminUser);
+
+        String token = JwtTokenProvider.generateToken(adminUser.getUsername(), adminUser.getRole().name(), adminUser.getTokenVersion());
+
+        LoginResponse response = new LoginResponse(
+                token,
+                adminUser.getUserId(),
+                adminUser.getUsername(),
+                adminUser.getRole().name(),
+                adminUser.getMustChangePassword()
+        );
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }
