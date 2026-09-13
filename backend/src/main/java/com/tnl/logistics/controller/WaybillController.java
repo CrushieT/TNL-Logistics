@@ -10,11 +10,12 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * Controller exposing Waybill operations, manifest generation, hauler dispatch, and signed POD recording.
+ * Controller exposing waybill generation, field handoff, signature capture, and manifest queries.
  */
 @RestController
 @RequestMapping("/api/v1/waybills")
@@ -48,8 +49,10 @@ public class WaybillController {
     @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
     public ResponseEntity<WaybillManifestResponse> sendToHauler(@Valid @RequestBody WaybillCreateRequest request,
                                                                  Principal principal) {
-        String staffUsername = principal != null ? principal.getName() : "office";
-        return ResponseEntity.ok(waybillService.sendToHauler(request, staffUsername));
+        if (principal == null || principal.getName() == null || principal.getName().isBlank()) {
+            throw new AccessDeniedException("Authenticated user context is required");
+        }
+        return ResponseEntity.ok(waybillService.sendToHauler(request, principal.getName()));
     }
 
     @PostMapping("/complete/{shipmentId}")
@@ -57,9 +60,11 @@ public class WaybillController {
     public ResponseEntity<WaybillManifestResponse> markSignedCompleted(@PathVariable("shipmentId") String shipmentId,
                                                                        @RequestBody(required = false) WaybillStatusUpdateRequest request,
                                                                        Principal principal) {
-        String staffUsername = principal != null ? principal.getName() : "office";
+        if (principal == null || principal.getName() == null || principal.getName().isBlank()) {
+            throw new AccessDeniedException("Authenticated user context is required");
+        }
         WaybillStatusUpdateRequest updateReq = request != null ? request : new WaybillStatusUpdateRequest();
-        return ResponseEntity.ok(waybillService.markSignedCompleted(shipmentId, updateReq, staffUsername));
+        return ResponseEntity.ok(waybillService.markSignedCompleted(shipmentId, updateReq, principal.getName()));
     }
 
     @GetMapping

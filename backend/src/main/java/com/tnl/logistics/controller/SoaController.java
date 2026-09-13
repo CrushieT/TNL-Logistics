@@ -7,6 +7,7 @@ import com.tnl.logistics.service.SoaService;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -43,7 +44,10 @@ public class SoaController {
             @Valid @RequestBody SaveStatementRequest request,
             Authentication authentication
     ) {
-        String username = (authentication != null) ? authentication.getName() : "admin";
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new AccessDeniedException("Authenticated user context is required");
+        }
+        String username = authentication.getName();
         StatementPreviewResponse response = soaService.saveStatement(request, username);
         return ResponseEntity.ok(response);
     }

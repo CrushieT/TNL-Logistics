@@ -10,6 +10,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -32,6 +33,9 @@ public class TrackingEventController {
     public ResponseEntity<TrackingScanResponse> scanParcelStatus(
             @Valid @RequestBody TrackingScanRequest request,
             Authentication authentication) {
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new AccessDeniedException("Authenticated user context is required");
+        }
         String staffUsername = authentication.getName();
         TrackingScanResponse response = trackingService.processStatusScan(request, staffUsername);
         return ResponseEntity.ok(response);
@@ -42,6 +46,9 @@ public class TrackingEventController {
     public ResponseEntity<List<TrackingScanResponse>> batchScanParcelStatus(
             @Valid @RequestBody BatchTrackingScanRequest request,
             Authentication authentication) {
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new AccessDeniedException("Authenticated user context is required");
+        }
         String staffUsername = authentication.getName();
         List<TrackingScanResponse> responses = trackingService.processBatchScan(request, staffUsername);
         return ResponseEntity.ok(responses);

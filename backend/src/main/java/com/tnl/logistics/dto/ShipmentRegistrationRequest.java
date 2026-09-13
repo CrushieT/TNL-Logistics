@@ -3,8 +3,11 @@ package com.tnl.logistics.dto;
 import com.tnl.logistics.model.ChargeModel;
 import com.tnl.logistics.model.RegisteredVia;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
@@ -29,14 +32,19 @@ public class ShipmentRegistrationRequest {
     private String description;
 
     @NotNull(message = "Quantity is required")
+    @Positive(message = "Quantity must be greater than zero")
     private Integer quantity;
 
     @NotNull(message = "Charge model is required")
     private ChargeModel chargeModel;
 
     @NotNull(message = "Shipping fee is required")
+    @PositiveOrZero(message = "Shipping fee must be zero or positive")
+    @Digits(integer = 10, fraction = 2, message = "Shipping fee must have up to 10 integer digits and 2 decimal places")
     private BigDecimal shippingFee;
 
+    @PositiveOrZero(message = "Other charges must be zero or positive")
+    @Digits(integer = 10, fraction = 2, message = "Other charges must have up to 10 integer digits and 2 decimal places")
     private BigDecimal otherCharges = BigDecimal.ZERO;
 
     private Boolean paidAtRegistration = false;
