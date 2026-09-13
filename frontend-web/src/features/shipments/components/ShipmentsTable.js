@@ -72,6 +72,11 @@ export default function ShipmentsTable({
             <View style={[styles.cell, { flex: COLUMNS[4].flex }]}>
               <StatusBadge value={s.status} kind="status" />
               {s.statusRollup ? <Text style={styles.rollupText}>{s.statusRollup}</Text> : null}
+              {s.vehiclePlate ? (
+                <Text style={styles.vehicleText}>
+                  {s.vehicleId ? `${s.vehicleId} | ` : ''}{s.vehiclePlate}
+                </Text>
+              ) : null}
             </View>
             <View style={[styles.cell, { flex: COLUMNS[5].flex }]}>
               <StatusBadge value={s.payment} kind="payment" />
@@ -244,6 +249,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.inkFaint,
     marginTop: 3,
+  },
+  vehicleText: {
+    fontFamily: fonts.mono,
+    fontSize: 10.5,
+    color: colors.inkFaint,
+    marginTop: 2,
   },
   viewLink: {
     fontFamily: fonts.sans,

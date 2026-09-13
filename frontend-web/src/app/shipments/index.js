@@ -5,6 +5,7 @@ import PageHeader from '../../components/layout/PageHeader';
 import Button from '../../components/common/Button';
 import SearchFilterBar from '../../components/common/SearchFilterBar';
 import { ShipmentsTable, listShipments, subscribeRealtimeEvents } from '../../features/shipments';
+import { listVehicles } from '../../features/vehicles';
 
 const STATUS_OPTIONS = [
   { value: 'ALL', label: 'Status: All' },
@@ -29,6 +30,8 @@ export default function ShipmentsListScreen() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [paymentFilter, setPaymentFilter] = useState('ALL');
+  const [vehicleFilter, setVehicleFilter] = useState('ALL');
+  const [vehicleOptions, setVehicleOptions] = useState([{ value: 'ALL', label: 'Vehicle: All' }]);
 
   // Pagination state
   const [page, setPage] = useState(0);
@@ -38,7 +41,33 @@ export default function ShipmentsListScreen() {
 
   const searchTimer = useRef(null);
 
-  const fetchShipments = useCallback(async (currPage, currSize, currSearch, currStatus, currPayment, showSpinner = true) => {
+  // Fetch available vehicles for dynamic filter options
+  useEffect(() => {
+    let isMounted = true;
+    async function loadVehicles() {
+      try {
+        const vehicles = await listVehicles(true);
+        if (isMounted && Array.isArray(vehicles)) {
+          const options = [
+            { value: 'ALL', label: 'Vehicle: All' },
+            ...vehicles.map((v) => ({
+              value: v.vehicleId,
+              label: `${v.vehicleId} (${v.plateNumber})`,
+            })),
+          ];
+          setVehicleOptions(options);
+        }
+      } catch (err) {
+        console.warn('Failed to load vehicles for filter dropdown:', err?.message);
+      }
+    }
+    loadVehicles();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const fetchShipments = useCallback(async (currPage, currSize, currSearch, currStatus, currPayment, currVehicle, showSpinner = true) => {
     try {
       if (showSpinner) setLoading(true);
       const params = {
@@ -48,6 +77,7 @@ export default function ShipmentsListScreen() {
       if (currSearch && currSearch.trim()) params.search = currSearch.trim();
       if (currStatus && currStatus !== 'ALL') params.status = currStatus;
       if (currPayment && currPayment !== 'ALL') params.paymentStatus = currPayment;
+      if (currVehicle && currVehicle !== 'ALL') params.vehicleId = currVehicle;
 
       const data = await listShipments(params);
       if (data && data.content) {
@@ -68,13 +98,13 @@ export default function ShipmentsListScreen() {
 
   // Fetch when filters or page changes
   useEffect(() => {
-    fetchShipments(page, pageSize, search, statusFilter, paymentFilter, true);
-  }, [fetchShipments, page, pageSize, statusFilter, paymentFilter]);
+    fetchShipments(page, pageSize, search, statusFilter, paymentFilter, vehicleFilter, true);
+  }, [fetchShipments, page, pageSize, statusFilter, paymentFilter, vehicleFilter]);
 
   // Real-time SSE listener + Window focus listener
   useEffect(() => {
     const handleSilentRefresh = () => {
-      fetchShipments(page, pageSize, search, statusFilter, paymentFilter, false);
+      fetchShipments(page, pageSize, search, statusFilter, paymentFilter, vehicleFilter, false);
     };
 
     // 1. Subscribe to real-time status updates and shipment creation
@@ -95,7 +125,7 @@ export default function ShipmentsListScreen() {
         window.removeEventListener('focus', handleSilentRefresh);
       }
     };
-  }, [fetchShipments, page, pageSize, search, statusFilter, paymentFilter]);
+  }, [fetchShipments, page, pageSize, search, statusFilter, paymentFilter, vehicleFilter]);
 
   // Debounced search
   const handleSearchChange = (val) => {
@@ -103,7 +133,7 @@ export default function ShipmentsListScreen() {
     setPage(0);
     if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
-      fetchShipments(0, pageSize, val, statusFilter, paymentFilter, true);
+      fetchShipments(0, pageSize, val, statusFilter, paymentFilter, vehicleFilter, true);
     }, 350);
   };
 
@@ -137,6 +167,15 @@ export default function ShipmentsListScreen() {
               setPage(0);
             },
             options: PAYMENT_OPTIONS,
+          },
+          {
+            label: 'Vehicle',
+            value: vehicleFilter,
+            onChange: (val) => {
+              setVehicleFilter(val);
+              setPage(0);
+            },
+            options: vehicleOptions,
           },
         ]}
       />

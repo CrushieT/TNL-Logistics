@@ -203,18 +203,26 @@ public class ShipmentServiceImpl implements ShipmentService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<ShipmentSummaryResponse> getShipments(String search, String status, String paymentStatus, Pageable pageable) {
+    public Page<ShipmentSummaryResponse> getShipments(String search, String status, String paymentStatus, String vehicleId, Pageable pageable) {
         String cleanSearch = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
         String cleanStatus = normalizeStatus(status);
         String cleanPayment = normalizePayment(paymentStatus);
+        String cleanVehicle = normalizeVehicle(vehicleId);
 
-        Page<Shipment> shipmentsPage = shipmentRepository.searchShipmentsWithFilters(cleanSearch, cleanStatus, cleanPayment, pageable);
+        Page<Shipment> shipmentsPage = shipmentRepository.searchShipmentsWithFilters(cleanSearch, cleanStatus, cleanPayment, cleanVehicle, pageable);
 
         List<ShipmentSummaryResponse> summaries = shipmentsPage.getContent().stream()
                 .map(this::mapToSummaryResponse)
                 .collect(Collectors.toList());
 
         return new PageImpl<>(summaries, pageable, shipmentsPage.getTotalElements());
+    }
+
+    private String normalizeVehicle(String vehicleId) {
+        if (vehicleId == null || vehicleId.trim().isEmpty() || vehicleId.equalsIgnoreCase("ALL")) {
+            return null;
+        }
+        return vehicleId.trim();
     }
 
     private String normalizeStatus(String status) {
@@ -507,6 +515,30 @@ public class ShipmentServiceImpl implements ShipmentService {
                 ? s.getDateRegistered().format(DATE_FORMATTER)
                 : "Aug 24, 2026";
 
+        String vehicleId = null;
+        String vehiclePlate = null;
+        for (ParcelUnit p : parcels) {
+            if (p.getCurrentVehicle() != null) {
+                vehicleId = p.getCurrentVehicle().getVehicleId();
+                vehiclePlate = p.getCurrentVehicle().getPlateNumber();
+                break;
+            }
+        }
+        if (vehicleId == null && !parcels.isEmpty()) {
+            for (ParcelUnit p : parcels) {
+                List<TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(p.getTrackingId());
+                for (int i = events.size() - 1; i >= 0; i--) {
+                    TrackingEvent ev = events.get(i);
+                    if (ev.getVehicle() != null) {
+                        vehicleId = ev.getVehicle().getVehicleId();
+                        vehiclePlate = ev.getVehicle().getPlateNumber();
+                        break;
+                    }
+                }
+                if (vehicleId != null) break;
+            }
+        }
+
         return new ShipmentSummaryResponse(
                 s.getShipmentId(),
                 s.getClient().getClientId(),
@@ -522,7 +554,9 @@ public class ShipmentServiceImpl implements ShipmentService {
                 balance,
                 s.getRoute() != null ? s.getRoute() : "Manila → TNL Baguio",
                 s.getDateRegistered(),
-                dateLabel
+                dateLabel,
+                vehicleId,
+                vehiclePlate
         );
     }
 
