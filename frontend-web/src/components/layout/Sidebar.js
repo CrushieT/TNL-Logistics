@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, Image } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Image, ScrollView } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { colors, fonts, spacing, radius, type } from '../../theme';
 import { getCurrentUser, logout } from '../../services/api/client';
@@ -64,26 +64,30 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
 
   return (
     <View style={styles.sidebar}>
-      <View>
-        {/* Brand Header with Clean Separator */}
-        <Pressable
-          onPress={() => router.push('/')}
-          style={({ hovered }) => [
-            styles.brandRow,
-            hovered && styles.brandRowHovered,
-          ]}
-        >
-          <Image
-            source={require('../../../assets/tracking-logo.png')}
-            style={styles.brandLogo}
-            resizeMode="contain"
-          />
-          <View style={styles.badgeWrap}>
-            <Text style={styles.brandBadge}>ADMIN CONSOLE</Text>
-          </View>
-        </Pressable>
+      {/* Brand Header with Clean Separator */}
+      <Pressable
+        onPress={() => router.push('/')}
+        style={({ hovered }) => [
+          styles.brandRow,
+          hovered && styles.brandRowHovered,
+        ]}
+      >
+        <Image
+          source={require('../../../assets/tracking-logo.png')}
+          style={styles.brandLogo}
+          resizeMode="contain"
+        />
+        <View style={styles.badgeWrap}>
+          <Text style={styles.brandBadge}>ADMIN CONSOLE</Text>
+        </View>
+      </Pressable>
 
-        {/* Navigation Sections */}
+      {/* Scrollable Navigation Sections */}
+      <ScrollView
+        style={styles.navScrollView}
+        contentContainerStyle={styles.navScrollContent}
+        showsVerticalScrollIndicator={true}
+      >
         {visibleSections.map((section, sIdx) => (
           <View
             key={section.id}
@@ -115,7 +119,7 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
             </View>
           </View>
         ))}
-      </View>
+      </ScrollView>
 
       {/* Footer / User Profile */}
       <View style={styles.footer}>
@@ -138,13 +142,20 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
 
 const styles = StyleSheet.create({
   sidebar: {
-    width: 252,
+    width: '100%',
     backgroundColor: colors.sidebar,
     borderRightWidth: 1,
     borderRightColor: colors.border,
-    paddingVertical: spacing.xl,
-    justifyContent: 'space-between',
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
     height: '100%',
+    flexDirection: 'column',
+  },
+  navScrollView: {
+    flex: 1,
+  },
+  navScrollContent: {
+    paddingVertical: spacing.xs,
   },
   brandRow: {
     paddingHorizontal: spacing.xl,

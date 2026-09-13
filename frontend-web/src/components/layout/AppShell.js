@@ -12,7 +12,7 @@ export default function AppShell({ children, shipmentCount, parcelCount }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <View style={styles.frame}>
+    <View style={[styles.frame, isMobile && styles.frameMobile]}>
       {/* Mobile Top Navigation Header */}
       {isMobile ? (
         <View style={styles.mobileHeader}>
@@ -49,11 +49,12 @@ export default function AppShell({ children, shipmentCount, parcelCount }) {
         ) : null}
 
         {/* Content Area */}
-        <View style={styles.main}>
+        <View style={[styles.main, isMobile && styles.mainMobile]}>
           <TopBar shipmentCount={shipmentCount} parcelCount={parcelCount} />
           <ScrollView
+            style={styles.pageScrollView}
             contentContainerStyle={[styles.content, isMobile && styles.contentMobile]}
-            showsVerticalScrollIndicator={false}
+            showsVerticalScrollIndicator={true}
           >
             {children}
           </ScrollView>
@@ -67,6 +68,14 @@ const styles = StyleSheet.create({
   frame: {
     flex: 1,
     backgroundColor: colors.canvas,
+    height: '100vh',
+    maxHeight: '100vh',
+    overflow: 'hidden',
+  },
+  frameMobile: {
+    height: 'auto',
+    maxHeight: 'none',
+    overflow: 'visible',
     minHeight: '100vh',
   },
   mobileHeader: {
@@ -112,24 +121,41 @@ const styles = StyleSheet.create({
   row: {
     flex: 1,
     flexDirection: 'row',
-    minHeight: '100vh',
+    height: '100%',
+    maxHeight: '100%',
+    overflow: 'hidden',
   },
   rowMobile: {
     flexDirection: 'column',
+    height: 'auto',
+    maxHeight: 'none',
+    overflow: 'visible',
     minHeight: 'auto',
   },
   sidebarWrap: {
-    width: 245,
+    width: 252,
+    height: '100%',
     backgroundColor: '#FFFFFF',
   },
   sidebarMobile: {
     width: '100%',
+    height: 480,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   main: {
     flex: 1,
     minWidth: 0,
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  mainMobile: {
+    height: 'auto',
+    minHeight: 'auto',
+  },
+  pageScrollView: {
+    flex: 1,
   },
   content: {
     padding: spacing.xl,
