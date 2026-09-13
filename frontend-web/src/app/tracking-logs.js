@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import AppShell from '../components/layout/AppShell';
+import PageHeader from '../components/layout/PageHeader';
 import {
   listTrackingLogs,
   getTrackingMetrics,
@@ -223,18 +224,16 @@ export default function TrackingLogsScreen() {
     <AppShell activeNav="Tracking Logs">
       <View style={styles.container}>
         {/* Header Row */}
-        <View style={styles.headerRow}>
-          <View style={styles.titleGroup}>
-            <Text style={styles.eyebrow}>IMMUTABLE AUDIT TRAIL</Text>
-            <Text style={styles.pageTitle}>TRACKING LOGS</Text>
-          </View>
-
-          {/* Live SSE Pulse Indicator */}
-          <View style={styles.liveIndicator}>
-            <View style={styles.pulseDot} />
-            <Text style={styles.liveText}>LIVE AUDIT STREAM</Text>
-          </View>
-        </View>
+        <PageHeader
+          eyebrow="OPERATIONS"
+          title="Tracking Logs"
+          right={
+            <View style={styles.liveIndicator}>
+              <View style={styles.pulseDot} />
+              <Text style={styles.liveText}>LIVE AUDIT STREAM</Text>
+            </View>
+          }
+        />
 
         {/* 4-Card Operational Metrics Bar */}
         <TrackingLogsMetrics metrics={metrics} loading={metricsLoading} />
@@ -293,9 +292,6 @@ function formatStatusLabel(status) {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 24,
-    maxWidth: 1400,
-    alignSelf: 'center',
     width: '100%',
   },
   headerRow: {

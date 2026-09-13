@@ -410,7 +410,6 @@ export default function StatementsScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    padding: spacing.lg,
     width: '100%',
   },
   headerBar: {

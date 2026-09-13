@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import AppShell from '../components/layout/AppShell';
+import PageHeader from '../components/layout/PageHeader';
 import SearchFilterBar from '../components/common/SearchFilterBar';
 import Toast from '../components/common/Toast';
 import {
@@ -187,18 +188,16 @@ export default function PaymentsScreen() {
       {/* Main Container */}
       <View style={styles.container}>
         {/* Header Row: Title & Subtitle on Left, Outstanding Metric Card on Right */}
-        <View style={styles.headerRow}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.eyebrow}>COLLECTION RECORDING: PER TRANSACTION</Text>
-            <Text style={styles.title}>PAYMENTS</Text>
-          </View>
-
-          {/* Top-Right Outstanding Metric Card */}
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>OUTSTANDING</Text>
-            <Text style={styles.metricValue}>{formattedOutstanding}</Text>
-          </View>
-        </View>
+        <PageHeader
+          eyebrow="BILLING & FINANCE"
+          title="Payments"
+          right={
+            <View style={styles.metricCard}>
+              <Text style={styles.metricLabel}>OUTSTANDING</Text>
+              <Text style={styles.metricValue}>{formattedOutstanding}</Text>
+            </View>
+          }
+        />
 
         {/* Filter Toolbar */}
         <SearchFilterBar
@@ -256,7 +255,7 @@ export default function PaymentsScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    padding: spacing.xl,
+    width: '100%',
   },
   headerRow: {
     flexDirection: 'row',

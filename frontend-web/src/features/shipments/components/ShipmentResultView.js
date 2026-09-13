@@ -18,7 +18,7 @@ export default function ShipmentResultView({ shipment, onRegisterAnother, onView
       {/* Top Header Row */}
       <View style={[styles.headerRow, isMobile && styles.headerRowMobile]}>
         <View>
-          <Text style={type.eyebrow}>Scenario 1 Complete</Text>
+          <Text style={type.eyebrow}>OPERATIONS</Text>
           <Text style={[type.h1, styles.title]}>Shipment Registered</Text>
         </View>
         <View style={styles.headerActions}>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
-import { colors, fonts } from '../../../theme';
+import { colors, fonts, spacing } from '../../../theme';
 
 export default function ReportsHeader({
   activePreset,
@@ -25,9 +25,9 @@ export default function ReportsHeader({
       {/* Title & Eyebrow */}
       <View style={styles.titleRow}>
         <View>
-          <Text style={styles.eyebrow}>OPERATIONAL & FINANCIAL</Text>
+          <Text style={styles.eyebrow}>ADMINISTRATION</Text>
           <View style={styles.headingWithLive}>
-            <Text style={styles.title}>REPORTS</Text>
+            <Text style={styles.title}>Reports</Text>
             {isLiveUpdating && (
               <View style={styles.liveBadge}>
                 <View style={styles.liveDot} />
@@ -99,12 +99,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: spacing.xl,
     flexWrap: 'wrap',
     gap: 12,
   },
   eyebrow: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.sans,
     fontSize: 11,
     letterSpacing: 1.2,
     color: colors.inkFaint,
@@ -119,10 +119,10 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: fonts.sans,
-    fontSize: 28,
-    fontWeight: '800',
+    fontSize: 24,
+    fontWeight: '700',
     color: colors.ink,
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
   liveBadge: {
     flexDirection: 'row',

@@ -18,7 +18,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
+    alignItems: 'flex-start',
     marginBottom: spacing.xl,
     flexWrap: 'wrap',
     gap: spacing.md,

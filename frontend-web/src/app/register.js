@@ -126,7 +126,7 @@ export default function RegisterShipmentScreen() {
 
   return (
     <AppShell>
-      <PageHeader eyebrow="Scenario 1: Encode & Identify" title="Register Shipment" />
+      <PageHeader eyebrow="OPERATIONS" title="Register Shipment" />
 
       {/* Error Alert Banner */}
       {errorMessage ? (

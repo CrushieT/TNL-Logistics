@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, StyleSheet, ScrollView, Text, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Text, ActivityIndicator } from 'react-native';
 import AppShell from '../components/layout/AppShell';
 import {
   getReportSummary,
@@ -148,7 +148,7 @@ export default function ReportsScreen() {
 
   return (
     <AppShell activeNav="Reports">
-      <ScrollView contentContainerStyle={styles.container}>
+      <View style={styles.container}>
         {/* Header Toolbar */}
         <ReportsHeader
           activePreset={activePreset}
@@ -222,14 +222,13 @@ export default function ReportsScreen() {
           startDate={startDate}
           endDate={endDate}
         />
-      </ScrollView>
+      </View>
     </AppShell>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: 24,
     paddingBottom: 64,
   },
   heroRow: {

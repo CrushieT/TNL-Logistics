@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import AppShell from '../components/layout/AppShell';
+import PageHeader from '../components/layout/PageHeader';
 import {
   getWeeklyCollections,
   generateBatchSoa,
@@ -246,36 +247,34 @@ export default function WeeklyCollectionsScreen() {
     <AppShell activeNav="Weekly Collections">
       <View style={styles.container}>
         {/* Header Row: Eyebrow + Title on left, 3 Summary metric cards on right */}
-        <View style={[styles.headerRow, isMobile && styles.headerRowMobile]}>
-          <View style={styles.titleColumn}>
-            <Text style={styles.eyebrow}>CONSOLIDATED BILLING: THURSDAY CYCLES</Text>
-            <Text style={styles.pageTitle}>WEEKLY COLLECTIONS</Text>
-          </View>
+        <PageHeader
+          eyebrow="BILLING & FINANCE"
+          title="Weekly Collections"
+          right={
+            <View style={styles.topRightMetricsGroup}>
+              <View style={styles.topRightMetricBox}>
+                <Text style={styles.topRightMetricLabel}>CLIENTS</Text>
+                <Text style={styles.topRightMetricValue}>
+                  {summaryStats.clientsCount}
+                </Text>
+              </View>
 
-          {/* Top-Right Metric Cards (Clients, Total Due, Outstanding) */}
-          <View style={styles.topRightMetricsGroup}>
-            <View style={styles.topRightMetricBox}>
-              <Text style={styles.topRightMetricLabel}>CLIENTS</Text>
-              <Text style={styles.topRightMetricValue}>
-                {summaryStats.clientsCount}
-              </Text>
-            </View>
+              <View style={styles.topRightMetricBox}>
+                <Text style={styles.topRightMetricLabel}>TOTAL DUE</Text>
+                <Text style={styles.topRightMetricValue}>
+                  {formatCurrency(summaryStats.totalDue)}
+                </Text>
+              </View>
 
-            <View style={styles.topRightMetricBox}>
-              <Text style={styles.topRightMetricLabel}>TOTAL DUE</Text>
-              <Text style={styles.topRightMetricValue}>
-                {formatCurrency(summaryStats.totalDue)}
-              </Text>
+              <View style={styles.topRightMetricBox}>
+                <Text style={styles.topRightMetricLabel}>OUTSTANDING</Text>
+                <Text style={[styles.topRightMetricValue, styles.outstandingValue]}>
+                  {formatCurrency(summaryStats.outstanding)}
+                </Text>
+              </View>
             </View>
-
-            <View style={styles.topRightMetricBox}>
-              <Text style={styles.topRightMetricLabel}>OUTSTANDING</Text>
-              <Text style={[styles.topRightMetricValue, styles.outstandingValue]}>
-                {formatCurrency(summaryStats.outstanding)}
-              </Text>
-            </View>
-          </View>
-        </View>
+          }
+        />
 
         {/* Notifications & Alerts */}
         {infoBanner ? (

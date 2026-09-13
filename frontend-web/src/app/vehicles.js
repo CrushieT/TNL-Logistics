@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import AppShell from '../components/layout/AppShell';
+import PageHeader from '../components/layout/PageHeader';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import StatusBadge from '../components/common/StatusBadge';
@@ -158,20 +159,20 @@ export default function VehiclesScreen() {
   return (
     <AppShell>
       {/* Header Row */}
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.eyebrow}>FLEET REGISTRY: ADMIN / OFFICE</Text>
-          <Text style={styles.title}>VEHICLES / TRUCKS</Text>
-        </View>
-        <Button
-          label="Register Vehicle"
-          variant="primary"
-          onPress={() => {
-            setVehicleToEdit(null);
-            setRegisterModalVisible(true);
-          }}
-        />
-      </View>
+      <PageHeader
+        eyebrow="OPERATIONS"
+        title="Vehicles / Trucks"
+        right={
+          <Button
+            label="Register Vehicle"
+            variant="primary"
+            onPress={() => {
+              setVehicleToEdit(null);
+              setRegisterModalVisible(true);
+            }}
+          />
+        }
+      />
 
       {/* Notice Banner */}
       <View style={styles.banner}>

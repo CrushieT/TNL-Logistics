@@ -128,7 +128,7 @@ export default function DashboardScreen() {
   return (
     <AppShell shipmentCount={shipmentCount} parcelCount={parcelCount}>
       <PageHeader
-        eyebrow="Operations Overview"
+        eyebrow="OPERATIONS"
         title="Dashboard"
         style={styles.pageHeader}
         right={

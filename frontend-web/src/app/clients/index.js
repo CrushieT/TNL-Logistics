@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import AppShell from '../../components/layout/AppShell';
+import PageHeader from '../../components/layout/PageHeader';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -161,20 +162,20 @@ export default function ClientsScreen() {
   return (
     <AppShell>
       {/* Header Row */}
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.eyebrow}>BILLING PARTIES</Text>
-          <Text style={styles.title}>CLIENTS</Text>
-        </View>
-        <Button
-          label="Register Client"
-          variant="primary"
-          onPress={() => {
-            setClientToEdit(null);
-            setRegisterModalVisible(true);
-          }}
-        />
-      </View>
+      <PageHeader
+        eyebrow="BILLING & FINANCE"
+        title="Clients"
+        right={
+          <Button
+            label="Register Client"
+            variant="primary"
+            onPress={() => {
+              setClientToEdit(null);
+              setRegisterModalVisible(true);
+            }}
+          />
+        }
+      />
 
       {/* Feedback Confirmation Alert */}
       {feedback ? (

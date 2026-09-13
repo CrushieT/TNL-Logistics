@@ -140,7 +140,7 @@ export default function ShipmentsListScreen() {
   return (
     <AppShell>
       <PageHeader
-        eyebrow="Master Records: Transactions"
+        eyebrow="OPERATIONS"
         title="Shipments"
         right={<Button label="Register Shipment" variant="primary" onPress={() => router.push('/register')} />}
       />

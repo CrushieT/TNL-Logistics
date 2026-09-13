@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import AppShell from '../components/layout/AppShell';
+import PageHeader from '../components/layout/PageHeader';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import StatusBadge from '../components/common/StatusBadge';
@@ -195,17 +196,17 @@ export default function UsersScreen() {
   return (
     <AppShell>
       {/* Header Row */}
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.eyebrow}>ROLE-BASED ACCESS</Text>
-          <Text style={styles.title}>USERS / STAFF</Text>
-        </View>
-        <Button
-          label="Create User"
-          variant="primary"
-          onPress={() => setCreateModalVisible(true)}
-        />
-      </View>
+      <PageHeader
+        eyebrow="ADMINISTRATION"
+        title="Users / Staff"
+        right={
+          <Button
+            label="Create User"
+            variant="primary"
+            onPress={() => setCreateModalVisible(true)}
+          />
+        }
+      />
 
       {/* Feedback Banner */}
       {feedback ? (
@@ -593,28 +594,6 @@ export default function UsersScreen() {
 }
 
 const styles = StyleSheet.create({
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginBottom: spacing.lg,
-  },
-  eyebrow: {
-    fontFamily: fonts.sans,
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.inkFaint,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  title: {
-    fontFamily: fonts.sans,
-    fontSize: 26,
-    fontWeight: '800',
-    color: colors.ink,
-    letterSpacing: -0.5,
-  },
   feedbackAlert: {
     flexDirection: 'row',
     justifyContent: 'space-between',
