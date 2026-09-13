@@ -4,6 +4,10 @@ import { Stack, usePathname, useRouter, useRootNavigationState } from 'expo-rout
 import { isAuthenticated, validateSession, getCurrentUser, checkFirstBootStatus } from '../services/api/client';
 
 const ADMIN_ONLY_ROUTES = ['/users', '/settings'];
+const SESSION_VALIDATION_THROTTLE_MS = 5 * 60 * 1000;
+
+let cachedIsFirstBoot = null;
+let lastSessionValidationTimestamp = 0;
 
 export default function RootLayout() {
   const pathname = usePathname();
@@ -49,9 +53,15 @@ export default function RootLayout() {
     let isCancelled = false;
 
     async function verifyAuth() {
-      // Check first-boot status to determine if system onboarding is needed
-      const isFirstBoot = await checkFirstBootStatus();
-      if (isCancelled) return;
+      // Check first-boot status to determine if system onboarding is needed (cached once resolved)
+      let isFirstBoot = cachedIsFirstBoot;
+      if (isFirstBoot === null || isFirstBoot === true) {
+        isFirstBoot = await checkFirstBootStatus();
+        if (isCancelled) return;
+        if (!isFirstBoot) {
+          cachedIsFirstBoot = false;
+        }
+      }
 
       const isSetupPage = pathname === '/setup';
 
@@ -76,6 +86,7 @@ export default function RootLayout() {
       const isLoginPage = pathname === '/login';
 
       if (!authenticated) {
+        lastSessionValidationTimestamp = 0;
         if (!isLoginPage) {
           const redirectQuery =
             pathname && pathname !== '/' ? `?redirect=${encodeURIComponent(pathname)}` : '';
@@ -90,15 +101,23 @@ export default function RootLayout() {
         return;
       }
 
-      // Validate token against backend to handle server restarts
-      const isValid = await validateSession();
-      if (isCancelled) return;
+      // Validate token against backend to handle server restarts (throttled to avoid redundant network roundtrips)
+      const now = Date.now();
+      const shouldValidateSession = now - lastSessionValidationTimestamp > SESSION_VALIDATION_THROTTLE_MS;
 
-      if (!isValid) {
-        const redirectQuery =
-          pathname && pathname !== '/' ? `?redirect=${encodeURIComponent(pathname)}` : '';
-        router.replace(`/login${redirectQuery}`);
-        return;
+      if (shouldValidateSession) {
+        const isValid = await validateSession();
+        if (isCancelled) return;
+
+        if (!isValid) {
+          lastSessionValidationTimestamp = 0;
+          const redirectQuery =
+            pathname && pathname !== '/' ? `?redirect=${encodeURIComponent(pathname)}` : '';
+          router.replace(`/login${redirectQuery}`);
+          return;
+        }
+
+        lastSessionValidationTimestamp = now;
       }
 
       // Enforce role-based access control (RBAC) on admin-only routes
