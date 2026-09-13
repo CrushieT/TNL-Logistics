@@ -1,3 +1,4 @@
+import CheckIcon from '../components/common/CheckIcon';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
@@ -40,9 +41,9 @@ const ROLE_LABELS = {
 };
 
 const PLATFORM_ACCESS = {
-  ADMIN: 'Full access · shared system',
-  OFFICE_STAFF: 'Mobile only (office workflows) · shared system',
-  FIELD_STAFF: 'Mobile (scan-only) · shared system',
+  ADMIN: 'Full access (shared system)',
+  OFFICE_STAFF: 'Mobile only (office workflows) | shared system',
+  FIELD_STAFF: 'Mobile (scan-only) | shared system',
 };
 
 function RoleChip({ role }) {
@@ -200,7 +201,7 @@ export default function UsersScreen() {
           <Text style={styles.title}>USERS / STAFF</Text>
         </View>
         <Button
-          label="+ Create User"
+          label="Create User"
           variant="primary"
           onPress={() => setCreateModalVisible(true)}
         />
@@ -210,7 +211,7 @@ export default function UsersScreen() {
       {feedback ? (
         <View style={styles.feedbackAlert}>
           <View style={styles.feedbackContent}>
-            <Text style={styles.feedbackCheckmark}>✓</Text>
+            <CheckIcon size={14} color="#15803D" style={{ marginRight: 8, marginTop: 1 }} />
             <Text style={styles.feedbackText}>{feedback}</Text>
           </View>
           <Pressable onPress={() => setFeedback(null)} style={styles.feedbackCloseBtn}>
@@ -308,7 +309,7 @@ export default function UsersScreen() {
                 <RoleChip role={user.role} />
               </View>
               <Text style={[styles.col, styles.colAccess, styles.accessText]} numberOfLines={2}>
-                {PLATFORM_ACCESS[user.role] || '—'}
+                {PLATFORM_ACCESS[user.role] || '-'}
               </Text>
               <View style={[styles.col, styles.colStatus]}>
                 <StatusBadge status={user.active ? 'Active' : 'Inactive'} />
@@ -426,27 +427,27 @@ export default function UsersScreen() {
             'System configuration & settings',
           ].map((item) => (
             <View key={item} style={styles.capabilityItem}>
-              <Text style={styles.capabilityCheck}>✓</Text>
               <Text style={styles.capabilityText}>{item}</Text>
             </View>
           ))}
+          <View style={styles.capabilityDivider} />
           <Text style={styles.capabilityNote}>
-            System Owner — single administrator account with full administrative and operational access across desktop and mobile.
+            System Owner: single administrator account with full administrative and operational access across desktop and mobile.
           </Text>
         </View>
 
         <View style={[styles.capabilityCard, { flex: 1 }]}>
           <Text style={styles.capabilityTitle}>OFFICE STAFF</Text>
           {[
-            'Login · Change Password · Logout',
+            'Login, Change Password, Logout',
             'Register clients, shipments & parcels (mobile app)',
             'Generate QR + manage QR / label printing (Bluetooth thermal printer)',
           ].map((item) => (
             <View key={item} style={styles.capabilityItem}>
-              <Text style={styles.capabilityCheck}>✓</Text>
               <Text style={styles.capabilityText}>{item}</Text>
             </View>
           ))}
+          <View style={styles.capabilityDivider} />
           <Text style={styles.capabilityNote}>
             Mobile app only (authorized shipment registration & label printing). Blocked from billing, reports, and administration.
           </Text>
@@ -455,19 +456,19 @@ export default function UsersScreen() {
         <View style={[styles.capabilityCard, { flex: 1 }]}>
           <Text style={styles.capabilityTitle}>FIELD STAFF (SCAN-ONLY)</Text>
           {[
-            'Login · Change Password · Logout',
-            'Scan QR → parcel / shipment details',
+            'Login, Change Password, Logout',
+            'Scan QR to view parcel / shipment details',
             'See current status & valid next action',
             'Select registered truck when loading',
-            'Confirm status · view tracking history',
+            'Confirm status, view tracking history',
           ].map((item) => (
             <View key={item} style={styles.capabilityItem}>
-              <Text style={styles.capabilityCheck}>✓</Text>
               <Text style={styles.capabilityText}>{item}</Text>
             </View>
           ))}
+          <View style={styles.capabilityDivider} />
           <Text style={styles.capabilityRestriction}>
-            No registration, QR generation, printing, payments, SOA, deductions, collections, user or vehicle administration. The role model blocks these actions — not just their buttons.
+            No registration, QR generation, printing, payments, SOA, deductions, collections, user or vehicle administration. The role model blocks these actions (not just their buttons).
           </Text>
         </View>
       </View>
@@ -816,21 +817,25 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 4,
   },
-  capabilityItem: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
-  capabilityCheck: { fontFamily: fonts.sans, fontSize: 12, color: '#15803D', fontWeight: '700' },
-  capabilityText: { fontFamily: fonts.sans, fontSize: 12.5, color: colors.ink, flex: 1, lineHeight: 18 },
+  capabilityItem: { paddingVertical: 2 },
+  capabilityText: { fontFamily: fonts.sans, fontSize: 12.5, color: colors.ink, lineHeight: 18 },
+  capabilityDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginTop: 'auto',
+    marginBottom: spacing.xs,
+  },
   capabilityNote: {
     fontFamily: fonts.sans,
     fontSize: 11,
     color: colors.inkSoft,
     fontStyle: 'italic',
-    marginTop: 4,
+    lineHeight: 16,
   },
   capabilityRestriction: {
     fontFamily: fonts.sans,
     fontSize: 11,
     color: colors.danger,
-    marginTop: 4,
     lineHeight: 16,
   },
 });

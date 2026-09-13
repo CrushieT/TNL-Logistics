@@ -10,7 +10,7 @@ export default function FloatingUpdatePill({ count, onPress }) {
       <Pressable style={styles.pill} onPress={onPress}>
         <View style={styles.dot} />
         <Text style={styles.text}>
-          {count === 1 ? '1 new scan received' : `${count} new scans received`} · Jump to latest
+          {count === 1 ? '1 new scan received' : `${count} new scans received`} | Jump to latest
         </Text>
       </Pressable>
     </View>

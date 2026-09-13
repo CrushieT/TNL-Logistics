@@ -80,7 +80,7 @@ export default function ShipmentDetailScreen() {
     return (
       <AppShell>
         <Pressable onPress={() => router.push('/shipments')}>
-          <Text style={styles.backLink}>← Shipments</Text>
+          <Text style={styles.backLink}>Back to Shipments</Text>
         </Pressable>
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={colors.ink} size="large" />
@@ -94,7 +94,7 @@ export default function ShipmentDetailScreen() {
     return (
       <AppShell>
         <Pressable onPress={() => router.push('/shipments')}>
-          <Text style={styles.backLink}>← Shipments</Text>
+          <Text style={styles.backLink}>Back to Shipments</Text>
         </Pressable>
         <Card>
           <Text style={styles.notFoundText}>Shipment {shipmentId} was not found.</Text>
@@ -109,14 +109,14 @@ export default function ShipmentDetailScreen() {
   return (
     <AppShell>
       <Pressable onPress={() => router.push('/shipments')}>
-        <Text style={styles.backLink}>← Shipments</Text>
+        <Text style={styles.backLink}>Back to Shipments</Text>
       </Pressable>
 
       {/* Header Row */}
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.eyebrow}>
-            {shipment.shipmentId} · {(shipment.origin || 'DESKTOP OFFICE').toUpperCase()}
+            {shipment.shipmentId} | {(shipment.origin || 'DESKTOP OFFICE').toUpperCase()}
           </Text>
           <Text style={styles.title}>{(shipment.recipient || '').toUpperCase()}</Text>
         </View>
@@ -153,7 +153,7 @@ export default function ShipmentDetailScreen() {
               </View>
               <View style={styles.gridCol}>
                 <Text style={styles.fieldLabel}>CONTACT</Text>
-                <Text style={styles.fieldValue}>{shipment.recipientDetails?.contactNumber || '—'}</Text>
+                <Text style={styles.fieldValue}>{shipment.recipientDetails?.contactNumber || '-'}</Text>
               </View>
               <View style={styles.gridCol}>
                 <Text style={styles.fieldLabel}>REGISTERED</Text>
@@ -168,12 +168,12 @@ export default function ShipmentDetailScreen() {
               </View>
               <View style={styles.gridCol}>
                 <Text style={styles.fieldLabel}>ADDRESS</Text>
-                <Text style={styles.fieldValue}>{shipment.recipientDetails?.address || '—'}</Text>
+                <Text style={styles.fieldValue}>{shipment.recipientDetails?.address || '-'}</Text>
               </View>
               <View style={styles.gridCol}>
                 <Text style={styles.fieldLabel}>CONTENTS</Text>
                 <Text style={styles.fieldValue}>
-                  {shipment.description || 'General Goods'} · {shipment.quantity} pc · {(shipment.chargeModel || 'flat').toLowerCase()}
+                  {shipment.description || 'General Goods'}, {shipment.quantity} pc, {(shipment.chargeModel || 'flat').toLowerCase()}
                 </Text>
               </View>
             </View>
@@ -203,12 +203,12 @@ export default function ShipmentDetailScreen() {
               <View style={styles.metricItem}>
                 <Text style={styles.metricLabel}>BILLABLE WEIGHT *</Text>
                 <Text style={styles.metricValue}>{Number(shipment.billableWeightKg || 14).toFixed(2)} kg</Text>
-                <Text style={styles.provisionalText}>* Provisional — pending confirmation</Text>
+                <Text style={styles.provisionalText}>* Provisional (pending confirmation)</Text>
               </View>
             </View>
 
             <Text style={styles.footnote}>
-              Dimensions: {shipment.lengthCm || 50} cm × {shipment.widthCm || 40} cm × {shipment.heightCm || 35} cm per unit · Volumetric = Volume ÷ divisor · auto-computed
+              Dimensions: {shipment.lengthCm || 50} cm × {shipment.widthCm || 40} cm × {shipment.heightCm || 35} cm per unit | Volumetric = Volume / divisor | auto-computed
             </Text>
           </Card>
 
@@ -270,7 +270,7 @@ export default function ShipmentDetailScreen() {
               ))}
             </View>
             <Text style={styles.footnote}>
-              Each unit is individually trackable with its own unique QR. Reprints reuse the same Tracking ID + QR — never a new parcel.
+              Each unit is individually trackable with its own unique QR. Reprints reuse the same Tracking ID + QR (never a new parcel).
             </Text>
           </Card>
         </View>
@@ -298,7 +298,7 @@ export default function ShipmentDetailScreen() {
           </Pressable>
 
           {/* Payment Card */}
-          <Card title="PAYMENT · TRANSACTION" style={styles.paymentCard}>
+          <Card title="PAYMENT: TRANSACTION" style={styles.paymentCard}>
             <Text style={styles.chargingLabel}>{(shipment.chargeModel || 'Flat')} charging</Text>
             <PaymentLine label="Shipping" value={shipment.shippingFee} />
             <PaymentLine label="Other Charges" value={shipment.otherCharges} />
@@ -311,7 +311,7 @@ export default function ShipmentDetailScreen() {
               style={styles.managePaymentBtn}
               onPress={() => router.push('/payments')}
             >
-              <Text style={styles.managePaymentText}>Manage Payment →</Text>
+              <Text style={styles.managePaymentText}>Manage Payment</Text>
             </Pressable>
           </Card>
 
@@ -343,7 +343,7 @@ export default function ShipmentDetailScreen() {
               style={styles.managePaymentBtn}
               onPress={() => router.push('/waybills')}
             >
-              <Text style={styles.managePaymentText}>Manage Waybill →</Text>
+              <Text style={styles.managePaymentText}>Manage Waybill</Text>
             </Pressable>
           </Card>
         </View>

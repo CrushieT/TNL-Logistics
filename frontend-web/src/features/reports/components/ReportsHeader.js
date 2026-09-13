@@ -74,7 +74,7 @@ export default function ReportsHeader({
               maxLength={10}
             />
           </View>
-          <Text style={styles.dateSeparator}>—</Text>
+          <Text style={styles.dateSeparator}>-</Text>
           <View style={styles.dateInputWrapper}>
             <Text style={styles.dateLabel}>TO</Text>
             <TextInput

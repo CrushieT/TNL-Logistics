@@ -158,7 +158,7 @@ export default function StatementPrintScreen() {
       {/* Floating Action Bar (Hidden during Print via nativeID) */}
       <View nativeID="print-toolbar" style={styles.topToolbar}>
         <TouchableOpacity style={styles.backBtn} onPress={handleBack}>
-          <Text style={styles.backBtnText}>← Back to Statements</Text>
+          <Text style={styles.backBtnText}>Back to Statements</Text>
         </TouchableOpacity>
 
         <View style={styles.toolbarCenter}>
@@ -167,7 +167,7 @@ export default function StatementPrintScreen() {
           </Text>
           {statementData ? (
             <Text style={styles.toolbarSubtext}>
-              {statementData.clientName} · {statementData.cycleRangeLabel || 'Current Cycle'}
+              {statementData.clientName} | {statementData.cycleRangeLabel || 'Current Cycle'}
             </Text>
           ) : null}
         </View>

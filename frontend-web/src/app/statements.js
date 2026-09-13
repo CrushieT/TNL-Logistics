@@ -1,3 +1,4 @@
+import CheckIcon from '../components/common/CheckIcon';
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -288,7 +289,7 @@ export default function StatementsScreen() {
         {/* Top Header & Actions Row (no-print) */}
         <View style={styles.headerBar}>
           <View style={styles.titleArea}>
-            <Text style={styles.eyebrow}>CONSOLIDATED · ONE PER CLIENT</Text>
+            <Text style={styles.eyebrow}>CONSOLIDATED: ONE PER CLIENT</Text>
             <Text style={styles.pageTitle}>STATEMENT OF ACCOUNT</Text>
           </View>
 
@@ -299,7 +300,7 @@ export default function StatementsScreen() {
               onPress={() => router.push('/weekly-collections')}
               activeOpacity={0.8}
             >
-              <Text style={styles.backButtonText}>← Weekly List</Text>
+              <Text style={styles.backButtonText}>Weekly List</Text>
             </TouchableOpacity>
 
             {/* Print / Export PDF */}
@@ -352,7 +353,7 @@ export default function StatementsScreen() {
         )}
         {successToast && (
           <View style={styles.successBanner}>
-            <Text style={styles.successBannerText}>✓ {successToast}</Text>
+            <CheckIcon size={14} color="#166534" /><Text style={styles.successBannerText}>{successToast}</Text>
           </View>
         )}
 
@@ -390,7 +391,7 @@ export default function StatementsScreen() {
               onPress={() => router.push(`/weekly-collections?cycle=${encodeURIComponent(selectedCycle)}`)}
               activeOpacity={0.8}
             >
-              <Text style={styles.gotoCollectionsBtnText}>Go to Weekly Collections →</Text>
+              <Text style={styles.gotoCollectionsBtnText}>Go to Weekly Collections</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -537,6 +538,9 @@ const styles = StyleSheet.create({
     color: '#991B1B',
   },
   successBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     backgroundColor: '#F0FDF4',
     borderWidth: 1,
     borderColor: '#86EFAC',

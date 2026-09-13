@@ -20,7 +20,7 @@ const FALLBACK_SUMMARY = {
   shipmentCount: 0,
   parcelCount: 0,
   todayShipmentCount: 0,
-  todayDateFormatted: '—',
+  todayDateFormatted: '-',
   unpaidTransactionCount: 0,
   forCollection: { amount: 0, day: 'Thu', clientCount: 0 },
   parcelUnitsByStatus: [
@@ -113,7 +113,7 @@ export default function DashboardScreen() {
   const shipmentCount = summary.shipmentCount ?? 0;
   const parcelCount = summary.parcelCount ?? 0;
   const todayShipments = summary.todayShipmentCount ?? summary.registeredToday ?? 0;
-  const todayDate = summary.todayDateFormatted || summary.registeredTodayDate || '—';
+  const todayDate = summary.todayDateFormatted || summary.registeredTodayDate || '-';
   const unpaidCount = summary.unpaidTransactionCount ?? summary.unpaidTransactions ?? 0;
 
   const forCollectionAmount = summary.forCollection?.amount ?? 0;
@@ -142,7 +142,7 @@ export default function DashboardScreen() {
               />
             ) : null}
             <Button
-              label="+ Register Shipment"
+              label="Register Shipment"
               variant="primary"
               onPress={() => router.push('/register')}
             />
@@ -169,7 +169,7 @@ export default function DashboardScreen() {
           onPress={() => router.push('/payments')}
         />
         <MetricCard
-          label={`For Collection · ${forCollectionDay}`}
+          label={`For Collection: ${forCollectionDay}`}
           value={`₱${Number(forCollectionAmount).toLocaleString()}`}
           sublabel={`${forCollectionClients} clients`}
           emphasis
@@ -187,7 +187,7 @@ export default function DashboardScreen() {
         <Card title="Outstanding vs Collected" style={styles.chartCard}>
           <ComparisonBars rows={financialRows} />
           <Button
-            label="Prepare weekly collection →"
+            label="Prepare weekly collection"
             variant="secondary"
             onPress={() => router.push(selectedCycle ? `/weekly-collections?cycle=${encodeURIComponent(selectedCycle)}` : '/weekly-collections')}
             style={styles.collectionBtn}
@@ -199,7 +199,7 @@ export default function DashboardScreen() {
         title="Recent Activity"
         right={
           <Text style={styles.viewAllLink} onPress={() => router.push('/tracking-logs')}>
-            View all logs →
+            View all logs
           </Text>
         }
       >

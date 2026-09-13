@@ -1,3 +1,4 @@
+import CheckIcon from '../../../components/common/CheckIcon';
 import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { colors, fonts } from '../../../theme';
@@ -59,7 +60,7 @@ export default function OperationalVolumeTab({ dailyVolume = [], statusDistribut
             activeOpacity={0.7}
           >
             <View style={[styles.checkboxIndicator, hideEmptyDays && styles.checkboxIndicatorActive]}>
-              {hideEmptyDays ? <Text style={styles.checkmark}>✓</Text> : null}
+              {hideEmptyDays ? <CheckIcon size={10} color="#FFFFFF" /> : null}
             </View>
             <Text style={[styles.toggleFilterText, hideEmptyDays && styles.toggleFilterTextActive]}>
               Hide empty days

@@ -48,14 +48,14 @@ export default function WaybillManifestCard({ manifest, selectedHauler }) {
     releasedByAdminName,
   } = manifest;
 
-  const displayDocNumber = waybillId ? `${waybillId} · ${shipmentId}` : shipmentId;
+  const displayDocNumber = waybillId ? `${waybillId} | ${shipmentId}` : shipmentId;
 
   const todayFormatted = new Date().toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   });
-  const displayDocDate = generatedDate && generatedDate !== '—' ? generatedDate : todayFormatted;
+  const displayDocDate = generatedDate && generatedDate !== '-' ? generatedDate : todayFormatted;
 
   const isCompleted = manifest.status === 'SIGNED_COMPLETED' || manifest.statusLabel === 'Signed / Completed';
 
@@ -125,7 +125,7 @@ export default function WaybillManifestCard({ manifest, selectedHauler }) {
           <View style={styles.brandInfo}>
             <Text style={styles.brandTitle}>{(branding?.companyName || 'TNL LOGISTICS').toUpperCase()}</Text>
             <Text style={styles.brandSub}>
-              {branding?.companyAddress || 'Manila Central Hub'} · {branding?.companyContact || '0917-555-0000'}
+              {branding?.companyAddress || 'Manila Central Hub'} | {branding?.companyContact || '0917-555-0000'}
             </Text>
           </View>
         </View>
@@ -143,15 +143,15 @@ export default function WaybillManifestCard({ manifest, selectedHauler }) {
       <View style={styles.partiesRow}>
         <View style={styles.partyCol}>
           <Text style={styles.partyEyebrow}>SHIPPER / CLIENT</Text>
-          <Text style={styles.partyName}>{clientName || '—'}</Text>
-          <Text style={styles.partyAddress}>{clientAddress || '—'}</Text>
+          <Text style={styles.partyName}>{clientName || '-'}</Text>
+          <Text style={styles.partyAddress}>{clientAddress || '-'}</Text>
         </View>
 
         <View style={[styles.partyCol, styles.partyColRight]}>
           <Text style={styles.partyEyebrow}>CONSIGNEE / DESTINATION</Text>
-          <Text style={styles.partyName}>{recipientName || '—'}</Text>
+          <Text style={styles.partyName}>{recipientName || '-'}</Text>
           <Text style={styles.partyHub}>{destinationHub || 'TNL Baguio Hub'}</Text>
-          <Text style={styles.partyAddress}>{recipientAddress || '—'}</Text>
+          <Text style={styles.partyAddress}>{recipientAddress || '-'}</Text>
         </View>
       </View>
 
@@ -203,7 +203,7 @@ export default function WaybillManifestCard({ manifest, selectedHauler }) {
         </Text>
         <Text style={styles.summaryItem}>
           <Text style={styles.summaryLabel}>Hauler: </Text>
-          <Text style={styles.summaryValue}>{haulerName && haulerName !== '—' ? haulerName : (selectedHauler || '—')}</Text>
+          <Text style={styles.summaryValue}>{haulerName && haulerName !== '-' ? haulerName : (selectedHauler || '-')}</Text>
         </Text>
         <Text style={styles.summaryItem}>
           <Text style={styles.summaryLabel}>Truck: </Text>

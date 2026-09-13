@@ -48,7 +48,7 @@ export default function RegisterVehicleModal({ visible, vehicleToEdit, onClose, 
       }
       setStatus(vehicleToEdit.status || (vehicleToEdit.active ? 'Active' : 'Inactive'));
       setDescription(vehicleToEdit.description || '');
-      setRemarks(vehicleToEdit.remarks && vehicleToEdit.remarks !== '—' ? vehicleToEdit.remarks : '');
+      setRemarks(vehicleToEdit.remarks && vehicleToEdit.remarks !== '-' ? vehicleToEdit.remarks : '');
       setError(null);
     } else {
       setPlateNumber('');
@@ -203,7 +203,7 @@ export default function RegisterVehicleModal({ visible, vehicleToEdit, onClose, 
               <Text style={styles.fieldLabel}>DESCRIPTION *</Text>
               <TextInput
                 style={styles.input}
-                placeholder="e.g. Manila–Baguio line haul"
+                placeholder="e.g. Manila-Baguio line haul"
                 placeholderTextColor={colors.inkFaint}
                 value={description}
                 onChangeText={setDescription}

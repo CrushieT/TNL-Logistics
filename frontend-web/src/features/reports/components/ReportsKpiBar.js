@@ -47,7 +47,7 @@ export default function ReportsKpiBar({ kpis, loading }) {
         <View key={idx} style={styles.card}>
           <Text style={styles.label}>{card.label}</Text>
           <Text style={[styles.value, { color: card.accentColor }]}>
-            {loading && !kpis ? '—' : card.value}
+            {loading && !kpis ? '-' : card.value}
           </Text>
           <Text style={styles.sublabel}>{card.sublabel}</Text>
         </View>

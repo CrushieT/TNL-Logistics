@@ -67,10 +67,10 @@ export default function DeactivateClientModal({ visible, client, onClose, onConf
                 <Text style={styles.monoText}>{client.name}</Text>):
               </Text>
               <Text style={styles.bulletText}>
-                • If the client has <Text style={styles.boldText}>no past shipments</Text>, they will be permanently deleted from the database.
+                If the client has <Text style={styles.boldText}>no past shipments</Text>, they will be permanently deleted from the database.
               </Text>
               <Text style={styles.bulletText}>
-                • If the client has <Text style={styles.boldText}>past shipment history</Text>, they will be safely marked <Text style={styles.boldText}>Inactive</Text> to preserve customer invoices, statements of account, and billing audit records.
+                If the client has <Text style={styles.boldText}>past shipment history</Text>, they will be safely marked <Text style={styles.boldText}>Inactive</Text> to preserve customer invoices, statements of account, and billing audit records.
               </Text>
             </View>
 

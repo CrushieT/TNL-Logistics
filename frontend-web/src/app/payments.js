@@ -189,7 +189,7 @@ export default function PaymentsScreen() {
         {/* Header Row: Title & Subtitle on Left, Outstanding Metric Card on Right */}
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
-            <Text style={styles.eyebrow}>COLLECTION RECORDING · PER TRANSACTION</Text>
+            <Text style={styles.eyebrow}>COLLECTION RECORDING: PER TRANSACTION</Text>
             <Text style={styles.title}>PAYMENTS</Text>
           </View>
 

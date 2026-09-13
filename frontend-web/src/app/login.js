@@ -204,7 +204,7 @@ export default function LoginScreen() {
           {/* Security Footer Notice */}
           <View style={[styles.footerNote, isCompactHeight && styles.footerNoteCompact]}>
             <Text style={styles.footerText}>
-              Authorized Personnel Only · Internal Logistics Operations
+              Authorized Personnel Only | Internal Logistics Operations
             </Text>
           </View>
         </View>

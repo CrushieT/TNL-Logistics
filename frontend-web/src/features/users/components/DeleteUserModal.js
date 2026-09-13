@@ -60,12 +60,12 @@ export default function DeleteUserModal({ visible, user, onClose, onConfirm }) {
                 {' '}({user.userId}):
               </Text>
               <Text style={styles.bulletText}>
-                • If this account has{' '}
+                If this account has{' '}
                 <Text style={styles.boldText}>no linked scan or payment records</Text>
                 , it will be permanently deleted from the database.
               </Text>
               <Text style={styles.bulletText}>
-                • If this account has{' '}
+                If this account has{' '}
                 <Text style={styles.boldText}>existing activity records</Text>
                 , it will be safely set to{' '}
                 <Text style={styles.boldText}>Inactive</Text>

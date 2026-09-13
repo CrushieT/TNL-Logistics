@@ -86,8 +86,8 @@ export default function ReceivablesAgingTab({ receivablesAging = [], dateRangeSt
             {/* Header */}
             <View style={styles.tableHeaderRow}>
               <Text style={[styles.headerCell, styles.clientCol]}>CLIENT</Text>
-              <Text style={[styles.headerCell, styles.numCol]}>CURRENT (0–7D)</Text>
-              <Text style={[styles.headerCell, styles.numCol]}>PAST DUE (8–14D)</Text>
+              <Text style={[styles.headerCell, styles.numCol]}>CURRENT (0-7D)</Text>
+              <Text style={[styles.headerCell, styles.numCol]}>PAST DUE (8-14D)</Text>
               <Text style={[styles.headerCell, styles.numCol]}>OVERDUE (15D+)</Text>
               <Text style={[styles.headerCell, styles.totalCol]}>TOTAL BALANCE</Text>
               <Text style={[styles.headerCell, styles.actionCol]}>ACTION</Text>

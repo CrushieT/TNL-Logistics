@@ -11,7 +11,7 @@ export default function ComingSoon({ eyebrow, title }) {
       <PageHeader eyebrow={eyebrow} title={title} />
       <Card>
         <View style={styles.wrap}>
-          <Text style={styles.text}>This section isn't wired up yet — the screen scaffold is ready for it.</Text>
+          <Text style={styles.text}>This section isn't wired up yet; the screen scaffold is ready for it.</Text>
         </View>
       </Card>
     </AppShell>

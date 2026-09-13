@@ -248,7 +248,7 @@ export default function WeeklyCollectionsScreen() {
         {/* Header Row: Eyebrow + Title on left, 3 Summary metric cards on right */}
         <View style={[styles.headerRow, isMobile && styles.headerRowMobile]}>
           <View style={styles.titleColumn}>
-            <Text style={styles.eyebrow}>CONSOLIDATED BILLING · THURSDAY CYCLES</Text>
+            <Text style={styles.eyebrow}>CONSOLIDATED BILLING: THURSDAY CYCLES</Text>
             <Text style={styles.pageTitle}>WEEKLY COLLECTIONS</Text>
           </View>
 
@@ -357,7 +357,7 @@ export default function WeeklyCollectionsScreen() {
               hovered && styles.batchBtnHovered,
             ]}
           >
-            <Text style={styles.batchBtnText}>Generate All SOAs →</Text>
+            <Text style={styles.batchBtnText}>Generate All SOAs</Text>
           </Pressable>
         </View>
 

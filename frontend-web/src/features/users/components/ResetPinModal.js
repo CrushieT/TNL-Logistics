@@ -102,7 +102,7 @@ export default function ResetPinModal({ visible, user, onClose, onRequestConfirm
         <View style={styles.dialog}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>RESET MOBILE PIN — {user.userId}</Text>
+            <Text style={styles.title}>RESET MOBILE PIN: {user.userId}</Text>
             <Pressable onPress={onClose} style={styles.closeBtn}>
               <Text style={styles.closeBtnText}>✕</Text>
             </Pressable>
@@ -180,7 +180,7 @@ export default function ResetPinModal({ visible, user, onClose, onRequestConfirm
               >
                 <Text style={styles.overrideToggleText}>
                   {showManualOverride
-                    ? '— Cancel manual PIN assignment'
+                    ? 'Cancel manual PIN assignment'
                     : '+ Assign specific 4-digit PIN manually (Emergency Override)'}
                 </Text>
               </Pressable>

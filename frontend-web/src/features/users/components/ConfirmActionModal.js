@@ -66,7 +66,7 @@ export default function ConfirmActionModal({
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.title}>
-              {title} — {user.userId}
+              {title} - {user.userId}
             </Text>
             <Pressable onPress={onClose} style={styles.closeBtn}>
               <Text style={styles.closeBtnText}>✕</Text>
@@ -99,7 +99,7 @@ export default function ConfirmActionModal({
               {description ? <Text style={styles.warningText}>{description}</Text> : null}
               {bulletPoints.map((point, index) => (
                 <Text key={index} style={styles.bulletText}>
-                  • {point}
+                  {point}
                 </Text>
               ))}
             </View>

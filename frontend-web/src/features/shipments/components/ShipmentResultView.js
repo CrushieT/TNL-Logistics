@@ -23,7 +23,7 @@ export default function ShipmentResultView({ shipment, onRegisterAnother, onView
         </View>
         <View style={styles.headerActions}>
           <Button label="Register Another" variant="secondary" onPress={onRegisterAnother} />
-          <Button label="View Shipment →" variant="primary" onPress={onViewShipment} />
+          <Button label="View Shipment" variant="primary" onPress={onViewShipment} />
         </View>
       </View>
 
@@ -40,7 +40,7 @@ export default function ShipmentResultView({ shipment, onRegisterAnother, onView
             <SummaryField label="Total Amount" value={`₱${Number(shipment.totalAmount || 0).toLocaleString()}`} bold />
             <SummaryField
               label="Payment Status"
-              value={shipment.paidAtRegistration ? '● Paid (Cash)' : '○ Unpaid (Billed on SOA)'}
+              value={shipment.paidAtRegistration ? 'Paid (Cash)' : 'Unpaid (Billed on SOA)'}
               customColor={shipment.paidAtRegistration ? '#059669' : '#DC2626'}
             />
             {shipment.totalVolumeCbm ? (
@@ -49,7 +49,7 @@ export default function ShipmentResultView({ shipment, onRegisterAnother, onView
           </View>
 
           {/* Parcel Units Table */}
-          <Text style={styles.unitsLabel}>PARCEL UNITS — EACH WITH A UNIQUE TRACKING ID + QR</Text>
+          <Text style={styles.unitsLabel}>PARCEL UNITS: EACH WITH A UNIQUE TRACKING ID + QR</Text>
           <View style={styles.unitsList}>
             {shipment.units?.map((u, idx) => (
               <View
@@ -67,7 +67,7 @@ export default function ShipmentResultView({ shipment, onRegisterAnother, onView
 
           <Text style={styles.footnote}>
             A unique Tracking ID and QR were generated for{' '}
-            <Text style={styles.footnoteStrong}>each physical parcel</Text>. This is one shared system —
+            <Text style={styles.footnoteStrong}>each physical parcel</Text>. This is one shared system;
             the same shipment is instantly available in the mobile field app for printing or scanning.
           </Text>
 

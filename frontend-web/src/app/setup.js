@@ -322,7 +322,7 @@ export default function SetupScreen() {
                 onPress={handleNextStep}
               >
                 <Text style={styles.primaryButtonText}>
-                  CONTINUE TO COMPANY BRANDING →
+                  CONTINUE TO COMPANY BRANDING
                 </Text>
               </TouchableOpacity>
             </View>
@@ -414,7 +414,7 @@ export default function SetupScreen() {
                 <View style={styles.previewBody}>
                   <Text style={styles.previewCompanyName}>{companyName.trim() || 'TC & CT Integrated Logistics'}</Text>
                   <Text style={styles.previewCompanyDetails}>
-                    {companyAddress.trim() || 'Labo, Camarines Norte'} · {companyContact.trim() || '0917-555-0000'}
+                    {companyAddress.trim() || 'Labo, Camarines Norte'} | {companyContact.trim() || '0917-555-0000'}
                   </Text>
                   <Text style={styles.previewEmail}>{billingEmail.trim() || 'billing@tnllogistics.ph'}</Text>
                 </View>
@@ -428,7 +428,7 @@ export default function SetupScreen() {
                   onPress={handlePreviousStep}
                   disabled={isSubmitting}
                 >
-                  <Text style={styles.secondaryButtonText}>← BACK</Text>
+                  <Text style={styles.secondaryButtonText}>BACK</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -456,7 +456,7 @@ export default function SetupScreen() {
           {/* Security Footer Notice */}
           <View style={[styles.footerNote, isCompactHeight && styles.footerNoteCompact]}>
             <Text style={styles.footerText}>
-              System Provisioning · Single Administrator Invariant Enforcement
+              System Provisioning: Single Administrator Invariant Enforcement
             </Text>
           </View>
         </View>

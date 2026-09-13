@@ -24,7 +24,7 @@ export const getNearestCycleDay = getNearestThursday;
 
 /**
  * Format cycle date range from explicit start and end dates.
- * Example: "Thursday, Aug 28 – Sep 3, 2026" or "Monday, Sep 8 – 14, 2026"
+ * Example: "Thursday, Aug 28-Sep 3, 2026" or "Monday, Sep 8-14, 2026"
  * @param {Date|string} startDate
  * @param {Date|string} endDate
  * @returns {string}
@@ -43,15 +43,15 @@ export function formatCycleDateRangeFromDates(startDate, endDate) {
 
   if (startYear === endYear) {
     if (startMonth === endMonth) {
-      return `${dayName}, ${startMonth} ${startDay} – ${endDay}, ${endYear}`;
+      return `${dayName}, ${startMonth} ${startDay}-${endDay}, ${endYear}`;
     }
-    return `${dayName}, ${startMonth} ${startDay} – ${endMonth} ${endDay}, ${endYear}`;
+    return `${dayName}, ${startMonth} ${startDay}-${endMonth} ${endDay}, ${endYear}`;
   }
-  return `${dayName}, ${startMonth} ${startDay}, ${startYear} – ${endMonth} ${endDay}, ${endYear}`;
+  return `${dayName}, ${startMonth} ${startDay}, ${startYear}-${endMonth} ${endDay}, ${endYear}`;
 }
 
 /**
- * Format a cycle date into "DayOfWeek, MMM D – D, YYYY" (defaults to 7-day lookback).
+ * Format a cycle date into "DayOfWeek, MMM D-D, YYYY" (defaults to 7-day lookback).
  * @param {Date} cycleEndDate
  * @returns {string}
  */
@@ -63,7 +63,7 @@ export function formatCycleDateRange(cycleEndDate) {
 }
 
 /**
- * Format a Thursday cycle date into "MMM D – D, YYYY" or "MMM D – MMM D, YYYY"
+ * Format a Thursday cycle date into "MMM D-D, YYYY" or "MMM D-MMM D, YYYY"
  * @param {Date|string} thursdayDate
  * @returns {string}
  */
@@ -81,11 +81,11 @@ export function formatShortCycleDateRange(thursdayDate) {
 
   if (startYear === endYear) {
     if (startMonth === endMonth) {
-      return `${startMonth} ${startDay} – ${endDay}, ${endYear}`;
+      return `${startMonth} ${startDay}-${endDay}, ${endYear}`;
     }
-    return `${startMonth} ${startDay} – ${endMonth} ${endDay}, ${endYear}`;
+    return `${startMonth} ${startDay}-${endMonth} ${endDay}, ${endYear}`;
   }
-  return `${startMonth} ${startDay}, ${startYear} – ${endMonth} ${endDay}, ${endYear}`;
+  return `${startMonth} ${startDay}, ${startYear}-${endMonth} ${endDay}, ${endYear}`;
 }
 
 /**

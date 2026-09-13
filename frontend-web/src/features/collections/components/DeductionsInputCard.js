@@ -93,7 +93,7 @@ export default function DeductionsInputCard({
         <Text style={[styles.subtext, isExceedingTotal && styles.subtextError]}>
           {isExceedingTotal
             ? `Cannot exceed total charges (₱${Number(maxDeduction).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
-            : 'Separate from original charges — max 2 decimals'}
+            : 'Separate from original charges (max 2 decimals)'}
         </Text>
       </View>
 
@@ -151,7 +151,7 @@ export default function DeductionsInputCard({
                   ]}
                   numberOfLines={1}
                 >
-                  {collectedBy || '— select collector —'}
+                  {collectedBy || 'Select collector'}
                 </Text>
                 <Text style={styles.dropdownCaret}>▾</Text>
               </TouchableOpacity>
@@ -162,7 +162,7 @@ export default function DeductionsInputCard({
                     style={styles.dropdownItem}
                     onPress={() => handleSelectCollector('')}
                   >
-                    <Text style={styles.dropdownItemTextMuted}>— None (Leave blank) —</Text>
+                    <Text style={styles.dropdownItemTextMuted}>None (Leave blank)</Text>
                   </TouchableOpacity>
 
                   {collectors.map((c) => (
@@ -183,7 +183,7 @@ export default function DeductionsInputCard({
                     style={[styles.dropdownItem, styles.dropdownItemDivider]}
                     onPress={() => handleSelectCollector('__OTHER__')}
                   >
-                    <Text style={styles.dropdownItemTextSpecial}>+ Other (Specify custom name)</Text>
+                    <Text style={styles.dropdownItemTextSpecial}>Other (Specify custom name)</Text>
                   </TouchableOpacity>
                 </View>
               )}

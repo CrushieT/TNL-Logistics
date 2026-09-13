@@ -112,7 +112,7 @@ export default function BatchSoaModal({
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <Text style={styles.confirmBtnText}>
-                  Generate {eligibleClients.length} SOAs →
+                  Generate {eligibleClients.length} SOAs
                 </Text>
               )}
             </Pressable>

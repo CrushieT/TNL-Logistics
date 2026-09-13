@@ -13,7 +13,7 @@ export default function LabelPreview({
   contents = 'General Goods',
   shipmentId = 'SHP-2026-001',
   client = 'Northbridge Trading',
-  route = 'Manila → TNL Baguio',
+  route = 'Manila to TNL Baguio',
   total = 500,
 }) {
   return (
@@ -68,7 +68,7 @@ export default function LabelPreview({
           </Text>
           <Text style={styles.footerItem}>
             <Text style={styles.footerMuted}>Route: </Text>
-            {route || 'Manila → TNL Baguio'}
+            {route || 'Manila to TNL Baguio'}
           </Text>
         </View>
         <View style={styles.totalRow}>

@@ -72,7 +72,7 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
       <View style={styles.backdrop}>
         <View style={styles.dialog}>
           <View style={styles.header}>
-            <Text style={styles.title}>EDIT STAFF ACCOUNT — {userToEdit.userId}</Text>
+            <Text style={styles.title}>EDIT STAFF ACCOUNT: {userToEdit.userId}</Text>
             <Pressable onPress={onClose} style={styles.closeBtn}>
               <Text style={styles.closeBtnText}>✕</Text>
             </Pressable>

@@ -34,7 +34,7 @@ export default function TrackingLogsMetrics({ metrics, loading }) {
         <View key={idx} style={styles.metricCard}>
           <Text style={styles.metricLabel}>{stat.label}</Text>
           <Text style={[styles.metricValue, stat.color ? { color: stat.color } : null]}>
-            {loading && !metrics ? '—' : stat.value}
+            {loading && !metrics ? '-' : stat.value}
           </Text>
         </View>
       ))}

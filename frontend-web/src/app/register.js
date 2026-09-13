@@ -117,7 +117,7 @@ export default function RegisterShipmentScreen() {
         />
         <Toast
           visible={toastVisible}
-          message={`✓ Shipment ${result.shipmentId} registered · ${result.units.length} QR codes generated`}
+          message={`Shipment ${result.shipmentId} registered | ${result.units.length} QR codes generated`}
           onDismiss={() => setToastVisible(false)}
         />
       </AppShell>
@@ -126,7 +126,7 @@ export default function RegisterShipmentScreen() {
 
   return (
     <AppShell>
-      <PageHeader eyebrow="Scenario 1 · Encode & Identify" title="Register Shipment" />
+      <PageHeader eyebrow="Scenario 1: Encode & Identify" title="Register Shipment" />
 
       {/* Error Alert Banner */}
       {errorMessage ? (

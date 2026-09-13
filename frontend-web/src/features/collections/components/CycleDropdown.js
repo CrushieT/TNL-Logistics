@@ -1,3 +1,4 @@
+import CheckIcon from '../../../components/common/CheckIcon';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -112,7 +113,7 @@ export default function CycleDropdown({
                     {cycle.label || cycle.isoDate}
                   </Text>
                   {isSelected && (
-                    <Text style={styles.checkmark}>✓</Text>
+                    <CheckIcon size={12} color={colors.accent} style={{ marginLeft: 6 }} />
                   )}
                 </Pressable>
               );

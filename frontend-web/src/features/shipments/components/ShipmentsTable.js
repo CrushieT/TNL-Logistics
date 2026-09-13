@@ -81,7 +81,7 @@ export default function ShipmentsTable({
             </View>
             <View style={[styles.cell, { flex: COLUMNS[7].flex, alignItems: 'flex-end' }]}>
               <Pressable onPress={() => onView?.(s)}>
-                <Text style={styles.viewLink}>View →</Text>
+                <Text style={styles.viewLink}>View</Text>
               </Pressable>
             </View>
           </View>
@@ -93,7 +93,7 @@ export default function ShipmentsTable({
         <View style={styles.paginationMeta}>
           <Text style={styles.paginationText}>
             Showing <Text style={styles.paginationStrong}>{shipments.length}</Text> of{' '}
-            <Text style={styles.paginationStrong}>{totalElements}</Text> shipments · Page{' '}
+            <Text style={styles.paginationStrong}>{totalElements}</Text> shipments | Page{' '}
             <Text style={styles.paginationStrong}>{page + 1}</Text> of{' '}
             <Text style={styles.paginationStrong}>{totalPages || 1}</Text>
           </Text>
@@ -117,7 +117,7 @@ export default function ShipmentsTable({
 
           {/* Previous Button */}
           <Button
-            label="← Previous"
+            label="Previous"
             variant="secondary"
             disabled={page <= 0 || loading}
             onPress={() => onPageChange?.(page - 1)}
@@ -126,7 +126,7 @@ export default function ShipmentsTable({
 
           {/* Next Button */}
           <Button
-            label="Next →"
+            label="Next"
             variant="secondary"
             disabled={page >= totalPages - 1 || loading}
             onPress={() => onPageChange?.(page + 1)}
