@@ -4,10 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tnl.logistics.dto.LoginRequest;
 import com.tnl.logistics.dto.LoginResponse;
 import com.tnl.logistics.dto.PasswordChangeRequest;
+import com.tnl.logistics.dto.PasswordVerificationRequest;
 import com.tnl.logistics.model.AppUser;
 import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.service.LoginRateLimiterService;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -120,13 +123,32 @@ public class SecurityIntegrationTest {
                         .header("Authorization", adminToken))
                 .andExpect(status().isForbidden());
 
-        // 6. Password Change with correct current password succeeds
+        // 6a. Password Change with same password fails (400 Bad Request)
+        PasswordChangeRequest samePasswordRequest = new PasswordChangeRequest("admin123", "admin123");
+        mockMvc.perform(post("/api/v1/auth/password-change")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(samePasswordRequest)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("New password must be different from current password."));
+
+        // 6b. Password Change with short password fails (400 Bad Request)
+        PasswordChangeRequest shortPasswordRequest = new PasswordChangeRequest("admin123", "short");
+        mockMvc.perform(post("/api/v1/auth/password-change")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(shortPasswordRequest)))
+                .andExpect(status().isBadRequest());
+
+        // 6c. Password Change with correct current password succeeds and returns refreshed token
         PasswordChangeRequest changeRequest = new PasswordChangeRequest("admin123", "newAdmin123");
         mockMvc.perform(post("/api/v1/auth/password-change")
                         .header("Authorization", adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(changeRequest)))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").exists())
+                .andExpect(jsonPath("$.message").value("Password updated successfully"));
 
         // Verify login with new password works
         LoginRequest newLogin = new LoginRequest("admin", "newAdmin123");
@@ -138,6 +160,70 @@ public class SecurityIntegrationTest {
 
         LoginResponse newResponseDto = objectMapper.readValue(newLoginResult.getResponse().getContentAsString(), LoginResponse.class);
         assertFalse(newResponseDto.isMustChangePassword()); // Changed to false on successful update
+    }
+
+    @Test
+    public void testVerifyPasswordEndpoint() throws Exception {
+        LoginRequest loginRequest = new LoginRequest("admin", "admin123");
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        LoginResponse loginResponse = objectMapper.readValue(loginResult.getResponse().getContentAsString(), LoginResponse.class);
+        String adminToken = "Bearer " + loginResponse.getToken();
+
+        // 1. Unauthenticated call fails with 403
+        mockMvc.perform(post("/api/v1/auth/verify-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PasswordVerificationRequest("admin123"))))
+                .andExpect(status().isForbidden());
+
+        // 2. Incorrect password returns 400 Bad Request
+        mockMvc.perform(post("/api/v1/auth/verify-password")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PasswordVerificationRequest("wrongPassword"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Incorrect administrator password."));
+
+        // 3. Blank password returns 400 Bad Request via @NotBlank
+        mockMvc.perform(post("/api/v1/auth/verify-password")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PasswordVerificationRequest(""))))
+                .andExpect(status().isBadRequest());
+
+        // 4. Correct password returns 200 OK with valid: true
+        mockMvc.perform(post("/api/v1/auth/verify-password")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PasswordVerificationRequest("admin123"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(true))
+                .andExpect(jsonPath("$.message").value("Password verified successfully"));
+
+        // 5. Rate limiter blocks after 5 failed verification attempts from same IP
+        String testIp = "192.168.1.99";
+        for (int i = 1; i <= 5; i++) {
+            mockMvc.perform(post("/api/v1/auth/verify-password")
+                            .header("Authorization", adminToken)
+                            .with(req -> { req.setRemoteAddr(testIp); return req; })
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(new PasswordVerificationRequest("wrongPassword"))))
+                    .andExpect(status().isBadRequest());
+        }
+
+        // 6th attempt is blocked with 429 Too Many Requests
+        mockMvc.perform(post("/api/v1/auth/verify-password")
+                        .header("Authorization", adminToken)
+                        .with(req -> { req.setRemoteAddr(testIp); return req; })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PasswordVerificationRequest("admin123"))))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.retryAfterSeconds").exists());
     }
 
     @Test

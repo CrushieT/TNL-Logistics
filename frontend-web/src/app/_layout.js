@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Stack, usePathname, useRouter, useRootNavigationState } from 'expo-router';
-import { isAuthenticated, validateSession, getCurrentUser } from '../services/api/client';
+import { isAuthenticated, validateSession, getCurrentUser, checkFirstBootStatus } from '../services/api/client';
 
 const ADMIN_ONLY_ROUTES = ['/users', '/settings'];
 
@@ -18,6 +18,29 @@ export default function RootLayout() {
     let isCancelled = false;
 
     async function verifyAuth() {
+      // Check first-boot status to determine if system onboarding is needed
+      const isFirstBoot = await checkFirstBootStatus();
+      if (isCancelled) return;
+
+      const isSetupPage = pathname === '/setup';
+
+      if (isFirstBoot) {
+        if (!isSetupPage) {
+          router.replace('/setup');
+        }
+        return;
+      }
+
+      // If already initialized and user navigates to /setup, bounce to login or dashboard
+      if (isSetupPage) {
+        if (isAuthenticated()) {
+          router.replace('/');
+        } else {
+          router.replace('/login');
+        }
+        return;
+      }
+
       const authenticated = isAuthenticated();
       const isLoginPage = pathname === '/login';
 
@@ -73,6 +96,7 @@ export default function RootLayout() {
       }}
     >
       <Stack.Screen name="+not-found" options={{ title: 'Page Not Found' }} />
+      <Stack.Screen name="setup" />
       <Stack.Screen name="login" />
       <Stack.Screen name="index" />
       <Stack.Screen name="register" />

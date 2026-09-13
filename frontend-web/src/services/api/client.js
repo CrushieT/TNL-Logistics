@@ -105,6 +105,50 @@ export async function login(username, password) {
   return response.data;
 }
 
+export async function checkFirstBootStatus() {
+  try {
+    const response = await axios.get(`${BASE_URL}/auth/first-boot-status`);
+    return Boolean(response.data?.isFirstBoot);
+  } catch (error) {
+    return false;
+  }
+}
+
+export async function registerFirstBootAdmin({
+  fullName,
+  username,
+  password,
+  confirmPassword,
+  companyName,
+  companyAddress,
+  companyContact,
+  billingEmail,
+}) {
+  const response = await axios.post(`${BASE_URL}/auth/first-boot-admin`, {
+    fullName,
+    username,
+    password,
+    confirmPassword,
+    companyName,
+    companyAddress,
+    companyContact,
+    billingEmail,
+  });
+
+  const { token, userId, role, mustChangePassword } = response.data;
+
+  setToken(token);
+  setCurrentUser({
+    userId,
+    username,
+    role,
+    fullName,
+    mustChangePassword,
+  });
+
+  return response.data;
+}
+
 export function logout() {
   clearToken();
   clearCurrentUser();
@@ -180,6 +224,24 @@ export async function validateSession() {
     clearCurrentUser();
     return false;
   }
+}
+
+export async function changePassword(oldPassword, newPassword) {
+  const response = await apiClient.post('/auth/password-change', {
+    oldPassword,
+    newPassword,
+  });
+
+  if (response.data?.token) {
+    setToken(response.data.token);
+  }
+
+  return response.data;
+}
+
+export async function verifyPassword(password) {
+  const response = await apiClient.post('/auth/verify-password', { password });
+  return response.data;
 }
 
 export default apiClient;

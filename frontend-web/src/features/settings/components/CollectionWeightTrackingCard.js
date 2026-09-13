@@ -125,8 +125,7 @@ export default function CollectionWeightTrackingCard({
 
 const styles = StyleSheet.create({
   card: {
-    flex: 1,
-    minWidth: 320,
+    width: '100%',
   },
   fieldWrap: {
     marginBottom: spacing.md,

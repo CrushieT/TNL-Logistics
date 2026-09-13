@@ -15,7 +15,10 @@ import {
   updateSystemSettings,
   CompanyBrandingCard,
   CollectionWeightTrackingCard,
+  AdminSecurityCard,
+  ConfirmPasswordModal,
 } from '../features/settings';
+import { verifyPassword } from '../services/api/client';
 import { subscribeRealtimeEvents } from '../features/shipments';
 import { colors, fonts, spacing, radius, type } from '../theme';
 
@@ -24,8 +27,8 @@ export default function SettingsScreen() {
   const isDesktop = width >= 1024;
 
   const [form, setForm] = useState({
-    companyName: 'TNL Logistics',
-    companyAddress: 'Manila Central Hub',
+    companyName: 'TC & CT Integrated Logistics',
+    companyAddress: 'Labo, Camarines Norte',
     companyContact: '0917-555-0000',
     billingEmail: 'billing@tnllogistics.ph',
     collectionDay: 'THURSDAY',
@@ -42,6 +45,7 @@ export default function SettingsScreen() {
   const [toastMessage, setToastMessage] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [isSavePasswordModalVisible, setIsSavePasswordModalVisible] = useState(false);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -134,10 +138,15 @@ export default function SettingsScreen() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = async () => {
+  const handleRequestSave = () => {
     if (!validate()) {
       return;
     }
+    setIsSavePasswordModalVisible(true);
+  };
+
+  const handleConfirmSave = async (password) => {
+    await verifyPassword(password);
 
     try {
       setSaving(true);
@@ -166,11 +175,13 @@ export default function SettingsScreen() {
         }));
       }
 
+      setIsSavePasswordModalVisible(false);
       setSuccessMessage('Settings updated successfully.');
       setToastMessage('System settings saved.');
     } catch (err) {
       const msg = err?.response?.data?.message || err?.message || 'Failed to save system settings.';
       setErrorMessage(msg);
+      throw err;
     } finally {
       setSaving(false);
     }
@@ -201,22 +212,43 @@ export default function SettingsScreen() {
           </View>
         ) : (
           <View style={[styles.cardsGrid, !isDesktop && styles.cardsGridStacked]}>
-            <CompanyBrandingCard
-              form={form}
-              errors={errors}
-              onChangeField={handleChangeField}
-            />
+            {/* Left Column: Company Branding + Admin Security */}
+            <View style={styles.leftColumn}>
+              <CompanyBrandingCard
+                form={form}
+                errors={errors}
+                onChangeField={handleChangeField}
+              />
 
-            <CollectionWeightTrackingCard
-              form={form}
-              errors={errors}
-              onChangeField={handleChangeField}
-              onSave={handleSave}
-              saving={saving}
-            />
+              <AdminSecurityCard />
+            </View>
+
+            {/* Right Column: Operational & Tracking Configuration */}
+            <View style={styles.rightColumn}>
+              <CollectionWeightTrackingCard
+                form={form}
+                errors={errors}
+                onChangeField={handleChangeField}
+                onSave={handleRequestSave}
+                saving={saving}
+              />
+            </View>
           </View>
         )}
       </ScrollView>
+
+      {/* Save Settings Password Authorization Modal */}
+      <ConfirmPasswordModal
+        visible={isSavePasswordModalVisible}
+        title="AUTHORIZE SYSTEM SETTINGS UPDATE"
+        warningTitle="CONFIGURATION AUTHORIZATION"
+        description="Updating global system configuration impacts organization-wide operations, collection cycles, and volumetric billing. Enter your administrator password to authorize and persist changes."
+        passwordLabel="ADMINISTRATOR PASSWORD *"
+        confirmLabel="Save Settings"
+        confirmVariant="primary"
+        onClose={() => setIsSavePasswordModalVisible(false)}
+        onConfirm={handleConfirmSave}
+      />
 
       {toastMessage ? (
         <Toast
@@ -252,6 +284,15 @@ const styles = StyleSheet.create({
   cardsGridStacked: {
     flexDirection: 'column',
     gap: spacing.lg,
+  },
+  leftColumn: {
+    flex: 1,
+    minWidth: 320,
+    gap: spacing.xl,
+  },
+  rightColumn: {
+    flex: 1,
+    minWidth: 320,
   },
   successBanner: {
     backgroundColor: '#F0FDF4',

@@ -36,6 +36,7 @@ tnl-logistics/
 │   │   ├── app/                     # File-based routes
 │   │   │   ├── _layout.js           # Root Stack navigator & Central Route Guard
 │   │   │   ├── +not-found.js        # Catch-all 404 Route Not Found operations card
+│   │   │   ├── setup.js             # Screen 01b First Boot Admin Setup Wizard
 │   │   │   ├── login.js             # Screen 01 Desktop Login with TC & CT branding
 │   │   │   ├── index.js             # Dashboard
 │   │   │   ├── register.js          # Register Shipment (form + result view)
@@ -57,6 +58,7 @@ tnl-logistics/
 │   │   │   └── settings.js          # Screen 28 System Settings
 │   │   ├── components/              # Shared design system (common/ atoms, layout/ AppShell)
 │   │   ├── features/                # Domain feature modules (shipments, vehicles, clients, waybills, payments, collections, tracking-logs, reports, users, settings)
+│   │   │   └── settings/            # AdminSecurityCard, ConfirmPasswordModal, settings components
 │   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sseClient.js)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
 │   │   └── utils/                   # Pure utilities (qr.js in-memory vector QR encoder)

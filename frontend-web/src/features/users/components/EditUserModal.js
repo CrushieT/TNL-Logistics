@@ -57,7 +57,7 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
         username: username.trim(),
         role,
         staffType: role === 'FIELD_STAFF' ? staffType : undefined,
-        active,
+        active: userToEdit.role === 'ADMIN' ? true : active,
       }, userToEdit.userId);
       onClose();
     } catch (err) {
@@ -155,50 +155,63 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
 
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>ACCOUNT STATUS</Text>
-              <View style={styles.pillRow}>
-                {[{ label: 'Active', value: true }, { label: 'Inactive', value: false }].map((opt) => (
-                  <Pressable
-                    key={String(opt.value)}
-                    style={[styles.pill, active === opt.value && styles.pillActive]}
-                    onPress={() => setActive(opt.value)}
-                  >
-                    <Text style={[styles.pillText, active === opt.value && styles.pillTextActive]}>
-                      {opt.label}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
+              {userToEdit.role === 'ADMIN' ? (
+                <View style={styles.readOnlyRoleBox}>
+                  <View style={[styles.pill, styles.pillActive]}>
+                    <Text style={[styles.pillText, styles.pillTextActive]}>Active</Text>
+                  </View>
+                  <Text style={styles.readOnlyRoleHint}>
+                    System administrator is permanently active and cannot be deactivated.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.pillRow}>
+                  {[{ label: 'Active', value: true }, { label: 'Inactive', value: false }].map((opt) => (
+                    <Pressable
+                      key={String(opt.value)}
+                      style={[styles.pill, active === opt.value && styles.pillActive]}
+                      onPress={() => setActive(opt.value)}
+                    >
+                      <Text style={[styles.pillText, active === opt.value && styles.pillTextActive]}>
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
             </View>
 
             {/* Security Shortcuts */}
-            <View style={styles.securitySection}>
-              <Text style={styles.fieldLabel}>SECURITY & CREDENTIALS</Text>
-              <Text style={styles.securityText}>
-                Passwords and Mobile PINs are managed through dedicated quick-action dialogs.
-              </Text>
-              <View style={styles.securityBtnRow}>
-                <Pressable
-                  style={styles.securityBtn}
-                  onPress={() => {
-                    onClose();
-                    onRequestResetPassword?.(userToEdit);
-                  }}
-                >
-                  <Text style={styles.securityBtnText}>Reset Password</Text>
-                </Pressable>
-                {role !== 'ADMIN' ? (
+            {userToEdit.role !== 'ADMIN' && (
+              <View style={styles.securitySection}>
+                <Text style={styles.fieldLabel}>SECURITY & CREDENTIALS</Text>
+                <Text style={styles.securityText}>
+                  Passwords and Mobile PINs are managed through dedicated quick-action dialogs.
+                </Text>
+                <View style={styles.securityBtnRow}>
                   <Pressable
                     style={styles.securityBtn}
                     onPress={() => {
                       onClose();
-                      onRequestResetPin?.(userToEdit);
+                      onRequestResetPassword?.(userToEdit);
                     }}
                   >
-                    <Text style={styles.securityBtnText}>Reset Mobile PIN</Text>
+                    <Text style={styles.securityBtnText}>Reset Password</Text>
                   </Pressable>
-                ) : null}
+                  {role !== 'ADMIN' ? (
+                    <Pressable
+                      style={styles.securityBtn}
+                      onPress={() => {
+                        onClose();
+                        onRequestResetPin?.(userToEdit);
+                      }}
+                    >
+                      <Text style={styles.securityBtnText}>Reset Mobile PIN</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               </View>
-            </View>
+            )}
           </ScrollView>
 
           <View style={styles.footer}>

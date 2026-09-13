@@ -82,7 +82,7 @@ Unlike simplistic CRUD apps that conflate tracking and accounting into a single 
 | **Phase 2** | **Status Flow, Real-Time SSE, Fleet & Client Management** | `[COMPLETED]` | Sequential 5-state transition engine, live SSE stream, vehicle fleet CRUD (`VH-XXX`), client directory & profile view (`CL-XXX`), smart deletion, composite indexing, and batch aggregation. |
 | **Phase 3** | **Waybills & Freight Manifest Handover** | `[COMPLETED]` | `WYB-YYYY-XXXX` auto-numbering, 4-state lifecycle (`Generated` → `Sent to Hauler` → `Signed/Completed`), and print-ready A4 3rd-party hauler manifest. |
 | **Phase 4** | **Billing, Collections & Statement of Account** | `[COMPLETED]` | Payment ledger (`/payments`), Thursday weekly collections consolidation (`/weekly-collections`), `SOA-YYYY-XXX-WXX` multi-page statement preview (`/statements`), isolated print architecture (`/statements/print`), deduction management, and dynamic active cycle filtering. |
-| **Phase 5** | **Web Console Administration & Reports** | `[COMPLETED]` | Desktop login with branded artwork, route guarding, and rate limiting (`[COMPLETED]`); live operational dashboard metrics (`[COMPLETED]`); tracking logs audit feed (`[COMPLETED]`); operational & financial reports screen (`[COMPLETED]`); user & staff management (`[COMPLETED]`); system settings with dynamic collection day, volumetric divisor calculation, branding propagation, and real-time SSE updates (`[COMPLETED]`). |
+| **Phase 5** | **Web Console Administration & Reports** | `[COMPLETED]` | Desktop login with branded artwork, route guarding, and rate limiting (`[COMPLETED]`); live operational dashboard metrics (`[COMPLETED]`); tracking logs audit feed (`[COMPLETED]`); operational & financial reports screen (`[COMPLETED]`); user & staff management (`[COMPLETED]`); system settings with dynamic collection day, volumetric divisor calculation, branding propagation, and real-time SSE updates (`[COMPLETED]`); first-boot admin registration, 2-step setup wizard, self-service credential management, and rate-limited password authorization modals (`[COMPLETED]`). |
 | **Phase 6** | **Role-Aware Mobile Courier Portal** | `[UPCOMING]` | Mobile PIN auth with role branching (scan-only field staff vs authorized office mobile), camera QR scanner, and Bluetooth thermal printer integration. |
 
 ---
@@ -105,7 +105,7 @@ logistics/
 │
 ├── frontend-web/                          # Expo / React Native Web Admin Portal
 │   ├── src/
-│   │   ├── app/                           # Expo Router Screens (/, /shipments, /vehicles, /clients, /payments, /weekly-collections, /statements, /tracking-logs, /reports, /users, /settings)
+│   │   ├── app/                           # Expo Router Screens (/, /setup, /shipments, /vehicles, /clients, /payments, /weekly-collections, /statements, /tracking-logs, /reports, /users, /settings)
 │   │   ├── components/                    # Common UI Components (Cards, Buttons, Badges, Layout Shell)
 │   │   ├── features/                      # Domain Features (shipments, vehicles, clients, payments, collections, tracking-logs, reports, users, settings)
 │   │   ├── services/api/                  # Axios Client with Self-Healing JWT Auto-Auth & SSE Event Subscriptions
@@ -150,6 +150,10 @@ When field staff scan a parcel with their phone, an append-only event is committ
 | Endpoint | Method | Role | Description |
 | :--- | :---: | :---: | :--- |
 | `/api/v1/auth/login` | `POST` | Public | Authenticate user with in-memory rate limiting (5 attempts/60s) and receive JWT |
+| `/api/v1/auth/first-boot-status` | `GET` | Public | Proactively check if primary administrator has been registered |
+| `/api/v1/auth/first-boot-admin` | `POST` | Public | One-time bootstrap registration of primary administrator with company branding |
+| `/api/v1/auth/verify-password` | `POST` | Authenticated | Verify administrator password with rate limiting (5 attempts/60s) |
+| `/api/v1/auth/password-change` | `POST` | Authenticated | Self-service password change with token refresh and session revocation |
 | `/api/v1/shipments` | `POST` | Office/Admin | Register shipment with parcels, pricing, and QR codes |
 | `/api/v1/shipments` | `GET` | All Staff | Paginated shipments search with status & payment filters |
 | `/api/v1/shipments/{id}` | `GET` | All Staff | Detailed shipment view with billable weight & dimension specs |

@@ -16,7 +16,7 @@ export default function CompanyBrandingCard({
         required
         value={form.companyName}
         onChangeText={(val) => onChangeField('companyName', val)}
-        placeholder="TNL Logistics"
+        placeholder="TC & CT Integrated Logistics"
         error={errors.companyName}
         style={styles.field}
       />
@@ -25,7 +25,7 @@ export default function CompanyBrandingCard({
         required
         value={form.companyAddress}
         onChangeText={(val) => onChangeField('companyAddress', val)}
-        placeholder="Manila Central Hub"
+        placeholder="Labo, Camarines Norte"
         error={errors.companyAddress}
         style={styles.field}
       />
@@ -54,8 +54,7 @@ export default function CompanyBrandingCard({
 
 const styles = StyleSheet.create({
   card: {
-    flex: 1,
-    minWidth: 320,
+    width: '100%',
   },
   field: {
     marginBottom: spacing.md,
