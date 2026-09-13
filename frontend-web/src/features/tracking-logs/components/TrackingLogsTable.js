@@ -2,6 +2,7 @@ import React from 'react';
 import {
   View,
   Text,
+  Pressable,
   StyleSheet,
   ActivityIndicator,
   Platform,
@@ -73,14 +74,14 @@ export default function TrackingLogsTable({
                 {/* Timestamp */}
                 <View style={styles.colTimestamp}>
                   <Text style={styles.timestampText}>
-                    {log.formattedTimestamp || '—'}
+                    {log.formattedTimestamp || '-'}
                   </Text>
                 </View>
 
                 {/* Event Name + Vehicle Badge if applicable */}
                 <View style={[styles.colEvent, styles.eventContainer]}>
                   <Text style={styles.eventText}>
-                    {log.statusDisplay || log.status || '—'}
+                    {log.statusDisplay || log.status || '-'}
                   </Text>
                   {log.vehiclePlateNumber ? (
                     <View style={styles.vehicleBadge}>
@@ -101,7 +102,7 @@ export default function TrackingLogsTable({
                       <Text style={styles.trackingIdText}>{log.trackingId}</Text>
                     </Pressable>
                   ) : (
-                    <Text style={styles.trackingIdText}>—</Text>
+                    <Text style={styles.trackingIdText}>-</Text>
                   )}
                 </View>
 
@@ -115,7 +116,7 @@ export default function TrackingLogsTable({
                 {/* Staff Member */}
                 <View style={styles.colStaff}>
                   <Text style={styles.staffText}>
-                    {log.staffName || log.staffUsername || '—'}
+                    {log.staffName || log.staffUsername || '-'}
                   </Text>
                 </View>
               </View>
@@ -131,7 +132,7 @@ export default function TrackingLogsTable({
             <Text style={styles.paginationText}>
               Showing <Text style={styles.paginationStrong}>{logs.length}</Text> of{' '}
               <Text style={styles.paginationStrong}>{totalElements}</Text> events
-              <Text style={styles.paginationDot}> · </Text>
+              <Text style={styles.paginationDot}> | </Text>
               Page <Text style={styles.paginationStrong}>{page + 1}</Text> of{' '}
               <Text style={styles.paginationStrong}>{totalPages || 1}</Text>
             </Text>
@@ -154,7 +155,7 @@ export default function TrackingLogsTable({
             ) : null}
 
             <Button
-              label="← Previous"
+              label="Previous"
               variant="secondary"
               disabled={page <= 0 || loading}
               onPress={() => onPageChange?.(page - 1)}
@@ -162,7 +163,7 @@ export default function TrackingLogsTable({
             />
 
             <Button
-              label="Next →"
+              label="Next"
               variant="secondary"
               disabled={page >= totalPages - 1 || loading}
               onPress={() => onPageChange?.(page + 1)}

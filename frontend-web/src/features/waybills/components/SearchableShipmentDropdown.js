@@ -32,7 +32,7 @@ export default function SearchableShipmentDropdown({
   // Synchronize input text with selected shipment when popover is closed
   useEffect(() => {
     if (!isOpen && currentSelected) {
-      setQuery(`${currentSelected.shipmentId} · ${currentSelected.recipientName} (${currentSelected.clientName})`);
+      setQuery(`${currentSelected.shipmentId} | ${currentSelected.recipientName} (${currentSelected.clientName})`);
     } else if (!isOpen && !selectedShipmentId) {
       setQuery('');
     }
@@ -44,7 +44,7 @@ export default function SearchableShipmentDropdown({
 
     // If query is the current selected string representation, return all shipments
     const selectedDisplay = currentSelected
-      ? `${currentSelected.shipmentId} · ${currentSelected.recipientName} (${currentSelected.clientName})`
+      ? `${currentSelected.shipmentId} | ${currentSelected.recipientName} (${currentSelected.clientName})`
       : '';
 
     const cleanQuery = query.trim().toLowerCase();
@@ -79,7 +79,7 @@ export default function SearchableShipmentDropdown({
     blurTimeoutRef.current = setTimeout(() => {
       setIsOpen(false);
       if (currentSelected) {
-        setQuery(`${currentSelected.shipmentId} · ${currentSelected.recipientName} (${currentSelected.clientName})`);
+        setQuery(`${currentSelected.shipmentId} | ${currentSelected.recipientName} (${currentSelected.clientName})`);
       }
     }, 200);
   };
@@ -88,7 +88,7 @@ export default function SearchableShipmentDropdown({
     if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
     setIsOpen(false);
     setIsFocused(false);
-    setQuery(`${shipment.shipmentId} · ${shipment.recipientName} (${shipment.clientName})`);
+    setQuery(`${shipment.shipmentId} | ${shipment.recipientName} (${shipment.clientName})`);
     onSelectShipment?.(shipment.shipmentId);
   };
 
@@ -101,7 +101,7 @@ export default function SearchableShipmentDropdown({
     if (isOpen) {
       setIsOpen(false);
       if (currentSelected) {
-        setQuery(`${currentSelected.shipmentId} · ${currentSelected.recipientName} (${currentSelected.clientName})`);
+        setQuery(`${currentSelected.shipmentId} | ${currentSelected.recipientName} (${currentSelected.clientName})`);
       }
     } else {
       setIsOpen(true);
@@ -197,9 +197,9 @@ export default function SearchableShipmentDropdown({
                         <Text style={[styles.shipmentIdText, isSelected && styles.shipmentIdTextSelected]}>
                           {s.shipmentId}
                         </Text>
-                        <Text style={styles.dotSeparator}>·</Text>
+                        <Text style={styles.dotSeparator}>|</Text>
                         <Text style={styles.recipientNameText} numberOfLines={1}>
-                          {s.recipientName || '—'}
+                          {s.recipientName || '-'}
                         </Text>
                       </View>
 
@@ -218,10 +218,10 @@ export default function SearchableShipmentDropdown({
                     {/* Bottom Row: Client, Route, Units */}
                     <View style={styles.itemBottomRow}>
                       <Text style={styles.itemSubText} numberOfLines={1}>
-                        Client: <Text style={styles.itemSubStrong}>{s.clientName || '—'}</Text>
-                        {'  ·  '}
-                        Route: <Text style={styles.itemSubStrong}>{s.destination || '—'}</Text>
-                        {'  ·  '}
+                        Client: <Text style={styles.itemSubStrong}>{s.clientName || '-'}</Text>
+                        {'  |  '}
+                        Route: <Text style={styles.itemSubStrong}>{s.destination || '-'}</Text>
+                        {'  |  '}
                         Qty: <Text style={styles.itemSubStrong}>{s.quantity || 1} units</Text>
                       </Text>
 

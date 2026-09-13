@@ -67,10 +67,10 @@ export default function DeactivateVehicleModal({ visible, vehicle, onClose, onCo
                 <Text style={styles.monoText}>{vehicle.plateNumber}</Text>):
               </Text>
               <Text style={styles.bulletText}>
-                • If the vehicle has <Text style={styles.boldText}>no past deliveries</Text>, it will be permanently deleted from the database.
+                If the vehicle has <Text style={styles.boldText}>no past deliveries</Text>, it will be permanently deleted from the database.
               </Text>
               <Text style={styles.bulletText}>
-                • If the vehicle has <Text style={styles.boldText}>past delivery history</Text>, it will be safely marked <Text style={styles.boldText}>Inactive</Text> to preserve customer proof-of-delivery records.
+                If the vehicle has <Text style={styles.boldText}>past delivery history</Text>, it will be safely marked <Text style={styles.boldText}>Inactive</Text> to preserve customer proof-of-delivery records.
               </Text>
             </View>
 

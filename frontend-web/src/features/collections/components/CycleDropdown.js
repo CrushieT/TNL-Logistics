@@ -1,3 +1,4 @@
+import CheckIcon from '../../../components/common/CheckIcon';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -61,7 +62,7 @@ export default function CycleDropdown({
   };
 
   return (
-    <View ref={containerRef} style={[styles.container, { minWidth }, style]}>
+    <View ref={containerRef} style={[styles.container, { minWidth }, isOpen && styles.containerOpen, style]}>
       {/* Trigger Button */}
       <Pressable
         onPress={handleToggle}
@@ -112,7 +113,7 @@ export default function CycleDropdown({
                     {cycle.label || cycle.isoDate}
                   </Text>
                   {isSelected && (
-                    <Text style={styles.checkmark}>✓</Text>
+                    <CheckIcon size={12} color={colors.accent} style={{ marginLeft: 6 }} />
                   )}
                 </Pressable>
               );
@@ -128,6 +129,9 @@ const styles = StyleSheet.create({
   container: {
     position: 'relative',
     zIndex: 1000,
+  },
+  containerOpen: {
+    zIndex: 10000,
   },
   triggerButton: {
     height: 40,
@@ -176,7 +180,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 10,
     elevation: 10,
-    zIndex: 1001,
+    zIndex: 10001,
     overflow: 'hidden',
   },
   scrollArea: {

@@ -35,7 +35,7 @@ export default function CollectionCycleSummaryCard({ collectionSummary }) {
           onPress={() => router.push('/weekly-collections')}
           activeOpacity={0.7}
         >
-          <Text style={styles.linkText}>View Collections →</Text>
+          <Text style={styles.linkText}>View Collections</Text>
         </TouchableOpacity>
       </View>
 

@@ -14,7 +14,7 @@ const STAFF_TYPE_LABELS = {
 };
 
 function formatDate(dateStr) {
-  if (!dateStr) return '—';
+  if (!dateStr) return '-';
   try {
     return new Date(dateStr).toLocaleDateString('en-PH', {
       year: 'numeric',
@@ -34,7 +34,7 @@ export default function ViewUserModal({ visible, user, onClose, onEdit }) {
     { label: 'Full Name', value: user.fullName },
     { label: 'Username', value: user.username, mono: true },
     { label: 'Role', value: ROLE_LABELS[user.role] || user.role },
-    { label: 'Staff Type', value: user.staffType ? STAFF_TYPE_LABELS[user.staffType] || user.staffType : '—' },
+    { label: 'Staff Type', value: user.staffType ? STAFF_TYPE_LABELS[user.staffType] || user.staffType : '-' },
     { label: 'Status', value: user.active ? 'Active' : 'Inactive', statusColor: user.active ? colors.success : colors.danger },
     { label: 'PIN Set', value: user.hasPinSet ? 'Yes' : 'No' },
     { label: 'Must Change Password', value: user.mustChangePassword ? 'Yes' : 'No' },

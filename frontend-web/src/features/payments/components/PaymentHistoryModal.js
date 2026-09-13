@@ -76,7 +76,7 @@ export default function PaymentHistoryModal({
           <View style={styles.infoCard}>
             <View style={styles.infoCardTopRow}>
               <Text style={styles.shipmentTitle}>
-                {shipment.shipmentId} · {historyData?.clientName || shipment.clientName || shipment.client || 'Client'}
+                {shipment.shipmentId} | {historyData?.clientName || shipment.clientName || shipment.client || 'Client'}
               </Text>
               <StatusBadge value={paymentStatus} kind="payment" />
             </View>
@@ -153,7 +153,7 @@ export default function PaymentHistoryModal({
                       ]}
                     >
                       <View style={{ flex: 1.1 }}>
-                        <Text style={styles.dateCell}>{p.paymentDateFormatted || p.paymentDate || '—'}</Text>
+                        <Text style={styles.dateCell}>{p.paymentDateFormatted || p.paymentDate || '-'}</Text>
                       </View>
 
                       <View style={{ flex: 1.0, alignItems: 'flex-end' }}>
@@ -165,15 +165,15 @@ export default function PaymentHistoryModal({
                       </View>
 
                       <View style={{ flex: 1.3 }}>
-                        <Text style={styles.refCell}>{p.referenceNo || '—'}</Text>
+                        <Text style={styles.refCell}>{p.referenceNo || '-'}</Text>
                       </View>
 
                       <View style={{ flex: 1.5 }}>
-                        <Text style={styles.remarksCell}>{p.remarks || '—'}</Text>
+                        <Text style={styles.remarksCell}>{p.remarks || '-'}</Text>
                       </View>
 
                       <View style={{ flex: 1.1 }}>
-                        <Text style={styles.staffCell}>{p.recordedByStaff || '—'}</Text>
+                        <Text style={styles.staffCell}>{p.recordedByStaff || '-'}</Text>
                       </View>
                     </View>
                   );

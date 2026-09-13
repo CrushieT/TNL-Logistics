@@ -88,7 +88,7 @@ export default function PaymentsTable({
 
               {/* Client Name */}
               <View style={[styles.cell, { flex: COLUMNS[1].flex }]}>
-                <Text style={styles.clientName}>{s.clientName || s.client || '—'}</Text>
+                <Text style={styles.clientName}>{s.clientName || s.client || '-'}</Text>
               </View>
 
               {/* Quantity */}
@@ -144,7 +144,7 @@ export default function PaymentsTable({
                           hovered && styles.recordActionBtnHovered,
                         ]}
                       >
-                        <Text style={styles.recordActionText}>Record →</Text>
+                        <Text style={styles.recordActionText}>Record</Text>
                       </Pressable>
                     )}
                   </View>
@@ -160,7 +160,7 @@ export default function PaymentsTable({
         <View style={styles.paginationMeta}>
           <Text style={styles.paginationText}>
             Showing <Text style={styles.paginationStrong}>{shipments.length}</Text> of{' '}
-            <Text style={styles.paginationStrong}>{totalElements}</Text> shipments · Page{' '}
+            <Text style={styles.paginationStrong}>{totalElements}</Text> shipments | Page{' '}
             <Text style={styles.paginationStrong}>{page + 1}</Text> of{' '}
             <Text style={styles.paginationStrong}>{totalPages || 1}</Text>
           </Text>

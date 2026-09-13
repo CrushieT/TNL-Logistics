@@ -1,3 +1,4 @@
+import CheckIcon from './CheckIcon';
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { colors, fonts, spacing, radius } from '../../theme';
@@ -17,7 +18,7 @@ export default function Toast({ visible, message, onDismiss, duration = 3500 }) 
   return (
     <View style={styles.container}>
       <View style={styles.toast}>
-        <Text style={styles.icon}>✓</Text>
+        <CheckIcon size={14} color="#10B981" style={{ marginRight: spacing.sm }} />
         <Text style={styles.message}>{message}</Text>
       </View>
     </View>

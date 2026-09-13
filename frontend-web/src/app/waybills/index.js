@@ -1,7 +1,9 @@
+import CheckIcon from '../../components/common/CheckIcon';
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, TextInput, ActivityIndicator, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import AppShell from '../../components/layout/AppShell';
+import PageHeader from '../../components/layout/PageHeader';
 import { colors, fonts, spacing, radius, type, waybillStyles } from '../../theme';
 import {
   WaybillManifestCard,
@@ -59,7 +61,7 @@ export default function WaybillsScreen() {
       setManifest(data);
 
       // Pre-fill hauler if already designated or pick first hauler staff
-      if (data.haulerName && data.haulerName !== '—') {
+      if (data.haulerName && data.haulerName !== '-') {
         setSelectedHauler(data.haulerName);
       } else if (haulers.length > 0) {
         setSelectedHauler(haulers[0].fullName || haulers[0].displayLabel);
@@ -265,24 +267,23 @@ export default function WaybillsScreen() {
 
   return (
     <AppShell activeTab="waybills">
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <View style={styles.container}>
         {/* Top Header Row */}
-        <View style={styles.topHeader}>
-          <View>
-            <Text style={styles.eyebrow}>ONE WAYBILL PER SHIPMENT</Text>
-            <Text style={styles.h1}>WAYBILLS</Text>
-          </View>
-
-          <Pressable
-            style={[styles.printBtn, (!selectedShipmentId || !manifest) && styles.printBtnDisabled]}
-            onPress={handlePrint}
-            disabled={!selectedShipmentId || !manifest}
-          >
-            <Text style={[styles.printBtnText, (!selectedShipmentId || !manifest) && styles.printBtnTextDisabled]}>
-              Print / Export PDF
-            </Text>
-          </Pressable>
-        </View>
+        <PageHeader
+          eyebrow="BILLING & FINANCE"
+          title="Waybills"
+          right={
+            <Pressable
+              style={[styles.printBtn, (!selectedShipmentId || !manifest) && styles.printBtnDisabled]}
+              onPress={handlePrint}
+              disabled={!selectedShipmentId || !manifest}
+            >
+              <Text style={[styles.printBtnText, (!selectedShipmentId || !manifest) && styles.printBtnTextDisabled]}>
+                Print / Export PDF
+              </Text>
+            </Pressable>
+          }
+        />
 
         {/* Feedback Alert */}
         {feedbackMsg ? (
@@ -313,7 +314,7 @@ export default function WaybillsScreen() {
               onPress={() => router.push(`/shipments/${selectedShipmentId}`)}
               style={styles.openShipmentBtn}
             >
-              <Text style={styles.openShipmentText}>Open shipment →</Text>
+              <Text style={styles.openShipmentText}>Open shipment</Text>
             </Pressable>
           ) : null}
         </View>
@@ -343,11 +344,12 @@ export default function WaybillsScreen() {
                   // Stage 3: Completed
                   <View style={styles.completedRow}>
                     <View style={styles.completedBadge}>
-                      <Text style={styles.completedBadgeText}>✓ Completed</Text>
+                      <CheckIcon size={12} color="#15803D" />
+                      <Text style={styles.completedBadgeText}>Completed</Text>
                     </View>
                     <Text style={styles.completedMeta}>
                       Signed by <Text style={styles.boldText}>{manifest?.signedBy || 'Consignee'}</Text> on{' '}
-                      <Text style={styles.boldText}>{manifest?.signedDate || manifest?.generatedDate || '—'}</Text>
+                      <Text style={styles.boldText}>{manifest?.signedDate || manifest?.generatedDate || '-'}</Text>
                     </Text>
                   </View>
                 ) : isSentToHauler ? (
@@ -355,7 +357,7 @@ export default function WaybillsScreen() {
                   <View style={styles.actionRow}>
                     <View style={styles.haulerInfoTag}>
                       <Text style={styles.haulerInfoLabel}>HAULER:</Text>
-                      <Text style={styles.haulerInfoVal}>{manifest?.haulerName || selectedHauler || '—'}</Text>
+                      <Text style={styles.haulerInfoVal}>{manifest?.haulerName || selectedHauler || '-'}</Text>
                     </View>
 
                     <Pressable
@@ -366,7 +368,7 @@ export default function WaybillsScreen() {
                       {actionLoading ? (
                         <ActivityIndicator size="small" color="#FFFFFF" />
                       ) : (
-                        <Text style={styles.actionBtnText}>Mark as Signed / Completed →</Text>
+                        <Text style={styles.actionBtnText}>Mark as Signed / Completed</Text>
                       )}
                     </Pressable>
                   </View>
@@ -405,7 +407,7 @@ export default function WaybillsScreen() {
                       {actionLoading ? (
                         <ActivityIndicator size="small" color="#FFFFFF" />
                       ) : (
-                        <Text style={styles.actionBtnText}>Mark as Sent to Hauler →</Text>
+                        <Text style={styles.actionBtnText}>Mark as Sent to Hauler</Text>
                       )}
                     </Pressable>
                   </View>
@@ -419,7 +421,7 @@ export default function WaybillsScreen() {
             </View>
           </>
         )}
-      </ScrollView>
+      </View>
     </AppShell>
   );
 }
@@ -453,28 +455,8 @@ const webHaulerSelectStyle = {
 };
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    paddingHorizontal: spacing.xxl,
-    paddingVertical: spacing.xl,
-    paddingBottom: spacing.xxl * 2,
+  container: {
     gap: spacing.lg,
-  },
-  topHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  eyebrow: {
-    ...type.eyebrow,
-    color: '#65635C',
-    fontSize: 11,
-    letterSpacing: 1.2,
-    marginBottom: 4,
-  },
-  h1: {
-    ...type.h1,
-    fontSize: 26,
-    color: colors.ink,
   },
   printBtn: {
     backgroundColor: '#111111',
@@ -698,6 +680,9 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   completedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: '#E7F3EA',
     borderWidth: 1,
     borderColor: '#B8E2C8',

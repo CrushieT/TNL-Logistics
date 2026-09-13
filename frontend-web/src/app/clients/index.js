@@ -1,3 +1,4 @@
+import CheckIcon from '../../components/common/CheckIcon';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
@@ -10,6 +11,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import AppShell from '../../components/layout/AppShell';
+import PageHeader from '../../components/layout/PageHeader';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -160,26 +162,26 @@ export default function ClientsScreen() {
   return (
     <AppShell>
       {/* Header Row */}
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.eyebrow}>BILLING PARTIES</Text>
-          <Text style={styles.title}>CLIENTS</Text>
-        </View>
-        <Button
-          label="+ Register Client"
-          variant="primary"
-          onPress={() => {
-            setClientToEdit(null);
-            setRegisterModalVisible(true);
-          }}
-        />
-      </View>
+      <PageHeader
+        eyebrow="BILLING & FINANCE"
+        title="Clients"
+        right={
+          <Button
+            label="Register Client"
+            variant="primary"
+            onPress={() => {
+              setClientToEdit(null);
+              setRegisterModalVisible(true);
+            }}
+          />
+        }
+      />
 
       {/* Feedback Confirmation Alert */}
       {feedback ? (
         <View style={styles.feedbackAlert}>
           <View style={styles.feedbackContent}>
-            <Text style={styles.feedbackCheckmark}>✓</Text>
+            <CheckIcon size={14} color="#15803D" style={{ marginRight: 8, marginTop: 1 }} />
             <Text style={styles.feedbackText}>{feedback.message}</Text>
           </View>
           <Pressable onPress={() => setFeedback(null)} style={styles.feedbackCloseBtn}>
@@ -271,11 +273,11 @@ export default function ClientsScreen() {
                   <View style={[styles.nameCol, { flex: 2.3 }]}>
                     <Text style={styles.cellStrong}>{c.name}</Text>
                     <Text style={styles.cellSubtext} numberOfLines={1}>
-                      {c.email || c.address || '—'}
+                      {c.email || c.address || '-'}
                     </Text>
                   </View>
 
-                  <Text style={[styles.cell, { flex: 1.4 }]}>{c.contactNumber || '—'}</Text>
+                  <Text style={[styles.cell, { flex: 1.4 }]}>{c.contactNumber || '-'}</Text>
                   <Text style={[styles.cellCenterMono, { flex: 1.0 }]}>{c.totalShipments || 0}</Text>
                   <Text style={[styles.cellRightMono, { flex: 1.3 }]}>
                     ₱{Number(c.totalCharges || 0).toLocaleString()}
@@ -302,13 +304,13 @@ export default function ClientsScreen() {
                     >
                       <Text style={styles.actionEdit}>Edit</Text>
                     </Pressable>
-                    <Text style={styles.actionSep}>·</Text>
+                    <Text style={styles.actionSep}>|</Text>
                     <Pressable onPress={() => setClientToDelete(c)}>
                       <Text style={styles.actionDelete}>Delete</Text>
                     </Pressable>
-                    <Text style={styles.actionSep}>·</Text>
+                    <Text style={styles.actionSep}>|</Text>
                     <Pressable onPress={() => router.push(`/clients/${cid}`)}>
-                      <Text style={styles.actionView}>View →</Text>
+                      <Text style={styles.actionView}>View</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -321,7 +323,7 @@ export default function ClientsScreen() {
                 <Text style={styles.paginationText}>
                   Showing <Text style={styles.paginationTextStrong}>{paginatedClients.length}</Text> of{' '}
                   <Text style={styles.paginationTextStrong}>{filteredClients.length}</Text> clients
-                  <Text style={styles.paginationDot}> · </Text>
+                  <Text style={styles.paginationDot}> | </Text>
                   Page <Text style={styles.paginationTextStrong}>{currentPage}</Text> of{' '}
                   <Text style={styles.paginationTextStrong}>{totalPages || 1}</Text>
                 </Text>
@@ -343,7 +345,7 @@ export default function ClientsScreen() {
                 ) : null}
 
                 <Button
-                  label="← Previous"
+                  label="Previous"
                   variant="secondary"
                   disabled={currentPage <= 1 || loading}
                   onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
@@ -351,7 +353,7 @@ export default function ClientsScreen() {
                 />
 
                 <Button
-                  label="Next →"
+                  label="Next"
                   variant="secondary"
                   disabled={currentPage >= totalPages || loading}
                   onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}

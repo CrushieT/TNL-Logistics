@@ -59,6 +59,9 @@ public class ShipmentIntegrationTest {
     private com.tnl.logistics.repository.WaybillRepository waybillRepository;
 
     @Autowired
+    private com.tnl.logistics.repository.VehicleRepository vehicleRepository;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     private String officeToken;
@@ -481,6 +484,97 @@ public class ShipmentIntegrationTest {
         JsonNode noMatchJson = objectMapper.readTree(noMatchResult.getResponse().getContentAsString());
         assertEquals(0, getTotalElements(noMatchJson));
         assertEquals(0, noMatchJson.get("content").size());
+    }
+
+    @Test
+    public void testFilterShipmentsByVehicle() throws Exception {
+        Vehicle vehicle1 = vehicleRepository.findById("TRK-01").orElseGet(() ->
+                vehicleRepository.save(new Vehicle("TRK-01", "ABC-1234", "6-Wheeler Forward")));
+        Vehicle vehicle2 = vehicleRepository.findById("TRK-02").orElseGet(() ->
+                vehicleRepository.save(new Vehicle("TRK-02", "XYZ-5678", "10-Wheeler Wing Van")));
+
+        // Shipment 1: Loaded on TRK-01
+        ShipmentRegistrationRequest req1 = new ShipmentRegistrationRequest();
+        req1.setClientId("CL-001");
+        req1.setRecipientName("Vehicle Test Recipient 1");
+        req1.setRecipientAddress("Baguio City");
+        req1.setRecipientContact("09180000011");
+        req1.setQuantity(1);
+        req1.setChargeModel(ChargeModel.FLAT);
+        req1.setShippingFee(new BigDecimal("250.00"));
+        req1.setPaidAtRegistration(false);
+        req1.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        req1.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
+
+        MvcResult res1 = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req1)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        ShipmentResponse s1 = objectMapper.readValue(res1.getResponse().getContentAsString(), ShipmentResponse.class);
+
+        ParcelUnit u1 = parcelUnitRepository.findById(s1.getTrackingIds().get(0)).orElseThrow();
+        u1.setCurrentStatus(ParcelStatus.LOADED_ON_TRUCK);
+        u1.setCurrentVehicle(vehicle1);
+        parcelUnitRepository.saveAndFlush(u1);
+
+        // Shipment 2: Registered (no vehicle assigned)
+        ShipmentRegistrationRequest req2 = new ShipmentRegistrationRequest();
+        req2.setClientId("CL-001");
+        req2.setRecipientName("Vehicle Test Recipient 2");
+        req2.setRecipientAddress("Baguio City");
+        req2.setRecipientContact("09180000012");
+        req2.setQuantity(1);
+        req2.setChargeModel(ChargeModel.FLAT);
+        req2.setShippingFee(new BigDecimal("350.00"));
+        req2.setPaidAtRegistration(false);
+        req2.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        req2.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
+
+        MvcResult res2 = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req2)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        ShipmentResponse s2 = objectMapper.readValue(res2.getResponse().getContentAsString(), ShipmentResponse.class);
+
+        // 1. Filter by vehicleId = TRK-01 -> returns s1 only
+        MvcResult trk1Result = mockMvc.perform(get("/api/v1/shipments?vehicleId=TRK-01")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode trk1Json = objectMapper.readTree(trk1Result.getResponse().getContentAsString());
+        assertEquals(1, getTotalElements(trk1Json));
+        assertEquals(s1.getShipmentId(), trk1Json.get("content").get(0).get("shipmentId").asText());
+        assertEquals("TRK-01", trk1Json.get("content").get(0).get("vehicleId").asText());
+        assertEquals(vehicle1.getPlateNumber(), trk1Json.get("content").get(0).get("vehiclePlate").asText());
+
+        // 2. Filter by vehicleId = TRK-02 -> returns 0 results
+        MvcResult trk2Result = mockMvc.perform(get("/api/v1/shipments?vehicleId=TRK-02")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode trk2Json = objectMapper.readTree(trk2Result.getResponse().getContentAsString());
+        assertEquals(0, getTotalElements(trk2Json));
+
+        // 3. Filter by vehicleId = ALL -> returns all shipments
+        MvcResult allResult = mockMvc.perform(get("/api/v1/shipments?vehicleId=ALL")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode allJson = objectMapper.readTree(allResult.getResponse().getContentAsString());
+        assertEquals(2, getTotalElements(allJson));
+
+        // 4. Combined filter: status = Loaded on Truck and vehicleId = TRK-01
+        MvcResult combResult = mockMvc.perform(get("/api/v1/shipments?status=Loaded on Truck&vehicleId=TRK-01")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode combJson = objectMapper.readTree(combResult.getResponse().getContentAsString());
+        assertEquals(1, getTotalElements(combJson));
+        assertEquals(s1.getShipmentId(), combJson.get("content").get(0).get("shipmentId").asText());
     }
 
     private int getTotalElements(JsonNode jsonNode) {

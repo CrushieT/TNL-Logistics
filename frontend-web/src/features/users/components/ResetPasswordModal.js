@@ -94,7 +94,7 @@ export default function ResetPasswordModal({ visible, user, onClose, onRequestCo
         <View style={styles.dialog}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>RESET PASSWORD — {user.userId}</Text>
+            <Text style={styles.title}>RESET PASSWORD: {user.userId}</Text>
             <Pressable onPress={onClose} style={styles.closeBtn}>
               <Text style={styles.closeBtnText}>✕</Text>
             </Pressable>

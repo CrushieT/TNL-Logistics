@@ -150,7 +150,7 @@ export default function RecordPaymentModal({
           {/* Shipment Summary Box */}
           <View style={styles.infoCard}>
             <Text style={styles.infoCardHeader}>
-              {shipment.shipmentId} · {shipment.clientName || shipment.client || 'Client'}
+              {shipment.shipmentId} | {shipment.clientName || shipment.client || 'Client'}
             </Text>
             <View style={styles.infoCardBalanceRow}>
               <Text style={styles.infoCardBalanceLabel}>Balance</Text>

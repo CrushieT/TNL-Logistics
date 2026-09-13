@@ -9,7 +9,7 @@ export default function PageHeader({ eyebrow, title, right, style }) {
         {eyebrow ? <Text style={type.eyebrow}>{eyebrow}</Text> : null}
         <Text style={[type.h1, styles.title]}>{title}</Text>
       </View>
-      {right ? <View>{right}</View> : null}
+      {right ? <View style={styles.right}>{right}</View> : null}
     </View>
   );
 }
@@ -18,12 +18,16 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
+    alignItems: 'flex-start',
     marginBottom: spacing.xl,
     flexWrap: 'wrap',
     gap: spacing.md,
+    zIndex: 100,
   },
   title: {
     marginTop: 4,
+  },
+  right: {
+    zIndex: 100,
   },
 });

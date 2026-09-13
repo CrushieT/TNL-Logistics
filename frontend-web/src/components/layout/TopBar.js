@@ -19,7 +19,7 @@ export default function TopBar({ shipmentCount, parcelCount }) {
   return (
     <View style={styles.bar}>
       <Text style={styles.meta}>
-        {`${sc} shipments · ${pc} parcels · One shared system · PC ↔ Mobile`}
+        {`${sc} shipments, ${pc} parcels | One shared system | Desktop / Mobile`}
       </Text>
       <Text style={styles.date}>{formatToday()}</Text>
     </View>

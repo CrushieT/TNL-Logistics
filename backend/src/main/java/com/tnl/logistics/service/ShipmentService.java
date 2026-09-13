@@ -13,7 +13,11 @@ public interface ShipmentService {
 
     ShipmentResponse registerShipment(ShipmentRegistrationRequest request, String actingStaffUsername);
 
-    Page<ShipmentSummaryResponse> getShipments(String search, String status, String paymentStatus, Pageable pageable);
+    Page<ShipmentSummaryResponse> getShipments(String search, String status, String paymentStatus, String vehicleId, Pageable pageable);
+
+    default Page<ShipmentSummaryResponse> getShipments(String search, String status, String paymentStatus, Pageable pageable) {
+        return getShipments(search, status, paymentStatus, null, pageable);
+    }
 
     ShipmentDetailResponse getShipmentById(String shipmentId);
 

@@ -82,7 +82,7 @@ export default function StatementPaperCard({
   }, [companyBranding]);
 
   const {
-    clientName = '—',
+    clientName = '-',
     clientAddress = '',
     clientContact = '',
     clientEmail = '',
@@ -104,17 +104,17 @@ export default function StatementPaperCard({
 
   const formattedStatementDate = statementDate
     ? new Date(statementDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    : '—';
+    : '-';
 
   const formattedCollectionDate = collectionDate
     ? `${new Date(collectionDate).toLocaleDateString('en-US', { weekday: 'short' })}, ${new Date(collectionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
-    : '—';
+    : '-';
 
   const brandName = (branding?.companyName || 'TNL LOGISTICS').toUpperCase();
   const brandAddress = branding?.companyAddress || 'Manila Central Hub';
   const brandContact = branding?.companyContact || '0917-555-0000';
   const brandEmail = branding?.billingEmail || 'billing@tnllogistics.ph';
-  const brandSubtext = `${brandAddress} · ${brandContact} · ${brandEmail}`;
+  const brandSubtext = `${brandAddress} | ${brandContact} | ${brandEmail}`;
 
   // Paginate statement items into distinct physical A4 sheets
   const paginatedPages = useMemo(() => paginateStatementItems(items), [items]);
@@ -182,7 +182,7 @@ export default function StatementPaperCard({
                     {clientAddress ? <Text style={styles.clientAddress}>{clientAddress}</Text> : null}
                     {(clientContact || clientEmail) ? (
                       <Text style={styles.clientContact}>
-                        {[clientContact, clientEmail].filter(Boolean).join(' · ')}
+                        {[clientContact, clientEmail].filter(Boolean).join(' | ')}
                       </Text>
                     ) : null}
                   </View>
@@ -205,12 +205,12 @@ export default function StatementPaperCard({
                       <Text style={styles.continuationLogoText}>T</Text>
                     </View>
                     <Text style={styles.continuationTitle}>
-                      TNL LOGISTICS · <Text style={styles.continuationSubTitle}>STATEMENT OF ACCOUNT (Continuation)</Text>
+                      TNL LOGISTICS: <Text style={styles.continuationSubTitle}>STATEMENT OF ACCOUNT (Continuation)</Text>
                     </Text>
                   </View>
                   <View style={styles.continuationMeta}>
                     <Text style={styles.continuationMetaText}>
-                      <Text style={styles.continuationMetaMono}>{soaNo}</Text> · {clientName}
+                      <Text style={styles.continuationMetaMono}>{soaNo}</Text> | {clientName}
                     </Text>
                   </View>
                 </View>
@@ -332,7 +332,7 @@ export default function StatementPaperCard({
 
             {/* Bottom Footnote on EVERY Sheet (Left: Statement info, Right: Page X of Y) */}
             <View style={[styles.pageFootnoteRow, isLastPage && styles.pageFootnoteLast]}>
-              <Text style={styles.pageFootnoteText}>Statement 1 · Page for {clientName}</Text>
+              <Text style={styles.pageFootnoteText}>Statement 1 | Page for {clientName}</Text>
               <Text style={styles.pageNumberText}>
                 Page {pageNumber} of {totalPages}
               </Text>

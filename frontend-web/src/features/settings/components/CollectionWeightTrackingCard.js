@@ -65,7 +65,7 @@ export default function CollectionWeightTrackingCard({
           </View>
         </View>
         <Text style={styles.subHelper}>
-          Configurable business setting — Volumetric Weight = Volume (cm³) ÷ divisor.
+          Configurable business setting: Volumetric Weight = Volume (cm³) / divisor.
         </Text>
       </View>
 
@@ -90,17 +90,17 @@ export default function CollectionWeightTrackingCard({
 
       {/* Provisional Billable Weight Callout */}
       <View style={styles.calloutBox}>
-        <Text style={styles.calloutTitle}>BILLABLE WEIGHT RULE — PROVISIONAL</Text>
+        <Text style={styles.calloutTitle}>BILLABLE WEIGHT RULE: PROVISIONAL</Text>
         <Text style={styles.calloutBody}>
           Current rule: <Text style={styles.calloutBold}>Greater of Actual Weight vs Volumetric Weight</Text>.
           {' '}This is a placeholder pending final client confirmation. The system always stores Actual Weight,
-          Volume, and Volumetric Weight separately — the billable weight formula can be updated when confirmed.
+          Volume, and Volumetric Weight separately; the billable weight formula can be updated when confirmed.
         </Text>
       </View>
 
       {/* Explanatory System Note */}
       <Text style={styles.systemNote}>
-        Tracking: Registered → QR Generated → Loaded on Truck → Outload / Arrive TNL → Loaded to Hauler (per unit).
+        Tracking: Registered to QR Generated to Loaded on Truck to Outload / Arrive TNL to Loaded to Hauler (per unit).
         Payment, Label & Waybill statuses are tracked separately. History is append-only.
       </Text>
 

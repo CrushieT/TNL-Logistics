@@ -172,7 +172,7 @@ export default function WeeklyCollectionsTable({
                 },
               ]}
             >
-              {Number(item.totalDeductions) > 0 ? `-${formatCurrency(item.totalDeductions)}` : '—'}
+              {Number(item.totalDeductions) > 0 ? `-${formatCurrency(item.totalDeductions)}` : '-'}
             </Text>
 
             {/* Balance */}
@@ -228,7 +228,7 @@ export default function WeeklyCollectionsTable({
                     hovered && styles.reviewBtnHovered,
                   ]}
                 >
-                  <Text style={styles.reviewBtnText}>Generate SOA →</Text>
+                  <Text style={styles.reviewBtnText}>Generate SOA</Text>
                 </Pressable>
               )}
             </View>

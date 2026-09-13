@@ -189,8 +189,7 @@ export default function SettingsScreen() {
 
   return (
     <AppShell activeNav="/settings">
-      <ScrollView contentContainerStyle={styles.container}>
-        <PageHeader eyebrow="CONFIGURATION" title="SETTINGS" />
+        <PageHeader eyebrow="ADMINISTRATION" title="Settings" />
 
         {/* Feedback Banners */}
         {successMessage ? (
@@ -235,7 +234,6 @@ export default function SettingsScreen() {
             </View>
           </View>
         )}
-      </ScrollView>
 
       {/* Save Settings Password Authorization Modal */}
       <ConfirmPasswordModal

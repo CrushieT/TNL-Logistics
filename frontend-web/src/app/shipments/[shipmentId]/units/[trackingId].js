@@ -63,7 +63,7 @@ export default function ParcelUnitDetailScreen() {
     return (
       <AppShell>
         <Pressable onPress={() => router.push(`/shipments/${shipmentId}`)}>
-          <Text style={styles.backLink}>← {shipmentId}</Text>
+          <Text style={styles.backLink}>Back to {shipmentId}</Text>
         </Pressable>
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={colors.ink} size="large" />
@@ -77,7 +77,7 @@ export default function ParcelUnitDetailScreen() {
     return (
       <AppShell>
         <Pressable onPress={() => router.push(`/shipments/${shipmentId}`)}>
-          <Text style={styles.backLink}>← {shipmentId}</Text>
+          <Text style={styles.backLink}>Back to {shipmentId}</Text>
         </Pressable>
         <Card>
           <Text style={styles.notFoundText}>Parcel unit {trackingId} was not found.</Text>
@@ -97,14 +97,14 @@ export default function ParcelUnitDetailScreen() {
   return (
     <AppShell>
       <Pressable onPress={() => router.push(`/shipments/${shipmentId}`)}>
-        <Text style={styles.backLink}>← {shipmentId}</Text>
+        <Text style={styles.backLink}>Back to {shipmentId}</Text>
       </Pressable>
 
       {/* Header Row */}
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.eyebrow}>
-            {unit.trackingId} · PACKAGE {unit.packageIndex} OF {unit.packageCount}
+            {unit.trackingId} | PACKAGE {unit.packageIndex} OF {unit.packageCount}
           </Text>
           <Text style={styles.title}>{(unit.recipientName || '').toUpperCase()}</Text>
         </View>
@@ -142,8 +142,8 @@ export default function ParcelUnitDetailScreen() {
                 <Text style={styles.fieldValue}>{unit.client}</Text>
               </View>
               <View style={styles.gridCol}>
-                <Text style={styles.fieldLabel}>DIMENSIONS · VOLUME</Text>
-                <Text style={styles.fieldValue}>{dimensionsLabel} · {volumeLabel}</Text>
+                <Text style={styles.fieldLabel}>DIMENSIONS: VOLUME</Text>
+                <Text style={styles.fieldValue}>{dimensionsLabel} | {volumeLabel}</Text>
               </View>
               <View style={styles.gridCol}>
                 <Text style={styles.fieldLabel}>ROUTE</Text>
@@ -155,7 +155,7 @@ export default function ParcelUnitDetailScreen() {
           {/* Card 2: Tracking History */}
           <Card
             title="TRACKING HISTORY"
-            right={<Text style={styles.appendOnly}>append-only · this package only</Text>}
+            right={<Text style={styles.appendOnly}>append-only | this package only</Text>}
           >
             <View style={styles.timeline}>
               {/* Completed Events */}
@@ -173,7 +173,7 @@ export default function ParcelUnitDetailScreen() {
                     <View style={[styles.timelineContent, hasNextItem && styles.timelineContentSpacing]}>
                       <View style={styles.eventTitleRow}>
                         <Text style={styles.eventTitle}>{entry.event}</Text>
-                        <Text style={styles.eventTimestamp}>{entry.date} · {entry.time}</Text>
+                        <Text style={styles.eventTimestamp}>{entry.date}, {entry.time}</Text>
                       </View>
                       <Text style={styles.eventStaff}>by {entry.by}</Text>
                     </View>
@@ -189,7 +189,7 @@ export default function ParcelUnitDetailScreen() {
                   </View>
                   <View style={styles.timelineContent}>
                     <Text style={styles.pendingStatusText}>
-                      {nextPendingStatus} — pending mobile scan
+                      {nextPendingStatus} (pending mobile scan)
                     </Text>
                   </View>
                 </View>
@@ -244,7 +244,7 @@ export default function ParcelUnitDetailScreen() {
                 <Text style={styles.printType}>Print</Text>
                 <Text style={styles.printDate}>{unit.printing?.date}</Text>
                 <Text style={styles.printStaff}>
-                  by {unit.printing?.by} · {unit.printing?.printer}
+                  by {unit.printing?.by} | {unit.printing?.printer}
                 </Text>
               </View>
               <Text style={styles.printLabelCount}>{unit.printing?.count || 1} label</Text>

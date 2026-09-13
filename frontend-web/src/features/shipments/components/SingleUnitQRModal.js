@@ -27,7 +27,7 @@ export default function SingleUnitQRModal({
           <View style={styles.header}>
             <View>
               <Text style={styles.eyebrow}>
-                {trackingId} · Package {packageIndex} of {packageCount}
+                {trackingId} | Package {packageIndex} of {packageCount}
               </Text>
               <Text style={styles.title}>{recipientName.toUpperCase()}</Text>
             </View>
@@ -49,7 +49,7 @@ export default function SingleUnitQRModal({
               <QRCodeGenerator value={trackingId} size={160} />
             </View>
             <Text style={styles.qrTracking}>{trackingId}</Text>
-            <Text style={styles.qrScanHint}>SCAN TO TRACK · ON-SCREEN READY</Text>
+            <Text style={styles.qrScanHint}>SCAN TO TRACK: ON-SCREEN READY</Text>
           </View>
 
           <Text style={styles.instruction}>
@@ -60,7 +60,7 @@ export default function SingleUnitQRModal({
           <View style={styles.actions}>
             <Button label="Close" variant="secondary" onPress={onClose} />
             {onViewFull ? (
-              <Button label="View Full Details →" variant="primary" onPress={onViewFull} />
+              <Button label="View Full Details" variant="primary" onPress={onViewFull} />
             ) : null}
           </View>
         </View>

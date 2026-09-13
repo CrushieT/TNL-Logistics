@@ -1,3 +1,4 @@
+import CheckIcon from '../../../components/common/CheckIcon';
 import React, { useState } from 'react';
 import {
   View,
@@ -91,7 +92,7 @@ export default function AdminSecurityCard() {
       {/* Success Alert Banner */}
       {Boolean(success) && (
         <View style={styles.successBox}>
-          <Text style={styles.successCheck}>✓</Text>
+          <CheckIcon size={14} color="#15803D" style={{ marginRight: 8, marginTop: 1 }} />
           <Text style={styles.successMessage}>{success}</Text>
         </View>
       )}

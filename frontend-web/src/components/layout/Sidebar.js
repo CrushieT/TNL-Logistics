@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Image, ScrollView } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { colors, fonts, spacing, radius, type } from '../../theme';
 import { getCurrentUser, logout } from '../../services/api/client';
@@ -64,21 +64,30 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
 
   return (
     <View style={styles.sidebar}>
-      <View>
-        {/* Brand Header with Clean Separator */}
-        <View style={styles.brandRow}>
-          <View style={styles.logoMark}>
-            <Text style={styles.logoMarkText}>T</Text>
-          </View>
-          <View style={styles.brandInfo}>
-            <Text style={styles.brandName}>TNL LOGISTICS</Text>
-            <View style={styles.badgeWrap}>
-              <Text style={styles.brandBadge}>ADMIN CONSOLE</Text>
-            </View>
-          </View>
+      {/* Brand Header with Clean Separator */}
+      <Pressable
+        onPress={() => router.push('/')}
+        style={({ hovered }) => [
+          styles.brandRow,
+          hovered && styles.brandRowHovered,
+        ]}
+      >
+        <Image
+          source={require('../../../assets/tracking-logo.png')}
+          style={styles.brandLogo}
+          resizeMode="contain"
+        />
+        <View style={styles.badgeWrap}>
+          <Text style={styles.brandBadge}>ADMIN CONSOLE</Text>
         </View>
+      </Pressable>
 
-        {/* Navigation Sections */}
+      {/* Scrollable Navigation Sections */}
+      <ScrollView
+        style={styles.navScrollView}
+        contentContainerStyle={styles.navScrollContent}
+        showsVerticalScrollIndicator={true}
+      >
         {visibleSections.map((section, sIdx) => (
           <View
             key={section.id}
@@ -110,7 +119,7 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
             </View>
           </View>
         ))}
-      </View>
+      </ScrollView>
 
       {/* Footer / User Profile */}
       <View style={styles.footer}>
@@ -133,60 +142,53 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
 
 const styles = StyleSheet.create({
   sidebar: {
-    width: 252,
+    width: '100%',
     backgroundColor: colors.sidebar,
     borderRightWidth: 1,
     borderRightColor: colors.border,
-    paddingVertical: spacing.xl,
-    justifyContent: 'space-between',
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.lg,
     height: '100%',
+    flexDirection: 'column',
+  },
+  navScrollView: {
+    flex: 1,
+  },
+  navScrollContent: {
+    paddingVertical: spacing.xs,
   },
   brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.lg,
     marginBottom: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: '#E2E0D6',
+    gap: 6,
+    cursor: 'pointer',
   },
-  logoMark: {
-    width: 38,
-    height: 38,
-    backgroundColor: colors.black,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.sm,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+  brandRowHovered: {
+    opacity: 0.88,
   },
-  logoMarkText: {
-    fontFamily: fonts.mono,
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 18,
-  },
-  brandInfo: {
-    gap: 2,
-  },
-  brandName: {
-    fontFamily: fonts.sans,
-    fontWeight: '800',
-    fontSize: 14.5,
-    color: colors.ink,
-    letterSpacing: 0.5,
+  brandLogo: {
+    width: 175,
+    height: 56,
+    maxWidth: '100%',
+    alignSelf: 'flex-start',
   },
   badgeWrap: {
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    backgroundColor: '#EBE9E0',
+    borderRadius: radius.sm,
     alignSelf: 'flex-start',
   },
   brandBadge: {
     fontFamily: fonts.mono,
     fontSize: 9.5,
     fontWeight: '700',
-    color: '#65635C',
-    letterSpacing: 0.8,
+    color: colors.inkSoft,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
   },
   section: {
     marginBottom: spacing.sm + 2,

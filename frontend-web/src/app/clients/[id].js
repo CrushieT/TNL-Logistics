@@ -88,7 +88,7 @@ export default function ClientProfileScreen() {
     return (
       <AppShell>
         <Pressable onPress={() => router.push('/clients')}>
-          <Text style={styles.backLink}>← Clients</Text>
+          <Text style={styles.backLink}>Back to Clients</Text>
         </Pressable>
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={colors.ink} size="large" />
@@ -102,7 +102,7 @@ export default function ClientProfileScreen() {
     return (
       <AppShell>
         <Pressable onPress={() => router.push('/clients')}>
-          <Text style={styles.backLink}>← Clients</Text>
+          <Text style={styles.backLink}>Back to Clients</Text>
         </Pressable>
         <Card>
           <Text style={styles.notFoundText}>Client {id} was not found.</Text>
@@ -117,7 +117,7 @@ export default function ClientProfileScreen() {
     <AppShell>
       {/* Header Row */}
       <Pressable onPress={() => router.push('/clients')}>
-        <Text style={styles.backLink}>← Clients</Text>
+        <Text style={styles.backLink}>Back to Clients</Text>
       </Pressable>
 
       <View style={styles.headerRow}>
@@ -127,7 +127,7 @@ export default function ClientProfileScreen() {
         </View>
         <View style={styles.headerActions}>
           <Button
-            label="View Consolidated SOA →"
+            label="View Consolidated SOA"
             variant="primary"
             onPress={() => router.push('/statements')}
           />
@@ -142,19 +142,19 @@ export default function ClientProfileScreen() {
             {/* Address */}
             <View style={styles.detailField}>
               <Text style={styles.fieldLabel}>ADDRESS</Text>
-              <Text style={styles.fieldValue}>{client.address || '—'}</Text>
+              <Text style={styles.fieldValue}>{client.address || '-'}</Text>
             </View>
 
             {/* Contact */}
             <View style={styles.detailField}>
               <Text style={styles.fieldLabel}>CONTACT</Text>
-              <Text style={styles.fieldValueMono}>{client.contactNumber || '—'}</Text>
+              <Text style={styles.fieldValueMono}>{client.contactNumber || '-'}</Text>
             </View>
 
             {/* Email */}
             <View style={styles.detailField}>
               <Text style={styles.fieldLabel}>EMAIL</Text>
-              <Text style={styles.fieldValue}>{client.email || '—'}</Text>
+              <Text style={styles.fieldValue}>{client.email || '-'}</Text>
             </View>
 
             {/* Financial Rollup Metric Trio */}
@@ -271,7 +271,7 @@ export default function ClientProfileScreen() {
                       >
                         ₱{Number(s.balance || 0).toLocaleString()}
                       </Text>
-                      <Text style={styles.arrowIcon}> →</Text>
+                      
                     </View>
                   </Pressable>
                 ))}

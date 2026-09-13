@@ -14,7 +14,7 @@ export default function ActivityRow({ date, time, action, trackingId, meta, isLa
   return (
     <View style={[styles.row, !isLast && styles.divider]}>
       <Text style={styles.date}>
-        {date} <Text style={styles.time}>· {time}</Text>
+        {date} <Text style={styles.time}>, {time}</Text>
       </Text>
       <Text style={[styles.action, { color: ACTION_COLOR[action] || colors.ink }]}>{action}</Text>
       <Text style={styles.tracking}>{trackingId}</Text>

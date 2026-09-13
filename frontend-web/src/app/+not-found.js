@@ -90,7 +90,7 @@ export default function NotFoundScreen() {
 
         {/* 404 Notice */}
         <View style={styles.warningBox}>
-          <Text style={styles.warningTitle}>HTTP 404 · ROUTE NOT FOUND</Text>
+          <Text style={styles.warningTitle}>HTTP 404 - ROUTE NOT FOUND</Text>
           <Text style={styles.warningMessage}>
             The operational page you requested does not exist or has been moved.
           </Text>
@@ -115,7 +115,7 @@ export default function NotFoundScreen() {
         {/* Security Footer Notice */}
         <View style={styles.footerNote}>
           <Text style={styles.footerText}>
-            Authorized Personnel Only · Internal Logistics Operations
+            Authorized Personnel Only | Internal Logistics Operations
           </Text>
         </View>
       </View>

@@ -25,7 +25,7 @@ export default function TablePaginationFooter({
       <View style={styles.paginationMeta}>
         <Text style={styles.paginationText}>
           Showing <Text style={styles.paginationStrong}>{countOnPage}</Text> of{' '}
-          <Text style={styles.paginationStrong}>{totalItems}</Text> {itemLabel} · Page{' '}
+          <Text style={styles.paginationStrong}>{totalItems}</Text> {itemLabel} | Page{' '}
           <Text style={styles.paginationStrong}>{page + 1}</Text> of{' '}
           <Text style={styles.paginationStrong}>{totalPages}</Text>
         </Text>
@@ -49,7 +49,7 @@ export default function TablePaginationFooter({
         ) : null}
 
         <Button
-          label="← Previous"
+          label="Previous"
           variant="secondary"
           disabled={page <= 0 || loading}
           onPress={() => onPageChange?.(page - 1)}
@@ -57,7 +57,7 @@ export default function TablePaginationFooter({
         />
 
         <Button
-          label="Next →"
+          label="Next"
           variant="secondary"
           disabled={page >= totalPages - 1 || loading}
           onPress={() => onPageChange?.(page + 1)}

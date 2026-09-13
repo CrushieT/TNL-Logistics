@@ -270,7 +270,7 @@ export default function CreateUserModal({ visible, onClose, onSaved }) {
               >
                 <Text style={styles.overrideToggleText}>
                   {showManualPin
-                    ? '— Cancel manual PIN assignment'
+                    ? 'Cancel manual PIN assignment'
                     : '+ Assign specific 4-digit PIN manually (Emergency Override)'}
                 </Text>
               </Pressable>

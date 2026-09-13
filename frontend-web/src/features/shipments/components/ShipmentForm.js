@@ -38,7 +38,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
   const [heightCm, setHeightCm] = useState('15');
 
   // Charges & Options
-  const [route, setRoute] = useState('Manila → TNL Baguio');
+  const [route, setRoute] = useState('Manila to TNL Baguio');
   const [chargeModel, setChargeModel] = useState('FLAT');
   const [shippingFee, setShippingFee] = useState('500');
   const [otherCharges, setOtherCharges] = useState('0');
@@ -67,7 +67,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
         .map((c) => {
           const val = c.id || c.clientId;
           const code = c.code || c.clientId || c.id;
-          return { value: val, label: `${code} — ${c.name}` };
+          return { value: val, label: `${code}: ${c.name}` };
         }),
     [clients]
   );
@@ -160,7 +160,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
       lengthCm: parseFloat(lengthCm) || 20.0,
       widthCm: parseFloat(widthCm) || 10.0,
       heightCm: parseFloat(heightCm) || 15.0,
-      route: route.trim() || 'Manila → TNL Baguio',
+      route: route.trim() || 'Manila to TNL Baguio',
       chargeModel,
       shippingFee: parseFloat(shippingFee) || 0,
       otherCharges: parseFloat(otherCharges) || 0,
@@ -241,7 +241,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
                 error={errors.clientId}
               />
               <Text style={styles.helperNote}>
-                Payments consolidate per client — multiple shipments bill as one SOA.
+                Payments consolidate per client; multiple shipments bill as one SOA.
               </Text>
             </>
           ) : (
@@ -379,7 +379,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
           </View>
 
           <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
-            <FormField label="Route" value={route} onChangeText={setRoute} placeholder="Manila → TNL Baguio" />
+            <FormField label="Route" value={route} onChangeText={setRoute} placeholder="Manila to TNL Baguio" />
           </View>
         </View>
 
@@ -506,7 +506,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
 
           <View style={[styles.submitContainer, isMobile && styles.submitContainerMobile]}>
             <Button
-              label={submitting ? 'Registering...' : `Register & Generate ${quantity || 1} QR →`}
+              label={submitting ? 'Registering...' : `Register & Generate ${quantity || 1} QR`}
               variant="primary"
               onPress={handleSubmit}
               loading={submitting}

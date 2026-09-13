@@ -190,7 +190,7 @@ export default function SearchableClientDropdown({
                         </Text>
                         {clientCode ? (
                           <>
-                            <Text style={styles.dotSeparator}>·</Text>
+                            <Text style={styles.dotSeparator}>|</Text>
                             <Text style={styles.clientCodeText}>{clientCode}</Text>
                           </>
                         ) : null}
@@ -206,10 +206,10 @@ export default function SearchableClientDropdown({
                     {/* Bottom Row: Contact & Unbilled count */}
                     <View style={styles.itemBottomRow}>
                       <Text style={styles.itemSubText} numberOfLines={1}>
-                        {client.contactNumber ? `Contact: ${client.contactNumber}` : client.address || '—'}
+                        {client.contactNumber ? `Contact: ${client.contactNumber}` : client.address || '-'}
                         {unbilledCount !== null ? (
                           <>
-                            {'  ·  '}
+                            {'  |  '}
                             <Text style={styles.itemSubStrong}>
                               {unbilledCount} unbilled {unbilledCount === 1 ? 'shipment' : 'shipments'}
                             </Text>
@@ -217,7 +217,7 @@ export default function SearchableClientDropdown({
                         ) : null}
                         {outstanding !== null ? (
                           <>
-                            {'  ·  '}
+                            {'  |  '}
                             Due: <Text style={styles.itemOutstandingText}>₱{Number(outstanding).toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
                           </>
                         ) : null}

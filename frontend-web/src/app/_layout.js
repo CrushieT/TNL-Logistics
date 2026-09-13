@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { Platform } from 'react-native';
 import { Stack, usePathname, useRouter, useRootNavigationState } from 'expo-router';
 import { isAuthenticated, validateSession, getCurrentUser, checkFirstBootStatus } from '../services/api/client';
 
@@ -8,6 +9,36 @@ export default function RootLayout() {
   const pathname = usePathname();
   const router = useRouter();
   const navigationState = useRootNavigationState();
+
+  useEffect(() => {
+    // Inject operational scrollbar styling for web consoles
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const styleId = 'tnl-console-scrollbars';
+    if (document.getElementById(styleId)) return;
+    const styleEl = document.createElement('style');
+    styleEl.id = styleId;
+    styleEl.textContent = `
+      ::-webkit-scrollbar {
+        width: 7px;
+        height: 7px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #D1D0C7;
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #A8A69E;
+      }
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: #D1D0C7 transparent;
+      }
+    `;
+    document.head.appendChild(styleEl);
+  }, []);
 
   useEffect(() => {
     // Ensure the root navigator is mounted before attempting navigation

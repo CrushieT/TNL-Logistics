@@ -58,7 +58,7 @@ export async function registerShipment(payload) {
     shippingFee: parseFloat(payload.shippingFee) || 0,
     otherCharges: parseFloat(payload.otherCharges) || 0,
     paidAtRegistration: Boolean(payload.paidAtRegistration),
-    route: payload.route || 'Manila → TNL Baguio',
+    route: payload.route || 'Manila to TNL Baguio',
     registeredVia: 'DESKTOP_OFFICE',
     parcels,
   };
