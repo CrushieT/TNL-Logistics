@@ -2,6 +2,7 @@ package com.tnl.logistics.repository;
 
 import com.tnl.logistics.model.Waybill;
 import com.tnl.logistics.model.WaybillStatus;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
@@ -22,11 +23,22 @@ public interface WaybillRepository extends JpaRepository<Waybill, String> {
 
     Optional<Waybill> findByShipment_ShipmentId(String shipmentId);
 
-    @Query("SELECT w FROM Waybill w WHERE " +
+    @Query("SELECT w FROM Waybill w WHERE w.shipment.shipmentId IN :shipmentIds")
+    List<Waybill> findByShipment_ShipmentIdIn(@Param("shipmentIds") Collection<String> shipmentIds);
+
+    @Query(value = "SELECT w FROM Waybill w JOIN FETCH w.shipment s LEFT JOIN FETCH s.client c WHERE " +
            "(:search IS NULL OR LOWER(w.waybillId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-           "LOWER(w.shipment.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-           "LOWER(w.shipment.client.name) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-           "LOWER(w.shipment.recipientName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(c.name) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(s.recipientName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(w.haulerName) LIKE LOWER(CONCAT('%', :search, '%'))) AND " +
+           "(:status IS NULL OR w.status = :status) AND " +
+           "(:hauler IS NULL OR LOWER(w.haulerName) = LOWER(:hauler))",
+           countQuery = "SELECT COUNT(w) FROM Waybill w JOIN w.shipment s LEFT JOIN s.client c WHERE " +
+           "(:search IS NULL OR LOWER(w.waybillId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(c.name) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(s.recipientName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
            "LOWER(w.haulerName) LIKE LOWER(CONCAT('%', :search, '%'))) AND " +
            "(:status IS NULL OR w.status = :status) AND " +
            "(:hauler IS NULL OR LOWER(w.haulerName) = LOWER(:hauler))")

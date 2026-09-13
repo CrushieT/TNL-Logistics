@@ -210,9 +210,49 @@ public class ShipmentServiceImpl implements ShipmentService {
         String cleanVehicle = normalizeVehicle(vehicleId);
 
         Page<Shipment> shipmentsPage = shipmentRepository.searchShipmentsWithFilters(cleanSearch, cleanStatus, cleanPayment, cleanVehicle, pageable);
+        List<Shipment> shipments = shipmentsPage.getContent();
+        if (shipments.isEmpty()) {
+            return new PageImpl<>(Collections.emptyList(), pageable, shipmentsPage.getTotalElements());
+        }
 
-        List<ShipmentSummaryResponse> summaries = shipmentsPage.getContent().stream()
-                .map(this::mapToSummaryResponse)
+        List<String> shipmentIds = shipments.stream()
+                .map(Shipment::getShipmentId)
+                .collect(Collectors.toList());
+
+        List<ParcelUnit> allParcels = parcelUnitRepository.findByShipment_ShipmentIdInOrderBySeqAsc(shipmentIds);
+        Map<String, List<ParcelUnit>> parcelsByShipment = allParcels.stream()
+                .filter(p -> p.getShipment() != null)
+                .collect(Collectors.groupingBy(p -> p.getShipment().getShipmentId()));
+
+        List<Payment> allPayments = paymentRepository.findByShipment_ShipmentIdIn(shipmentIds);
+        Map<String, List<Payment>> paymentsByShipment = allPayments.stream()
+                .filter(p -> p.getShipment() != null)
+                .collect(Collectors.groupingBy(p -> p.getShipment().getShipmentId()));
+
+        // Check if any parcels need vehicle fallback from tracking events
+        List<String> trackingIdsNeedingVehicle = allParcels.stream()
+                .filter(p -> p.getCurrentVehicle() == null)
+                .map(ParcelUnit::getTrackingId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        Map<String, TrackingEvent> latestEventWithVehicleByTrackingId = new HashMap<>();
+        if (!trackingIdsNeedingVehicle.isEmpty()) {
+            List<TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdInAndVehicleNotNullOrderByEventTimestampAsc(trackingIdsNeedingVehicle);
+            for (TrackingEvent ev : events) {
+                if (ev.getParcelUnit() != null) {
+                    latestEventWithVehicleByTrackingId.put(ev.getParcelUnit().getTrackingId(), ev);
+                }
+            }
+        }
+
+        List<ShipmentSummaryResponse> summaries = shipments.stream()
+                .map(s -> mapToSummaryResponse(
+                        s,
+                        parcelsByShipment.getOrDefault(s.getShipmentId(), Collections.emptyList()),
+                        paymentsByShipment.getOrDefault(s.getShipmentId(), Collections.emptyList()),
+                        latestEventWithVehicleByTrackingId
+                ))
                 .collect(Collectors.toList());
 
         return new PageImpl<>(summaries, pageable, shipmentsPage.getTotalElements());
@@ -496,12 +536,18 @@ public class ShipmentServiceImpl implements ShipmentService {
         } catch (Exception ignored) {}
     }
 
-    private ShipmentSummaryResponse mapToSummaryResponse(Shipment s) {
-        List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(s.getShipmentId());
-        List<Payment> payments = paymentRepository.findByShipment_ShipmentId(s.getShipmentId());
+    private ShipmentSummaryResponse mapToSummaryResponse(
+            Shipment s,
+            List<ParcelUnit> parcels,
+            List<Payment> payments,
+            Map<String, TrackingEvent> latestEventWithVehicleByTrackingId
+    ) {
+        if (parcels == null) parcels = Collections.emptyList();
+        if (payments == null) payments = Collections.emptyList();
 
         BigDecimal totalPaid = payments.stream()
                 .map(Payment::getAmountPaid)
+                .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal balance = s.getTotalAmount().subtract(totalPaid);
         if (balance.compareTo(BigDecimal.ZERO) < 0) balance = BigDecimal.ZERO;
@@ -524,25 +570,24 @@ public class ShipmentServiceImpl implements ShipmentService {
                 break;
             }
         }
-        if (vehicleId == null && !parcels.isEmpty()) {
+        if (vehicleId == null && !parcels.isEmpty() && latestEventWithVehicleByTrackingId != null) {
             for (ParcelUnit p : parcels) {
-                List<TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(p.getTrackingId());
-                for (int i = events.size() - 1; i >= 0; i--) {
-                    TrackingEvent ev = events.get(i);
-                    if (ev.getVehicle() != null) {
-                        vehicleId = ev.getVehicle().getVehicleId();
-                        vehiclePlate = ev.getVehicle().getPlateNumber();
-                        break;
-                    }
+                TrackingEvent ev = latestEventWithVehicleByTrackingId.get(p.getTrackingId());
+                if (ev != null && ev.getVehicle() != null) {
+                    vehicleId = ev.getVehicle().getVehicleId();
+                    vehiclePlate = ev.getVehicle().getPlateNumber();
+                    break;
                 }
-                if (vehicleId != null) break;
             }
         }
 
+        String clientId = s.getClient() != null ? s.getClient().getClientId() : null;
+        String clientName = s.getClient() != null ? s.getClient().getName() : "—";
+
         return new ShipmentSummaryResponse(
                 s.getShipmentId(),
-                s.getClient().getClientId(),
-                s.getClient().getName(),
+                clientId,
+                clientName,
                 s.getRecipientName(),
                 s.getRecipientContact(),
                 s.getQuantity(),
@@ -558,6 +603,22 @@ public class ShipmentServiceImpl implements ShipmentService {
                 vehicleId,
                 vehiclePlate
         );
+    }
+
+    private ShipmentSummaryResponse mapToSummaryResponse(Shipment s) {
+        List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(s.getShipmentId());
+        List<Payment> payments = paymentRepository.findByShipment_ShipmentId(s.getShipmentId());
+        Map<String, TrackingEvent> eventMap = new HashMap<>();
+        if (!parcels.isEmpty()) {
+            List<String> tIds = parcels.stream().map(ParcelUnit::getTrackingId).collect(Collectors.toList());
+            List<TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdInAndVehicleNotNullOrderByEventTimestampAsc(tIds);
+            for (TrackingEvent ev : events) {
+                if (ev.getParcelUnit() != null) {
+                    eventMap.put(ev.getParcelUnit().getTrackingId(), ev);
+                }
+            }
+        }
+        return mapToSummaryResponse(s, parcels, payments, eventMap);
     }
 
     private static class RollupStatus {

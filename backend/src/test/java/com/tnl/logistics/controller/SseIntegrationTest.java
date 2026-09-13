@@ -128,4 +128,23 @@ public class SseIntegrationTest {
                         .content(objectMapper.writeValueAsString(scanReq)))
                 .andExpect(status().isOk());
     }
+
+    @Test
+    public void testSseStreamAcceptsTokenQueryParameter() throws Exception {
+        String rawToken = JwtTokenProvider.generateToken("office", "OFFICE_STAFF");
+        MvcResult sseResult = mockMvc.perform(get("/api/v1/events/stream")
+                        .param("token", rawToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertNotNull(sseResult.getResponse());
+    }
+
+    @Test
+    public void testStandardEndpointsRejectTokenQueryParameter() throws Exception {
+        String rawToken = JwtTokenProvider.generateToken("office", "OFFICE_STAFF");
+        mockMvc.perform(get("/api/v1/shipments")
+                        .param("token", rawToken))
+                .andExpect(status().isForbidden());
+    }
 }

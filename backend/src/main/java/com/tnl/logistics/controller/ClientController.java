@@ -32,10 +32,10 @@ public class ClientController {
             @RequestParam(value = "search", required = false) String search,
             @RequestParam(value = "active", required = false) Boolean active,
             @RequestParam(value = "all", defaultValue = "false") boolean all) {
-        if (all || page == null) {
+        if (all) {
             return ResponseEntity.ok(clientService.getAllClients(active));
         }
-        int pageNum = Math.max(0, page);
+        int pageNum = page != null ? Math.max(0, page) : 0;
         int pageSize = size != null ? Math.max(1, size) : 20;
         PageRequest pageRequest = PageRequest.of(pageNum, pageSize, Sort.by("clientId").ascending());
         return ResponseEntity.ok(clientService.getClients(search, active, pageRequest));

@@ -9,7 +9,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,7 +33,11 @@ public class ShipmentController {
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
     public ResponseEntity<ShipmentResponse> registerShipment(@Valid @RequestBody ShipmentRegistrationRequest request) {
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            throw new AccessDeniedException("Authenticated user context is required");
+        }
+        String username = auth.getName();
         ShipmentResponse response = shipmentService.registerShipment(request, username);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -64,7 +70,11 @@ public class ShipmentController {
             @PathVariable String shipmentId,
             @RequestBody(required = false) PrintLabelRequest request
     ) {
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            throw new AccessDeniedException("Authenticated user context is required");
+        }
+        String username = auth.getName();
         List<String> packageIds = request != null ? request.getPackageIds() : null;
         String printerId = request != null ? request.getPrinterId() : null;
         shipmentService.recordLabelPrint(shipmentId, packageIds, username, printerId);

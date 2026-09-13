@@ -55,11 +55,15 @@ public class CollectionsServiceImpl implements CollectionsService {
         LocalDateTime cycleStart = cycleStartLocalDate.atStartOfDay();
         LocalDateTime cycleEnd = targetThursday.atTime(23, 59, 59, 999999999);
 
-        List<Client> clients = clientRepository.findAll();
         List<Shipment> rawShipments = shipmentRepository.findByDateRegisteredBetweenOrderByDateRegisteredDesc(cycleStart, cycleEnd);
 
-        // Exclude shipments already billed to an SOA from a different cycle
-        Set<String> cycleSoaNos = soaRepository.findByStatementDate(targetThursday).stream()
+        // Pre-fetch all cycle SOAs for this target Thursday
+        List<Soa> cycleSoas = soaRepository.findByStatementDate(targetThursday);
+        Map<String, Soa> soaByClientId = cycleSoas.stream()
+                .filter(s -> s.getClient() != null)
+                .collect(Collectors.toMap(s -> s.getClient().getClientId(), s -> s, (s1, s2) -> s1));
+
+        Set<String> cycleSoaNos = cycleSoas.stream()
                 .map(Soa::getSoaNo)
                 .collect(Collectors.toSet());
 
@@ -75,15 +79,44 @@ public class CollectionsServiceImpl implements CollectionsService {
                 })
                 .collect(Collectors.toList());
 
+        // Derive candidate clients strictly from cycle shipments and cycle SOAs
+        Map<String, Client> candidateClients = new LinkedHashMap<>();
+        for (Shipment s : cycleShipments) {
+            if (s.getClient() != null) {
+                candidateClients.putIfAbsent(s.getClient().getClientId(), s.getClient());
+            }
+        }
+        for (Soa soa : cycleSoas) {
+            if (soa.getClient() != null) {
+                candidateClients.putIfAbsent(soa.getClient().getClientId(), soa.getClient());
+            }
+        }
+
         Map<String, List<Shipment>> shipmentsByClient = cycleShipments.stream()
                 .collect(Collectors.groupingBy(s -> s.getClient().getClientId()));
+
+        // Batch pre-fetch all payments for shipments in this cycle
+        List<String> allCycleShipmentIds = cycleShipments.stream()
+                .map(Shipment::getShipmentId)
+                .collect(Collectors.toList());
+
+        Map<String, BigDecimal> paymentsByShipment = Collections.emptyMap();
+        if (!allCycleShipmentIds.isEmpty()) {
+            List<Payment> cyclePayments = paymentRepository.findByShipment_ShipmentIdIn(allCycleShipmentIds);
+            paymentsByShipment = cyclePayments.stream()
+                    .filter(p -> p.getShipment() != null && p.getAmountPaid() != null)
+                    .collect(Collectors.groupingBy(
+                            p -> p.getShipment().getShipmentId(),
+                            Collectors.reducing(BigDecimal.ZERO, Payment::getAmountPaid, BigDecimal::add)
+                    ));
+        }
 
         List<WeeklyClientCollectionItem> items = new ArrayList<>();
         BigDecimal totalDue = BigDecimal.ZERO;
         BigDecimal totalCollected = BigDecimal.ZERO;
         BigDecimal outstandingBalance = BigDecimal.ZERO;
 
-        for (Client client : clients) {
+        for (Client client : candidateClients.values()) {
             String clientId = client.getClientId();
             List<Shipment> clientShipments = shipmentsByClient.getOrDefault(clientId, Collections.emptyList());
 
@@ -94,19 +127,15 @@ public class CollectionsServiceImpl implements CollectionsService {
 
             BigDecimal currentCharges = clientShipments.stream()
                     .map(Shipment::getTotalAmount)
+                    .filter(Objects::nonNull)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
             BigDecimal paid = BigDecimal.ZERO;
             for (Shipment s : clientShipments) {
-                List<Payment> payments = paymentRepository.findByShipment_ShipmentId(s.getShipmentId());
-                for (Payment p : payments) {
-                    if (p.getAmountPaid() != null) {
-                        paid = paid.add(p.getAmountPaid());
-                    }
-                }
+                paid = paid.add(paymentsByShipment.getOrDefault(s.getShipmentId(), BigDecimal.ZERO));
             }
 
-            Optional<Soa> soaOpt = soaRepository.findByClient_ClientIdAndStatementDate(clientId, targetThursday);
+            Optional<Soa> soaOpt = Optional.ofNullable(soaByClientId.get(clientId));
             String statementId = soaOpt.map(Soa::getSoaNo).orElse(null);
             BigDecimal previousBalance = BigDecimal.ZERO;
             BigDecimal deductions = soaOpt.map(Soa::getDeductions).filter(Objects::nonNull).orElse(BigDecimal.ZERO);

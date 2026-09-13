@@ -24,10 +24,10 @@ public class DataSeeder implements CommandLineRunner {
     private final BCryptPasswordEncoder passwordEncoder;
     private final JdbcTemplate jdbcTemplate;
 
-    @org.springframework.beans.factory.annotation.Value("${app.seed.admin:true}")
+    @org.springframework.beans.factory.annotation.Value("${app.seed.admin:false}")
     private boolean seedAdmin;
 
-    @org.springframework.beans.factory.annotation.Value("${app.seed.sample-data:true}")
+    @org.springframework.beans.factory.annotation.Value("${app.seed.sample-data:false}")
     private boolean seedSampleData;
 
     public DataSeeder(AppUserRepository appUserRepository,

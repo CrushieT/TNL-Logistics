@@ -6,6 +6,7 @@ import com.tnl.logistics.dto.UpdateSystemSettingRequest;
 import com.tnl.logistics.service.SystemSettingService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -36,7 +37,10 @@ public class SystemSettingController {
     public ResponseEntity<SystemSettingDto> updateSettings(
             @Valid @RequestBody UpdateSystemSettingRequest request) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        String actingUsername = auth != null ? auth.getName() : "ADMIN";
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            throw new AccessDeniedException("Authenticated user context is required");
+        }
+        String actingUsername = auth.getName();
         return ResponseEntity.ok(systemSettingService.updateSettings(request, actingUsername));
     }
 

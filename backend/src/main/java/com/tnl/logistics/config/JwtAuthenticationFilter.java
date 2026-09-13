@@ -37,7 +37,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             token = authHeader.substring(7);
-        } else if (request.getParameter("token") != null && !request.getParameter("token").isBlank()) {
+        } else if (isSseStreamRequest(request) && request.getParameter("token") != null && !request.getParameter("token").isBlank()) {
             token = request.getParameter("token");
         }
 
@@ -64,5 +64,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private boolean isSseStreamRequest(HttpServletRequest request) {
+        if (!"GET".equalsIgnoreCase(request.getMethod())) {
+            return false;
+        }
+        String servletPath = request.getServletPath();
+        if (servletPath != null && (servletPath.equals("/api/v1/events/stream") || servletPath.endsWith("/events/stream"))) {
+            return true;
+        }
+        String requestUri = request.getRequestURI();
+        return requestUri != null && (requestUri.equals("/api/v1/events/stream") || requestUri.endsWith("/api/v1/events/stream"));
     }
 }

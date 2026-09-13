@@ -277,5 +277,39 @@ public class ClientIntegrationTest {
         assertTrue(parcelUnitRepository.findByShipment_ShipmentIdInOrderBySeqAsc(List.of("NON-EXISTENT")).isEmpty());
         assertTrue(paymentRepository.findByShipment_ShipmentIdIn(List.of("NON-EXISTENT")).isEmpty());
     }
+
+    @Test
+    public void testClientListingDefaultsToPaginationUnlessAllSpecified() throws Exception {
+        Client client = new Client(
+                "CL-001",
+                "Northbridge Trading",
+                "Binondo, Manila",
+                "0917-555-0148",
+                "orders@northbridge.ph",
+                ChargeModel.FLAT,
+                true
+        );
+        clientRepository.saveAndFlush(client);
+
+        // Omitting page parameter should return paginated PageImpl response (with content)
+        MvcResult pagedRes = mockMvc.perform(get("/api/v1/clients")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode pagedRoot = objectMapper.readTree(pagedRes.getResponse().getContentAsString());
+        assertTrue(pagedRoot.has("content"), "Default client listing must return a paginated Page structure");
+        assertEquals(1, pagedRoot.get("content").size());
+
+        // Explicit all=true should return flat array response
+        MvcResult allRes = mockMvc.perform(get("/api/v1/clients?all=true")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode allRoot = objectMapper.readTree(allRes.getResponse().getContentAsString());
+        assertTrue(allRoot.isArray(), "all=true parameter must return a JSON array");
+        assertEquals(1, allRoot.size());
+    }
 }
 

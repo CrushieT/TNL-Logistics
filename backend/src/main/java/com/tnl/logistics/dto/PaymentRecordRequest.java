@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.tnl.logistics.model.PaymentMethod;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
@@ -21,6 +22,7 @@ public class PaymentRecordRequest {
     @JsonAlias({"amount", "amount_paid"})
     @NotNull(message = "Amount paid is required")
     @DecimalMin(value = "0.01", message = "Amount paid must be greater than zero")
+    @Digits(integer = 10, fraction = 2, message = "Amount paid must have up to 10 integer digits and 2 decimal places")
     private BigDecimal amountPaid;
 
     @NotNull(message = "Payment method is required")

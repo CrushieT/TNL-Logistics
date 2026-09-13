@@ -340,4 +340,14 @@ public class SecurityIntegrationTest {
                         .header("Authorization", token))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    public void testCorsPreflightAllowedOrigin() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options("/api/v1/auth/login")
+                        .header("Origin", "http://localhost:3000")
+                        .header("Access-Control-Request-Method", "POST"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:3000"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+    }
 }

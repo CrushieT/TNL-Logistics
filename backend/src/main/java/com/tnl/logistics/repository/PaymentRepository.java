@@ -28,7 +28,16 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     List<Payment> findByPaymentDateBetween(LocalDate startDate, LocalDate endDate);
 
-    @Query("SELECT p FROM Payment p JOIN p.shipment s LEFT JOIN s.client c " +
+    @Query(value = "SELECT p FROM Payment p JOIN FETCH p.shipment s LEFT JOIN FETCH s.client c LEFT JOIN FETCH p.staff u " +
+           "WHERE (:search IS NULL OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "   OR LOWER(c.name) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "   OR LOWER(s.recipientName) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "   OR LOWER(p.referenceNo) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+           "AND (:method IS NULL OR p.method = :method) " +
+           "AND (:clientId IS NULL OR c.clientId = :clientId) " +
+           "AND (:startDate IS NULL OR p.paymentDate >= :startDate) " +
+           "AND (:endDate IS NULL OR p.paymentDate <= :endDate)",
+           countQuery = "SELECT COUNT(p) FROM Payment p JOIN p.shipment s LEFT JOIN s.client c " +
            "WHERE (:search IS NULL OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "   OR LOWER(c.name) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "   OR LOWER(s.recipientName) LIKE LOWER(CONCAT('%', :search, '%')) " +
