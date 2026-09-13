@@ -243,12 +243,22 @@
 - Frontend Settings screen (`frontend-web/src/app/settings.js`) matching prototype layout with 2-card desktop grid, provisional billable weight callout, and read-only sequential ID format previews (`TRK-YYYY-`, `SHP-YYYY-`).
 - Verified via 12 integration tests in `SystemSettingIntegrationTest.java` (12/12 passing, and 102/102 backend tests passing total).
 
-**5.7 — First Boot Admin Registration & Setup Wizard** — **[UPCOMING]**
-- Public bootstrap status endpoint (`GET /api/v1/auth/bootstrap-status`) to dynamically report whether a system administrator account already exists (`existsByRole(ADMIN)`).
-- One-time initial admin registration endpoint (`POST /api/v1/auth/bootstrap-admin`) to securely create the primary administrator (`fullName`, `username`, `password`), returning HTTP 409 Conflict once an admin has been initialized.
-- Environment & seeder isolation: decouple hardcoded default admin credentials from clean production setups while preserving development convenience.
-- Web Setup Wizard (`frontend-web/src/app/setup.js`): automatic detection and redirection from `/login` when unbootstrapped, presenting initial admin onboarding before allowing login.
-- Alignment with Single Administrator Invariant: adhere to system rules protecting `USR-ADMIN` and preventing rogue admin creation.
+**5.7 — First Boot Admin Registration & Setup Wizard** — **[COMPLETED]**
+- Public first-boot status probing endpoint (`GET /api/v1/auth/first-boot-status`) returning `FirstBootStatusResponse(isFirstBoot)` to report whether an administrator account already exists (`!existsByRole(ADMIN)`).
+- One-time initial admin registration endpoint (`POST /api/v1/auth/first-boot-admin`) accepting `FirstBootAdminRequest` with Bean validation, creating the immutable primary administrator (`userId = 'USR-ADMIN'`, `role = ADMIN`, `active = true`, `tokenVersion = 1`), updating singleton `SystemSetting` company branding, broadcasting `SETTINGS_UPDATED` SSE, and returning a freshly signed JWT token.
+- Permanent endpoint lockout: returns HTTP 409 Conflict once the primary administrator has been initialized, preventing rogue account creation.
+- Environment & seeder isolation: parameterized `app.seed.admin` property in `DataSeeder.java` and dedicated `application-firstboot.properties` profile for testing on clean isolated databases (`tnl_firstboot`).
+- Frontend 2-Step Setup Wizard (`frontend-web/src/app/setup.js`):
+  - Step 1 (Administrator Credentials): Full Name, Username, Password, and Confirm Password with SVG eye reveal toggles, minimum 8 characters, and live validation.
+  - Step 2 (Company & SOA Branding): Pre-filled defaults for *TC & CT Integrated Logistics* (Labo, Camarines Norte) with a reactive document header preview card.
+  - Auto-login: automatically sets the authenticated session upon completion and redirects directly to the operations dashboard (`/`).
+- Central route guard integration (`frontend-web/src/app/_layout.js`): proactively checks `checkFirstBootStatus()` on mount, auto-redirecting uninitialized visitors to `/setup`, and blocking initialized visitors from `/setup` back to `/login`.
+- Administrator Credential Management & Settings Protection:
+  - Settings Card (`AdminSecurityCard.js`): dedicated operations card on `/settings` with live eye visibility toggles for self-service password updates, incrementing `tokenVersion` and transparently refreshing the active session.
+  - Read-Only Admin Status: updated `EditUserModal.js` to render a fixed read-only `Active` badge for the `ADMIN` role, completely preventing self-deactivation.
+  - Password Authorization Modals: implemented reusable `ConfirmPasswordModal.js` requiring administrator password confirmation before persisting system settings or updating credentials.
+  - Rate-Limited Verification: added `POST /api/v1/auth/verify-password` using typed `PasswordVerificationRequest` and bound to `LoginRateLimiterService` (locking access after 5 consecutive failures with HTTP 429 and `Retry-After`).
+- Verified via `FirstBootIntegrationTest.java` and `SecurityIntegrationTest.java` (105/105 backend tests passing, 0 failures, 0 errors, and clean web production build).
 
 ---
 
