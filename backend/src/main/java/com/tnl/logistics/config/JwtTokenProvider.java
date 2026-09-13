@@ -18,12 +18,11 @@ import java.util.Map;
 @Component
 public class JwtTokenProvider {
 
-    private static String secret = "your-super-secret-key-that-needs-to-be-at-least-256-bits-long-tnl-logistics";
+    private static String secret;
     private static final long EXPIRATION_TIME_MS = 864000000; // 10 days
     private static final ObjectMapper objectMapper = new ObjectMapper();
-    private static final long SERVER_START_TIME_SECONDS = (System.currentTimeMillis() / 1000) - 1;
 
-    @Value("${jwt.secret:${JWT_SECRET:your-super-secret-key-that-needs-to-be-at-least-256-bits-long-tnl-logistics}}")
+    @Value("${jwt.secret:${JWT_SECRET:}}")
     public void setSecret(String secretKey) {
         if (secretKey == null || secretKey.trim().getBytes(StandardCharsets.UTF_8).length < 32) {
             throw new IllegalArgumentException("JWT secret must be configured and at least 256 bits (32 bytes) long.");
@@ -36,6 +35,9 @@ public class JwtTokenProvider {
     }
 
     public static String generateToken(String username, String role, Integer tokenVersion) {
+        if (secret == null) {
+            throw new IllegalStateException("JWT secret has not been configured. Ensure jwt.secret is provided.");
+        }
         try {
             Map<String, Object> header = new HashMap<>();
             header.put("alg", "HS256");
@@ -64,6 +66,7 @@ public class JwtTokenProvider {
     }
 
     public static boolean validateToken(String token) {
+        if (secret == null) return false;
         try {
             String[] parts = token.split("\\.");
             if (parts.length != 3) return false;
@@ -85,12 +88,6 @@ public class JwtTokenProvider {
             Map<String, Object> claims = objectMapper.readValue(payloadJson, Map.class);
             Number exp = (Number) claims.get("exp");
             if (exp != null && exp.longValue() < System.currentTimeMillis() / 1000) {
-                return false;
-            }
-
-            // Invalidate tokens issued before this server instance started
-            Number iat = (Number) claims.get("iat");
-            if (iat != null && iat.longValue() < SERVER_START_TIME_SECONDS) {
                 return false;
             }
 
