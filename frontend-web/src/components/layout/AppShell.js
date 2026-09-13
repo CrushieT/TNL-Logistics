@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { View, ScrollView, StyleSheet, useWindowDimensions, TouchableOpacity, Text } from 'react-native';
+import { View, ScrollView, StyleSheet, useWindowDimensions, TouchableOpacity, Text, Image } from 'react-native';
+import { useRouter } from 'expo-router';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import { colors, fonts, spacing } from '../../theme';
 
 export default function AppShell({ children, shipmentCount, parcelCount }) {
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -14,12 +16,20 @@ export default function AppShell({ children, shipmentCount, parcelCount }) {
       {/* Mobile Top Navigation Header */}
       {isMobile ? (
         <View style={styles.mobileHeader}>
-          <View style={styles.mobileBrandRow}>
-            <View style={styles.mobileLogoMark}>
-              <Text style={styles.mobileLogoText}>T</Text>
+          <TouchableOpacity
+            style={styles.mobileBrandRow}
+            onPress={() => router.push('/')}
+            activeOpacity={0.8}
+          >
+            <Image
+              source={require('../../../assets/tracking-logo.png')}
+              style={styles.mobileLogoImage}
+              resizeMode="contain"
+            />
+            <View style={styles.mobileBadgeWrap}>
+              <Text style={styles.mobileBadgeText}>ADMIN</Text>
             </View>
-            <Text style={styles.mobileBrandTitle}>TNL LOGISTICS</Text>
-          </View>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.mobileMenuToggle}
             onPress={() => setMobileMenuOpen((prev) => !prev)}
@@ -74,26 +84,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  mobileLogoMark: {
-    width: 24,
-    height: 24,
-    backgroundColor: colors.black,
-    alignItems: 'center',
-    justifyContent: 'center',
+  mobileLogoImage: {
+    width: 105,
+    height: 32,
+  },
+  mobileBadgeWrap: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: '#EBE9E0',
     borderRadius: 2,
   },
-  mobileLogoText: {
-    fontFamily: fonts.sans,
-    color: '#FFFFFF',
-    fontWeight: '900',
-    fontSize: 13,
-  },
-  mobileBrandTitle: {
-    fontFamily: fonts.sans,
-    fontWeight: '800',
-    fontSize: 13,
-    color: colors.ink,
-    letterSpacing: 0.5,
+  mobileBadgeText: {
+    fontFamily: fonts.mono,
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.inkSoft,
+    letterSpacing: 0.8,
   },
   mobileMenuToggle: {
     padding: 6,
