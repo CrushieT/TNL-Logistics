@@ -61,7 +61,7 @@ export default function CycleDropdown({
   };
 
   return (
-    <View ref={containerRef} style={[styles.container, { minWidth }, style]}>
+    <View ref={containerRef} style={[styles.container, { minWidth }, isOpen && styles.containerOpen, style]}>
       {/* Trigger Button */}
       <Pressable
         onPress={handleToggle}
@@ -129,6 +129,9 @@ const styles = StyleSheet.create({
     position: 'relative',
     zIndex: 1000,
   },
+  containerOpen: {
+    zIndex: 10000,
+  },
   triggerButton: {
     height: 40,
     backgroundColor: '#FAF9F5',
@@ -176,7 +179,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 10,
     elevation: 10,
-    zIndex: 1001,
+    zIndex: 10001,
     overflow: 'hidden',
   },
   scrollArea: {

@@ -130,6 +130,7 @@ export default function DashboardScreen() {
       <PageHeader
         eyebrow="Operations Overview"
         title="Dashboard"
+        style={styles.pageHeader}
         right={
           <View style={styles.headerRightGroup}>
             {cycles.length > 0 ? (
@@ -221,23 +222,29 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
+  pageHeader: {
+    zIndex: 1000,
+  },
   headerRightGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     flexWrap: 'wrap',
+    zIndex: 1000,
   },
   metricsRow: {
     flexDirection: 'row',
     gap: spacing.lg,
     marginBottom: spacing.lg,
     flexWrap: 'wrap',
+    zIndex: 1,
   },
   chartsRow: {
     flexDirection: 'row',
     gap: spacing.lg,
     marginBottom: spacing.lg,
     flexWrap: 'wrap',
+    zIndex: 1,
   },
   chartCard: {
     flex: 1,
