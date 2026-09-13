@@ -84,6 +84,21 @@ public class SoaServiceImpl implements SoaService {
         BigDecimal totalCharges = BigDecimal.ZERO;
         BigDecimal totalPaid = BigDecimal.ZERO;
 
+        List<String> shipmentIds = shipments.stream()
+                .map(Shipment::getShipmentId)
+                .collect(Collectors.toList());
+
+        Map<String, BigDecimal> paymentsByShipment = Collections.emptyMap();
+        if (!shipmentIds.isEmpty()) {
+            List<Payment> cyclePayments = paymentRepository.findByShipment_ShipmentIdIn(shipmentIds);
+            paymentsByShipment = cyclePayments.stream()
+                    .filter(p -> p.getShipment() != null && p.getAmountPaid() != null)
+                    .collect(Collectors.groupingBy(
+                            p -> p.getShipment().getShipmentId(),
+                            Collectors.reducing(BigDecimal.ZERO, Payment::getAmountPaid, BigDecimal::add)
+                    ));
+        }
+
         for (Shipment s : shipments) {
             String dateStr = s.getDateRegistered() != null ? s.getDateRegistered().format(MONTH_DAY_YEAR) : "—";
             String desc = (s.getDescription() != null && !s.getDescription().trim().isEmpty())
@@ -94,11 +109,7 @@ public class SoaServiceImpl implements SoaService {
             BigDecimal other = s.getOtherCharges() != null ? s.getOtherCharges() : BigDecimal.ZERO;
             BigDecimal due = s.getTotalAmount() != null ? s.getTotalAmount() : BigDecimal.ZERO;
 
-            List<Payment> payments = paymentRepository.findByShipment_ShipmentId(s.getShipmentId());
-            BigDecimal paid = payments.stream()
-                    .map(Payment::getAmountPaid)
-                    .filter(Objects::nonNull)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal paid = paymentsByShipment.getOrDefault(s.getShipmentId(), BigDecimal.ZERO);
 
             BigDecimal bal = due.subtract(paid);
             if (bal.compareTo(BigDecimal.ZERO) < 0) {
@@ -244,9 +255,13 @@ public class SoaServiceImpl implements SoaService {
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        List<String> shipmentIds = shipments.stream()
+                .map(Shipment::getShipmentId)
+                .collect(Collectors.toList());
+
         BigDecimal totalPaid = BigDecimal.ZERO;
-        for (Shipment s : shipments) {
-            List<Payment> payments = paymentRepository.findByShipment_ShipmentId(s.getShipmentId());
+        if (!shipmentIds.isEmpty()) {
+            List<Payment> payments = paymentRepository.findByShipment_ShipmentIdIn(shipmentIds);
             for (Payment p : payments) {
                 if (p.getAmountPaid() != null) {
                     totalPaid = totalPaid.add(p.getAmountPaid());

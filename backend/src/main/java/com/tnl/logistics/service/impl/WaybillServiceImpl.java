@@ -52,12 +52,21 @@ public class WaybillServiceImpl implements WaybillService {
     @Transactional(readOnly = true)
     public List<WaybillShipmentOptionResponse> getShipmentOptions() {
         List<Shipment> shipments = shipmentRepository.findAllByOrderByDateRegisteredDesc();
-        List<Waybill> waybills = waybillRepository.findAll();
+        if (shipments.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<String> shipmentIds = shipments.stream()
+                .map(Shipment::getShipmentId)
+                .collect(Collectors.toList());
+
+        List<Waybill> waybills = waybillRepository.findByShipment_ShipmentIdIn(shipmentIds);
         Map<String, Waybill> waybillMap = waybills.stream()
+                .filter(w -> w.getShipment() != null)
                 .collect(Collectors.toMap(w -> w.getShipment().getShipmentId(), w -> w, (w1, w2) -> w1));
 
-        List<ParcelUnit> allParcels = parcelUnitRepository.findAll();
-        Map<String, List<String>> trackingMap = allParcels.stream()
+        List<ParcelUnit> scopedParcels = parcelUnitRepository.findByShipment_ShipmentIdInOrderBySeqAsc(shipmentIds);
+        Map<String, List<String>> trackingMap = scopedParcels.stream()
                 .filter(p -> p.getShipment() != null && p.getTrackingId() != null)
                 .collect(Collectors.groupingBy(
                         p -> p.getShipment().getShipmentId(),

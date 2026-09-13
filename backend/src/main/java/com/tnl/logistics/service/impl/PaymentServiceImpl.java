@@ -21,7 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -163,17 +166,38 @@ public class PaymentServiceImpl implements PaymentService {
         String cleanClientId = (clientId != null && !clientId.equalsIgnoreCase("ALL")) ? clientId.trim() : null;
 
         Page<Payment> paymentsPage = paymentRepository.searchPayments(cleanSearch, method, cleanClientId, startDate, endDate, pageable);
+        List<Payment> payments = paymentsPage.getContent();
+        if (payments.isEmpty()) {
+            return new PageImpl<>(Collections.emptyList(), pageable, paymentsPage.getTotalElements());
+        }
 
-        List<PaymentResponse> responses = paymentsPage.getContent().stream().map(p -> {
+        Set<String> shipmentIds = payments.stream()
+                .filter(p -> p.getShipment() != null)
+                .map(p -> p.getShipment().getShipmentId())
+                .collect(Collectors.toSet());
+
+        Map<String, BigDecimal> totalPaidByShipment = Collections.emptyMap();
+        if (!shipmentIds.isEmpty()) {
+            List<Payment> allForShipments = paymentRepository.findByShipment_ShipmentIdIn(shipmentIds);
+            totalPaidByShipment = allForShipments.stream()
+                    .filter(p -> p.getShipment() != null && p.getAmountPaid() != null)
+                    .collect(Collectors.groupingBy(
+                            p -> p.getShipment().getShipmentId(),
+                            Collectors.reducing(BigDecimal.ZERO, Payment::getAmountPaid, BigDecimal::add)
+                    ));
+        }
+
+        final Map<String, BigDecimal> finalPaidMap = totalPaidByShipment;
+        List<PaymentResponse> responses = payments.stream().map(p -> {
             Shipment s = p.getShipment();
-            List<Payment> allForShipment = paymentRepository.findByShipment_ShipmentId(s.getShipmentId());
-            BigDecimal totalPaid = allForShipment.stream()
-                    .map(Payment::getAmountPaid)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal balance = s.getTotalAmount().subtract(totalPaid);
+            BigDecimal totalPaid = (s != null)
+                    ? finalPaidMap.getOrDefault(s.getShipmentId(), BigDecimal.ZERO)
+                    : BigDecimal.ZERO;
+            BigDecimal totalAmount = (s != null && s.getTotalAmount() != null) ? s.getTotalAmount() : BigDecimal.ZERO;
+            BigDecimal balance = totalAmount.subtract(totalPaid);
             if (balance.compareTo(BigDecimal.ZERO) < 0) balance = BigDecimal.ZERO;
 
-            String status = totalPaid.compareTo(s.getTotalAmount()) >= 0
+            String status = totalPaid.compareTo(totalAmount) >= 0
                     ? "Paid"
                     : (totalPaid.compareTo(BigDecimal.ZERO) > 0 ? "Partial" : "Unpaid");
 

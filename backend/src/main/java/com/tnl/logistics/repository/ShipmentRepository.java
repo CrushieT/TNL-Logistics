@@ -35,7 +35,7 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
            "OR LOWER(c.name) LIKE LOWER(CONCAT('%', :search, '%')))")
     Page<Shipment> searchShipments(@Param("search") String search, Pageable pageable);
 
-    @Query(value = "SELECT s FROM Shipment s JOIN s.client c WHERE " +
+    @Query(value = "SELECT s FROM Shipment s JOIN FETCH s.client c WHERE " +
            "(:search IS NULL OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(s.recipientName) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(s.recipientContact) LIKE LOWER(CONCAT('%', :search, '%')) " +
@@ -90,9 +90,11 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
 
     List<Shipment> findByClient_ClientIdOrderByDateRegisteredDesc(String clientId);
 
+    @Query("SELECT s FROM Shipment s LEFT JOIN FETCH s.client ORDER BY s.dateRegistered DESC")
     List<Shipment> findAllByOrderByDateRegisteredDesc();
 
-    List<Shipment> findByDateRegisteredBetweenOrderByDateRegisteredDesc(java.time.LocalDateTime start, java.time.LocalDateTime end);
+    @Query("SELECT s FROM Shipment s LEFT JOIN FETCH s.client WHERE s.dateRegistered >= :start AND s.dateRegistered <= :end ORDER BY s.dateRegistered DESC")
+    List<Shipment> findByDateRegisteredBetweenOrderByDateRegisteredDesc(@Param("start") java.time.LocalDateTime start, @Param("end") java.time.LocalDateTime end);
 
     List<Shipment> findByClient_ClientIdAndDateRegisteredBetween(String clientId, java.time.LocalDateTime start, java.time.LocalDateTime end);
 
