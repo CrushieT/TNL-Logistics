@@ -10,6 +10,7 @@ tnl-logistics/
 │   └── rules/
 │       ├── build-plan.md             # Master 6-Phase development roadmap & progress tracking
 │       ├── git-conventions.md        # Git workflow, branch naming & commit rules
+│       ├── hardening-plan.md         # Post-review system hardening & lifecycle remediation plan
 │       ├── karpathy-guidelines.md    # LLM coding best practices
 │       └── project-structure.md      # Project directory layout & philosophies
 ├── .github/
