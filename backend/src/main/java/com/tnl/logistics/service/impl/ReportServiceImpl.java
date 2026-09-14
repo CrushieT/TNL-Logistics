@@ -31,25 +31,29 @@ public class ReportServiceImpl implements ReportService {
     private final SoaRepository soaRepository;
     private final ClientRepository clientRepository;
     private final CollectionsService collectionsService;
+    private final java.time.Clock clock;
 
     public ReportServiceImpl(ShipmentRepository shipmentRepository,
                              ParcelUnitRepository parcelUnitRepository,
                              PaymentRepository paymentRepository,
                              SoaRepository soaRepository,
                              ClientRepository clientRepository,
-                             CollectionsService collectionsService) {
+                             CollectionsService collectionsService,
+                             java.time.Clock clock) {
         this.shipmentRepository = shipmentRepository;
         this.parcelUnitRepository = parcelUnitRepository;
         this.paymentRepository = paymentRepository;
         this.soaRepository = soaRepository;
         this.clientRepository = clientRepository;
         this.collectionsService = collectionsService;
+        this.clock = clock;
     }
 
     @Override
     @Transactional(readOnly = true)
     public ReportSummaryResponse getReportSummary(LocalDate startDate, LocalDate endDate) {
-        LocalDate resolvedEnd = (endDate != null) ? endDate : LocalDate.now();
+        LocalDate today = LocalDate.now(clock);
+        LocalDate resolvedEnd = (endDate != null) ? endDate : today;
         LocalDate resolvedStart = (startDate != null) ? startDate : resolvedEnd.withDayOfMonth(1);
 
         if (resolvedStart.isAfter(resolvedEnd)) {
@@ -61,30 +65,97 @@ public class ReportServiceImpl implements ReportService {
         LocalDateTime startDateTime = resolvedStart.atStartOfDay();
         LocalDateTime endDateTime = resolvedEnd.atTime(23, 59, 59, 999999999);
 
-        // 1. Fetch Shipments within period
+        // 1. Fetch Shipments within period (for period billed revenue and operational breakdown)
         List<Shipment> periodShipments = shipmentRepository.findByDateRegisteredBetweenOrderByDateRegisteredDesc(startDateTime, endDateTime);
         List<String> shipmentIds = periodShipments.stream().map(Shipment::getShipmentId).collect(Collectors.toList());
 
-        // 2. Fetch Payments recorded within period
+        // 2. Fetch Payments recorded within period (cash-based: paymentDate between resolvedStart and resolvedEnd)
         List<Payment> periodPayments = paymentRepository.findByPaymentDateBetween(resolvedStart, resolvedEnd);
-
-        // Also fetch payments specifically linked to period shipments to calculate exact per-shipment balances
-        List<Payment> shipmentPayments = shipmentIds.isEmpty()
-                ? Collections.emptyList()
-                : paymentRepository.findByShipment_ShipmentIdIn(shipmentIds);
-
-        Map<String, BigDecimal> paymentsByShipmentId = shipmentPayments.stream()
-                .collect(Collectors.groupingBy(
-                        p -> p.getShipment().getShipmentId(),
-                        Collectors.reducing(BigDecimal.ZERO, Payment::getAmountPaid, BigDecimal::add)
-                ));
 
         // 3. Fetch Parcels for period shipments
         List<ParcelUnit> periodParcels = shipmentIds.isEmpty()
                 ? Collections.emptyList()
                 : parcelUnitRepository.findByShipment_ShipmentIdInOrderBySeqAsc(shipmentIds);
 
-        // 4. Calculate Top 5 KPIs
+        // 4. Lifetime Accounts Receivable Aging and Live Balances via Repository Aggregate Projection
+        List<Object[]> unpaidShipmentsData = shipmentRepository.findUnpaidShipmentsWithPayments();
+
+        Map<String, ClientAgingAccumulator> clientAgingMap = new LinkedHashMap<>();
+        Map<String, BigDecimal> clientLiveBalances = new HashMap<>();
+        Map<String, BigDecimal> clientLiveOpenPaid = new HashMap<>();
+        BigDecimal liveOutstandingReceivables = BigDecimal.ZERO;
+
+        for (Object[] row : unpaidShipmentsData) {
+            String shipmentId = (String) row[0];
+            String clientId = (String) row[1];
+            String clientName = (String) row[2];
+            String clientContact = (String) row[3];
+
+            LocalDate regDate = today;
+            if (row[4] instanceof LocalDateTime) {
+                regDate = ((LocalDateTime) row[4]).toLocalDate();
+            } else if (row[4] instanceof java.sql.Timestamp) {
+                regDate = ((java.sql.Timestamp) row[4]).toLocalDateTime().toLocalDate();
+            } else if (row[4] instanceof LocalDate) {
+                regDate = (LocalDate) row[4];
+            }
+
+            BigDecimal sBilled = BigDecimal.ZERO;
+            if (row[5] instanceof BigDecimal) {
+                sBilled = (BigDecimal) row[5];
+            } else if (row[5] != null) {
+                sBilled = new BigDecimal(row[5].toString());
+            }
+
+            BigDecimal sPaid = BigDecimal.ZERO;
+            if (row[6] instanceof BigDecimal) {
+                sPaid = (BigDecimal) row[6];
+            } else if (row[6] != null) {
+                sPaid = new BigDecimal(row[6].toString());
+            }
+
+            BigDecimal sBalance = sBilled.subtract(sPaid);
+            if (sBalance.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+
+            liveOutstandingReceivables = liveOutstandingReceivables.add(sBalance);
+            clientLiveBalances.put(clientId, clientLiveBalances.getOrDefault(clientId, BigDecimal.ZERO).add(sBalance));
+            clientLiveOpenPaid.put(clientId, clientLiveOpenPaid.getOrDefault(clientId, BigDecimal.ZERO).add(sPaid));
+
+            ClientAgingAccumulator acc = clientAgingMap.computeIfAbsent(clientId,
+                    k -> new ClientAgingAccumulator(clientId, clientName, clientContact));
+            acc.unpaidShipmentsCount++;
+
+            long ageDays = ChronoUnit.DAYS.between(regDate, today);
+            if (ageDays <= 7) {
+                acc.currentDue = acc.currentDue.add(sBalance);
+            } else if (ageDays <= 14) {
+                acc.pastDue = acc.pastDue.add(sBalance);
+            } else {
+                acc.overdue = acc.overdue.add(sBalance);
+            }
+        }
+
+        List<ReceivablesAgingReportRow> agingRows = new ArrayList<>();
+        for (ClientAgingAccumulator acc : clientAgingMap.values()) {
+            BigDecimal totalOut = acc.currentDue.add(acc.pastDue).add(acc.overdue);
+            if (totalOut.compareTo(BigDecimal.ZERO) > 0) {
+                agingRows.add(new ReceivablesAgingReportRow(
+                        acc.clientId,
+                        acc.clientName,
+                        acc.clientContact,
+                        acc.unpaidShipmentsCount,
+                        acc.currentDue,
+                        acc.pastDue,
+                        acc.overdue,
+                        totalOut
+                ));
+            }
+        }
+        agingRows.sort(Comparator.comparing(ReceivablesAgingReportRow::getTotalOutstanding).reversed());
+
+        // 5. Calculate Top 5 KPIs
         BigDecimal totalBilled = periodShipments.stream()
                 .map(s -> s.getTotalAmount() != null ? s.getTotalAmount() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -92,11 +163,6 @@ public class ReportServiceImpl implements ReportService {
         BigDecimal totalCollected = periodPayments.stream()
                 .map(p -> p.getAmountPaid() != null ? p.getAmountPaid() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        BigDecimal outstandingReceivables = totalBilled.subtract(totalCollected);
-        if (outstandingReceivables.compareTo(BigDecimal.ZERO) < 0) {
-            outstandingReceivables = BigDecimal.ZERO;
-        }
 
         long totalShipmentsCount = periodShipments.size();
         long totalParcelsCount = periodParcels.size();
@@ -113,13 +179,13 @@ public class ReportServiceImpl implements ReportService {
         ReportKpiResponse kpis = new ReportKpiResponse(
                 totalBilled,
                 totalCollected,
-                outstandingReceivables,
+                liveOutstandingReceivables,
                 totalShipmentsCount,
                 totalParcelsCount,
                 deliveryCompletionRate
         );
 
-        // 5. Client Revenue Breakdown (Charges vs Collected)
+        // 6. Client Revenue Breakdown (Period Charges & Collections with Live Balances)
         Map<String, List<Shipment>> shipmentsByClient = periodShipments.stream()
                 .filter(s -> s.getClient() != null)
                 .collect(Collectors.groupingBy(s -> s.getClient().getClientId()));
@@ -132,9 +198,6 @@ public class ReportServiceImpl implements ReportService {
                 ));
 
         List<Client> allClients = clientRepository.findAll();
-        Map<String, Client> clientMap = allClients.stream()
-                .collect(Collectors.toMap(Client::getClientId, c -> c, (a, b) -> a));
-
         List<ClientRevenueReportRow> clientRevenueRows = new ArrayList<>();
         for (Client client : allClients) {
             String clientId = client.getClientId();
@@ -144,19 +207,25 @@ public class ReportServiceImpl implements ReportService {
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
             BigDecimal clientPaid = paymentsByClient.getOrDefault(clientId, BigDecimal.ZERO);
+            BigDecimal liveBalance = clientLiveBalances.getOrDefault(clientId, BigDecimal.ZERO);
 
-            if (cShipments.isEmpty() && clientPaid.compareTo(BigDecimal.ZERO) == 0) {
+            boolean hasPeriodActivity = !cShipments.isEmpty() || clientPaid.compareTo(BigDecimal.ZERO) > 0;
+            boolean hasLiveBalance = liveBalance.compareTo(BigDecimal.ZERO) > 0;
+
+            if (!hasPeriodActivity && !hasLiveBalance) {
                 continue;
             }
 
-            BigDecimal balance = clientBilled.subtract(clientPaid);
             String paymentStatus;
-            if (clientPaid.compareTo(BigDecimal.ZERO) == 0) {
-                paymentStatus = "UNPAID";
-            } else if (clientPaid.compareTo(clientBilled) >= 0) {
+            if (liveBalance.compareTo(BigDecimal.ZERO) == 0) {
                 paymentStatus = "PAID";
             } else {
-                paymentStatus = "PARTIAL";
+                BigDecimal openPaid = clientLiveOpenPaid.getOrDefault(clientId, BigDecimal.ZERO);
+                if (openPaid.compareTo(BigDecimal.ZERO) > 0 || clientPaid.compareTo(BigDecimal.ZERO) > 0) {
+                    paymentStatus = "PARTIAL";
+                } else {
+                    paymentStatus = "UNPAID";
+                }
             }
 
             clientRevenueRows.add(new ClientRevenueReportRow(
@@ -165,12 +234,15 @@ public class ReportServiceImpl implements ReportService {
                     cShipments.size(),
                     clientBilled,
                     clientPaid,
-                    balance.compareTo(BigDecimal.ZERO) > 0 ? balance : BigDecimal.ZERO,
+                    liveBalance,
                     paymentStatus
             ));
         }
 
-        clientRevenueRows.sort(Comparator.comparing(ClientRevenueReportRow::getTotalBilled).reversed());
+        clientRevenueRows.sort(
+                Comparator.comparing(ClientRevenueReportRow::getTotalBilled).reversed()
+                        .thenComparing(ClientRevenueReportRow::getBalance, Comparator.reverseOrder())
+        );
 
         // 6. Active Thursday Collection Summary (from CollectionsService)
         WeeklyCollectionsResponse collectionSummary = null;
@@ -295,70 +367,10 @@ public class ReportServiceImpl implements ReportService {
             ));
         }
 
-        // 11. Accounts Receivable Aging (0-7d Current, 8-14d Past Due, 15+d Overdue)
-        LocalDate today = LocalDate.now();
-        List<Shipment> allUnpaidCandidates = shipmentRepository.findAll();
-        Map<String, List<Shipment>> unpaidShipmentsByClient = new HashMap<>();
-
-        for (Shipment s : allUnpaidCandidates) {
-            if (s.getClient() == null) continue;
-            BigDecimal billed = s.getTotalAmount() != null ? s.getTotalAmount() : BigDecimal.ZERO;
-            BigDecimal paid = paymentsByShipmentId.getOrDefault(s.getShipmentId(), BigDecimal.ZERO);
-            if (billed.compareTo(paid) > 0) {
-                unpaidShipmentsByClient.computeIfAbsent(s.getClient().getClientId(), k -> new ArrayList<>()).add(s);
-            }
-        }
-
-        List<ReceivablesAgingReportRow> agingRows = new ArrayList<>();
-        for (Map.Entry<String, List<Shipment>> entry : unpaidShipmentsByClient.entrySet()) {
-            String cId = entry.getKey();
-            List<Shipment> cShipments = entry.getValue();
-            Client client = clientMap.get(cId);
-            String clientName = client != null ? client.getName() : cId;
-            String contact = client != null ? client.getContactNumber() : "";
-
-            BigDecimal currentDue = BigDecimal.ZERO;
-            BigDecimal pastDue = BigDecimal.ZERO;
-            BigDecimal overdue = BigDecimal.ZERO;
-
-            for (Shipment s : cShipments) {
-                BigDecimal sBilled = s.getTotalAmount() != null ? s.getTotalAmount() : BigDecimal.ZERO;
-                BigDecimal sPaid = paymentsByShipmentId.getOrDefault(s.getShipmentId(), BigDecimal.ZERO);
-                BigDecimal sBalance = sBilled.subtract(sPaid);
-
-                LocalDate regDate = s.getDateRegistered() != null ? s.getDateRegistered().toLocalDate() : today;
-                long ageDays = ChronoUnit.DAYS.between(regDate, today);
-
-                if (ageDays <= 7) {
-                    currentDue = currentDue.add(sBalance);
-                } else if (ageDays <= 14) {
-                    pastDue = pastDue.add(sBalance);
-                } else {
-                    overdue = overdue.add(sBalance);
-                }
-            }
-
-            BigDecimal totalOut = currentDue.add(pastDue).add(overdue);
-            if (totalOut.compareTo(BigDecimal.ZERO) > 0) {
-                agingRows.add(new ReceivablesAgingReportRow(
-                        cId,
-                        clientName,
-                        contact,
-                        cShipments.size(),
-                        currentDue,
-                        pastDue,
-                        overdue,
-                        totalOut
-                ));
-            }
-        }
-
-        agingRows.sort(Comparator.comparing(ReceivablesAgingReportRow::getTotalOutstanding).reversed());
-
         return new ReportSummaryResponse(
                 resolvedStart,
                 resolvedEnd,
-                LocalDateTime.now(),
+                LocalDateTime.now(clock),
                 kpis,
                 clientRevenueRows,
                 collectionSummary,
@@ -379,6 +391,22 @@ public class ReportServiceImpl implements ReportService {
             case LOADED_TO_HAULER: return "Loaded to Hauler";
             case COMPLETED: return "Completed Delivery";
             default: return status.name();
+        }
+    }
+
+    private static class ClientAgingAccumulator {
+        final String clientId;
+        final String clientName;
+        final String clientContact;
+        long unpaidShipmentsCount = 0;
+        BigDecimal currentDue = BigDecimal.ZERO;
+        BigDecimal pastDue = BigDecimal.ZERO;
+        BigDecimal overdue = BigDecimal.ZERO;
+
+        ClientAgingAccumulator(String clientId, String clientName, String clientContact) {
+            this.clientId = clientId;
+            this.clientName = clientName;
+            this.clientContact = clientContact != null ? clientContact : "";
         }
     }
 }

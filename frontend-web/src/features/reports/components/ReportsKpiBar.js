@@ -12,19 +12,19 @@ export default function ReportsKpiBar({ kpis, loading }) {
     {
       label: 'TOTAL BILLED REVENUE',
       value: formatCurrency(kpis?.totalBilledRevenue),
-      sublabel: `${kpis?.totalShipments || 0} shipments billed`,
+      sublabel: `${kpis?.totalShipments || 0} period shipments`,
       accentColor: colors.ink,
     },
     {
       label: 'TOTAL COLLECTED',
       value: formatCurrency(kpis?.totalCollectedRevenue),
-      sublabel: 'recorded payments',
+      sublabel: 'period cash collections',
       accentColor: colors.success,
     },
     {
       label: 'OUTSTANDING RECEIVABLES',
       value: formatCurrency(kpis?.outstandingReceivables),
-      sublabel: 'uncollected balance',
+      sublabel: 'live portfolio balance',
       accentColor: colors.accent,
     },
     {

@@ -5,6 +5,7 @@ import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.*;
 import com.tnl.logistics.service.SseService;
 import com.tnl.logistics.service.WaybillService;
+import com.tnl.logistics.service.IdentifierCounterService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -33,19 +34,22 @@ public class WaybillServiceImpl implements WaybillService {
     private final TrackingEventRepository trackingEventRepository;
     private final AppUserRepository appUserRepository;
     private final SseService sseService;
+    private final IdentifierCounterService identifierCounterService;
 
     public WaybillServiceImpl(WaybillRepository waybillRepository,
                               ShipmentRepository shipmentRepository,
                               ParcelUnitRepository parcelUnitRepository,
                               TrackingEventRepository trackingEventRepository,
                               AppUserRepository appUserRepository,
-                              SseService sseService) {
+                              SseService sseService,
+                              IdentifierCounterService identifierCounterService) {
         this.waybillRepository = waybillRepository;
         this.shipmentRepository = shipmentRepository;
         this.parcelUnitRepository = parcelUnitRepository;
         this.trackingEventRepository = trackingEventRepository;
         this.appUserRepository = appUserRepository;
         this.sseService = sseService;
+        this.identifierCounterService = identifierCounterService;
     }
 
     @Override
@@ -138,26 +142,19 @@ public class WaybillServiceImpl implements WaybillService {
     }
 
     @Override
-    public synchronized WaybillManifestResponse sendToHauler(WaybillCreateRequest request, String actingStaffUsername) {
+    public WaybillManifestResponse sendToHauler(WaybillCreateRequest request, String actingStaffUserId) {
         Shipment shipment = shipmentRepository.findById(request.getShipmentId())
                 .orElseThrow(() -> new IllegalArgumentException("Shipment not found: " + request.getShipmentId()));
 
-        AppUser actingStaff = appUserRepository.findByUsername(actingStaffUsername)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + actingStaffUsername));
+        AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + actingStaffUserId));
 
         Waybill waybill = waybillRepository.findByShipment_ShipmentId(request.getShipmentId()).orElse(null);
 
         if (waybill == null) {
             // Generate sequential ID: WYB-YYYY-XXXX (e.g. WYB-2026-0001)
             String currentYear = String.valueOf(LocalDate.now().getYear());
-            String prefix = "WYB-" + currentYear + "-";
-            String maxId = waybillRepository.findMaxWaybillIdWithPrefix(prefix + "%").orElse(null);
-            int nextSeq = 1;
-            if (maxId != null && maxId.length() >= prefix.length() + 4) {
-                try {
-                    nextSeq = Integer.parseInt(maxId.substring(prefix.length())) + 1;
-                } catch (NumberFormatException ignored) {}
-            }
+            long nextSeq = identifierCounterService.next(IdentifierCounterService.IdentifierFamily.WAYBILL, Integer.valueOf(currentYear));
             String waybillId = String.format("WYB-%s-%04d", currentYear, nextSeq);
 
             waybill = new Waybill(waybillId, shipment, actingStaff, request.getHaulerName().trim());
@@ -187,7 +184,7 @@ public class WaybillServiceImpl implements WaybillService {
     }
 
     @Override
-    public WaybillManifestResponse markSignedCompleted(String shipmentId, WaybillStatusUpdateRequest request, String actingStaffUsername) {
+    public WaybillManifestResponse markSignedCompleted(String shipmentId, WaybillStatusUpdateRequest request, String actingStaffUserId) {
         Shipment shipment = shipmentRepository.findById(shipmentId)
                 .orElseThrow(() -> new IllegalArgumentException("Shipment not found: " + shipmentId));
 
@@ -208,7 +205,7 @@ public class WaybillServiceImpl implements WaybillService {
             waybill.setRemarks(request.getRemarks().trim());
         }
 
-        AppUser actingStaff = appUserRepository.findByUsername(actingStaffUsername).orElse(null);
+        AppUser actingStaff = appUserRepository.findById(actingStaffUserId).orElse(null);
 
         Waybill saved = waybillRepository.save(waybill);
         List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);

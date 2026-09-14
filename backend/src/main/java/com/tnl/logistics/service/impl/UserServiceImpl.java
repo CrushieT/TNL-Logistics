@@ -6,6 +6,8 @@ import com.tnl.logistics.model.StaffType;
 import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.service.UserService;
+import com.tnl.logistics.service.IdentifierCounterService;
+import com.tnl.logistics.security.UsernameNormalizer;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -25,10 +27,13 @@ public class UserServiceImpl implements UserService {
 
     private final AppUserRepository appUserRepository;
     private final BCryptPasswordEncoder passwordEncoder;
+    private final IdentifierCounterService identifierCounterService;
 
-    public UserServiceImpl(AppUserRepository appUserRepository, BCryptPasswordEncoder passwordEncoder) {
+    public UserServiceImpl(AppUserRepository appUserRepository, BCryptPasswordEncoder passwordEncoder,
+                           IdentifierCounterService identifierCounterService) {
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
+        this.identifierCounterService = identifierCounterService;
     }
 
     @Override
@@ -57,13 +62,13 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public synchronized UserResponse createUser(UserCreateRequest request) {
+    public UserResponse createUser(UserCreateRequest request) {
         if (request.getRole() == UserRole.ADMIN) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Administrator account creation is not permitted. Only one system administrator account is allowed.");
         }
 
-        String normalizedUsername = request.getUsername() != null ? request.getUsername().trim().toLowerCase() : null;
+        String normalizedUsername = UsernameNormalizer.normalize(request.getUsername());
         if (appUserRepository.findByUsername(normalizedUsername).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Username '" + normalizedUsername + "' is already taken.");
@@ -93,7 +98,7 @@ public class UserServiceImpl implements UserService {
             user.setPinHash(passwordEncoder.encode(request.getPin()));
         }
 
-        appUserRepository.save(user);
+        appUserRepository.saveAndFlush(user);
         return UserResponse.from(user);
     }
 
@@ -112,7 +117,7 @@ public class UserServiceImpl implements UserService {
                     "The administrator account role cannot be changed.");
         }
 
-        String normalizedUsername = request.getUsername() != null ? request.getUsername().trim().toLowerCase() : null;
+        String normalizedUsername = UsernameNormalizer.normalize(request.getUsername());
         appUserRepository.findByUsername(normalizedUsername).ifPresent(existing -> {
             if (!existing.getUserId().equals(userId)) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -125,6 +130,9 @@ public class UserServiceImpl implements UserService {
                     "Staff type is required for Field Staff accounts.");
         }
 
+        boolean hasSecurityRelevantChange = user.getRole() != request.getRole()
+                || !java.util.Objects.equals(user.getActive(), request.getActive());
+
         user.setFullName(request.getFullName());
         user.setUsername(normalizedUsername);
         user.setRole(request.getRole());
@@ -134,6 +142,10 @@ public class UserServiceImpl implements UserService {
             user.setStaffType(request.getStaffType());
         } else {
             user.setStaffType(null);
+        }
+
+        if (hasSecurityRelevantChange) {
+            user.incrementTokenVersion();
         }
 
         appUserRepository.save(user);
@@ -159,6 +171,7 @@ public class UserServiceImpl implements UserService {
         if (linkedRecords > 0) {
             // Soft deactivate — preserves audit trail
             user.setActive(false);
+            user.incrementTokenVersion();
             appUserRepository.save(user);
         } else {
             appUserRepository.delete(user);
@@ -190,13 +203,7 @@ public class UserServiceImpl implements UserService {
 
     // Generates the next U-NNN sequential user ID
     private String generateNextUserId() {
-        String maxId = appUserRepository.findMaxUserIdWithPrefix(USER_ID_PREFIX + "%").orElse(null);
-        int nextSeq = 1;
-        if (maxId != null && maxId.startsWith(USER_ID_PREFIX)) {
-            try {
-                nextSeq = Integer.parseInt(maxId.substring(USER_ID_PREFIX.length())) + 1;
-            } catch (NumberFormatException ignored) {}
-        }
+        long nextSeq = identifierCounterService.next(IdentifierCounterService.IdentifierFamily.USER, null);
         return String.format("U-%03d", nextSeq);
     }
 

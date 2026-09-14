@@ -43,8 +43,11 @@
 - Verified via `RepositoryIntegrationTest` suite.
 
 **0.3 — Security, JWT & RBAC** — **[COMPLETED]**
-- HMAC-SHA256 stateless JWT token provider with BCrypt password hashing.
+- HMAC-SHA256 stateless JWT token provider with BCrypt password hashing and immutable user ID binding.
+- Differentiated token lifecycle architecture: 12-hour shift TTL for Web Administrator (`ADMIN`) in browser `localStorage`, and 10-day TTL for Mobile Staff (`OFFICE_STAFF`, `FIELD_STAFF`) in hardware `SecureStore` with PIN unlock; configurable via `jwt.expiration.admin-hours` and `jwt.expiration.staff-days`.
+- Dynamic invalidation of legacy overlong administrator sessions in `JwtTokenProvider.validateToken`: enforces issuance-time ceiling (`now - iat <= 12h`) and validity window bounds (`exp - iat <= 12h + 60s`) on all `ADMIN` tokens.
 - 3 distinct system roles: `ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`.
+- Instant session revocation on credential changes via `tokenVersion` claims.
 - Method security (`@PreAuthorize`) and `SecurityIntegrationTest` suite.
 
 ---

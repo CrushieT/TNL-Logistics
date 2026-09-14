@@ -46,12 +46,12 @@ public class TrackingServiceImpl implements TrackingService {
     }
 
     @Override
-    public TrackingScanResponse processStatusScan(TrackingScanRequest request, String actingStaffUsername) {
+    public TrackingScanResponse processStatusScan(TrackingScanRequest request, String actingStaffUserId) {
         ParcelUnit parcel = parcelUnitRepository.findById(request.getTrackingId())
                 .orElseThrow(() -> new IllegalArgumentException("Parcel unit not found: " + request.getTrackingId()));
 
-        AppUser actingStaff = appUserRepository.findByUsername(actingStaffUsername)
-                .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUsername));
+        AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
+                .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
 
         ParcelStatus currentStatus = parcel.getCurrentStatus();
         ParcelStatus targetStatus = request.getTargetStatus();
@@ -134,7 +134,7 @@ public class TrackingServiceImpl implements TrackingService {
     }
 
     @Override
-    public List<TrackingScanResponse> processBatchScan(BatchTrackingScanRequest request, String actingStaffUsername) {
+    public List<TrackingScanResponse> processBatchScan(BatchTrackingScanRequest request, String actingStaffUserId) {
         List<TrackingScanResponse> responses = new ArrayList<>();
         for (String trackingId : request.getTrackingIds()) {
             TrackingScanRequest singleReq = new TrackingScanRequest(
@@ -143,7 +143,7 @@ public class TrackingServiceImpl implements TrackingService {
                     request.getVehicleId(),
                     request.getRemarks()
             );
-            responses.add(processStatusScan(singleReq, actingStaffUsername));
+            responses.add(processStatusScan(singleReq, actingStaffUserId));
         }
         return responses;
     }

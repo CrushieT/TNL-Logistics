@@ -25,9 +25,6 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
     @Query("SELECT s FROM Shipment s WHERE s.shipmentId = :id")
     Optional<Shipment> findByIdForUpdate(@Param("id") String id);
 
-    @Query("SELECT MAX(s.shipmentId) FROM Shipment s WHERE s.shipmentId LIKE :prefix")
-    Optional<String> findMaxShipmentIdWithPrefix(@Param("prefix") String prefix);
-
     @Query("SELECT s FROM Shipment s JOIN s.client c WHERE " +
            "(:search IS NULL OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(s.recipientName) LIKE LOWER(CONCAT('%', :search, '%')) " +
@@ -130,5 +127,16 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
 
     @Query("SELECT COUNT(s) FROM Shipment s WHERE s.dateRegistered >= :cycleStart AND s.dateRegistered <= :cycleEnd AND (s.statementId IS NULL OR TRIM(s.statementId) = '')")
     long countUnbilledShipmentsBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart, @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
+
+    @Query("SELECT DISTINCT CAST(s.dateRegistered AS LocalDate) FROM Shipment s WHERE s.dateRegistered IS NOT NULL AND (s.statementId IS NULL OR TRIM(s.statementId) = '')")
+    List<LocalDate> findDistinctUnbilledRegistrationDates();
+
+    @Query("SELECT s.shipmentId, c.clientId, c.name, c.contactNumber, s.dateRegistered, s.totalAmount, COALESCE(SUM(p.amountPaid), 0) " +
+           "FROM Shipment s " +
+           "JOIN s.client c " +
+           "LEFT JOIN Payment p ON p.shipment = s " +
+           "GROUP BY s.shipmentId, c.clientId, c.name, c.contactNumber, s.dateRegistered, s.totalAmount " +
+           "HAVING s.totalAmount > COALESCE(SUM(p.amountPaid), 0)")
+    List<Object[]> findUnpaidShipmentsWithPayments();
 }
 

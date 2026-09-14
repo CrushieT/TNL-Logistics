@@ -18,9 +18,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface WaybillRepository extends JpaRepository<Waybill, String> {
 
-    @Query("SELECT MAX(w.waybillId) FROM Waybill w WHERE w.waybillId LIKE :prefix")
-    Optional<String> findMaxWaybillIdWithPrefix(@Param("prefix") String prefix);
-
     Optional<Waybill> findByShipment_ShipmentId(String shipmentId);
 
     @Query("SELECT w FROM Waybill w WHERE w.shipment.shipmentId IN :shipmentIds")

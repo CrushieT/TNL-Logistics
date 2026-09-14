@@ -62,6 +62,13 @@ public class DataSeeder implements CommandLineRunner {
         }
 
         if (seedSampleData) {
+            appUserRepository.findAll().forEach(user -> {
+                if (user.getUserId() != null && user.getUserId().startsWith("USR-")) {
+                    user.setMustChangePassword(false);
+                    user.setTokenVersion(1);
+                    appUserRepository.save(user);
+                }
+            });
             seedPastCycleShipments();
         }
     }
@@ -77,7 +84,7 @@ public class DataSeeder implements CommandLineRunner {
                 staffType,
                 haulerCompany
             );
-            user.setMustChangePassword(true);
+            user.setMustChangePassword(false);
             appUserRepository.save(user);
         }
     }

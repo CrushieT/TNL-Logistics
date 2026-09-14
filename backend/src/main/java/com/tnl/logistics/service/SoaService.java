@@ -14,7 +14,7 @@ public interface SoaService {
 
     StatementPreviewResponse getStatementPreview(String clientId, LocalDate targetDate);
 
-    StatementPreviewResponse saveStatement(SaveStatementRequest request, String actingUsername);
+    StatementPreviewResponse saveStatement(SaveStatementRequest request, String actingUserId);
 
     List<CollectorOptionDto> getAuthorizedCollectors();
 }

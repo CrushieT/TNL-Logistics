@@ -54,7 +54,7 @@ public class WaybillIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testWaybillEndToEndWorkflow() throws Exception {
         // 1. Check haulers dropdown options
         mockMvc.perform(get("/api/v1/waybills/haulers"))

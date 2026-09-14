@@ -25,7 +25,7 @@ public interface SystemSettingService {
     /**
      * Update system settings and broadcast real-time update event.
      */
-    SystemSettingDto updateSettings(UpdateSystemSettingRequest request, String actingUsername);
+    SystemSettingDto updateSettings(UpdateSystemSettingRequest request, String actingUserId);
 
     /**
      * Retrieve the active configured weekly collection closing day.

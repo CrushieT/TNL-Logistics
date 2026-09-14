@@ -4,6 +4,13 @@ import java.math.BigDecimal;
 
 /**
  * Accounts Receivable aging bucket breakdown per client.
+ *
+ * Financial Semantics:
+ * - Aging is evaluated live as of today across all unpaid shipments in the system.
+ * - currentDue: unpaid balance for shipments registered within the past 0 to 7 days.
+ * - pastDue: unpaid balance for shipments registered within the past 8 to 14 days.
+ * - overdue: unpaid balance for shipments registered 15 or more days ago.
+ * - totalOutstanding: sum of currentDue, pastDue, and overdue, reconciling with client live balance.
  */
 public class ReceivablesAgingReportRow {
 

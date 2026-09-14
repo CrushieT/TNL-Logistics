@@ -10,6 +10,7 @@ tnl-logistics/
 │   └── rules/
 │       ├── build-plan.md             # Master 6-Phase development roadmap & progress tracking
 │       ├── git-conventions.md        # Git workflow, branch naming & commit rules
+│       ├── hardening-plan.md         # Post-review system hardening & lifecycle remediation plan
 │       ├── karpathy-guidelines.md    # LLM coding best practices
 │       └── project-structure.md      # Project directory layout & philosophies
 ├── .github/
@@ -27,7 +28,7 @@ tnl-logistics/
 │   │   │   └── resources/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
-│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V19)
+│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V25)
 │   │   └── test/                        # Integration and unit test suites
 │   └── pom.xml
 │
@@ -38,6 +39,7 @@ tnl-logistics/
 │   │   │   ├── +not-found.js        # Catch-all 404 Route Not Found operations card
 │   │   │   ├── setup.js             # Screen 01b First Boot Admin Setup Wizard
 │   │   │   ├── login.js             # Screen 01 Desktop Login with TC & CT branding
+│   │   │   ├── change-password.js   # Mandatory Password Change screen
 │   │   │   ├── index.js             # Dashboard
 │   │   │   ├── register.js          # Register Shipment (form + result view)
 │   │   │   ├── shipments/           # Shipments list and detail views

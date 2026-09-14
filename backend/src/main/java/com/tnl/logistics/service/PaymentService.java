@@ -17,7 +17,7 @@ public interface PaymentService {
     /**
      * Record a new payment against a shipment.
      */
-    PaymentResponse recordPayment(PaymentRecordRequest request, String actingStaffUsername);
+    PaymentResponse recordPayment(PaymentRecordRequest request, String actingStaffUserId);
 
     /**
      * Retrieve payment history and financial balance for a specific shipment.

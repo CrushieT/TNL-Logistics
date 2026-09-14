@@ -2,8 +2,6 @@ package com.tnl.logistics.repository;
 
 import com.tnl.logistics.model.Vehicle;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -21,6 +19,4 @@ public interface VehicleRepository extends JpaRepository<Vehicle, String> {
 
     Optional<Vehicle> findByPlateNumber(String plateNumber);
 
-    @Query("SELECT MAX(v.vehicleId) FROM Vehicle v WHERE v.vehicleId LIKE :prefix")
-    Optional<String> findMaxVehicleIdWithPrefix(@Param("prefix") String prefix);
 }

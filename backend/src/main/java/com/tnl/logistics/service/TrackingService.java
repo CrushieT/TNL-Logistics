@@ -10,9 +10,9 @@ import java.util.List;
 
 public interface TrackingService {
 
-    TrackingScanResponse processStatusScan(TrackingScanRequest request, String actingStaffUsername);
+    TrackingScanResponse processStatusScan(TrackingScanRequest request, String actingStaffUserId);
 
-    List<TrackingScanResponse> processBatchScan(BatchTrackingScanRequest request, String actingStaffUsername);
+    List<TrackingScanResponse> processBatchScan(BatchTrackingScanRequest request, String actingStaffUserId);
 
     Page<TrackingLogEntryResponse> getTrackingLogs(String search, ParcelStatus status,
                                                   LocalDate startDate, LocalDate endDate,

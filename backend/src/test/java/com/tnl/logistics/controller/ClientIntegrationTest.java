@@ -80,7 +80,7 @@ public class ClientIntegrationTest {
         shipmentRepository.deleteAll();
         clientRepository.deleteAll();
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("office", "OFFICE_STAFF");
+        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
     }
 
     @Test
@@ -182,7 +182,7 @@ public class ClientIntegrationTest {
                 new ParcelUnitRequest(2, new BigDecimal("2"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10")),
                 new ParcelUnitRequest(3, new BigDecimal("2"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10"))
         ));
-        shipmentService.registerShipment(regReq1, "office");
+        shipmentService.registerShipment(regReq1, "USR-OFFICE");
 
         // 3. Register Shipment 2: 1 parcel, Flat fee 450, Paid at reg = true
         ShipmentRegistrationRequest regReq2 = new ShipmentRegistrationRequest();
@@ -198,7 +198,7 @@ public class ClientIntegrationTest {
         regReq2.setParcels(List.of(
                 new ParcelUnitRequest(1, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))
         ));
-        shipmentService.registerShipment(regReq2, "office");
+        shipmentService.registerShipment(regReq2, "USR-OFFICE");
 
         // 4. Test Paginated Query: GET /api/v1/clients?page=0&size=20&search=Northbridge
         MvcResult pageRes = mockMvc.perform(get("/api/v1/clients?page=0&size=20&search=Northbridge&active=true")

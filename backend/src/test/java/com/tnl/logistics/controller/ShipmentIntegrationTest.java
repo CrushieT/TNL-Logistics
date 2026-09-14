@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -64,6 +65,9 @@ public class ShipmentIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     private String officeToken;
     private String fieldToken;
     private String currentYear;
@@ -76,8 +80,12 @@ public class ShipmentIntegrationTest {
         parcelUnitRepository.deleteAll();
         shipmentRepository.deleteAll();
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("office", "OFFICE_STAFF");
-        fieldToken = "Bearer " + JwtTokenProvider.generateToken("field", "FIELD_STAFF");
+        jdbcTemplate.update("DELETE FROM identifier_counter WHERE counter_key IN (?, ?)",
+                "SHIPMENT:" + LocalDate.now().getYear(),
+                "TRACKING:" + LocalDate.now().getYear());
+
+        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {
@@ -122,6 +130,50 @@ public class ShipmentIntegrationTest {
         assertTrue(response.getTrackingIds().get(0).startsWith("TRK-" + currentYear + "-"));
         assertTrue(response.getTrackingIds().get(1).startsWith("TRK-" + currentYear + "-"));
         assertEquals(new BigDecimal("200.00"), response.getTotalAmount());
+    }
+
+    @Test
+    public void testRegistrationUsesNumericCountersPastIdentifierWidthBoundaries() throws Exception {
+        Client client = clientRepository.findById("CL-001").orElseThrow();
+        Shipment shipment999 = new Shipment(
+                "SHP-" + currentYear + "-999", client, "Original 999", "Manila", "09170000001",
+                1, ChargeModel.FLAT, new BigDecimal("100.00"), BigDecimal.ZERO,
+                new BigDecimal("100.00"), false, RegisteredVia.DESKTOP_OFFICE);
+        Shipment shipment1000 = new Shipment(
+                "SHP-" + currentYear + "-1000", client, "Original 1000", "Manila", "09170000002",
+                1, ChargeModel.FLAT, new BigDecimal("100.00"), BigDecimal.ZERO,
+                new BigDecimal("100.00"), false, RegisteredVia.DESKTOP_OFFICE);
+        shipmentRepository.save(shipment999);
+        shipmentRepository.save(shipment1000);
+        parcelUnitRepository.save(new ParcelUnit(
+                "TRK-" + currentYear + "-999999", shipment999, 1, null, null, null, null, null));
+        parcelUnitRepository.save(new ParcelUnit(
+                "TRK-" + currentYear + "-1000000", shipment1000, 1, null, null, null, null, null));
+
+        ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
+        request.setClientId("CL-001");
+        request.setRecipientName("New Recipient");
+        request.setRecipientAddress("Cebu City");
+        request.setRecipientContact("09181112222");
+        request.setQuantity(1);
+        request.setChargeModel(ChargeModel.FLAT);
+        request.setShippingFee(new BigDecimal("150.00"));
+        request.setOtherCharges(BigDecimal.ZERO);
+        request.setPaidAtRegistration(false);
+        request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        request.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2.5"), null, null, null)));
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), ShipmentResponse.class);
+        assertEquals("SHP-" + currentYear + "-1001", response.getShipmentId());
+        assertEquals("TRK-" + currentYear + "-1000001", response.getTrackingIds().getFirst());
+        assertEquals("Original 1000", shipmentRepository.findById("SHP-" + currentYear + "-1000").orElseThrow().getRecipientName());
     }
 
     @Test

@@ -229,60 +229,24 @@ public class CollectionsServiceImpl implements CollectionsService {
 
         // 2. Add all immutable historical statement dates from generated SOAs
         List<LocalDate> soaDates = soaRepository.findDistinctStatementDates();
-        activeCycles.addAll(soaDates);
-
-        // Find the latest finalized historical cycle date if any exists
-        LocalDate latestFinalizedCycleDate = null;
-        for (LocalDate cycleDate : activeCycles) {
-            if (!cycleDate.equals(currentCycleEnd)) {
-                if (latestFinalizedCycleDate == null || cycleDate.isAfter(latestFinalizedCycleDate)) {
-                    latestFinalizedCycleDate = cycleDate;
+        if (soaDates != null) {
+            for (LocalDate d : soaDates) {
+                if (d != null) {
+                    activeCycles.add(d);
                 }
             }
         }
 
-        LocalDate currentCycleStart = resolveCycleStartDate(currentCycleEnd, activeCycles);
-
-        // 3. Incorporate candidate historical cycles from raw shipments strictly prior to the active cycle window
-        List<LocalDate> registrationDates = shipmentRepository.findDistinctRegistrationDates();
-        for (LocalDate regDate : registrationDates) {
-            if (regDate == null) {
-                continue;
-            }
-            // Shipments registered after the latest finalized cycle roll into the current active cycle
-            if (latestFinalizedCycleDate != null && regDate.isAfter(latestFinalizedCycleDate)) {
-                continue;
-            }
-            // Shipments on or after current active cycle start roll into the current active cycle
-            if (!regDate.isBefore(currentCycleStart)) {
-                continue;
-            }
-
-            // Check if covered by any existing cycle window [winStart, cycleDate]
-            boolean coveredByExistingCycle = false;
-            for (LocalDate cycleDate : activeCycles) {
-                LocalDate winStart = cycleDate.minusDays(6);
-                if (!regDate.isBefore(winStart) && !regDate.isAfter(cycleDate)) {
-                    coveredByExistingCycle = true;
-                    break;
-                }
-            }
-            if (!coveredByExistingCycle) {
-                // Historical shipments prior to finalized cycles anchor to historical Thursday
-                int currentDayVal = regDate.getDayOfWeek().getValue();
-                int daysUntilThursday = (DayOfWeek.THURSDAY.getValue() - currentDayVal + 7) % 7;
-                LocalDate candidateDate = regDate.plusDays(daysUntilThursday);
-
-                if (!activeCycles.contains(candidateDate) && candidateDate.isBefore(currentCycleStart)) {
-                    LocalDate candidateStart = candidateDate.minusDays(6);
-                    LocalDateTime startDt = candidateStart.atStartOfDay();
-                    LocalDateTime endDt = candidateDate.atTime(23, 59, 59, 999999999);
-                    if (shipmentRepository.countUnbilledShipmentsBetween(startDt, endDt) > 0) {
-                        activeCycles.add(candidateDate);
-                    }
+        // 3. Add distinct unbilled registration dates mapped to configured collection day
+        List<LocalDate> unbilledDates = shipmentRepository.findDistinctUnbilledRegistrationDates();
+        if (unbilledDates != null) {
+            for (LocalDate regDate : unbilledDates) {
+                if (regDate != null) {
+                    activeCycles.add(calculateActiveCycleDate(regDate));
                 }
             }
         }
+
         return new ArrayList<>(activeCycles);
     }
 

@@ -4,6 +4,13 @@ import java.math.BigDecimal;
 
 /**
  * Individual client row in the financial and revenue breakdown report.
+ *
+ * Financial Semantics:
+ * - totalShipments: count of shipments registered in the selected period for this client.
+ * - totalBilled: shipment charges billed for shipments registered in the selected period.
+ * - totalPaid: cash collected from payments recorded in the selected period for this client.
+ * - balance: live uncollected balance across all shipments for this client as of today.
+ * - paymentStatus: live status ("PAID" if live balance is zero, "PARTIAL" if partial payments exist, "UNPAID" if nothing paid).
  */
 public class ClientRevenueReportRow {
 

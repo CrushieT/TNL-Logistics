@@ -189,7 +189,7 @@ public class SoaServiceImpl implements SoaService {
 
     @Override
     @Transactional
-    public StatementPreviewResponse saveStatement(SaveStatementRequest request, String actingUsername) {
+    public StatementPreviewResponse saveStatement(SaveStatementRequest request, String actingUserId) {
         if (request.getClientId() == null || request.getClientId().trim().isEmpty()) {
             throw new IllegalArgumentException("Client ID is required");
         }
@@ -226,7 +226,7 @@ public class SoaServiceImpl implements SoaService {
         String batchId = "BATCH-" + targetThursday + "-MANUAL";
         SoaBatch batch = soaBatchRepository.findById(batchId)
                 .orElseGet(() -> {
-                    AppUser creator = appUserRepository.findByUsername(actingUsername)
+                    AppUser creator = appUserRepository.findById(actingUserId)
                             .orElseGet(() -> appUserRepository.findAll().stream().findFirst().orElse(null));
 
                     SoaBatch newBatch = new SoaBatch(

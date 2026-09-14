@@ -36,8 +36,8 @@ public class TrackingEventController {
         if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
             throw new AccessDeniedException("Authenticated user context is required");
         }
-        String staffUsername = authentication.getName();
-        TrackingScanResponse response = trackingService.processStatusScan(request, staffUsername);
+        String actingStaffUserId = authentication.getName();
+        TrackingScanResponse response = trackingService.processStatusScan(request, actingStaffUserId);
         return ResponseEntity.ok(response);
     }
 
@@ -49,8 +49,8 @@ public class TrackingEventController {
         if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
             throw new AccessDeniedException("Authenticated user context is required");
         }
-        String staffUsername = authentication.getName();
-        List<TrackingScanResponse> responses = trackingService.processBatchScan(request, staffUsername);
+        String actingStaffUserId = authentication.getName();
+        List<TrackingScanResponse> responses = trackingService.processBatchScan(request, actingStaffUserId);
         return ResponseEntity.ok(responses);
     }
 

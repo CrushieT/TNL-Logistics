@@ -53,13 +53,13 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
-    public PaymentResponse recordPayment(PaymentRecordRequest request, String actingStaffUsername) {
+    public PaymentResponse recordPayment(PaymentRecordRequest request, String actingStaffUserId) {
         Shipment shipment = shipmentRepository.findByIdForUpdate(request.getShipmentId())
                 .orElseThrow(() -> new IllegalArgumentException("Shipment not found: " + request.getShipmentId()));
 
         AppUser actingStaff = null;
-        if (actingStaffUsername != null && !actingStaffUsername.isBlank()) {
-            actingStaff = appUserRepository.findByUsername(actingStaffUsername).orElse(null);
+        if (actingStaffUserId != null && !actingStaffUserId.isBlank()) {
+            actingStaff = appUserRepository.findById(actingStaffUserId).orElse(null);
         }
 
         List<Payment> existingPayments = paymentRepository.findByShipment_ShipmentId(shipment.getShipmentId());

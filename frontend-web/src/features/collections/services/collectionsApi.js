@@ -193,14 +193,15 @@ export async function getActiveCollectionCycles() {
   try {
     const { data } = await apiClient.get('/collections/cycles');
     if (Array.isArray(data) && data.length > 0) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
       return data.map((isoDate, index) => {
         const parts = isoDate.split('-');
         const end = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-        const isCurrent = index === 0;
 
-        let start;
-        const defaultStart = new Date(end);
-        defaultStart.setDate(end.getDate() - 6);
+        let start = new Date(end);
+        start.setDate(end.getDate() - 6);
 
         if (index < data.length - 1) {
           const nextParts = data[index + 1].split('-');
@@ -208,11 +209,12 @@ export async function getActiveCollectionCycles() {
           const anchoredStart = new Date(prevCycleEnd);
           anchoredStart.setDate(anchoredStart.getDate() + 1);
 
-          start = anchoredStart > defaultStart ? anchoredStart : defaultStart;
-        } else {
-          start = defaultStart;
+          if (anchoredStart > start) {
+            start = anchoredStart;
+          }
         }
 
+        const isCurrent = index === 0 && end >= today;
         const baseLabel = formatCycleDateRangeFromDates(start, end);
         return {
           isoDate,
