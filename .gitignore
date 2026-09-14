@@ -57,10 +57,12 @@ frontend-mobile/yarn-error.log*
 frontend-mobile/.expo-shared/
 
 # --- Private Planning & Client Documentation ---
-.docs/
+
 *.pdf
 .agents/rules/answer.md
 .audit/
 .github/PR_DRAFT.md
 PR_DRAFT.md
-
+.review
+.review/
+.docs-private
