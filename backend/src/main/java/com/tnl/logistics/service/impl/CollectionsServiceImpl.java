@@ -190,20 +190,44 @@ public class CollectionsServiceImpl implements CollectionsService {
         );
     }
 
+    private LocalDate resolveCycleStartDate(LocalDate cycleEndDate, Collection<LocalDate> knownCycles) {
+        if (cycleEndDate == null) {
+            return null;
+        }
+        LocalDate defaultStart = cycleEndDate.minusDays(6);
+        if (knownCycles != null) {
+            Optional<LocalDate> prevCycleOpt = knownCycles.stream()
+                    .filter(d -> d != null && d.isBefore(cycleEndDate))
+                    .max(LocalDate::compareTo);
+            if (prevCycleOpt.isPresent()) {
+                LocalDate anchoredStart = prevCycleOpt.get().plusDays(1);
+                if (anchoredStart.isAfter(defaultStart)) {
+                    return anchoredStart;
+                }
+            }
+        }
+        return defaultStart;
+    }
+
     @Override
     public LocalDate calculateCycleStartDate(LocalDate cycleEndDate) {
         if (cycleEndDate == null) {
             return null;
         }
-        return cycleEndDate.minusDays(6);
+        return resolveCycleStartDate(cycleEndDate, getActiveCycleDates());
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<LocalDate> getActiveCycleDates() {
+        LocalDate currentCycleEnd = calculateActiveCycleDate(LocalDate.now());
+
         Set<LocalDate> activeCycles = new TreeSet<>(Comparator.reverseOrder());
 
-        // 1. Add all immutable historical statement dates from generated SOAs
+        // 1. Always include the current ongoing cycle closing day
+        activeCycles.add(currentCycleEnd);
+
+        // 2. Add all immutable historical statement dates from generated SOAs
         List<LocalDate> soaDates = soaRepository.findDistinctStatementDates();
         if (soaDates != null) {
             for (LocalDate d : soaDates) {
@@ -213,7 +237,7 @@ public class CollectionsServiceImpl implements CollectionsService {
             }
         }
 
-        // 2. Add distinct unbilled registration dates mapped to configured collection day
+        // 3. Add distinct unbilled registration dates mapped to configured collection day
         List<LocalDate> unbilledDates = shipmentRepository.findDistinctUnbilledRegistrationDates();
         if (unbilledDates != null) {
             for (LocalDate regDate : unbilledDates) {

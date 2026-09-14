@@ -185,4 +185,35 @@ public class CollectionsIntegrationTest {
         List<LocalDate> cycles = collectionsService.getActiveCycleDates();
         assertTrue(cycles.contains(historicalDate));
     }
+
+    @Test
+    void testActiveCycleAlwaysIncludesCurrentOngoingWeekEvenWithNoShipments() {
+        LocalDate expectedActiveCycle = collectionsService.calculateActiveCycleDate(LocalDate.now());
+        List<LocalDate> activeCycles = collectionsService.getActiveCycleDates();
+
+        assertNotNull(activeCycles);
+        assertFalse(activeCycles.isEmpty());
+        assertEquals(expectedActiveCycle, activeCycles.get(0), "The active ongoing cycle must always be at index 0");
+    }
+
+    @Test
+    void testCycleStartAnchorsWhenPrecedingCycleIsLessThanSevenDays() {
+        LocalDate cycleEnd = LocalDate.of(2026, 8, 27);
+        LocalDate precedingCycle = LocalDate.of(2026, 8, 25); // 2 days earlier
+
+        Soa soa = new Soa();
+        soa.setSoaNo("SOA-ANCHOR-001");
+        soa.setClient(testClient);
+        soa.setCollection(createWeeklyCollection("WC-ANCHOR-001", precedingCycle));
+        soa.setStatementDate(precedingCycle);
+        soa.setCurrentCharges(new BigDecimal("100.00"));
+        soa.setPreviousBalance(BigDecimal.ZERO);
+        soa.setTotalPaid(new BigDecimal("100.00"));
+        soa.setDeductions(BigDecimal.ZERO);
+        soa.setOutstandingBalance(BigDecimal.ZERO);
+        soaRepository.save(soa);
+
+        LocalDate start = collectionsService.calculateCycleStartDate(cycleEnd);
+        assertEquals(LocalDate.of(2026, 8, 26), start, "Start date should anchor to preceding cycle + 1 day");
+    }
 }
