@@ -531,6 +531,124 @@ public class SecurityIntegrationTest {
     }
 
     @Test
+    public void testAdminLoginGeneratesConfiguredExpiration() throws Exception {
+        LoginRequest adminLogin = new LoginRequest("admin", "admin123");
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(adminLogin)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        LoginResponse responseDto = objectMapper.readValue(result.getResponse().getContentAsString(), LoginResponse.class);
+        String token = responseDto.getToken();
+        assertNotNull(token);
+
+        Long exp = JwtTokenProvider.getExpirationFromToken(token);
+        assertNotNull(exp);
+
+        long nowSeconds = System.currentTimeMillis() / 1000;
+        long expectedAdminTtlSeconds = JwtTokenProvider.getAdminExpirationMs() / 1000;
+        long actualTtlSeconds = exp - nowSeconds;
+
+        // Verify actual TTL is within 5 seconds of configured admin TTL
+        assertTrue(Math.abs(actualTtlSeconds - expectedAdminTtlSeconds) <= 5,
+                "Admin token TTL should match configured admin expiration (" + expectedAdminTtlSeconds + "s), but was: " + actualTtlSeconds);
+    }
+
+    @Test
+    public void testStaffTokensGenerateConfiguredExpiration() {
+        long nowSeconds = System.currentTimeMillis() / 1000;
+        long expectedStaffTtlSeconds = JwtTokenProvider.getStaffExpirationMs() / 1000;
+
+        // Office Staff
+        String officeToken = JwtTokenProvider.generateToken("USR-OFFICE-01", "OFFICE_STAFF", 1);
+        Long officeExp = JwtTokenProvider.getExpirationFromToken(officeToken);
+        assertNotNull(officeExp);
+        long actualOfficeTtl = officeExp - nowSeconds;
+        assertTrue(Math.abs(actualOfficeTtl - expectedStaffTtlSeconds) <= 5,
+                "Office staff token TTL should match configured staff expiration (" + expectedStaffTtlSeconds + "s), but was: " + actualOfficeTtl);
+
+        // Field Staff
+        String fieldToken = JwtTokenProvider.generateToken("USR-FIELD-01", "FIELD_STAFF", 1);
+        Long fieldExp = JwtTokenProvider.getExpirationFromToken(fieldToken);
+        assertNotNull(fieldExp);
+        long actualFieldTtl = fieldExp - nowSeconds;
+        assertTrue(Math.abs(actualFieldTtl - expectedStaffTtlSeconds) <= 5,
+                "Field staff token TTL should match configured staff expiration (" + expectedStaffTtlSeconds + "s), but was: " + actualFieldTtl);
+    }
+
+    @Test
+    public void testExpiredTokenIsRejected() throws Exception {
+        // Generate an expired token (10 seconds in the past)
+        String expiredToken = JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN", 1, -10000L);
+
+        // Validate token method rejects it
+        assertFalse(JwtTokenProvider.validateToken(expiredToken));
+
+        // API endpoint rejects it with 403 Forbidden
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + expiredToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testLegacyOverlongAdminTokenIsRejected() throws Exception {
+        // Construct window exceeding configured admin lifetime + tolerance
+        long overlongAdminMs = Math.max(
+                JwtTokenProvider.getStaffExpirationMs(),
+                JwtTokenProvider.getAdminExpirationMs() + (24L * 60 * 60 * 1000L)
+        );
+        String legacyAdminToken = JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN", 1, overlongAdminMs);
+
+        // Token provider rejects legacy overlong admin token
+        assertFalse(JwtTokenProvider.validateToken(legacyAdminToken),
+                "Legacy admin token exceeding configured admin window must be rejected");
+
+        // Protected endpoint rejects legacy admin token with 403 Forbidden
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + legacyAdminToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testAdminTokenOlderThanConfiguredLifetimeIsRejected() throws Exception {
+        long nowSeconds = System.currentTimeMillis() / 1000;
+        long adminTtlSeconds = JwtTokenProvider.getAdminExpirationMs() / 1000;
+        // Simulated token issued beyond configured admin lifetime with future-dated exp
+        String staleAdminToken = JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN", 1,
+                nowSeconds - (adminTtlSeconds + 3600), nowSeconds + 3600);
+
+        // Token provider rejects token whose elapsed time since issuance exceeds configured shift TTL
+        assertFalse(JwtTokenProvider.validateToken(staleAdminToken),
+                "Admin token older than configured admin lifetime from issuance must be rejected");
+
+        // Protected endpoint rejects stale admin token with 403 Forbidden
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + staleAdminToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testAdminTokenWithFutureIssuanceBeyondToleranceIsRejected() {
+        long nowSeconds = System.currentTimeMillis() / 1000;
+        long adminTtlSeconds = JwtTokenProvider.getAdminExpirationMs() / 1000;
+        // Token issued 120 seconds into the future (exceeding 60s tolerance)
+        String futureAdminToken = JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN", 1,
+                nowSeconds + 120, nowSeconds + adminTtlSeconds + 120);
+
+        assertFalse(JwtTokenProvider.validateToken(futureAdminToken),
+                "Admin token with future issuance exceeding 60s clock skew tolerance must be rejected");
+    }
+
+    @Test
+    public void testValidStaffTokenWithConfiguredWindowIsAccepted() {
+        // Staff token with configured validity window
+        String validStaffToken = JwtTokenProvider.generateToken("USR-OFFICE-01", "OFFICE_STAFF", 1);
+        assertTrue(JwtTokenProvider.validateToken(validStaffToken),
+                "Staff token with configured validity window must remain valid");
+    }
+
+    @Test
     public void testCorsPreflightAllowedOrigin() throws Exception {
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options("/api/v1/auth/login")
                         .header("Origin", "http://localhost:3000")

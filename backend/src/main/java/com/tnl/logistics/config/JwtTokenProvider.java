@@ -19,7 +19,8 @@ import java.util.Map;
 public class JwtTokenProvider {
 
     private static String secret;
-    private static final long EXPIRATION_TIME_MS = 864000000; // 10 days
+    private static long adminExpirationMs = 12L * 60 * 60 * 1000L;  // 12 hours (Shift TTL for Web Admin)
+    private static long staffExpirationMs = 10L * 24 * 60 * 60 * 1000L; // 10 days (Mobile Staff TTL)
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${jwt.secret:${JWT_SECRET:}}")
@@ -30,11 +31,60 @@ public class JwtTokenProvider {
         JwtTokenProvider.secret = secretKey.trim();
     }
 
+    @Value("${jwt.expiration.admin-hours:12}")
+    public void setAdminExpirationHours(long hours) {
+        if (hours <= 0) {
+            throw new IllegalArgumentException("Admin JWT expiration hours must be positive.");
+        }
+        JwtTokenProvider.adminExpirationMs = hours * 60 * 60 * 1000L;
+    }
+
+    @Value("${jwt.expiration.staff-days:10}")
+    public void setStaffExpirationDays(long days) {
+        if (days <= 0) {
+            throw new IllegalArgumentException("Staff JWT expiration days must be positive.");
+        }
+        JwtTokenProvider.staffExpirationMs = days * 24 * 60 * 60 * 1000L;
+    }
+
+    public static boolean isAdminRole(String role) {
+        if (role == null) {
+            return false;
+        }
+        String trimmed = role.trim();
+        return "ADMIN".equalsIgnoreCase(trimmed) || "ROLE_ADMIN".equalsIgnoreCase(trimmed);
+    }
+
+    public static long getExpirationMsForRole(String role) {
+        if (isAdminRole(role)) {
+            return adminExpirationMs;
+        }
+        return staffExpirationMs;
+    }
+
+    public static long getAdminExpirationMs() {
+        return adminExpirationMs;
+    }
+
+    public static long getStaffExpirationMs() {
+        return staffExpirationMs;
+    }
+
     public static String generateToken(String userId, String role) {
         return generateToken(userId, role, 1);
     }
 
     public static String generateToken(String userId, String role, Integer tokenVersion) {
+        return generateToken(userId, role, tokenVersion, getExpirationMsForRole(role));
+    }
+
+    public static String generateToken(String userId, String role, Integer tokenVersion, long expirationMs) {
+        long nowSeconds = System.currentTimeMillis() / 1000;
+        long expSeconds = (System.currentTimeMillis() + expirationMs) / 1000;
+        return generateToken(userId, role, tokenVersion, nowSeconds, expSeconds);
+    }
+
+    public static String generateToken(String userId, String role, Integer tokenVersion, long iatSeconds, long expSeconds) {
         if (secret == null) {
             throw new IllegalStateException("JWT secret has not been configured. Ensure jwt.secret is provided.");
         }
@@ -48,8 +98,8 @@ public class JwtTokenProvider {
             payload.put("uid", userId);
             payload.put("role", role);
             payload.put("ver", tokenVersion != null ? tokenVersion : 1);
-            payload.put("iat", System.currentTimeMillis() / 1000);
-            payload.put("exp", (System.currentTimeMillis() + EXPIRATION_TIME_MS) / 1000);
+            payload.put("iat", iatSeconds);
+            payload.put("exp", expSeconds);
 
             String headerJson = objectMapper.writeValueAsString(header);
             String payloadJson = objectMapper.writeValueAsString(payload);
@@ -88,8 +138,31 @@ public class JwtTokenProvider {
             @SuppressWarnings("unchecked")
             Map<String, Object> claims = objectMapper.readValue(payloadJson, Map.class);
             Number exp = (Number) claims.get("exp");
-            if (exp != null && exp.longValue() < System.currentTimeMillis() / 1000) {
+            long nowSeconds = System.currentTimeMillis() / 1000;
+            if (exp != null && exp.longValue() < nowSeconds) {
                 return false;
+            }
+
+            // Enforce shift TTL policy and reject legacy overlong tokens for ADMIN
+            String role = (String) claims.get("role");
+            if (isAdminRole(role)) {
+                Number iat = (Number) claims.get("iat");
+                if (iat == null || exp == null) {
+                    return false;
+                }
+                long adminMaxLifetimeSeconds = adminExpirationMs / 1000;
+                // Reject if elapsed time since issuance exceeds admin shift TTL
+                if (nowSeconds - iat.longValue() > adminMaxLifetimeSeconds) {
+                    return false;
+                }
+                // Reject legacy overlong tokens issued under prior 10-day policy (+60s clock skew tolerance)
+                if ((exp.longValue() - iat.longValue()) > (adminMaxLifetimeSeconds + 60)) {
+                    return false;
+                }
+                // Reject future-dated iat beyond clock skew tolerance (60s)
+                if (iat.longValue() - nowSeconds > 60) {
+                    return false;
+                }
             }
 
             return true;
@@ -142,6 +215,32 @@ public class JwtTokenProvider {
             Map<String, Object> claims = objectMapper.readValue(payloadJson, Map.class);
             Number ver = (Number) claims.get("ver");
             return ver != null ? ver.intValue() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public static Long getExpirationFromToken(String token) {
+        try {
+            String[] parts = token.split("\\.");
+            String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> claims = objectMapper.readValue(payloadJson, Map.class);
+            Number exp = (Number) claims.get("exp");
+            return exp != null ? exp.longValue() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public static Long getIssuedAtFromToken(String token) {
+        try {
+            String[] parts = token.split("\\.");
+            String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> claims = objectMapper.readValue(payloadJson, Map.class);
+            Number iat = (Number) claims.get("iat");
+            return iat != null ? iat.longValue() : null;
         } catch (Exception e) {
             return null;
         }
