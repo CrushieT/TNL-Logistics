@@ -5,13 +5,14 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Objects;
 import org.hibernate.annotations.CreationTimestamp;
+import org.springframework.data.domain.Persistable;
 
 /**
  * Entity mapping to the shipment database table.
  */
 @Entity
 @Table(name = "shipment")
-public class Shipment {
+public class Shipment implements Persistable<String> {
 
     @Id
     @Column(name = "shipment_id", length = 20)
@@ -62,6 +63,25 @@ public class Shipment {
     @CreationTimestamp
     @Column(name = "date_registered", nullable = false, updatable = false)
     private LocalDateTime dateRegistered;
+
+    @Transient
+    private boolean isNew = true;
+
+    @Override
+    public String getId() {
+        return shipmentId;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew || dateRegistered == null;
+    }
+
+    @PostLoad
+    @PostPersist
+    void markNotNew() {
+        this.isNew = false;
+    }
 
     @Column(name = "statement_id", length = 30)
     private String statementId;

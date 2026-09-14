@@ -16,9 +16,6 @@ import java.util.Optional;
 @Repository
 public interface ParcelUnitRepository extends JpaRepository<ParcelUnit, String> {
 
-    @Query("SELECT MAX(p.trackingId) FROM ParcelUnit p WHERE p.trackingId LIKE :prefix")
-    Optional<String> findMaxTrackingIdWithPrefix(@Param("prefix") String prefix);
-
     List<ParcelUnit> findByShipment_ShipmentIdOrderBySeqAsc(String shipmentId);
 
     @Query("SELECT p FROM ParcelUnit p LEFT JOIN FETCH p.currentVehicle WHERE p.shipment.shipmentId IN :shipmentIds ORDER BY p.seq ASC")

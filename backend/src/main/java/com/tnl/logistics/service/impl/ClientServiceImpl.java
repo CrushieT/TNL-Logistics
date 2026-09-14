@@ -10,6 +10,7 @@ import com.tnl.logistics.repository.ParcelUnitRepository;
 import com.tnl.logistics.repository.PaymentRepository;
 import com.tnl.logistics.repository.ShipmentRepository;
 import com.tnl.logistics.service.ClientService;
+import com.tnl.logistics.service.IdentifierCounterService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -34,15 +35,18 @@ public class ClientServiceImpl implements ClientService {
     private final ShipmentRepository shipmentRepository;
     private final PaymentRepository paymentRepository;
     private final ParcelUnitRepository parcelUnitRepository;
+    private final IdentifierCounterService identifierCounterService;
 
     public ClientServiceImpl(ClientRepository clientRepository,
                              ShipmentRepository shipmentRepository,
                              PaymentRepository paymentRepository,
-                             ParcelUnitRepository parcelUnitRepository) {
+                             ParcelUnitRepository parcelUnitRepository,
+                             IdentifierCounterService identifierCounterService) {
         this.clientRepository = clientRepository;
         this.shipmentRepository = shipmentRepository;
         this.paymentRepository = paymentRepository;
         this.parcelUnitRepository = parcelUnitRepository;
+        this.identifierCounterService = identifierCounterService;
     }
 
     @Override
@@ -197,15 +201,8 @@ public class ClientServiceImpl implements ClientService {
     }
 
     @Override
-    public synchronized ClientSummaryResponse createClient(ClientCreateRequest request) {
-        String prefix = "CL-";
-        String maxId = clientRepository.findMaxClientIdWithPrefix(prefix + "%").orElse(null);
-        int nextSeq = 1;
-        if (maxId != null && maxId.startsWith(prefix)) {
-            try {
-                nextSeq = Integer.parseInt(maxId.substring(prefix.length())) + 1;
-            } catch (NumberFormatException ignored) {}
-        }
+    public ClientSummaryResponse createClient(ClientCreateRequest request) {
+        long nextSeq = identifierCounterService.next(IdentifierCounterService.IdentifierFamily.CLIENT, null);
         String clientId = String.format("CL-%03d", nextSeq);
 
         ChargeModel rateType = ChargeModel.FLAT;

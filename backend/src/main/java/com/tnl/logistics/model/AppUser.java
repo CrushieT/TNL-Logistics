@@ -4,13 +4,14 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import java.util.Objects;
 import org.hibernate.annotations.CreationTimestamp;
+import org.springframework.data.domain.Persistable;
 
 /**
  * Entity mapping to the app_user database table.
  */
 @Entity
 @Table(name = "app_user")
-public class AppUser {
+public class AppUser implements Persistable<String> {
 
     @Id
     @Column(name = "user_id", length = 20)
@@ -51,6 +52,25 @@ public class AppUser {
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    @Transient
+    private boolean isNew = true;
+
+    @Override
+    public String getId() {
+        return userId;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew || createdAt == null;
+    }
+
+    @PostLoad
+    @PostPersist
+    void markNotNew() {
+        this.isNew = false;
+    }
 
 
     public AppUser() {}

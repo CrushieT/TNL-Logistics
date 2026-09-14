@@ -3,13 +3,14 @@ package com.tnl.logistics.model;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.util.Objects;
+import org.springframework.data.domain.Persistable;
 
 /**
  * Entity mapping to the parcel_unit database table.
  */
 @Entity
 @Table(name = "parcel_unit")
-public class ParcelUnit {
+public class ParcelUnit implements Persistable<String> {
 
     @Id
     @Column(name = "tracking_id", length = 30)
@@ -51,6 +52,25 @@ public class ParcelUnit {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "current_vehicle_id")
     private Vehicle currentVehicle;
+
+    @Transient
+    private boolean isNew = true;
+
+    @Override
+    public String getId() {
+        return trackingId;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @PostLoad
+    @PostPersist
+    void markNotNew() {
+        this.isNew = false;
+    }
 
     public ParcelUnit() {}
 

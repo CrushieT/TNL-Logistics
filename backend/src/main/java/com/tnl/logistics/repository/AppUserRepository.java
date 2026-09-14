@@ -32,10 +32,6 @@ public interface AppUserRepository extends JpaRepository<AppUser, String> {
     // Paginated list — filtered by role and active status
     Page<AppUser> findByActiveAndRoleInOrderByUserIdAsc(Boolean active, List<UserRole> roles, Pageable pageable);
 
-    // Sequential ID generation: find the highest U-NNN style user ID
-    @Query("SELECT MAX(u.userId) FROM AppUser u WHERE u.userId LIKE :prefix")
-    Optional<String> findMaxUserIdWithPrefix(@Param("prefix") String prefix);
-
     // Smart-delete data checks
     @Query("SELECT COUNT(t) FROM TrackingEvent t WHERE t.staff.userId = :userId")
     long countTrackingEventsByStaff(@Param("userId") String userId);

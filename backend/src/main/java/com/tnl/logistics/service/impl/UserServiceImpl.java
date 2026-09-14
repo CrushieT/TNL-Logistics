@@ -6,6 +6,7 @@ import com.tnl.logistics.model.StaffType;
 import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.service.UserService;
+import com.tnl.logistics.service.IdentifierCounterService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -25,10 +26,13 @@ public class UserServiceImpl implements UserService {
 
     private final AppUserRepository appUserRepository;
     private final BCryptPasswordEncoder passwordEncoder;
+    private final IdentifierCounterService identifierCounterService;
 
-    public UserServiceImpl(AppUserRepository appUserRepository, BCryptPasswordEncoder passwordEncoder) {
+    public UserServiceImpl(AppUserRepository appUserRepository, BCryptPasswordEncoder passwordEncoder,
+                           IdentifierCounterService identifierCounterService) {
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
+        this.identifierCounterService = identifierCounterService;
     }
 
     @Override
@@ -57,7 +61,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public synchronized UserResponse createUser(UserCreateRequest request) {
+    public UserResponse createUser(UserCreateRequest request) {
         if (request.getRole() == UserRole.ADMIN) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Administrator account creation is not permitted. Only one system administrator account is allowed.");
@@ -190,13 +194,7 @@ public class UserServiceImpl implements UserService {
 
     // Generates the next U-NNN sequential user ID
     private String generateNextUserId() {
-        String maxId = appUserRepository.findMaxUserIdWithPrefix(USER_ID_PREFIX + "%").orElse(null);
-        int nextSeq = 1;
-        if (maxId != null && maxId.startsWith(USER_ID_PREFIX)) {
-            try {
-                nextSeq = Integer.parseInt(maxId.substring(USER_ID_PREFIX.length())) + 1;
-            } catch (NumberFormatException ignored) {}
-        }
+        long nextSeq = identifierCounterService.next(IdentifierCounterService.IdentifierFamily.USER, null);
         return String.format("U-%03d", nextSeq);
     }
 

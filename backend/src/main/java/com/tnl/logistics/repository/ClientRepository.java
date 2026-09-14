@@ -17,9 +17,6 @@ import java.util.Optional;
 @Repository
 public interface ClientRepository extends JpaRepository<Client, String> {
 
-    @Query("SELECT MAX(c.clientId) FROM Client c WHERE c.clientId LIKE :prefix")
-    Optional<String> findMaxClientIdWithPrefix(@Param("prefix") String prefix);
-
     @Query("SELECT c FROM Client c WHERE " +
            "(:active IS NULL OR c.active = :active) AND " +
            "(:search IS NULL OR LOWER(c.clientId) LIKE LOWER(CONCAT('%', :search, '%')) " +

@@ -1,0 +1,6 @@
+ALTER TABLE identifier_counter
+    MODIFY COLUMN last_issued BIGINT UNSIGNED NOT NULL,
+    ADD COLUMN initialized BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE identifier_counter
+    ALTER COLUMN initialized SET DEFAULT FALSE;

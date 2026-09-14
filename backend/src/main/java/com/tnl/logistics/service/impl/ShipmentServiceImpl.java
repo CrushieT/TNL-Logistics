@@ -5,6 +5,7 @@ import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.*;
 import com.tnl.logistics.service.ShipmentService;
 import com.tnl.logistics.service.SseService;
+import com.tnl.logistics.service.IdentifierCounterService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -38,6 +39,7 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final SseService sseService;
     private final PrintEventRepository printEventRepository;
     private final com.tnl.logistics.service.SystemSettingService systemSettingService;
+    private final IdentifierCounterService identifierCounterService;
 
     public ShipmentServiceImpl(ShipmentRepository shipmentRepository,
                                ParcelUnitRepository parcelUnitRepository,
@@ -48,7 +50,8 @@ public class ShipmentServiceImpl implements ShipmentService {
                                WaybillRepository waybillRepository,
                                SseService sseService,
                                PrintEventRepository printEventRepository,
-                               com.tnl.logistics.service.SystemSettingService systemSettingService) {
+                               com.tnl.logistics.service.SystemSettingService systemSettingService,
+                               IdentifierCounterService identifierCounterService) {
         this.shipmentRepository = shipmentRepository;
         this.parcelUnitRepository = parcelUnitRepository;
         this.clientRepository = clientRepository;
@@ -59,10 +62,11 @@ public class ShipmentServiceImpl implements ShipmentService {
         this.sseService = sseService;
         this.printEventRepository = printEventRepository;
         this.systemSettingService = systemSettingService;
+        this.identifierCounterService = identifierCounterService;
     }
 
     @Override
-    public synchronized ShipmentResponse registerShipment(ShipmentRegistrationRequest request, String actingStaffUsername) {
+    public ShipmentResponse registerShipment(ShipmentRegistrationRequest request, String actingStaffUsername) {
         Client client = clientRepository.findById(request.getClientId())
                 .orElseThrow(() -> new IllegalArgumentException("Client not found with ID: " + request.getClientId()));
 
@@ -87,15 +91,7 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         // 2. Generate Sequential Shipment ID: SHP-YYYY-XXX
         String currentYear = String.valueOf(LocalDate.now().getYear());
-        String shipmentPrefix = "SHP-" + currentYear + "-";
-        String maxShipmentId = shipmentRepository.findMaxShipmentIdWithPrefix(shipmentPrefix + "%").orElse(null);
-        int nextShipmentSeq = 1;
-        if (maxShipmentId != null && maxShipmentId.length() >= shipmentPrefix.length() + 3) {
-            String seqStr = maxShipmentId.substring(shipmentPrefix.length());
-            try {
-                nextShipmentSeq = Integer.parseInt(seqStr) + 1;
-            } catch (NumberFormatException ignored) {}
-        }
+        long nextShipmentSeq = identifierCounterService.next(IdentifierCounterService.IdentifierFamily.SHIPMENT, Integer.valueOf(currentYear));
         String shipmentId = String.format("SHP-%s-%03d", currentYear, nextShipmentSeq);
 
         // 3. Save Shipment Entity
@@ -119,15 +115,11 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         // 4. Generate Sequential Tracking IDs (TRK-YYYY-XXXXXX) & Process Parcel Units
         List<String> trackingIds = new ArrayList<>();
-        String trackingPrefix = "TRK-" + currentYear + "-";
-        String maxTrackingId = parcelUnitRepository.findMaxTrackingIdWithPrefix(trackingPrefix + "%").orElse(null);
-        int nextTrackingSeq = 1;
-        if (maxTrackingId != null && maxTrackingId.length() >= trackingPrefix.length() + 6) {
-            String seqStr = maxTrackingId.substring(trackingPrefix.length());
-            try {
-                nextTrackingSeq = Integer.parseInt(seqStr) + 1;
-            } catch (NumberFormatException ignored) {}
-        }
+        long nextTrackingSeq = identifierCounterService.next(
+                IdentifierCounterService.IdentifierFamily.TRACKING,
+                Integer.valueOf(currentYear),
+                request.getParcels().size()
+        );
 
         for (ParcelUnitRequest parcelReq : request.getParcels()) {
             String trackingId = String.format("TRK-%s-%06d", currentYear, nextTrackingSeq++);
