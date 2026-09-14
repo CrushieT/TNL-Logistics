@@ -7,6 +7,7 @@ import java.util.Objects;
 import org.hibernate.annotations.CreationTimestamp;
 import org.springframework.data.domain.Persistable;
 
+
 /**
  * Entity mapping to the shipment database table.
  */
@@ -60,12 +61,18 @@ public class Shipment implements Persistable<String> {
     @Column(name = "registered_via", nullable = false)
     private RegisteredVia registeredVia;
 
-    @CreationTimestamp
     @Column(name = "date_registered", nullable = false, updatable = false)
     private LocalDateTime dateRegistered;
 
     @Transient
     private boolean isNew = true;
+
+    @PrePersist
+    protected void onCreate() {
+        if (this.dateRegistered == null) {
+            this.dateRegistered = LocalDateTime.now();
+        }
+    }
 
     @Override
     public String getId() {
@@ -150,6 +157,7 @@ public class Shipment implements Persistable<String> {
     public void setRegisteredVia(RegisteredVia registeredVia) { this.registeredVia = registeredVia; }
 
     public LocalDateTime getDateRegistered() { return dateRegistered; }
+    public void setDateRegistered(LocalDateTime dateRegistered) { this.dateRegistered = dateRegistered; }
 
     public String getStatementId() { return statementId; }
     public void setStatementId(String statementId) { this.statementId = statementId; }

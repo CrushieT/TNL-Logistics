@@ -20,9 +20,12 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.tnl.logistics.model.*;
+import com.tnl.logistics.repository.*;
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /**
  * Integration test verifying system settings REST API, RBAC boundaries,
@@ -42,6 +45,12 @@ public class SystemSettingIntegrationTest {
 
     @Autowired
     private CollectionsService collectionsService;
+
+    @Autowired
+    private ShipmentRepository shipmentRepository;
+
+    @Autowired
+    private ClientRepository clientRepository;
 
     @Test
     @WithMockUser(username = "admin", roles = {"ADMIN"})
@@ -247,11 +256,35 @@ public class SystemSettingIntegrationTest {
     void testDynamicCycleStartDateAnchoringAndGhostCycleElimination() throws Exception {
         LocalDate nextMonday = LocalDate.of(2026, 9, 7);
 
-        // 1. Verify dynamic cycle start calculation:
-        // When checking start date for a cycle, it dynamically anchors to the day after preceding cycle.
+        Client client = clientRepository.findAll().stream().findFirst().orElseGet(() -> {
+            Client c = new Client();
+            c.setClientId("CL-SETTING-TEST");
+            c.setName("Setting Client");
+            c.setContactNumber("0917-123-4567");
+            c.setAddress("Manila");
+            c.setActive(true);
+            return clientRepository.save(c);
+        });
+
+        Shipment testShipment = new Shipment();
+        testShipment.setShipmentId("SHP-SETTING-1");
+        testShipment.setClient(client);
+        testShipment.setRecipientName("Setting Recipient");
+        testShipment.setRecipientAddress("Manila");
+        testShipment.setRecipientContact("0912-345-6789");
+        testShipment.setQuantity(1);
+        testShipment.setChargeModel(ChargeModel.FLAT);
+        testShipment.setShippingFee(new BigDecimal("100.00"));
+        testShipment.setTotalAmount(new BigDecimal("100.00"));
+        testShipment.setPaidAtRegistration(false);
+        testShipment.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        testShipment.setDateRegistered(LocalDateTime.now());
+        shipmentRepository.save(testShipment);
+
+        // 1. Verify fixed cycle start calculation (starts 6 days before cycle end)
         LocalDate calculatedStart = collectionsService.calculateCycleStartDate(nextMonday);
         assertNotNull(calculatedStart);
-        assertTrue(!calculatedStart.isAfter(nextMonday));
+        assertEquals(nextMonday.minusDays(6), calculatedStart);
 
         try {
             // 2. Change collection day to WEDNESDAY

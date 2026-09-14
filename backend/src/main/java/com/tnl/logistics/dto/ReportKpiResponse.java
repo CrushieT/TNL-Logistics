@@ -3,7 +3,13 @@ package com.tnl.logistics.dto;
 import java.math.BigDecimal;
 
 /**
- * DTO representing top 5 summary KPI metrics across a reporting date range.
+ * DTO representing top summary KPI metrics across a reporting date range.
+ *
+ * Financial Semantics:
+ * - totalBilledRevenue: shipment charges for shipments registered within the selected period.
+ * - totalCollectedRevenue: cash collected from payments recorded within the selected period (by payment_date).
+ * - outstandingReceivables: live total uncollected balance across all shipments in the system as of today,
+ *   reconciling exactly with the sum of all accounts receivable aging buckets.
  */
 public class ReportKpiResponse {
 

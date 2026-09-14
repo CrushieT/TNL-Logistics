@@ -77,10 +77,10 @@ export default function FinancialRevenueTab({ clientRevenue = [], paymentMethods
             {/* Table Header */}
             <View style={styles.tableHeaderRow}>
               <Text style={[styles.headerCell, styles.clientCol]}>CLIENT</Text>
-              <Text style={[styles.headerCell, styles.numCol]}>SHIPMENTS</Text>
-              <Text style={[styles.headerCell, styles.numCol]}>BILLED</Text>
-              <Text style={[styles.headerCell, styles.numCol]}>PAID</Text>
-              <Text style={[styles.headerCell, styles.numCol]}>BALANCE</Text>
+              <Text style={[styles.headerCell, styles.numCol]}>SHIPMENTS (PERIOD)</Text>
+              <Text style={[styles.headerCell, styles.numCol]}>BILLED (PERIOD)</Text>
+              <Text style={[styles.headerCell, styles.numCol]}>PAID (PERIOD)</Text>
+              <Text style={[styles.headerCell, styles.numCol]}>LIVE BALANCE</Text>
               <Text style={[styles.headerCell, styles.statusCol]}>STATUS</Text>
             </View>
 

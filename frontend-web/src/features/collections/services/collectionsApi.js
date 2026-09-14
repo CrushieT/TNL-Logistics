@@ -198,20 +198,8 @@ export async function getActiveCollectionCycles() {
         const end = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
         const isCurrent = index === 0;
 
-        let start;
-        const defaultStart = new Date(end);
-        defaultStart.setDate(end.getDate() - 6);
-
-        if (index < data.length - 1) {
-          const nextParts = data[index + 1].split('-');
-          const prevCycleEnd = new Date(Number(nextParts[0]), Number(nextParts[1]) - 1, Number(nextParts[2]));
-          const anchoredStart = new Date(prevCycleEnd);
-          anchoredStart.setDate(anchoredStart.getDate() + 1);
-
-          start = anchoredStart > defaultStart ? anchoredStart : defaultStart;
-        } else {
-          start = defaultStart;
-        }
+        const start = new Date(end);
+        start.setDate(end.getDate() - 6);
 
         const baseLabel = formatCycleDateRangeFromDates(start, end);
         return {

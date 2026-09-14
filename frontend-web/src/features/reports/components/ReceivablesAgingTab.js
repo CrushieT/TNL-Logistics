@@ -58,6 +58,14 @@ export default function ReceivablesAgingTab({ receivablesAging = [], dateRangeSt
         </TouchableOpacity>
       </View>
 
+      {/* Live Portfolio Notice */}
+      <View style={styles.liveNoticeCard}>
+        <Text style={styles.liveNoticeTitle}>PORTFOLIO RECEIVABLES AGING</Text>
+        <Text style={styles.liveNoticeText}>
+          Live as of today across all active client balances. Receivables aging reflects current unpaid exposure and is independent of the selected report date filter.
+        </Text>
+      </View>
+
       {/* Top Debtor Callout Banner */}
       {topDebtor && (
         <View style={styles.topDebtorBanner}>
@@ -207,6 +215,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: colors.ink,
+  },
+  liveNoticeCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  liveNoticeTitle: {
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.inkSoft,
+    letterSpacing: 0.6,
+    marginBottom: 2,
+  },
+  liveNoticeText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: colors.inkFaint,
+    lineHeight: 16,
   },
   topDebtorBanner: {
     flexDirection: 'row',
