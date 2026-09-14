@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useRootNavigationState } from 'expo-router';
 import { colors, fonts, spacing, radius } from '../theme';
-import { login, isAuthenticated } from '../services/api/client';
+import { login, isAuthenticated, getCurrentUser } from '../services/api/client';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -37,14 +37,14 @@ export default function LoginScreen() {
     if (!navigationState?.key) return;
 
     if (isAuthenticated()) {
-      router.replace(redirectPath);
+      const currentUser = getCurrentUser();
+      if (currentUser?.mustChangePassword) {
+        router.replace('/change-password');
+      } else {
+        router.replace(redirectPath);
+      }
     }
   }, [navigationState?.key, redirectPath, router]);
-
-  // If already authenticated, do not render login form while redirecting
-  if (isAuthenticated()) {
-    return <View style={{ flex: 1, backgroundColor: colors.canvas }} />;
-  }
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
@@ -60,6 +60,11 @@ export default function LoginScreen() {
     return () => clearInterval(intervalTimer);
   }, [cooldownSeconds]);
 
+  // If already authenticated, do not render login form while redirecting
+  if (isAuthenticated()) {
+    return <View style={{ flex: 1, backgroundColor: colors.canvas }} />;
+  }
+
   const handleSubmit = async () => {
     if (cooldownSeconds > 0) return;
 
@@ -73,8 +78,12 @@ export default function LoginScreen() {
     setIsSubmitting(true);
 
     try {
-      await login(trimmedUsername, password);
-      router.replace(redirectPath);
+      const authData = await login(trimmedUsername, password);
+      if (authData?.mustChangePassword) {
+        router.replace('/change-password');
+      } else {
+        router.replace(redirectPath);
+      }
     } catch (error) {
       if (error?.response?.status === 429) {
         const retryAfter =

@@ -84,9 +84,17 @@ public class SecurityIntegrationTest {
         parcelUnitRepository.deleteAll();
         shipmentRepository.deleteAll();
 
-        // Ensure test admin exists
-        if (appUserRepository.findByUsername("admin").isEmpty()) {
-            appUserRepository.save(new AppUser("USR-ADMIN", "admin", passwordEncoder.encode("admin123"), "Admin User", UserRole.ADMIN));
+        // Ensure test admin exists with mustChangePassword = false
+        AppUser adminUser = appUserRepository.findByUsername("admin").orElse(null);
+        if (adminUser == null) {
+            adminUser = new AppUser("USR-ADMIN", "admin", passwordEncoder.encode("admin123"), "Admin User", UserRole.ADMIN);
+            adminUser.setMustChangePassword(false);
+            appUserRepository.save(adminUser);
+        } else {
+            adminUser.setMustChangePassword(false);
+            adminUser.setUsername("admin");
+            adminUser.setPasswordHash(passwordEncoder.encode("admin123"));
+            appUserRepository.save(adminUser);
         }
     }
 
@@ -102,6 +110,11 @@ public class SecurityIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(badRequest)))
                 .andExpect(status().isUnauthorized());
+
+        // Ensure admin has mustChangePassword = true for this lifecycle flow
+        AppUser admin = appUserRepository.findByUsername("admin").orElseThrow();
+        admin.setMustChangePassword(true);
+        appUserRepository.saveAndFlush(admin);
 
         // 3. Login with valid ADMIN credentials succeeds
         LoginRequest adminLogin = new LoginRequest("admin", "admin123");
@@ -119,15 +132,19 @@ public class SecurityIntegrationTest {
 
         String adminToken = "Bearer " + responseDto.getToken();
 
-        // 4. Access Admin Gated Endpoint with Admin Token succeeds (200 OK)
+        // 4. While mustChangePassword is true, accessing business/test endpoints fails (403 Forbidden with PASSWORD_CHANGE_REQUIRED)
         mockMvc.perform(get("/api/v1/test/admin")
                         .header("Authorization", adminToken))
-                .andExpect(status().isOk());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PASSWORD_CHANGE_REQUIRED"))
+                .andExpect(jsonPath("$.message").value("Password change required before accessing this resource"));
 
-        // 5. Access Field Gated Endpoint with Admin Token fails (403 Forbidden)
-        mockMvc.perform(get("/api/v1/test/field")
+        // 5. While mustChangePassword is true, GET /api/v1/auth/me is allowed
+        mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", adminToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value("USR-ADMIN"))
+                .andExpect(jsonPath("$.mustChangePassword").value(true));
 
         // 6a. Password Change with same password fails (400 Bad Request)
         PasswordChangeRequest samePasswordRequest = new PasswordChangeRequest("admin123", "admin123");
@@ -148,15 +165,33 @@ public class SecurityIntegrationTest {
 
         // 6c. Password Change with correct current password succeeds and returns refreshed token
         PasswordChangeRequest changeRequest = new PasswordChangeRequest("admin123", "newAdmin123");
-        mockMvc.perform(post("/api/v1/auth/password-change")
+        MvcResult changeResult = mockMvc.perform(post("/api/v1/auth/password-change")
                         .header("Authorization", adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(changeRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").exists())
-                .andExpect(jsonPath("$.message").value("Password updated successfully"));
+                .andExpect(jsonPath("$.message").value("Password updated successfully"))
+                .andReturn();
 
-        // Verify login with new password works
+        String refreshedToken = "Bearer " + objectMapper.readTree(changeResult.getResponse().getContentAsString()).get("token").asText();
+
+        // 7. Old token is revoked (version mismatch returns 403)
+        mockMvc.perform(get("/api/v1/test/admin")
+                        .header("Authorization", adminToken))
+                .andExpect(status().isForbidden());
+
+        // 8. Refreshed token allows access to Admin Gated Endpoint (200 OK)
+        mockMvc.perform(get("/api/v1/test/admin")
+                        .header("Authorization", refreshedToken))
+                .andExpect(status().isOk());
+
+        // 9. Access Field Gated Endpoint with refreshed Admin Token fails (403 Forbidden due to role gate)
+        mockMvc.perform(get("/api/v1/test/field")
+                        .header("Authorization", refreshedToken))
+                .andExpect(status().isForbidden());
+
+        // 10. Verify login with new password works and mustChangePassword is false
         LoginRequest newLogin = new LoginRequest("admin", "newAdmin123");
         MvcResult newLoginResult = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -166,6 +201,95 @@ public class SecurityIntegrationTest {
 
         LoginResponse newResponseDto = objectMapper.readValue(newLoginResult.getResponse().getContentAsString(), LoginResponse.class);
         assertFalse(newResponseDto.isMustChangePassword()); // Changed to false on successful update
+
+        // Reset admin back to initial baseline so subsequent test classes are unaffected
+        admin.setMustChangePassword(false);
+        admin.setTokenVersion(1);
+        admin.setPasswordHash(passwordEncoder.encode("admin123"));
+        appUserRepository.saveAndFlush(admin);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    public void cleanup() {
+        AppUser admin = appUserRepository.findByUsername("admin").orElse(null);
+        if (admin != null) {
+            admin.setMustChangePassword(false);
+            admin.setTokenVersion(1);
+            admin.setPasswordHash(passwordEncoder.encode("admin123"));
+            appUserRepository.save(admin);
+        }
+        AppUser office = appUserRepository.findByUsername("office").orElse(null);
+        if (office != null) {
+            office.setMustChangePassword(false);
+            office.setTokenVersion(1);
+            office.setPasswordHash(passwordEncoder.encode("office123"));
+            appUserRepository.save(office);
+        }
+        appUserRepository.deleteById("USR-FLAGGED-OFFICE");
+    }
+
+    @Test
+    public void testFlaggedOfficeStaffBlockedFromBusinessEndpointsUntilPasswordChanged() throws Exception {
+        AppUser flaggedUser = new AppUser("USR-FLAGGED-OFFICE", "flagged_office", passwordEncoder.encode("flagged123"), "Flagged Staff", UserRole.OFFICE_STAFF);
+        flaggedUser.setMustChangePassword(true);
+        flaggedUser.setTokenVersion(1);
+        appUserRepository.saveAndFlush(flaggedUser);
+
+        // Login as flagged office user
+        LoginRequest loginRequest = new LoginRequest("flagged_office", "flagged123");
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        LoginResponse loginResponse = objectMapper.readValue(loginResult.getResponse().getContentAsString(), LoginResponse.class);
+        assertTrue(loginResponse.isMustChangePassword());
+        String officeToken = "Bearer " + loginResponse.getToken();
+
+        // Blocked on client endpoints
+        mockMvc.perform(get("/api/v1/clients")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PASSWORD_CHANGE_REQUIRED"));
+
+        // Blocked on shipment endpoints
+        mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PASSWORD_CHANGE_REQUIRED"));
+
+        // Blocked on verify password endpoint
+        mockMvc.perform(post("/api/v1/auth/verify-password")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PasswordVerificationRequest("flagged123"))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PASSWORD_CHANGE_REQUIRED"));
+
+        // Allowed on GET /api/v1/auth/me
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value("USR-FLAGGED-OFFICE"))
+                .andExpect(jsonPath("$.mustChangePassword").value(true));
+
+        // Change password
+        PasswordChangeRequest changeRequest = new PasswordChangeRequest("flagged123", "newFlagged123");
+        MvcResult changeResult = mockMvc.perform(post("/api/v1/auth/password-change")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(changeRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").exists())
+                .andReturn();
+
+        String refreshedToken = "Bearer " + objectMapper.readTree(changeResult.getResponse().getContentAsString()).get("token").asText();
+
+        // Now allowed on client endpoints
+        mockMvc.perform(get("/api/v1/clients")
+                        .header("Authorization", refreshedToken))
+                .andExpect(status().isOk());
     }
 
     @Test

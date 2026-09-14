@@ -38,6 +38,7 @@ tnl-logistics/
 │   │   │   ├── +not-found.js        # Catch-all 404 Route Not Found operations card
 │   │   │   ├── setup.js             # Screen 01b First Boot Admin Setup Wizard
 │   │   │   ├── login.js             # Screen 01 Desktop Login with TC & CT branding
+│   │   │   ├── change-password.js   # Mandatory Password Change screen
 │   │   │   ├── index.js             # Dashboard
 │   │   │   ├── register.js          # Register Shipment (form + result view)
 │   │   │   ├── shipments/           # Shipments list and detail views

@@ -193,6 +193,18 @@ apiClient.interceptors.response.use(
         }
       }
     }
+
+    if (status === 403 && error?.response?.data?.code === 'PASSWORD_CHANGE_REQUIRED') {
+      const currentUser = getCurrentUser();
+      if (currentUser) {
+        setCurrentUser({ ...currentUser, mustChangePassword: true });
+      }
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+        if (!window.location.pathname.startsWith('/change-password')) {
+          window.location.href = '/change-password';
+        }
+      }
+    }
     return Promise.reject(error);
   }
 );
@@ -234,6 +246,17 @@ export async function changePassword(oldPassword, newPassword) {
 
   if (response.data?.token) {
     setToken(response.data.token);
+  }
+
+  const currentUser = getCurrentUser();
+  if (currentUser) {
+    setCurrentUser({
+      ...currentUser,
+      mustChangePassword: false,
+      role: response.data?.role || currentUser.role,
+      username: response.data?.username || currentUser.username,
+      userId: response.data?.userId || currentUser.userId,
+    });
   }
 
   return response.data;

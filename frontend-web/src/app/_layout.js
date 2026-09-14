@@ -84,6 +84,7 @@ export default function RootLayout() {
 
       const authenticated = isAuthenticated();
       const isLoginPage = pathname === '/login';
+      const isChangePasswordPage = pathname === '/change-password';
 
       if (!authenticated) {
         lastSessionValidationTimestamp = 0;
@@ -92,12 +93,6 @@ export default function RootLayout() {
             pathname && pathname !== '/' ? `?redirect=${encodeURIComponent(pathname)}` : '';
           router.replace(`/login${redirectQuery}`);
         }
-        return;
-      }
-
-      // Logged-in operators navigating to /login are bounced to the dashboard
-      if (isLoginPage) {
-        router.replace('/');
         return;
       }
 
@@ -120,8 +115,24 @@ export default function RootLayout() {
         lastSessionValidationTimestamp = now;
       }
 
-      // Enforce role-based access control (RBAC) on admin-only routes
+      // Check mandatory password change requirement
       const currentUser = getCurrentUser();
+      const mustChangePassword = Boolean(currentUser?.mustChangePassword);
+
+      if (mustChangePassword) {
+        if (!isChangePasswordPage) {
+          router.replace('/change-password');
+        }
+        return;
+      }
+
+      // If password change is not required, bounce away from change-password or login
+      if (isChangePasswordPage || isLoginPage) {
+        router.replace('/');
+        return;
+      }
+
+      // Enforce role-based access control (RBAC) on admin-only routes
       const isAdminOnly = ADMIN_ONLY_ROUTES.some(
         (route) => pathname === route || pathname.startsWith(`${route}/`)
       );
@@ -148,6 +159,7 @@ export default function RootLayout() {
       <Stack.Screen name="+not-found" options={{ title: 'Page Not Found' }} />
       <Stack.Screen name="setup" />
       <Stack.Screen name="login" />
+      <Stack.Screen name="change-password" />
       <Stack.Screen name="index" />
       <Stack.Screen name="register" />
       <Stack.Screen name="shipments/index" />
