@@ -1,8 +1,6 @@
 package com.tnl.logistics.controller;
 
 import com.tnl.logistics.dto.*;
-import com.tnl.logistics.model.AppUser;
-import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
@@ -24,11 +22,8 @@ import java.util.Map;
 public class UserController {
 
     private final UserService userService;
-    private final AppUserRepository appUserRepository;
-
-    public UserController(UserService userService, AppUserRepository appUserRepository) {
+    public UserController(UserService userService) {
         this.userService = userService;
-        this.appUserRepository = appUserRepository;
     }
 
     @GetMapping
@@ -92,9 +87,6 @@ public class UserController {
         if (authentication == null) {
             return null;
         }
-        String username = authentication.getName();
-        return appUserRepository.findByUsername(username)
-                .map(AppUser::getUserId)
-                .orElse(username);
+        return authentication.getName();
     }
 }

@@ -30,11 +30,11 @@ public class JwtTokenProvider {
         JwtTokenProvider.secret = secretKey.trim();
     }
 
-    public static String generateToken(String username, String role) {
-        return generateToken(username, role, 1);
+    public static String generateToken(String userId, String role) {
+        return generateToken(userId, role, 1);
     }
 
-    public static String generateToken(String username, String role, Integer tokenVersion) {
+    public static String generateToken(String userId, String role, Integer tokenVersion) {
         if (secret == null) {
             throw new IllegalStateException("JWT secret has not been configured. Ensure jwt.secret is provided.");
         }
@@ -44,7 +44,8 @@ public class JwtTokenProvider {
             header.put("typ", "JWT");
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("sub", username);
+            payload.put("sub", userId);
+            payload.put("uid", userId);
             payload.put("role", role);
             payload.put("ver", tokenVersion != null ? tokenVersion : 1);
             payload.put("iat", System.currentTimeMillis() / 1000);
@@ -97,7 +98,7 @@ public class JwtTokenProvider {
         }
     }
 
-    public static String getUsernameFromToken(String token) {
+    public static String getUserIdFromToken(String token) {
         try {
             String[] parts = token.split("\\.");
             String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
@@ -105,7 +106,19 @@ public class JwtTokenProvider {
             Map<String, Object> claims = objectMapper.readValue(payloadJson, Map.class);
             return (String) claims.get("sub");
         } catch (Exception e) {
-            throw new RuntimeException("Failed to extract username", e);
+            throw new RuntimeException("Failed to extract user ID", e);
+        }
+    }
+
+    public static String getImmutableUserIdFromToken(String token) {
+        try {
+            String[] parts = token.split("\\.");
+            String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> claims = objectMapper.readValue(payloadJson, Map.class);
+            return (String) claims.get("uid");
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to extract immutable user ID", e);
         }
     }
 
@@ -128,9 +141,9 @@ public class JwtTokenProvider {
             @SuppressWarnings("unchecked")
             Map<String, Object> claims = objectMapper.readValue(payloadJson, Map.class);
             Number ver = (Number) claims.get("ver");
-            return ver != null ? ver.intValue() : 1;
+            return ver != null ? ver.intValue() : null;
         } catch (Exception e) {
-            return 1;
+            return null;
         }
     }
 

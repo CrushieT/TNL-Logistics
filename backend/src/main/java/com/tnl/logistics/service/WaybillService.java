@@ -14,9 +14,9 @@ public interface WaybillService {
 
     WaybillManifestResponse getManifestByShipmentId(String shipmentId);
 
-    WaybillManifestResponse sendToHauler(WaybillCreateRequest request, String actingStaffUsername);
+    WaybillManifestResponse sendToHauler(WaybillCreateRequest request, String actingStaffUserId);
 
-    WaybillManifestResponse markSignedCompleted(String shipmentId, WaybillStatusUpdateRequest request, String actingStaffUsername);
+    WaybillManifestResponse markSignedCompleted(String shipmentId, WaybillStatusUpdateRequest request, String actingStaffUserId);
 
     Page<WaybillSummaryResponse> getWaybills(String search, WaybillStatus status, String hauler, Pageable pageable);
 }

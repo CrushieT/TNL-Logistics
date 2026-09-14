@@ -142,12 +142,12 @@ public class WaybillServiceImpl implements WaybillService {
     }
 
     @Override
-    public WaybillManifestResponse sendToHauler(WaybillCreateRequest request, String actingStaffUsername) {
+    public WaybillManifestResponse sendToHauler(WaybillCreateRequest request, String actingStaffUserId) {
         Shipment shipment = shipmentRepository.findById(request.getShipmentId())
                 .orElseThrow(() -> new IllegalArgumentException("Shipment not found: " + request.getShipmentId()));
 
-        AppUser actingStaff = appUserRepository.findByUsername(actingStaffUsername)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + actingStaffUsername));
+        AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + actingStaffUserId));
 
         Waybill waybill = waybillRepository.findByShipment_ShipmentId(request.getShipmentId()).orElse(null);
 
@@ -184,7 +184,7 @@ public class WaybillServiceImpl implements WaybillService {
     }
 
     @Override
-    public WaybillManifestResponse markSignedCompleted(String shipmentId, WaybillStatusUpdateRequest request, String actingStaffUsername) {
+    public WaybillManifestResponse markSignedCompleted(String shipmentId, WaybillStatusUpdateRequest request, String actingStaffUserId) {
         Shipment shipment = shipmentRepository.findById(shipmentId)
                 .orElseThrow(() -> new IllegalArgumentException("Shipment not found: " + shipmentId));
 
@@ -205,7 +205,7 @@ public class WaybillServiceImpl implements WaybillService {
             waybill.setRemarks(request.getRemarks().trim());
         }
 
-        AppUser actingStaff = appUserRepository.findByUsername(actingStaffUsername).orElse(null);
+        AppUser actingStaff = appUserRepository.findById(actingStaffUserId).orElse(null);
 
         Waybill saved = waybillRepository.save(waybill);
         List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);

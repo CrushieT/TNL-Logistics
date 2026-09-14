@@ -11,7 +11,7 @@ import java.util.List;
  */
 public interface ShipmentService {
 
-    ShipmentResponse registerShipment(ShipmentRegistrationRequest request, String actingStaffUsername);
+    ShipmentResponse registerShipment(ShipmentRegistrationRequest request, String actingStaffUserId);
 
     Page<ShipmentSummaryResponse> getShipments(String search, String status, String paymentStatus, String vehicleId, Pageable pageable);
 
@@ -23,9 +23,9 @@ public interface ShipmentService {
 
     ParcelUnitDetailResponse getParcelUnitByTrackingId(String trackingId);
 
-    void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUsername, String printerId);
+    void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUserId, String printerId);
 
-    default void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUsername) {
-        recordLabelPrint(shipmentId, packageIds, actingStaffUsername, null);
+    default void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUserId) {
+        recordLabelPrint(shipmentId, packageIds, actingStaffUserId, null);
     }
 }

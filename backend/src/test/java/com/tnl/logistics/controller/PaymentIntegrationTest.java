@@ -60,7 +60,7 @@ public class PaymentIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testCompletePaymentLifecycleAndValidations() throws Exception {
         // 1. Register an UNPAID shipment with ₱1,500 total amount
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
@@ -184,7 +184,7 @@ public class PaymentIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testGcashAndBankRequireReferenceNumber() throws Exception {
         // Register an unpaid shipment
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
@@ -242,7 +242,7 @@ public class PaymentIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "field_driver", roles = {"FIELD_STAFF"})
+    @WithMockUser(username = "USR-FIELD", roles = {"FIELD_STAFF"})
     void testFieldStaffCannotRecordPayment() throws Exception {
         PaymentRecordRequest req = new PaymentRecordRequest(
                 "SHP-2026-001",
@@ -260,7 +260,7 @@ public class PaymentIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
     void testPaymentStaffAttributionWithOfficeUser() throws Exception {
         // Register an unpaid shipment
         ShipmentRegistrationRequest shipReq = new ShipmentRegistrationRequest();
@@ -303,7 +303,7 @@ public class PaymentIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testPessimisticLockRejectsPaymentWhenAlreadyPaid() throws Exception {
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
         shipmentReq.setClientId("CL-001");

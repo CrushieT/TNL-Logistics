@@ -72,7 +72,7 @@ public class ParcelPrintIntegrationTest {
         parcelUnitRepository.deleteAll();
         shipmentRepository.deleteAll();
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("office", "OFFICE_STAFF");
+        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {

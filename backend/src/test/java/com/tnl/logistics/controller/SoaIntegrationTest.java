@@ -53,7 +53,7 @@ public class SoaIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testWeeklyCollectionsAndActiveCyclesEndpoints() throws Exception {
         mockMvc.perform(get("/api/v1/collections/weekly"))
                 .andExpect(status().isOk())
@@ -68,7 +68,7 @@ public class SoaIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
     void testStatementPreviewAndSaveLifecycle() throws Exception {
         // 1. Register a shipment for CL-001 to ensure unbilled items in current cycle
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
@@ -130,7 +130,7 @@ public class SoaIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
     void testAuthorizedCollectorsEndpoint() throws Exception {
         mockMvc.perform(get("/api/v1/soa/collectors"))
                 .andExpect(status().isOk())
@@ -138,7 +138,7 @@ public class SoaIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "field", roles = {"FIELD_STAFF"})
+    @WithMockUser(username = "USR-FIELD", roles = {"FIELD_STAFF"})
     void testFieldStaffForbiddenFromSoaManagement() throws Exception {
         SaveStatementRequest saveReq = new SaveStatementRequest(
                 "CL-001",
@@ -159,7 +159,7 @@ public class SoaIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
     void testSaveStatementValidationConstraints() throws Exception {
         // 1. Negative deduction amount
         SaveStatementRequest negativeDeduction = new SaveStatementRequest(
@@ -253,7 +253,7 @@ public class SoaIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
     void testSaveStatementDeductionExceedingTotalChargesRejected() throws Exception {
         // Register a shipment with 1200.00 total charges
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();

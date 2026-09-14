@@ -44,8 +44,8 @@ public class PaymentController {
         if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
             throw new IllegalStateException("Authenticated user context is required to record a payment.");
         }
-        String username = authentication.getName();
-        PaymentResponse response = paymentService.recordPayment(request, username);
+        String actingStaffUserId = authentication.getName();
+        PaymentResponse response = paymentService.recordPayment(request, actingStaffUserId);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 

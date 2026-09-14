@@ -58,7 +58,7 @@ public class SystemSettingServiceImpl implements SystemSettingService {
 
     @Override
     @Transactional
-    public SystemSettingDto updateSettings(UpdateSystemSettingRequest request, String actingUsername) {
+    public SystemSettingDto updateSettings(UpdateSystemSettingRequest request, String actingUserId) {
         SystemSetting setting = systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID)
                 .orElseGet(() -> new SystemSetting(
                         SystemSetting.DEFAULT_SETTING_ID,
@@ -78,14 +78,14 @@ public class SystemSettingServiceImpl implements SystemSettingService {
         setting.setBillingEmail(request.getBillingEmail().trim());
         setting.setCollectionDay(request.getCollectionDay());
         setting.setVolumetricDivisor(request.getVolumetricDivisor());
-        setting.setUpdatedBy(actingUsername != null ? actingUsername : "ADMIN");
+        setting.setUpdatedBy(actingUserId != null ? actingUserId : "ADMIN");
 
         SystemSetting saved = systemSettingRepository.save(setting);
         SystemSettingDto dto = toDto(saved);
         this.cachedSettings = dto;
 
         log.info("System settings updated by {}: collectionDay={}, volumetricDivisor={}",
-                actingUsername, dto.getCollectionDay(), dto.getVolumetricDivisor());
+                actingUserId, dto.getCollectionDay(), dto.getVolumetricDivisor());
 
         try {
             sseService.broadcastEvent("SETTINGS_UPDATED", dto);

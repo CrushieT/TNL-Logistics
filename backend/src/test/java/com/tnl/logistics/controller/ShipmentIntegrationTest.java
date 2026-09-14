@@ -84,8 +84,8 @@ public class ShipmentIntegrationTest {
                 "SHIPMENT:" + LocalDate.now().getYear(),
                 "TRACKING:" + LocalDate.now().getYear());
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("office", "OFFICE_STAFF");
-        fieldToken = "Bearer " + JwtTokenProvider.generateToken("field", "FIELD_STAFF");
+        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {

@@ -40,8 +40,8 @@ public class SystemSettingController {
         if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
             throw new AccessDeniedException("Authenticated user context is required");
         }
-        String actingUsername = auth.getName();
-        return ResponseEntity.ok(systemSettingService.updateSettings(request, actingUsername));
+        String actingUserId = auth.getName();
+        return ResponseEntity.ok(systemSettingService.updateSettings(request, actingUserId));
     }
 
     @GetMapping("/branding")

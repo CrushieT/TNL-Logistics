@@ -35,6 +35,8 @@ public class LegacyDatabaseUpgradeIntegrationTest {
 
     private static final String LEGACY_DB_NAME = "tnl_legacy_integ_test";
     private static final String FRESH_DB_NAME = "tnl_fresh_integ_test";
+    private static final String USERNAME_COLLISION_DB_NAME = "tnl_username_collision_integ_test";
+    private static final String USERNAME_NORMALIZATION_DB_NAME = "tnl_username_normalization_integ_test";
 
     @Autowired
     private DataSource defaultDataSource;
@@ -81,6 +83,8 @@ public class LegacyDatabaseUpgradeIntegrationTest {
         try {
             defaultJdbcTemplate.execute("DROP DATABASE IF EXISTS " + LEGACY_DB_NAME);
             defaultJdbcTemplate.execute("DROP DATABASE IF EXISTS " + FRESH_DB_NAME);
+            defaultJdbcTemplate.execute("DROP DATABASE IF EXISTS " + USERNAME_COLLISION_DB_NAME);
+            defaultJdbcTemplate.execute("DROP DATABASE IF EXISTS " + USERNAME_NORMALIZATION_DB_NAME);
         } catch (Exception ignored) {}
     }
 
@@ -220,7 +224,7 @@ public class LegacyDatabaseUpgradeIntegrationTest {
     }
 
     @Test
-    public void testCurrentDevDatabaseReachesV21Successfully() {
+    public void testCurrentDevDatabaseReachesV25Successfully() {
         assertTrue(upgradeService.tableExists(defaultDataSource, "legacy_reconciliation_record"));
         assertTrue(upgradeService.tableExists(defaultDataSource, "legacy_upgrade_manifest"));
 
@@ -246,19 +250,101 @@ public class LegacyDatabaseUpgradeIntegrationTest {
         freshDs.setUsername(dataSourceProperties.getUsername());
         freshDs.setPassword(dataSourceProperties.getPassword());
 
-        // Fresh database runs Flyway V1..V21 directly
+        // Fresh database runs Flyway V1..V25 directly
         Flyway flyway = Flyway.configure()
                 .dataSource(freshDs)
                 .locations("classpath:db/migration")
                 .load();
 
         var result = flyway.migrate();
-        assertTrue(result.migrationsExecuted >= 21);
+        assertTrue(result.migrationsExecuted >= 25);
         flyway.validate();
 
         assertTrue(upgradeService.tableExists(freshDs, "client"));
         assertTrue(upgradeService.tableExists(freshDs, "shipment"));
         assertTrue(upgradeService.tableExists(freshDs, "legacy_reconciliation_record"));
         assertTrue(upgradeService.tableExists(freshDs, "legacy_upgrade_manifest"));
+    }
+
+    @Test
+    public void testUsernameMigrationStopsOnCanonicalCollision() {
+        defaultJdbcTemplate.execute("DROP DATABASE IF EXISTS " + USERNAME_COLLISION_DB_NAME);
+        defaultJdbcTemplate.execute("CREATE DATABASE " + USERNAME_COLLISION_DB_NAME + " CHARACTER SET utf8mb4 COLLATE utf8mb4_bin");
+
+        DriverManagerDataSource collisionDataSource = new DriverManagerDataSource();
+        collisionDataSource.setDriverClassName(dataSourceProperties.getDriverClassName());
+        String baseUrl = dataSourceProperties.getUrl();
+        String collisionUrl = baseUrl.contains("/tnl_test")
+                ? baseUrl.replace("/tnl_test", "/" + USERNAME_COLLISION_DB_NAME)
+                : baseUrl.replaceAll("(?<=3306/)[^?]+", USERNAME_COLLISION_DB_NAME);
+        collisionDataSource.setUrl(collisionUrl);
+        collisionDataSource.setUsername(dataSourceProperties.getUsername());
+        collisionDataSource.setPassword(dataSourceProperties.getPassword());
+
+        Flyway.configure()
+                .dataSource(collisionDataSource)
+                .locations("classpath:db/migration")
+                .target("23")
+                .load()
+                .migrate();
+
+        JdbcTemplate collisionJdbcTemplate = new JdbcTemplate(collisionDataSource);
+        collisionJdbcTemplate.update(
+                "INSERT INTO app_user (user_id, username, password_hash, full_name, role, active, must_change_password, token_version) " +
+                        "VALUES ('USR-COLLISION-1', 'collision_user', 'hash', 'Collision One', 'OFFICE_STAFF', TRUE, FALSE, 1)"
+        );
+        collisionJdbcTemplate.update(
+                "INSERT INTO app_user (user_id, username, password_hash, full_name, role, active, must_change_password, token_version) " +
+                        "VALUES ('USR-COLLISION-2', 'COLLISION_USER', 'hash', 'Collision Two', 'OFFICE_STAFF', TRUE, FALSE, 1)"
+        );
+
+        Flyway collisionMigration = Flyway.configure()
+                .dataSource(collisionDataSource)
+                .locations("classpath:db/migration")
+                .load();
+
+        assertThrows(Exception.class, collisionMigration::migrate);
+        assertEquals("collision_user", collisionJdbcTemplate.queryForObject(
+                "SELECT username FROM app_user WHERE user_id = 'USR-COLLISION-1'", String.class));
+        assertEquals("COLLISION_USER", collisionJdbcTemplate.queryForObject(
+                "SELECT username FROM app_user WHERE user_id = 'USR-COLLISION-2'", String.class));
+    }
+
+    @Test
+    public void testUsernameMigrationCanonicalizesMixedCaseUsername() {
+        defaultJdbcTemplate.execute("DROP DATABASE IF EXISTS " + USERNAME_NORMALIZATION_DB_NAME);
+        defaultJdbcTemplate.execute("CREATE DATABASE " + USERNAME_NORMALIZATION_DB_NAME + " CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+
+        DriverManagerDataSource normalizationDataSource = new DriverManagerDataSource();
+        normalizationDataSource.setDriverClassName(dataSourceProperties.getDriverClassName());
+        String baseUrl = dataSourceProperties.getUrl();
+        String normalizationUrl = baseUrl.contains("/tnl_test")
+                ? baseUrl.replace("/tnl_test", "/" + USERNAME_NORMALIZATION_DB_NAME)
+                : baseUrl.replaceAll("(?<=3306/)[^?]+", USERNAME_NORMALIZATION_DB_NAME);
+        normalizationDataSource.setUrl(normalizationUrl);
+        normalizationDataSource.setUsername(dataSourceProperties.getUsername());
+        normalizationDataSource.setPassword(dataSourceProperties.getPassword());
+
+        Flyway.configure()
+                .dataSource(normalizationDataSource)
+                .locations("classpath:db/migration")
+                .target("24")
+                .load()
+                .migrate();
+
+        JdbcTemplate normalizationJdbcTemplate = new JdbcTemplate(normalizationDataSource);
+        normalizationJdbcTemplate.update(
+                "INSERT INTO app_user (user_id, username, password_hash, full_name, role, active, must_change_password, token_version) " +
+                        "VALUES ('USR-NORMALIZE-1', 'Mixed_User', 'hash', 'Mixed User', 'OFFICE_STAFF', TRUE, FALSE, 1)"
+        );
+
+        Flyway.configure()
+                .dataSource(normalizationDataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        assertEquals("mixed_user", normalizationJdbcTemplate.queryForObject(
+                "SELECT username FROM app_user WHERE user_id = 'USR-NORMALIZE-1'", String.class));
     }
 }

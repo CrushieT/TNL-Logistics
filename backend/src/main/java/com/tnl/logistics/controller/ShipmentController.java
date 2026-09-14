@@ -37,8 +37,8 @@ public class ShipmentController {
         if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
             throw new AccessDeniedException("Authenticated user context is required");
         }
-        String username = auth.getName();
-        ShipmentResponse response = shipmentService.registerShipment(request, username);
+        String actingStaffUserId = auth.getName();
+        ShipmentResponse response = shipmentService.registerShipment(request, actingStaffUserId);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -74,10 +74,10 @@ public class ShipmentController {
         if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
             throw new AccessDeniedException("Authenticated user context is required");
         }
-        String username = auth.getName();
+        String actingStaffUserId = auth.getName();
         List<String> packageIds = request != null ? request.getPackageIds() : null;
         String printerId = request != null ? request.getPrinterId() : null;
-        shipmentService.recordLabelPrint(shipmentId, packageIds, username, printerId);
+        shipmentService.recordLabelPrint(shipmentId, packageIds, actingStaffUserId, printerId);
         return ResponseEntity.ok().build();
     }
 }

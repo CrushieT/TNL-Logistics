@@ -7,6 +7,7 @@ import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.service.UserService;
 import com.tnl.logistics.service.IdentifierCounterService;
+import com.tnl.logistics.security.UsernameNormalizer;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -67,7 +68,7 @@ public class UserServiceImpl implements UserService {
                     "Administrator account creation is not permitted. Only one system administrator account is allowed.");
         }
 
-        String normalizedUsername = request.getUsername() != null ? request.getUsername().trim().toLowerCase() : null;
+        String normalizedUsername = UsernameNormalizer.normalize(request.getUsername());
         if (appUserRepository.findByUsername(normalizedUsername).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Username '" + normalizedUsername + "' is already taken.");
@@ -97,7 +98,7 @@ public class UserServiceImpl implements UserService {
             user.setPinHash(passwordEncoder.encode(request.getPin()));
         }
 
-        appUserRepository.save(user);
+        appUserRepository.saveAndFlush(user);
         return UserResponse.from(user);
     }
 
@@ -116,7 +117,7 @@ public class UserServiceImpl implements UserService {
                     "The administrator account role cannot be changed.");
         }
 
-        String normalizedUsername = request.getUsername() != null ? request.getUsername().trim().toLowerCase() : null;
+        String normalizedUsername = UsernameNormalizer.normalize(request.getUsername());
         appUserRepository.findByUsername(normalizedUsername).ifPresent(existing -> {
             if (!existing.getUserId().equals(userId)) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -129,6 +130,9 @@ public class UserServiceImpl implements UserService {
                     "Staff type is required for Field Staff accounts.");
         }
 
+        boolean hasSecurityRelevantChange = user.getRole() != request.getRole()
+                || !java.util.Objects.equals(user.getActive(), request.getActive());
+
         user.setFullName(request.getFullName());
         user.setUsername(normalizedUsername);
         user.setRole(request.getRole());
@@ -138,6 +142,10 @@ public class UserServiceImpl implements UserService {
             user.setStaffType(request.getStaffType());
         } else {
             user.setStaffType(null);
+        }
+
+        if (hasSecurityRelevantChange) {
+            user.incrementTokenVersion();
         }
 
         appUserRepository.save(user);
@@ -163,6 +171,7 @@ public class UserServiceImpl implements UserService {
         if (linkedRecords > 0) {
             // Soft deactivate — preserves audit trail
             user.setActive(false);
+            user.incrementTokenVersion();
             appUserRepository.save(user);
         } else {
             appUserRepository.delete(user);

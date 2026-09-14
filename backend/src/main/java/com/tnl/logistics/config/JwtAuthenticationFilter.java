@@ -14,6 +14,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.Objects;
 
 /**
  * Filter that intercepts incoming HTTP requests, extracts JWT from the
@@ -42,20 +43,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         if (token != null && JwtTokenProvider.validateToken(token)) {
-            String username = JwtTokenProvider.getUsernameFromToken(token);
+            String userId = JwtTokenProvider.getUserIdFromToken(token);
+            String immutableUserId = JwtTokenProvider.getImmutableUserIdFromToken(token);
             String role = JwtTokenProvider.getRoleFromToken(token);
             Integer tokenVer = JwtTokenProvider.getTokenVersionFromToken(token);
 
-            if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                var userOpt = appUserRepository.findByUsername(username);
+            if (userId != null && userId.equals(immutableUserId) && tokenVer != null
+                    && SecurityContextHolder.getContext().getAuthentication() == null) {
+                var userOpt = appUserRepository.findById(userId);
                 if (userOpt.isPresent() && Boolean.TRUE.equals(userOpt.get().getActive())) {
                     AppUser user = userOpt.get();
                     int currentVersion = user.getTokenVersion() != null ? user.getTokenVersion() : 1;
-                    if (tokenVer >= currentVersion) {
+                    if (Objects.equals(tokenVer, currentVersion)) {
                         String effectiveRole = user.getRole() != null ? user.getRole().name() : role;
                         SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + effectiveRole);
                         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                                username, null, Collections.singletonList(authority));
+                                userId, null, Collections.singletonList(authority));
                         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(authentication);
                     }

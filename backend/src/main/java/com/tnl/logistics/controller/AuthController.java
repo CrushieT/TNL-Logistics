@@ -12,6 +12,7 @@ import com.tnl.logistics.model.SystemSetting;
 import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.repository.SystemSettingRepository;
+import com.tnl.logistics.security.UsernameNormalizer;
 import com.tnl.logistics.service.LoginRateLimiterService;
 import com.tnl.logistics.service.SseService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -65,8 +66,13 @@ public class AuthController {
                     ));
         }
 
-        AppUser user = appUserRepository.findByUsername(request.getUsername())
-                .orElse(null);
+        AppUser user;
+        try {
+            user = appUserRepository.findByUsername(UsernameNormalizer.normalize(request.getUsername()))
+                    .orElse(null);
+        } catch (IllegalArgumentException exception) {
+            user = null;
+        }
 
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             rateLimiterService.recordFailure(clientIp);
@@ -86,7 +92,7 @@ public class AuthController {
 
         rateLimiterService.recordSuccess(clientIp);
 
-        String token = JwtTokenProvider.generateToken(user.getUsername(), user.getRole().name(), user.getTokenVersion());
+        String token = JwtTokenProvider.generateToken(user.getUserId(), user.getRole().name(), user.getTokenVersion());
 
         LoginResponse response = new LoginResponse(
                 token,
@@ -109,9 +115,9 @@ public class AuthController {
 
     @PostMapping("/password-change")
     public ResponseEntity<?> changePassword(@Valid @RequestBody PasswordChangeRequest request) {
-        String username = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String userId = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 
-        AppUser user = appUserRepository.findByUsername(username)
+        AppUser user = appUserRepository.findById(userId)
                 .orElse(null);
 
         if (user == null) {
@@ -135,7 +141,7 @@ public class AuthController {
         user.incrementTokenVersion();
         appUserRepository.save(user);
 
-        String newToken = JwtTokenProvider.generateToken(user.getUsername(), user.getRole().name(), user.getTokenVersion());
+        String newToken = JwtTokenProvider.generateToken(user.getUserId(), user.getRole().name(), user.getTokenVersion());
 
         return ResponseEntity.ok(Map.of(
                 "message", "Password updated successfully",
@@ -163,9 +169,9 @@ public class AuthController {
                     ));
         }
 
-        String username = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String userId = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 
-        AppUser user = appUserRepository.findByUsername(username)
+        AppUser user = appUserRepository.findById(userId)
                 .orElse(null);
 
         if (user == null) {
@@ -189,9 +195,9 @@ public class AuthController {
 
     @GetMapping("/me")
     public ResponseEntity<?> getCurrentUser() {
-        String username = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String userId = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 
-        AppUser user = appUserRepository.findByUsername(username)
+        AppUser user = appUserRepository.findById(userId)
                 .orElse(null);
 
         if (user == null || !user.getActive()) {
@@ -227,15 +233,21 @@ public class AuthController {
                     .body(Map.of("message", "Passwords do not match."));
         }
 
-        String trimmedUsername = request.getUsername().trim();
-        if (appUserRepository.findByUsername(trimmedUsername).isPresent()) {
+        String normalizedUsername;
+        try {
+            normalizedUsername = UsernameNormalizer.normalize(request.getUsername());
+        } catch (IllegalArgumentException exception) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", exception.getMessage()));
+        }
+        if (appUserRepository.findByUsername(normalizedUsername).isPresent()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("message", "Username is already in use."));
         }
 
         AppUser adminUser = new AppUser(
                 "USR-ADMIN",
-                trimmedUsername,
+                normalizedUsername,
                 passwordEncoder.encode(request.getPassword()),
                 request.getFullName().trim(),
                 UserRole.ADMIN,
@@ -283,7 +295,7 @@ public class AuthController {
             // Non-blocking SSE broadcast exception shielding
         }
 
-        String token = JwtTokenProvider.generateToken(adminUser.getUsername(), adminUser.getRole().name(), adminUser.getTokenVersion());
+        String token = JwtTokenProvider.generateToken(adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion());
 
         LoginResponse response = new LoginResponse(
                 token,

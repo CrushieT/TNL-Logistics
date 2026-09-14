@@ -72,8 +72,8 @@ public class TrackingAndVehicleIntegrationTest {
         shipmentRepository.deleteAll();
         vehicleRepository.deleteAll();
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("office", "OFFICE_STAFF");
-        fieldToken = "Bearer " + JwtTokenProvider.generateToken("field", "FIELD_STAFF");
+        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {
@@ -158,7 +158,7 @@ public class TrackingAndVehicleIntegrationTest {
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
         regReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2.5"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10"))));
 
-        ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "office");
+        ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "USR-OFFICE");
         String trackingId = shipResp.getTrackingIds().get(0);
 
         // 3. Scan: QR_GENERATED -> LOADED_ON_TRUCK (Valid with active vehicle)
@@ -231,7 +231,7 @@ public class TrackingAndVehicleIntegrationTest {
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
         regReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
-        ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "office");
+        ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "USR-OFFICE");
         String trackingId = shipResp.getTrackingIds().get(0);
 
         // 2. Attempt skipping from QR_GENERATED straight to LOADED_TO_HAULER (Should fail)
@@ -283,7 +283,7 @@ public class TrackingAndVehicleIntegrationTest {
                 new ParcelUnitRequest(2, new BigDecimal("5"), new BigDecimal("30"), new BigDecimal("30"), new BigDecimal("30"))
         ));
 
-        ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "office");
+        ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "USR-OFFICE");
         String t1 = shipResp.getTrackingIds().get(0);
         String t2 = shipResp.getTrackingIds().get(1);
 

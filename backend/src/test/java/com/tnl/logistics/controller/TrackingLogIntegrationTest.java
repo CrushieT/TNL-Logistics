@@ -42,7 +42,7 @@ public class TrackingLogIntegrationTest {
     private com.tnl.logistics.repository.TrackingEventRepository trackingEventRepository;
 
     @Test
-    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testGetTrackingLogsAsAdminReturns200AndPageStructure() throws Exception {
         mockMvc.perform(get("/api/v1/tracking-events")
                 .param("page", "0")
@@ -57,7 +57,7 @@ public class TrackingLogIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
     void testGetTrackingLogsAsOfficeStaffReturns200() throws Exception {
         mockMvc.perform(get("/api/v1/tracking-events")
                 .contentType(MediaType.APPLICATION_JSON))
@@ -66,7 +66,7 @@ public class TrackingLogIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "field", roles = {"FIELD_STAFF"})
+    @WithMockUser(username = "USR-FIELD", roles = {"FIELD_STAFF"})
     void testGetTrackingLogsAsFieldStaffReturns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/tracking-events")
                 .contentType(MediaType.APPLICATION_JSON))
@@ -81,7 +81,7 @@ public class TrackingLogIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testGetTrackingLogsWithStatusFilterReturns200() throws Exception {
         mockMvc.perform(get("/api/v1/tracking-events")
                 .param("status", "LOADED_ON_TRUCK")
@@ -91,7 +91,7 @@ public class TrackingLogIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testGetTrackingMetricsAsAdminReturns200() throws Exception {
         mockMvc.perform(get("/api/v1/tracking-events/metrics")
                 .contentType(MediaType.APPLICATION_JSON))
@@ -103,7 +103,7 @@ public class TrackingLogIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "field", roles = {"FIELD_STAFF"})
+    @WithMockUser(username = "USR-FIELD", roles = {"FIELD_STAFF"})
     void testGetTrackingMetricsAsFieldStaffReturns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/tracking-events/metrics")
                 .contentType(MediaType.APPLICATION_JSON))
@@ -111,7 +111,7 @@ public class TrackingLogIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testMetricsDistinguishesDeskRegistrationFromCourierScans() throws Exception {
         trackingEventRepository.deleteAll();
 
@@ -140,7 +140,7 @@ public class TrackingLogIntegrationTest {
         regReq.setRegisteredVia(com.tnl.logistics.model.RegisteredVia.DESKTOP_OFFICE);
         regReq.setParcels(java.util.List.of(new com.tnl.logistics.dto.ParcelUnitRequest(1, new java.math.BigDecimal("2.5"), new java.math.BigDecimal("20"), new java.math.BigDecimal("15"), new java.math.BigDecimal("10"))));
 
-        var shipResp = shipmentService.registerShipment(regReq, "office");
+        var shipResp = shipmentService.registerShipment(regReq, "USR-OFFICE");
         String trackingId = shipResp.getTrackingIds().get(0);
 
         // Operational scans and active couriers must remain 0 for desk registrations
@@ -158,7 +158,7 @@ public class TrackingLogIntegrationTest {
         }
         trackingService.processStatusScan(
                 new com.tnl.logistics.dto.TrackingScanRequest(trackingId, com.tnl.logistics.model.ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Loaded for delivery"),
-                "field"
+                "USR-FIELD"
         );
 
         // Metrics should now reflect 1 operational scan, 1 active courier, 1 loaded on truck

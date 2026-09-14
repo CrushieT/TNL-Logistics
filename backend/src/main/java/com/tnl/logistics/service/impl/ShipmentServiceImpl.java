@@ -66,7 +66,7 @@ public class ShipmentServiceImpl implements ShipmentService {
     }
 
     @Override
-    public ShipmentResponse registerShipment(ShipmentRegistrationRequest request, String actingStaffUsername) {
+    public ShipmentResponse registerShipment(ShipmentRegistrationRequest request, String actingStaffUserId) {
         Client client = clientRepository.findById(request.getClientId())
                 .orElseThrow(() -> new IllegalArgumentException("Client not found with ID: " + request.getClientId()));
 
@@ -74,8 +74,8 @@ public class ShipmentServiceImpl implements ShipmentService {
             throw new IllegalArgumentException("Cannot register shipment for inactive client: " + client.getName());
         }
 
-        AppUser actingStaff = appUserRepository.findByUsername(actingStaffUsername)
-                .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUsername));
+        AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
+                .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
 
         // 1. Pricing Model Calculations
         BigDecimal totalAmount;
@@ -486,7 +486,7 @@ public class ShipmentServiceImpl implements ShipmentService {
     }
 
     @Override
-    public void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUsername, String printerId) {
+    public void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUserId, String printerId) {
         List<ParcelUnit> parcels;
         if (packageIds == null || packageIds.isEmpty()) {
             parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
@@ -495,8 +495,8 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
 
         AppUser actingStaff = null;
-        if (actingStaffUsername != null && !actingStaffUsername.isBlank()) {
-            actingStaff = appUserRepository.findByUsername(actingStaffUsername).orElse(null);
+        if (actingStaffUserId != null && !actingStaffUserId.isBlank()) {
+            actingStaff = appUserRepository.findById(actingStaffUserId).orElse(null);
         }
         if (actingStaff == null) {
             actingStaff = appUserRepository.findAll().stream().findFirst().orElse(null);

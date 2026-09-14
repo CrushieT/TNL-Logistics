@@ -63,7 +63,7 @@ public class AppUser implements Persistable<String> {
 
     @Override
     public boolean isNew() {
-        return isNew || createdAt == null;
+        return isNew;
     }
 
     @PostLoad

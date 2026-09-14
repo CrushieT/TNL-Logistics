@@ -9,6 +9,12 @@ import com.tnl.logistics.model.AppUser;
 import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.service.LoginRateLimiterService;
+import com.tnl.logistics.config.JwtTokenProvider;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -333,12 +339,71 @@ public class SecurityIntegrationTest {
         appUserRepository.save(inactiveUser);
 
         // Generate a cryptographically valid token for the inactive user
-        String token = "Bearer " + com.tnl.logistics.config.JwtTokenProvider.generateToken("inactive_user", "OFFICE_STAFF");
+        String token = "Bearer " + com.tnl.logistics.config.JwtTokenProvider.generateToken("USR-INACTIVE", "OFFICE_STAFF");
 
         // Attempting to access protected office endpoint must be rejected (403 Forbidden)
         mockMvc.perform(get("/api/v1/test/office")
                         .header("Authorization", token))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testLegacyUsernameTokenIsRejected() throws Exception {
+        String legacyToken = createLegacyUsernameToken("admin", "ADMIN", 1);
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + legacyToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testFutureTokenVersionIsRejected() throws Exception {
+        AppUser adminUser = appUserRepository.findById("USR-ADMIN").orElseThrow();
+        String futureVersionToken = JwtTokenProvider.generateToken(
+                adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion() + 1);
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + futureVersionToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testTokenContinuesToResolveUserAfterUsernameRename() throws Exception {
+        AppUser adminUser = appUserRepository.findById("USR-ADMIN").orElseThrow();
+        String token = JwtTokenProvider.generateToken(
+                adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion());
+
+        adminUser.setUsername("renamed-admin");
+        appUserRepository.saveAndFlush(adminUser);
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value("USR-ADMIN"))
+                .andExpect(jsonPath("$.username").value("renamed-admin"));
+    }
+
+    private String createLegacyUsernameToken(String username, String role, int tokenVersion) throws Exception {
+        Map<String, Object> header = Map.of("alg", "HS256", "typ", "JWT");
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("sub", username);
+        payload.put("role", role);
+        payload.put("ver", tokenVersion);
+        payload.put("iat", System.currentTimeMillis() / 1000);
+        payload.put("exp", (System.currentTimeMillis() / 1000) + 3600);
+
+        String encodedHeader = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                objectMapper.writeValueAsString(header).getBytes(StandardCharsets.UTF_8));
+        String encodedPayload = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                objectMapper.writeValueAsString(payload).getBytes(StandardCharsets.UTF_8));
+
+        Field secretField = JwtTokenProvider.class.getDeclaredField("secret");
+        secretField.setAccessible(true);
+        Method signMethod = JwtTokenProvider.class.getDeclaredMethod("sign", String.class, String.class);
+        signMethod.setAccessible(true);
+        String signingInput = encodedHeader + "." + encodedPayload;
+        String signature = (String) signMethod.invoke(null, signingInput, secretField.get(null));
+        return signingInput + "." + signature;
     }
 
     @Test

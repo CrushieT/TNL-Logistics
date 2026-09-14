@@ -82,7 +82,7 @@ public class SseIntegrationTest {
         shipmentRepository.deleteAll();
         vehicleRepository.deleteAll();
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("office", "OFFICE_STAFF");
+        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {
@@ -117,7 +117,7 @@ public class SseIntegrationTest {
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
         regReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2.5"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10"))));
 
-        var shipResp = shipmentService.registerShipment(regReq, "office");
+        var shipResp = shipmentService.registerShipment(regReq, "USR-OFFICE");
         String trackingId = shipResp.getTrackingIds().get(0);
 
         // 3. Trigger a status scan — should broadcast SSE event without throwing
@@ -131,7 +131,7 @@ public class SseIntegrationTest {
 
     @Test
     public void testSseStreamAcceptsTokenQueryParameter() throws Exception {
-        String rawToken = JwtTokenProvider.generateToken("office", "OFFICE_STAFF");
+        String rawToken = JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
         MvcResult sseResult = mockMvc.perform(get("/api/v1/events/stream")
                         .param("token", rawToken))
                 .andExpect(status().isOk())
@@ -142,7 +142,7 @@ public class SseIntegrationTest {
 
     @Test
     public void testStandardEndpointsRejectTokenQueryParameter() throws Exception {
-        String rawToken = JwtTokenProvider.generateToken("office", "OFFICE_STAFF");
+        String rawToken = JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
         mockMvc.perform(get("/api/v1/shipments")
                         .param("token", rawToken))
                 .andExpect(status().isForbidden());

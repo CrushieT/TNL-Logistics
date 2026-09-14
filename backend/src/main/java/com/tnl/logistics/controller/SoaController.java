@@ -47,8 +47,8 @@ public class SoaController {
         if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
             throw new AccessDeniedException("Authenticated user context is required");
         }
-        String username = authentication.getName();
-        StatementPreviewResponse response = soaService.saveStatement(request, username);
+        String actingUserId = authentication.getName();
+        StatementPreviewResponse response = soaService.saveStatement(request, actingUserId);
         return ResponseEntity.ok(response);
     }
 
