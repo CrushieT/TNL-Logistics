@@ -1,5 +1,6 @@
 package com.tnl.logistics.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tnl.logistics.config.JwtTokenProvider;
 import com.tnl.logistics.dto.ParcelUnitDetailResponse;
@@ -238,5 +239,110 @@ public class ParcelPrintIntegrationTest {
         assertEquals("Office Staff", response.getPrinting().getBy());
         assertEquals("Brother RJ-2035B", response.getPrinting().getPrinter());
         assertNotEquals("Maria Santos", response.getPrinting().getBy());
+    }
+
+    @Test
+    public void testRecordLabelPrintRejectsTrackingIdsBelongingToAnotherShipment() throws Exception {
+        ShipmentResponse shipment1 = createSampleShipment();
+        ShipmentResponse shipment2 = createSampleShipment();
+
+        String shipment1Id = shipment1.getShipmentId();
+        String shipment2TrackingId = shipment2.getTrackingIds().get(0);
+
+        PrintLabelRequest crossPrintRequest = new PrintLabelRequest(List.of(shipment2TrackingId), "ZEBRA-GK420D");
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments/" + shipment1Id + "/labels/print")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(crossPrintRequest)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+
+        JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertTrue(json.get("message").asText().contains("do not belong to shipment"));
+
+        // Ensure shipment 2 parcel unit remains untouched
+        ParcelUnit shipment2Parcel = parcelUnitRepository.findById(shipment2TrackingId).orElseThrow();
+        assertEquals(LabelStatus.NOT_PRINTED, shipment2Parcel.getLabelStatus());
+        assertEquals(0, shipment2Parcel.getReprintCount());
+        assertEquals(0, printEventRepository.findByParcelUnit_TrackingIdOrderByPrintTimestampDescPrintIdDesc(shipment2TrackingId).size());
+    }
+
+    @Test
+    public void testRecordLabelPrintRejectsNonExistentTrackingIds() throws Exception {
+        ShipmentResponse shipment = createSampleShipment();
+        String shipmentId = shipment.getShipmentId();
+
+        PrintLabelRequest nonExistentRequest = new PrintLabelRequest(List.of("TRK-9999-999999"), "ZEBRA-GK420D");
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments/" + shipmentId + "/labels/print")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(nonExistentRequest)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+
+        JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertTrue(json.get("message").asText().contains("do not belong to shipment"));
+    }
+
+    @Test
+    public void testRecordLabelPrintRejectsNonExistentShipmentId() throws Exception {
+        PrintLabelRequest printRequest = new PrintLabelRequest(List.of("TRK-0000-000001"), "ZEBRA-GK420D");
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments/SHP-9999-999/labels/print")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(printRequest)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+
+        JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertTrue(json.get("message").asText().contains("Shipment not found with ID: SHP-9999-999"));
+    }
+
+    @Test
+    public void testRecordLabelPrintSucceedsForSubsetOfShipmentParcels() throws Exception {
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.5"), new BigDecimal("15"), new BigDecimal("10"), new BigDecimal("5"));
+        ParcelUnitRequest p2 = new ParcelUnitRequest(2, new BigDecimal("3.0"), new BigDecimal("15"), new BigDecimal("10"), new BigDecimal("5"));
+
+        ShipmentRegistrationRequest multiRequest = new ShipmentRegistrationRequest();
+        multiRequest.setClientId("CL-001");
+        multiRequest.setRecipientName("Multi Parcel Recipient");
+        multiRequest.setRecipientAddress("Makati");
+        multiRequest.setRecipientContact("09181112222");
+        multiRequest.setQuantity(2);
+        multiRequest.setChargeModel(ChargeModel.FLAT);
+        multiRequest.setShippingFee(new BigDecimal("200.00"));
+        multiRequest.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        multiRequest.setParcels(List.of(p1, p2));
+
+        MvcResult regResult = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(multiRequest)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse created = objectMapper.readValue(regResult.getResponse().getContentAsString(), ShipmentResponse.class);
+        String shipmentId = created.getShipmentId();
+        String trackingId1 = created.getTrackingIds().get(0);
+        String trackingId2 = created.getTrackingIds().get(1);
+
+        // Selectively print only parcel 1
+        PrintLabelRequest selectiveRequest = new PrintLabelRequest(List.of(trackingId1), "ZEBRA-GK420D");
+        mockMvc.perform(post("/api/v1/shipments/" + shipmentId + "/labels/print")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(selectiveRequest)))
+                .andExpect(status().isOk());
+
+        ParcelUnit unit1 = parcelUnitRepository.findById(trackingId1).orElseThrow();
+        assertEquals(LabelStatus.PRINTED, unit1.getLabelStatus());
+        assertEquals(1, printEventRepository.findByParcelUnit_TrackingIdOrderByPrintTimestampDescPrintIdDesc(trackingId1).size());
+
+        ParcelUnit unit2 = parcelUnitRepository.findById(trackingId2).orElseThrow();
+        assertEquals(LabelStatus.NOT_PRINTED, unit2.getLabelStatus());
+        assertEquals(0, printEventRepository.findByParcelUnit_TrackingIdOrderByPrintTimestampDescPrintIdDesc(trackingId2).size());
     }
 }

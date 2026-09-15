@@ -638,4 +638,124 @@ public class ShipmentIntegrationTest {
         }
         return 0;
     }
+
+    @Test
+    public void testRegisterShipmentFailsWhenQuantityMismatchesParcelCount() throws Exception {
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.5"), new BigDecimal("10"), new BigDecimal("20"), new BigDecimal("30"));
+        ParcelUnitRequest p2 = new ParcelUnitRequest(2, new BigDecimal("3.0"), new BigDecimal("10"), new BigDecimal("20"), new BigDecimal("30"));
+
+        // Quantity 1 with 2 parcels
+        ShipmentRegistrationRequest underbilledRequest = new ShipmentRegistrationRequest();
+        underbilledRequest.setClientId("CL-001");
+        underbilledRequest.setRecipientName("Underbilled Customer");
+        underbilledRequest.setRecipientAddress("Makati");
+        underbilledRequest.setRecipientContact("09181112222");
+        underbilledRequest.setQuantity(1);
+        underbilledRequest.setChargeModel(ChargeModel.PER_PARCEL);
+        underbilledRequest.setShippingFee(new BigDecimal("100.00"));
+        underbilledRequest.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        underbilledRequest.setParcels(List.of(p1, p2));
+
+        MvcResult result1 = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(underbilledRequest)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+
+        JsonNode json1 = objectMapper.readTree(result1.getResponse().getContentAsString());
+        assertTrue(json1.get("message").asText().contains("must match parcel items count"));
+
+        // Quantity 3 with 2 parcels
+        underbilledRequest.setQuantity(3);
+        MvcResult result2 = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(underbilledRequest)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+
+        JsonNode json2 = objectMapper.readTree(result2.getResponse().getContentAsString());
+        assertTrue(json2.get("message").asText().contains("must match parcel items count"));
+    }
+
+    @Test
+    public void testRegisterShipmentFailsWhenParcelSequenceHasDuplicatesOrGaps() throws Exception {
+        // Gap in sequence: [1, 3]
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.5"), null, null, null);
+        ParcelUnitRequest p3 = new ParcelUnitRequest(3, new BigDecimal("3.0"), null, null, null);
+
+        ShipmentRegistrationRequest gapRequest = new ShipmentRegistrationRequest();
+        gapRequest.setClientId("CL-001");
+        gapRequest.setRecipientName("Gap Customer");
+        gapRequest.setRecipientAddress("Pasig");
+        gapRequest.setRecipientContact("09181112222");
+        gapRequest.setQuantity(2);
+        gapRequest.setChargeModel(ChargeModel.FLAT);
+        gapRequest.setShippingFee(new BigDecimal("100.00"));
+        gapRequest.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        gapRequest.setParcels(List.of(p1, p3));
+
+        MvcResult gapResult = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(gapRequest)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+
+        JsonNode gapJson = objectMapper.readTree(gapResult.getResponse().getContentAsString());
+        assertTrue(gapJson.get("message").asText().contains("contiguous sequence from 1 to 2"));
+
+        // Duplicate sequence: [1, 1]
+        ParcelUnitRequest pDup = new ParcelUnitRequest(1, new BigDecimal("4.0"), null, null, null);
+        gapRequest.setParcels(List.of(p1, pDup));
+
+        MvcResult dupResult = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(gapRequest)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+
+        JsonNode dupJson = objectMapper.readTree(dupResult.getResponse().getContentAsString());
+        assertTrue(dupJson.get("message").asText().contains("contiguous sequence from 1 to 2"));
+
+        // Starting offset error: [2, 3]
+        ParcelUnitRequest p2 = new ParcelUnitRequest(2, new BigDecimal("2.5"), null, null, null);
+        gapRequest.setParcels(List.of(p2, p3));
+
+        MvcResult offsetResult = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(gapRequest)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+
+        JsonNode offsetJson = objectMapper.readTree(offsetResult.getResponse().getContentAsString());
+        assertTrue(offsetJson.get("message").asText().contains("contiguous sequence from 1 to 2"));
+    }
+
+    @Test
+    public void testRegisterShipmentSucceedsWithUnorderedInputNormalizedContiguously() throws Exception {
+        // Out of order in request: seq 2 then seq 1
+        ParcelUnitRequest p2 = new ParcelUnitRequest(2, new BigDecimal("2.5"), new BigDecimal("10"), new BigDecimal("20"), new BigDecimal("30"));
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("3.0"), new BigDecimal("10"), new BigDecimal("20"), new BigDecimal("30"));
+
+        ShipmentRegistrationRequest unorderedRequest = new ShipmentRegistrationRequest();
+        unorderedRequest.setClientId("CL-001");
+        unorderedRequest.setRecipientName("Valid Unordered Customer");
+        unorderedRequest.setRecipientAddress("Taguig");
+        unorderedRequest.setRecipientContact("09181112222");
+        unorderedRequest.setQuantity(2);
+        unorderedRequest.setChargeModel(ChargeModel.PER_PARCEL);
+        unorderedRequest.setShippingFee(new BigDecimal("100.00"));
+        unorderedRequest.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        unorderedRequest.setParcels(List.of(p2, p1));
+
+        mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(unorderedRequest)))
+                .andExpect(status().isCreated());
+    }
 }

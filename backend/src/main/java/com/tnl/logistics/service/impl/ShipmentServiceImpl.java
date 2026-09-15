@@ -77,6 +77,35 @@ public class ShipmentServiceImpl implements ShipmentService {
         AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
                 .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
 
+        // Validate parcel items count and contiguous sequence (Item 4)
+        if (request.getParcels() == null || request.getParcels().isEmpty()) {
+            throw new IllegalArgumentException("Shipment must contain at least one parcel unit.");
+        }
+
+        if (request.getQuantity() == null || !request.getQuantity().equals(request.getParcels().size())) {
+            throw new IllegalArgumentException(String.format(
+                    "Shipment quantity (%s) must match parcel items count (%d).",
+                    request.getQuantity(),
+                    request.getParcels().size()
+            ));
+        }
+
+        List<Integer> seqNumbers = request.getParcels().stream()
+                .map(ParcelUnitRequest::getSeq)
+                .sorted()
+                .toList();
+
+        for (int i = 0; i < seqNumbers.size(); i++) {
+            int expectedSeq = i + 1;
+            Integer actualSeq = seqNumbers.get(i);
+            if (actualSeq == null || actualSeq != expectedSeq) {
+                throw new IllegalArgumentException(String.format(
+                        "Parcel sequence numbers must form a contiguous sequence from 1 to %d without duplicates or gaps.",
+                        seqNumbers.size()
+                ));
+            }
+        }
+
         // 1. Pricing Model Calculations
         BigDecimal totalAmount;
         BigDecimal otherCharges = request.getOtherCharges() != null ? request.getOtherCharges() : BigDecimal.ZERO;
@@ -487,11 +516,18 @@ public class ShipmentServiceImpl implements ShipmentService {
 
     @Override
     public void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUserId, String printerId) {
+        if (!shipmentRepository.existsById(shipmentId)) {
+            throw new IllegalArgumentException("Shipment not found with ID: " + shipmentId);
+        }
+
         List<ParcelUnit> parcels;
         if (packageIds == null || packageIds.isEmpty()) {
             parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
         } else {
-            parcels = parcelUnitRepository.findAllById(packageIds);
+            parcels = parcelUnitRepository.findByShipment_ShipmentIdAndTrackingIdIn(shipmentId, packageIds);
+            if (parcels.size() != packageIds.size()) {
+                throw new IllegalArgumentException("One or more tracking IDs do not belong to shipment: " + shipmentId);
+            }
         }
 
         AppUser actingStaff = null;
