@@ -22,6 +22,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -161,6 +162,9 @@ public class TrackingAndVehicleIntegrationTest {
         ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "USR-OFFICE");
         String trackingId = shipResp.getTrackingIds().get(0);
 
+        ParcelUnit initialUnit = parcelUnitRepository.findById(trackingId).orElseThrow();
+        assertEquals(ParcelStatus.QR_GENERATED, initialUnit.getCurrentStatus());
+
         // 3. Scan: QR_GENERATED -> LOADED_ON_TRUCK (Valid with active vehicle)
         TrackingScanRequest scan1 = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Loaded at Manila Depot");
         MvcResult res1 = mockMvc.perform(post("/api/v1/tracking-events/scan")
@@ -249,6 +253,20 @@ public class TrackingAndVehicleIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(missingVehicle)))
                 .andExpect(status().isBadRequest());
+
+        // 4. Attempt skipping from REGISTERED straight to LOADED_ON_TRUCK (Should fail)
+        Shipment shipment = shipmentRepository.findById(shipResp.getShipmentId()).orElseThrow();
+        ParcelUnit regUnit = new ParcelUnit("TRK-TEST-REG01", shipment, 2, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("0.001"));
+        regUnit.setCurrentStatus(ParcelStatus.REGISTERED);
+        parcelUnitRepository.saveAndFlush(regUnit);
+
+        TrackingScanRequest invalidFromReg = new TrackingScanRequest("TRK-TEST-REG01", ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Skip QR");
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", fieldToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invalidFromReg)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Invalid status transition for TRK-TEST-REG01: Cannot move from REGISTERED directly to LOADED_ON_TRUCK. Expected next status is QR_GENERATED."));
     }
 
     @Test

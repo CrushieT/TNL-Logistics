@@ -122,8 +122,9 @@ Every registered shipment has an identical `quantity` and parcel count, preventi
 
 ---
 
-## 5. Persist `QR_GENERATED` upon Registration
+## 5. Persist `QR_GENERATED` upon Registration [COMPLETED]
 
+**Status:** COMPLETED
 **Priority:** P2 (Lifecycle State Synchronization)
 
 **Problem:**
@@ -228,7 +229,7 @@ Label status and reprint counters only increment when printing is physically ini
 | :--- | :--- | :--- | :--- |
 | **Slice A** [SKIPPED] | Operational Safety | Item 1 (Boot Flyway Deferral) | `backend/bugfix/legacy-upgrade-boot-flyway` (Skipped) |
 | **Slice B** [COMPLETED] | Data & Billing Invariants | Item 4 (Parcel Count Match) & Item 6 (Scoped Label Print) | `backend/bugfix/shipment-integrity-checks` |
-| **Slice C** [IN PROGRESS] | Lifecycle & State Machines | Item 2 (Waybill Transitions), Item 3 (Waybill Decoupling), Item 5 (QR State) | `backend/bugfix/lifecycle-state-hardening` |
+| **Slice C** [COMPLETED] | Lifecycle & State Machines | Item 2 (Waybill Transitions), Item 3 (Waybill Decoupling), Item 5 (QR State) | `backend/bugfix/lifecycle-state-hardening` |
 | **Slice D** | Concurrency & Frontend | Item 7 (Pessimistic Scan Lock) & Item 8 (Frontend Print Trigger) | `fullstack/bugfix/scan-concurrency-and-print-ux` |
 
 ---

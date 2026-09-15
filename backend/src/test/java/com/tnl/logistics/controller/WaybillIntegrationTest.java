@@ -159,13 +159,13 @@ public class WaybillIntegrationTest {
                 .andExpect(jsonPath("$.statusLabel").value("Signed / Completed"))
                 .andExpect(jsonPath("$.signedBy").value("Delacruz General Merchandise"));
 
-        // 8. Verify shipment detail view shows "Waybill: Signed / Completed", while parcel tracking status remains intact (Registered)
+        // 8. Verify shipment detail view shows "Waybill: Signed / Completed", while parcel tracking status remains intact (QR Generated)
         mockMvc.perform(get("/api/v1/shipments/" + shipmentId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.waybillStatus").value("Waybill: Signed / Completed"))
                 .andExpect(jsonPath("$.signedBy").value("Delacruz General Merchandise"))
-                .andExpect(jsonPath("$.status").value("Registered"))
-                .andExpect(jsonPath("$.statusRollup").value("2 / 2 Registered"));
+                .andExpect(jsonPath("$.status").value("QR Generated"))
+                .andExpect(jsonPath("$.statusRollup").value("2 / 2 QR Generated"));
 
         // 9. Verify waybills master directory listing
         mockMvc.perform(get("/api/v1/waybills?status=SIGNED_COMPLETED"))
@@ -338,11 +338,11 @@ public class WaybillIntegrationTest {
                 .andExpect(jsonPath("$.status").value("SIGNED_COMPLETED"))
                 .andExpect(jsonPath("$.signedBy").value("Decoupled Consignee Signer"));
 
-        // 4. Verify parcels in database are still in REGISTERED status and no synthetic COMPLETED events were created
+        // 4. Verify parcels in database are still in QR_GENERATED status and no synthetic COMPLETED events were created
         List<com.tnl.logistics.model.ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
         org.junit.jupiter.api.Assertions.assertEquals(2, parcels.size());
         for (com.tnl.logistics.model.ParcelUnit parcel : parcels) {
-            org.junit.jupiter.api.Assertions.assertEquals(com.tnl.logistics.model.ParcelStatus.REGISTERED, parcel.getCurrentStatus());
+            org.junit.jupiter.api.Assertions.assertEquals(com.tnl.logistics.model.ParcelStatus.QR_GENERATED, parcel.getCurrentStatus());
             List<com.tnl.logistics.model.TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(parcel.getTrackingId());
             boolean hasCompletedEvent = events.stream().anyMatch(e -> e.getStatus() == com.tnl.logistics.model.ParcelStatus.COMPLETED);
             org.junit.jupiter.api.Assertions.assertFalse(hasCompletedEvent, "Should not contain synthetic COMPLETED tracking event");

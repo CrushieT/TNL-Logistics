@@ -173,7 +173,7 @@ public class ShipmentServiceImpl implements ShipmentService {
                     parcelReq.getWidthCm(),
                     volumeCbm
             );
-            unit.setCurrentStatus(ParcelStatus.REGISTERED);
+            unit.setCurrentStatus(ParcelStatus.QR_GENERATED);
             parcelUnitRepository.save(unit);
 
             // Audit log initial REGISTERED tracking scan event
