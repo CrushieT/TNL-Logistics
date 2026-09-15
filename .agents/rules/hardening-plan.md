@@ -176,8 +176,9 @@ Label print recording is strictly scoped to the specified shipment, rejecting fo
 
 ---
 
-## 7. Concurrency Control for Parcel Status Scans
+## 7. Concurrency Control for Parcel Status Scans [COMPLETED]
 
+**Status:** COMPLETED
 **Priority:** P2 (Race Condition Prevention)
 
 **Problem:**

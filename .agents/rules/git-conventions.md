@@ -47,6 +47,11 @@ Commit messages must be prefixed with their respective scope: `[backend]`, `[web
 ### Build-Plan Phase Tagging
 When a commit corresponds to a specific phase in `build-plan.md`, include the phase number in parentheses after the scope prefix, e.g. `[web] (5.2) Add live SSE dashboard binding`. This is optional for changes that don't map to a specific build-plan phase (e.g. chore/docs commits), but required for feature/bugfix commits tied to an active phase.
 
+### Multi-Line and Multi-Flag Commit Messages
+Commit messages are not limited to a single line. When a commit introduces substantial changes, multiple related updates, or technical rationale that warrants extra context:
+- The first line (subject) must remain concise and adhere to `[scope] (phase) Short description`.
+- Additional details, bullet points, or paragraphs can be provided using multiple `-m` flags or multi-line strings. In Git, each successive `-m` flag is appended as a distinct paragraph separated by a blank line.
+
 ### Examples
 
 ```bash
@@ -65,6 +70,16 @@ git commit -m "[web] (5.2) Add live SSE dashboard binding"
 git commit -m "[mobile] Integrate expo-camera for QR scanning"
 git commit -m "[mobile] Add label printer component"
 git commit -m "[mobile] Implement offline queue"
+
+# Multi-Line / Multi-Flag Commit Examples (when multiple changes or context are needed)
+git commit -m "[backend] (Hardening) Enforce strict waybill state transitions" \
+           -m "- Validate predecessor status (GENERATED -> SENT_TO_HAULER -> SIGNED_COMPLETED)" \
+           -m "- Reject invalid state mutations with HTTP 400 Bad Request" \
+           -m "- Add regression integration tests in WaybillIntegrationTest"
+
+git commit -m "[fullstack] (Hardening) Concurrency and label printing UX" \
+           -m "Apply pessimistic row locking on QR status scans to prevent race conditions." \
+           -m "Bind label printing status mutation to the print dialog confirmation callback."
 ```
 
 ---

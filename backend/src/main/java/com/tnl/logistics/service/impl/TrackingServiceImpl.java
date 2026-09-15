@@ -47,7 +47,7 @@ public class TrackingServiceImpl implements TrackingService {
 
     @Override
     public TrackingScanResponse processStatusScan(TrackingScanRequest request, String actingStaffUserId) {
-        ParcelUnit parcel = parcelUnitRepository.findById(request.getTrackingId())
+        ParcelUnit parcel = parcelUnitRepository.findByIdWithPessimisticLock(request.getTrackingId())
                 .orElseThrow(() -> new IllegalArgumentException("Parcel unit not found: " + request.getTrackingId()));
 
         AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
