@@ -151,6 +151,10 @@ public class WaybillServiceImpl implements WaybillService {
 
         Waybill waybill = waybillRepository.findByShipment_ShipmentId(request.getShipmentId()).orElse(null);
 
+        if (waybill != null && waybill.getStatus() != WaybillStatus.GENERATED) {
+            throw new IllegalStateException("Cannot dispatch waybill in status " + waybill.getStatus() + ". Expected GENERATED.");
+        }
+
         if (waybill == null) {
             // Generate sequential ID: WYB-YYYY-XXXX (e.g. WYB-2026-0001)
             String currentYear = String.valueOf(LocalDate.now().getYear());
@@ -190,6 +194,10 @@ public class WaybillServiceImpl implements WaybillService {
 
         Waybill waybill = waybillRepository.findByShipment_ShipmentId(shipmentId)
                 .orElseThrow(() -> new IllegalArgumentException("Waybill has not been generated for shipment: " + shipmentId));
+
+        if (waybill.getStatus() != WaybillStatus.SENT_TO_HAULER) {
+            throw new IllegalStateException("Cannot complete waybill in status " + waybill.getStatus() + ". Expected SENT_TO_HAULER.");
+        }
 
         String signedByName = (request.getSignedBy() != null && !request.getSignedBy().isBlank())
                 ? request.getSignedBy().trim()

@@ -8,7 +8,9 @@ import com.tnl.logistics.dto.*;
 import com.tnl.logistics.model.ChargeModel;
 import com.tnl.logistics.model.Client;
 import com.tnl.logistics.model.RegisteredVia;
+import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.repository.ClientRepository;
+import com.tnl.logistics.repository.ShipmentRepository;
 import com.tnl.logistics.repository.WaybillRepository;
 import java.math.BigDecimal;
 import java.util.List;
@@ -42,6 +44,12 @@ public class WaybillIntegrationTest {
 
     @Autowired
     private WaybillRepository waybillRepository;
+
+    @Autowired
+    private ShipmentRepository shipmentRepository;
+
+    @Autowired
+    private AppUserRepository appUserRepository;
 
     @BeforeEach
     void setup() {
@@ -155,5 +163,116 @@ public class WaybillIntegrationTest {
         mockMvc.perform(get("/api/v1/waybills?status=SIGNED_COMPLETED"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[?(@.shipmentId == '" + shipmentId + "')].signedBy").value("Delacruz General Merchandise"));
+
+        // 10. Re-dispatch of completed waybill fails with HTTP 400
+        mockMvc.perform(post("/api/v1/waybills/send-to-hauler")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createReq)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Cannot dispatch waybill in status SIGNED_COMPLETED. Expected GENERATED."));
+
+        // 11. Re-completion of already signed waybill fails with HTTP 400
+        mockMvc.perform(post("/api/v1/waybills/complete/" + shipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(completeReq)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Cannot complete waybill in status SIGNED_COMPLETED. Expected SENT_TO_HAULER."));
+    }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testReDispatchWhenAlreadySentToHaulerFails() throws Exception {
+        // Register a shipment
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.5"), new BigDecimal("30"), new BigDecimal("20"), new BigDecimal("15"));
+        ShipmentRegistrationRequest regReq = new ShipmentRegistrationRequest();
+        regReq.setClientId("CL-001");
+        regReq.setRecipientName("Test Consignee");
+        regReq.setRecipientAddress("Baguio City");
+        regReq.setRecipientContact("0917-000-0000");
+        regReq.setChargeModel(ChargeModel.FLAT);
+        regReq.setShippingFee(new BigDecimal("300.00"));
+        regReq.setQuantity(1);
+        regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setParcels(List.of(p1));
+
+        MvcResult regResult = mockMvc.perform(post("/api/v1/shipments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(regReq)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse shipResp = objectMapper.readValue(regResult.getResponse().getContentAsString(), ShipmentResponse.class);
+        String shipmentId = shipResp.getShipmentId();
+
+        WaybillCreateRequest createReq = new WaybillCreateRequest(
+                shipmentId,
+                "Rogelio Aquino",
+                "Rogelio Aquino",
+                "0917-111-2222",
+                "NBG-1234",
+                "First dispatch"
+        );
+
+        // First dispatch succeeds
+        mockMvc.perform(post("/api/v1/waybills/send-to-hauler")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createReq)))
+                .andExpect(status().isOk());
+
+        // Second dispatch fails because waybill is already SENT_TO_HAULER
+        mockMvc.perform(post("/api/v1/waybills/send-to-hauler")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createReq)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Cannot dispatch waybill in status SENT_TO_HAULER. Expected GENERATED."));
+    }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testCompleteWaybillFailsWhenWaybillNotYetDispatched() throws Exception {
+        // Register a shipment
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.5"), new BigDecimal("30"), new BigDecimal("20"), new BigDecimal("15"));
+        ShipmentRegistrationRequest regReq = new ShipmentRegistrationRequest();
+        regReq.setClientId("CL-001");
+        regReq.setRecipientName("Direct Complete Consignee");
+        regReq.setRecipientAddress("Baguio City");
+        regReq.setRecipientContact("0917-000-0000");
+        regReq.setChargeModel(ChargeModel.FLAT);
+        regReq.setShippingFee(new BigDecimal("300.00"));
+        regReq.setQuantity(1);
+        regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setParcels(List.of(p1));
+
+        MvcResult regResult = mockMvc.perform(post("/api/v1/shipments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(regReq)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse shipResp = objectMapper.readValue(regResult.getResponse().getContentAsString(), ShipmentResponse.class);
+        String shipmentId = shipResp.getShipmentId();
+
+        // 1. Attempt to complete without waybill generated at all -> returns 400 Bad Request
+        WaybillStatusUpdateRequest completeReq = new WaybillStatusUpdateRequest(null, "Consignee", null, "Remarks");
+        mockMvc.perform(post("/api/v1/waybills/complete/" + shipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(completeReq)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Waybill has not been generated for shipment: " + shipmentId));
+
+        // 2. Create a waybill in GENERATED status directly
+        com.tnl.logistics.model.Shipment shipment = shipmentRepository.findById(shipmentId).orElseThrow();
+        com.tnl.logistics.model.AppUser user = appUserRepository.findAll().stream().findFirst().orElseThrow();
+        com.tnl.logistics.model.Waybill generatedWaybill = new com.tnl.logistics.model.Waybill(
+                "WYB-2026-9999", shipment, user, "Pending Hauler"
+        );
+        waybillRepository.saveAndFlush(generatedWaybill);
+
+        // 3. Attempt to complete waybill while in GENERATED status -> returns 400 Bad Request
+        mockMvc.perform(post("/api/v1/waybills/complete/" + shipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(completeReq)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Cannot complete waybill in status GENERATED. Expected SENT_TO_HAULER."));
     }
 }

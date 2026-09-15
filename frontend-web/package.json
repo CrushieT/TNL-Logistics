@@ -10,10 +10,10 @@
   },
   "dependencies": {
     "axios": "^1.7.2",
-    "expo": "~57.0.22",
+    "expo": "^57.0.22",
     "expo-constants": "~57.0.18",
     "expo-linking": "~57.0.10",
-    "expo-router": "~57.0.21",
+    "expo-router": "^57.0.21",
     "expo-secure-store": "~57.0.4",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
