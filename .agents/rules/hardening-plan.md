@@ -15,8 +15,9 @@ Address the architectural, state machine, and data-integrity findings surfaced d
 
 ---
 
-## 1. Defer Boot Flyway for Legacy-Upgrade Mode
+## 1. Defer Boot Flyway for Legacy-Upgrade Mode [SKIPPED]
 
+**Status:** SKIPPED (By direction: legacy upgrade deferral not required)
 **Priority:** P1 (Operational Blocker for Legacy Conversions)
 
 **Problem:**
@@ -47,8 +48,9 @@ Running `mvn spring-boot:run -Dspring-boot.run.arguments="--app.migration.legacy
 
 ---
 
-## 2. Enforce Strict Waybill State Transitions
+## 2. Enforce Strict Waybill State Transitions [COMPLETED]
 
+**Status:** COMPLETED
 **Priority:** P2 (State Machine Integrity)
 
 **Problem:**
@@ -73,8 +75,9 @@ Waybill state transitions strictly adhere to `GENERATED -> SENT_TO_HAULER -> SIG
 
 ---
 
-## 3. Decouple Waybill Completion from Parcel Tracking
+## 3. Decouple Waybill Completion from Parcel Tracking [COMPLETED]
 
+**Status:** COMPLETED
 **Priority:** P1 (Architectural Invariant & Rule 19)
 
 **Problem:**
@@ -95,8 +98,9 @@ Waybill signing updates the Waybill entity without corrupting parcel tracking in
 
 ---
 
-## 4. Validate Shipment Parcel Count and Sequence
+## 4. Validate Shipment Parcel Count and Sequence [COMPLETED]
 
+**Status:** COMPLETED
 **Priority:** P2 (Billing & Data Integrity)
 
 **Problem:**
@@ -118,8 +122,9 @@ Every registered shipment has an identical `quantity` and parcel count, preventi
 
 ---
 
-## 5. Persist `QR_GENERATED` upon Registration
+## 5. Persist `QR_GENERATED` upon Registration [COMPLETED]
 
+**Status:** COMPLETED
 **Priority:** P2 (Lifecycle State Synchronization)
 
 **Problem:**
@@ -140,8 +145,9 @@ Newly registered parcel units show `QR_GENERATED` as their active state in datab
 
 ---
 
-## 6. Constrain Selected Package IDs in Label Printing
+## 6. Constrain Selected Package IDs in Label Printing [COMPLETED]
 
+**Status:** COMPLETED
 **Priority:** P2 (Access Control & Multi-Tenant Integrity)
 
 **Problem:**
@@ -221,9 +227,9 @@ Label status and reprint counters only increment when printing is physically ini
 
 | Slice | Scope | Focus Items | Target Branch |
 | :--- | :--- | :--- | :--- |
-| **Slice A** | Operational Safety | Item 1 (Boot Flyway Deferral) | `backend/bugfix/legacy-upgrade-boot-flyway` |
-| **Slice B** | Data & Billing Invariants | Item 4 (Parcel Count Match) & Item 6 (Scoped Label Print) | `backend/bugfix/shipment-integrity-checks` |
-| **Slice C** | Lifecycle & State Machines | Item 2 (Waybill Transitions), Item 3 (Waybill Decoupling), Item 5 (QR State) | `backend/bugfix/lifecycle-state-hardening` |
+| **Slice A** [SKIPPED] | Operational Safety | Item 1 (Boot Flyway Deferral) | `backend/bugfix/legacy-upgrade-boot-flyway` (Skipped) |
+| **Slice B** [COMPLETED] | Data & Billing Invariants | Item 4 (Parcel Count Match) & Item 6 (Scoped Label Print) | `backend/bugfix/shipment-integrity-checks` |
+| **Slice C** [COMPLETED] | Lifecycle & State Machines | Item 2 (Waybill Transitions), Item 3 (Waybill Decoupling), Item 5 (QR State) | `backend/bugfix/lifecycle-state-hardening` |
 | **Slice D** | Concurrency & Frontend | Item 7 (Pessimistic Scan Lock) & Item 8 (Frontend Print Trigger) | `fullstack/bugfix/scan-concurrency-and-print-ux` |
 
 ---

@@ -151,9 +151,9 @@ public class TrackingServiceImpl implements TrackingService {
     private void validateStateTransition(ParcelStatus current, ParcelStatus target, String trackingId) {
         switch (current) {
             case REGISTERED:
-                if (target != ParcelStatus.QR_GENERATED && target != ParcelStatus.LOADED_ON_TRUCK) {
+                if (target != ParcelStatus.QR_GENERATED) {
                     throw new IllegalStateException(String.format(
-                            "Invalid status transition for %s: Cannot move from REGISTERED directly to %s. Expected next status is QR_GENERATED or LOADED_ON_TRUCK.",
+                            "Invalid status transition for %s: Cannot move from REGISTERED directly to %s. Expected next status is QR_GENERATED.",
                             trackingId, target));
                 }
                 break;
