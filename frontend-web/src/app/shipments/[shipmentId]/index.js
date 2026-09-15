@@ -66,13 +66,18 @@ export default function ShipmentDetailScreen() {
     };
   }, [loadShipment, shipmentId]);
 
-  const handlePrintAll = async () => {
+  const handlePrintAll = () => {
+    setPrintModalVisible(true);
+  };
+
+  const handleConfirmPrintAll = async () => {
     try {
       await printLabels(shipmentId);
-      setPrintModalVisible(true);
       loadShipment(false);
     } catch (err) {
-      setPrintModalVisible(true);
+      console.warn('Failed to record print labels:', err?.message);
+    } finally {
+      setPrintModalVisible(false);
     }
   };
 
@@ -354,7 +359,7 @@ export default function ShipmentDetailScreen() {
         visible={printModalVisible}
         shipment={shipment}
         onClose={() => setPrintModalVisible(false)}
-        onPrint={() => setPrintModalVisible(false)}
+        onPrint={handleConfirmPrintAll}
       />
 
       {/* Interactive Single-Unit QR Code Modal */}

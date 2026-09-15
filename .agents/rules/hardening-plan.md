@@ -204,8 +204,9 @@ Concurrent status scans for the same parcel are serialized cleanly, guaranteeing
 
 ---
 
-## 8. Record Label Prints on Actual Print Invocation
+## 8. Record Label Prints on Actual Print Invocation [COMPLETED]
 
+**Status:** COMPLETED
 **Priority:** P2 (Frontend Accuracy & Audit Trail)
 
 **Problem:**
@@ -231,7 +232,7 @@ Label status and reprint counters only increment when printing is physically ini
 | **Slice A** [SKIPPED] | Operational Safety | Item 1 (Boot Flyway Deferral) | `backend/bugfix/legacy-upgrade-boot-flyway` (Skipped) |
 | **Slice B** [COMPLETED] | Data & Billing Invariants | Item 4 (Parcel Count Match) & Item 6 (Scoped Label Print) | `backend/bugfix/shipment-integrity-checks` |
 | **Slice C** [COMPLETED] | Lifecycle & State Machines | Item 2 (Waybill Transitions), Item 3 (Waybill Decoupling), Item 5 (QR State) | `backend/bugfix/lifecycle-state-hardening` |
-| **Slice D** | Concurrency & Frontend | Item 7 (Pessimistic Scan Lock) & Item 8 (Frontend Print Trigger) | `fullstack/bugfix/scan-concurrency-and-print-ux` |
+| **Slice D** [COMPLETED] | Concurrency & Frontend | Item 7 (Pessimistic Scan Lock) & Item 8 (Frontend Print Trigger) | `fullstack/bugfix/scan-concurrency-and-print-ux` |
 
 ---
 

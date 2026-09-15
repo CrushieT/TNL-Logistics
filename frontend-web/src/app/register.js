@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import AppShell from '../components/layout/AppShell';
 import PageHeader from '../components/layout/PageHeader';
 import Toast from '../components/common/Toast';
-import { ShipmentForm, ShipmentResultView, PrintLabelsModal, registerShipment } from '../features/shipments';
+import { ShipmentForm, ShipmentResultView, PrintLabelsModal, registerShipment, printLabels } from '../features/shipments';
 import { listClients, createClient } from '../features/clients';
 import { colors, fonts, spacing, radius } from '../theme';
 
@@ -113,7 +113,15 @@ export default function RegisterShipmentScreen() {
           visible={modalVisible}
           shipment={result}
           onClose={() => setModalVisible(false)}
-          onPrint={() => setModalVisible(false)}
+          onPrint={async () => {
+            try {
+              await printLabels(result.shipmentId);
+            } catch (err) {
+              console.warn('Failed to record print labels:', err?.message);
+            } finally {
+              setModalVisible(false);
+            }
+          }}
         />
         <Toast
           visible={toastVisible}

@@ -5,7 +5,7 @@ import AppShell from '../../../../components/layout/AppShell';
 import Card from '../../../../components/common/Card';
 import StatusBadge from '../../../../components/common/StatusBadge';
 import QRCodeGenerator from '../../../../components/common/QRCodeGenerator';
-import { getParcelUnit, subscribeRealtimeEvents } from '../../../../features/shipments';
+import { getParcelUnit, printLabels, subscribeRealtimeEvents } from '../../../../features/shipments';
 import { colors, fonts, spacing, radius, type } from '../../../../theme';
 
 const STATUS_FLOW = ['Registered', 'QR Generated', 'Loaded on Truck', 'Arrived at TNL', 'Loaded to Hauler'];
@@ -93,6 +93,21 @@ export default function ParcelUnitDetailScreen() {
   // Find the single immediate next status in the sequence
   const completedEventNames = new Set(completedEvents.map((e) => e.event));
   const nextPendingStatus = STATUS_FLOW.find((s) => !completedEventNames.has(s));
+
+  const handleReprint = async () => {
+    try {
+      if (shipmentId && trackingId) {
+        await printLabels(shipmentId, [trackingId]);
+      }
+    } catch (err) {
+      console.warn('Failed to record label reprint:', err?.message);
+    } finally {
+      if (typeof window !== 'undefined' && window.print) {
+        window.print();
+      }
+      load(false);
+    }
+  };
 
   return (
     <AppShell>
@@ -214,22 +229,14 @@ export default function ParcelUnitDetailScreen() {
           {/* Action Buttons */}
           <Pressable
             style={styles.reprintBtn}
-            onPress={() => {
-              if (typeof window !== 'undefined' && window.print) {
-                window.print();
-              }
-            }}
+            onPress={handleReprint}
           >
             <Text style={styles.reprintBtnText}>Reprint Label</Text>
           </Pressable>
 
           <Pressable
             style={styles.quickReprintBtn}
-            onPress={() => {
-              if (typeof window !== 'undefined' && window.print) {
-                window.print();
-              }
-            }}
+            onPress={handleReprint}
           >
             <Text style={styles.quickReprintText}>Quick Reprint ({unit.reprintCount || 0})</Text>
           </Pressable>
