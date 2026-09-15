@@ -75,8 +75,9 @@ Waybill state transitions strictly adhere to `GENERATED -> SENT_TO_HAULER -> SIG
 
 ---
 
-## 3. Decouple Waybill Completion from Parcel Tracking
+## 3. Decouple Waybill Completion from Parcel Tracking [COMPLETED]
 
+**Status:** COMPLETED
 **Priority:** P1 (Architectural Invariant & Rule 19)
 
 **Problem:**

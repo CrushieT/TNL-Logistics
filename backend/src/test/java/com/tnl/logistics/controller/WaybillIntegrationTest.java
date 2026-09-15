@@ -10,7 +10,9 @@ import com.tnl.logistics.model.Client;
 import com.tnl.logistics.model.RegisteredVia;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.repository.ClientRepository;
+import com.tnl.logistics.repository.ParcelUnitRepository;
 import com.tnl.logistics.repository.ShipmentRepository;
+import com.tnl.logistics.repository.TrackingEventRepository;
 import com.tnl.logistics.repository.WaybillRepository;
 import java.math.BigDecimal;
 import java.util.List;
@@ -50,6 +52,12 @@ public class WaybillIntegrationTest {
 
     @Autowired
     private AppUserRepository appUserRepository;
+
+    @Autowired
+    private ParcelUnitRepository parcelUnitRepository;
+
+    @Autowired
+    private TrackingEventRepository trackingEventRepository;
 
     @BeforeEach
     void setup() {
@@ -151,13 +159,13 @@ public class WaybillIntegrationTest {
                 .andExpect(jsonPath("$.statusLabel").value("Signed / Completed"))
                 .andExpect(jsonPath("$.signedBy").value("Delacruz General Merchandise"));
 
-        // 8. Verify shipment detail view now shows "Waybill: Signed / Completed" and status "Completed"
+        // 8. Verify shipment detail view shows "Waybill: Signed / Completed", while parcel tracking status remains intact (Registered)
         mockMvc.perform(get("/api/v1/shipments/" + shipmentId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.waybillStatus").value("Waybill: Signed / Completed"))
                 .andExpect(jsonPath("$.signedBy").value("Delacruz General Merchandise"))
-                .andExpect(jsonPath("$.status").value("Completed"))
-                .andExpect(jsonPath("$.statusRollup").value("2 / 2 Completed"));
+                .andExpect(jsonPath("$.status").value("Registered"))
+                .andExpect(jsonPath("$.statusRollup").value("2 / 2 Registered"));
 
         // 9. Verify waybills master directory listing
         mockMvc.perform(get("/api/v1/waybills?status=SIGNED_COMPLETED"))
@@ -274,5 +282,70 @@ public class WaybillIntegrationTest {
                         .content(objectMapper.writeValueAsString(completeReq)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Cannot complete waybill in status GENERATED. Expected SENT_TO_HAULER."));
+    }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testWaybillCompletionPreservesParcelTrackingState() throws Exception {
+        // 1. Register shipment with 2 parcels
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("20"), new BigDecimal("20"), new BigDecimal("20"));
+        ParcelUnitRequest p2 = new ParcelUnitRequest(2, new BigDecimal("3.0"), new BigDecimal("30"), new BigDecimal("30"), new BigDecimal("30"));
+        ShipmentRegistrationRequest regReq = new ShipmentRegistrationRequest();
+        regReq.setClientId("CL-001");
+        regReq.setRecipientName("Decoupled Consignee");
+        regReq.setRecipientAddress("Baguio City");
+        regReq.setRecipientContact("0917-000-0000");
+        regReq.setChargeModel(ChargeModel.FLAT);
+        regReq.setShippingFee(new BigDecimal("300.00"));
+        regReq.setQuantity(2);
+        regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setParcels(List.of(p1, p2));
+
+        MvcResult regResult = mockMvc.perform(post("/api/v1/shipments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(regReq)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse shipResp = objectMapper.readValue(regResult.getResponse().getContentAsString(), ShipmentResponse.class);
+        String shipmentId = shipResp.getShipmentId();
+
+        // 2. Dispatch waybill to hauler
+        WaybillCreateRequest createReq = new WaybillCreateRequest(
+                shipmentId,
+                "Cordillera Freight",
+                "Pedro Driver",
+                "0918-000-1111",
+                "XYZ-9999",
+                "Decouple test dispatch"
+        );
+        mockMvc.perform(post("/api/v1/waybills/send-to-hauler")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createReq)))
+                .andExpect(status().isOk());
+
+        // 3. Mark waybill signed completed
+        WaybillStatusUpdateRequest completeReq = new WaybillStatusUpdateRequest(
+                null,
+                "Decoupled Consignee Signer",
+                null,
+                "Signed POD"
+        );
+        mockMvc.perform(post("/api/v1/waybills/complete/" + shipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(completeReq)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SIGNED_COMPLETED"))
+                .andExpect(jsonPath("$.signedBy").value("Decoupled Consignee Signer"));
+
+        // 4. Verify parcels in database are still in REGISTERED status and no synthetic COMPLETED events were created
+        List<com.tnl.logistics.model.ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
+        org.junit.jupiter.api.Assertions.assertEquals(2, parcels.size());
+        for (com.tnl.logistics.model.ParcelUnit parcel : parcels) {
+            org.junit.jupiter.api.Assertions.assertEquals(com.tnl.logistics.model.ParcelStatus.REGISTERED, parcel.getCurrentStatus());
+            List<com.tnl.logistics.model.TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(parcel.getTrackingId());
+            boolean hasCompletedEvent = events.stream().anyMatch(e -> e.getStatus() == com.tnl.logistics.model.ParcelStatus.COMPLETED);
+            org.junit.jupiter.api.Assertions.assertFalse(hasCompletedEvent, "Should not contain synthetic COMPLETED tracking event");
+        }
     }
 }

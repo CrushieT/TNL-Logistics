@@ -3,7 +3,6 @@ package com.tnl.logistics.service.impl;
 import com.tnl.logistics.dto.*;
 import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.*;
-import com.tnl.logistics.service.SseService;
 import com.tnl.logistics.service.WaybillService;
 import com.tnl.logistics.service.IdentifierCounterService;
 import java.math.BigDecimal;
@@ -31,24 +30,18 @@ public class WaybillServiceImpl implements WaybillService {
     private final WaybillRepository waybillRepository;
     private final ShipmentRepository shipmentRepository;
     private final ParcelUnitRepository parcelUnitRepository;
-    private final TrackingEventRepository trackingEventRepository;
     private final AppUserRepository appUserRepository;
-    private final SseService sseService;
     private final IdentifierCounterService identifierCounterService;
 
     public WaybillServiceImpl(WaybillRepository waybillRepository,
                               ShipmentRepository shipmentRepository,
                               ParcelUnitRepository parcelUnitRepository,
-                              TrackingEventRepository trackingEventRepository,
                               AppUserRepository appUserRepository,
-                              SseService sseService,
                               IdentifierCounterService identifierCounterService) {
         this.waybillRepository = waybillRepository;
         this.shipmentRepository = shipmentRepository;
         this.parcelUnitRepository = parcelUnitRepository;
-        this.trackingEventRepository = trackingEventRepository;
         this.appUserRepository = appUserRepository;
-        this.sseService = sseService;
         this.identifierCounterService = identifierCounterService;
     }
 
@@ -213,42 +206,8 @@ public class WaybillServiceImpl implements WaybillService {
             waybill.setRemarks(request.getRemarks().trim());
         }
 
-        AppUser actingStaff = appUserRepository.findById(actingStaffUserId).orElse(null);
-
         Waybill saved = waybillRepository.save(waybill);
         List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
-
-        // Cascade status to COMPLETED for all parcel units and record TrackingEvents
-        for (ParcelUnit parcel : parcels) {
-            parcel.setCurrentStatus(ParcelStatus.COMPLETED);
-            parcel.setCurrentVehicle(null);
-            parcelUnitRepository.save(parcel);
-
-            TrackingEvent event = new TrackingEvent(
-                    parcel,
-                    ParcelStatus.COMPLETED,
-                    null,
-                    actingStaff,
-                    "Delivered & signed by " + signedByName
-            );
-            event.setEventTimestamp(signedAtTime);
-            trackingEventRepository.save(event);
-
-            try {
-                TrackingScanResponse scanResp = new TrackingScanResponse(
-                        parcel.getTrackingId(),
-                        "Loaded to Hauler",
-                        "Completed",
-                        null,
-                        null,
-                        signedAtTime,
-                        actingStaff != null ? actingStaff.getFullName() : "Admin",
-                        shipmentId,
-                        parcels.size() + " / " + parcels.size() + " Completed"
-                );
-                sseService.broadcastTrackingScan(scanResp);
-            } catch (Exception ignored) {}
-        }
 
         return buildManifestResponse(shipment, saved, parcels);
     }
