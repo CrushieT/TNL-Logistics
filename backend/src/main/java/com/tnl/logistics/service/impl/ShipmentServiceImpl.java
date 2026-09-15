@@ -516,11 +516,18 @@ public class ShipmentServiceImpl implements ShipmentService {
 
     @Override
     public void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUserId, String printerId) {
+        if (!shipmentRepository.existsById(shipmentId)) {
+            throw new IllegalArgumentException("Shipment not found with ID: " + shipmentId);
+        }
+
         List<ParcelUnit> parcels;
         if (packageIds == null || packageIds.isEmpty()) {
             parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
         } else {
-            parcels = parcelUnitRepository.findAllById(packageIds);
+            parcels = parcelUnitRepository.findByShipment_ShipmentIdAndTrackingIdIn(shipmentId, packageIds);
+            if (parcels.size() != packageIds.size()) {
+                throw new IllegalArgumentException("One or more tracking IDs do not belong to shipment: " + shipmentId);
+            }
         }
 
         AppUser actingStaff = null;
