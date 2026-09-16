@@ -7,9 +7,13 @@ import com.tnl.logistics.model.AppUser;
 import com.tnl.logistics.model.Payment;
 import com.tnl.logistics.model.PaymentMethod;
 import com.tnl.logistics.model.Shipment;
+import com.tnl.logistics.model.Soa;
+import com.tnl.logistics.model.WeeklyCollection;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.repository.PaymentRepository;
 import com.tnl.logistics.repository.ShipmentRepository;
+import com.tnl.logistics.repository.SoaRepository;
+import com.tnl.logistics.repository.WeeklyCollectionRepository;
 import com.tnl.logistics.service.PaymentService;
 import com.tnl.logistics.service.SseService;
 import org.springframework.data.domain.Page;
@@ -28,8 +32,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Production service implementing payment processing, financial balance recalculation,
- * overpayment prevention, and SSE broadcasting.
+ * Implementation of PaymentService providing payment recording,
+ * audit history querying, balance recalculation, and payment search.
  */
 @Service
 @Transactional
@@ -40,15 +44,21 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentRepository paymentRepository;
     private final ShipmentRepository shipmentRepository;
     private final AppUserRepository appUserRepository;
+    private final SoaRepository soaRepository;
+    private final WeeklyCollectionRepository weeklyCollectionRepository;
     private final SseService sseService;
 
     public PaymentServiceImpl(PaymentRepository paymentRepository,
                               ShipmentRepository shipmentRepository,
                               AppUserRepository appUserRepository,
+                              SoaRepository soaRepository,
+                              WeeklyCollectionRepository weeklyCollectionRepository,
                               SseService sseService) {
         this.paymentRepository = paymentRepository;
         this.shipmentRepository = shipmentRepository;
         this.appUserRepository = appUserRepository;
+        this.soaRepository = soaRepository;
+        this.weeklyCollectionRepository = weeklyCollectionRepository;
         this.sseService = sseService;
     }
 
@@ -100,8 +110,41 @@ public class PaymentServiceImpl implements PaymentService {
                 remarks
         );
         payment.setReferenceNo(refNo);
+        if (shipment.getStatementId() != null && !shipment.getStatementId().isBlank()) {
+            payment.setStatementId(shipment.getStatementId());
+        }
 
         Payment saved = paymentRepository.save(payment);
+
+        if (shipment.getStatementId() != null && !shipment.getStatementId().isBlank()) {
+            soaRepository.findById(shipment.getStatementId()).ifPresent(soa -> {
+                BigDecimal currentTotalPaid = soa.getTotalPaid() != null ? soa.getTotalPaid() : BigDecimal.ZERO;
+                BigDecimal updatedTotalPaid = currentTotalPaid.add(saved.getAmountPaid());
+                soa.setTotalPaid(updatedTotalPaid);
+
+                BigDecimal charges = soa.getCurrentCharges() != null ? soa.getCurrentCharges() : BigDecimal.ZERO;
+                BigDecimal deductions = soa.getDeductions() != null ? soa.getDeductions() : BigDecimal.ZERO;
+                BigDecimal updatedBalance = charges.subtract(updatedTotalPaid).subtract(deductions);
+                if (updatedBalance.compareTo(BigDecimal.ZERO) < 0) {
+                    updatedBalance = BigDecimal.ZERO;
+                }
+                soa.setOutstandingBalance(updatedBalance);
+                soaRepository.save(soa);
+
+                WeeklyCollection collection = soa.getCollection();
+                if (collection == null && soa.getClient() != null && soa.getStatementDate() != null) {
+                    collection = weeklyCollectionRepository.findByClient_ClientIdAndCollectionDate(
+                            soa.getClient().getClientId(), soa.getStatementDate()
+                    ).orElse(null);
+                }
+                if (collection != null) {
+                    collection.setTotalPaid(updatedTotalPaid);
+                    collection.setBalance(updatedBalance);
+                    collection.setStatus(updatedBalance.compareTo(BigDecimal.ZERO) == 0 ? "PAID" : "FOR_COLLECTION");
+                    weeklyCollectionRepository.save(collection);
+                }
+            });
+        }
 
         BigDecimal totalPaidAfter = totalPaidBefore.add(saved.getAmountPaid());
         BigDecimal balanceAfter = shipment.getTotalAmount().subtract(totalPaidAfter);

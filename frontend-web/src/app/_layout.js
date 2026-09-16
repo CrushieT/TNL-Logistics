@@ -1,7 +1,15 @@
 import React, { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { Platform, LogBox } from 'react-native';
 import { Stack, usePathname, useRouter, useRootNavigationState } from 'expo-router';
 import { isAuthenticated, validateSession, getCurrentUser, checkFirstBootStatus } from '../services/api/client';
+
+// Suppress dev LogBox error overlays for expected API response errors
+LogBox.ignoreLogs([
+  'Failed to complete waybill',
+  'Failed to dispatch to hauler',
+  'Request failed with status code',
+  'AxiosError',
+]);
 
 const ADMIN_ONLY_ROUTES = ['/users', '/settings'];
 const SESSION_VALIDATION_THROTTLE_MS = 5 * 60 * 1000;

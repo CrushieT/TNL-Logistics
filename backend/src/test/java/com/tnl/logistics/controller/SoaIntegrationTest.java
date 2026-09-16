@@ -1,6 +1,8 @@
 package com.tnl.logistics.controller;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -8,12 +10,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tnl.logistics.dto.ParcelUnitRequest;
+import com.tnl.logistics.dto.PaymentRecordRequest;
 import com.tnl.logistics.dto.SaveStatementRequest;
 import com.tnl.logistics.dto.ShipmentRegistrationRequest;
 import com.tnl.logistics.model.ChargeModel;
 import com.tnl.logistics.model.Client;
+import com.tnl.logistics.model.PaymentMethod;
 import com.tnl.logistics.model.RegisteredVia;
+import com.tnl.logistics.model.Soa;
+import com.tnl.logistics.model.SoaBatch;
 import com.tnl.logistics.repository.ClientRepository;
+import com.tnl.logistics.repository.SoaBatchRepository;
+import com.tnl.logistics.repository.SoaRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -43,12 +51,26 @@ public class SoaIntegrationTest {
     @Autowired
     private ClientRepository clientRepository;
 
+    @Autowired
+    private SoaBatchRepository soaBatchRepository;
+
+    @Autowired
+    private SoaRepository soaRepository;
+
     @BeforeEach
     void setUp() {
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client != null) {
             client.setActive(true);
             clientRepository.save(client);
+        }
+
+        Client client2 = clientRepository.findById("CL-002").orElse(null);
+        if (client2 == null) {
+            clientRepository.save(new Client("CL-002", "Beta Logistics Client", "Cebu", "09170000002", "client2@beta.com", ChargeModel.FLAT, true));
+        } else if (!Boolean.TRUE.equals(client2.getActive())) {
+            client2.setActive(true);
+            clientRepository.save(client2);
         }
     }
 
@@ -293,5 +315,140 @@ public class SoaIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Bad Request"))
                 .andExpect(jsonPath("$.message", containsString("cannot exceed total charges")));
+    }
+
+    @Test
+    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
+    void testManualSoaBatchIsolationBetweenDistinctClients() throws Exception {
+        LocalDate today = LocalDate.now();
+        SaveStatementRequest saveReq1 = new SaveStatementRequest(
+                "CL-001",
+                today,
+                BigDecimal.ZERO,
+                null,
+                "Carlos Mendoza"
+        );
+        SaveStatementRequest saveReq2 = new SaveStatementRequest(
+                "CL-002",
+                today,
+                BigDecimal.ZERO,
+                null,
+                "Carlos Mendoza"
+        );
+
+        mockMvc.perform(post("/api/v1/soa/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(saveReq1)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/soa/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(saveReq2)))
+                .andExpect(status().isOk());
+
+        List<SoaBatch> batches = soaBatchRepository.findAll();
+        boolean hasClient1Batch = batches.stream().anyMatch(b -> b.getBatchId().contains("CL-001"));
+        boolean hasClient2Batch = batches.stream().anyMatch(b -> b.getBatchId().contains("CL-002"));
+        assertTrue(hasClient1Batch, "Expected distinct batch scoped to CL-001");
+        assertTrue(hasClient2Batch, "Expected distinct batch scoped to CL-002");
+    }
+
+    @Test
+    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
+    void testSavedSoaReflectsSubsequentPayments() throws Exception {
+        // 1. Register a shipment with 1000.00 fee
+        ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
+        shipmentReq.setClientId("CL-001");
+        shipmentReq.setRecipientName("Payment Sync Consignee");
+        shipmentReq.setRecipientContact("0917-222-3333");
+        shipmentReq.setRecipientAddress("Baguio City Center");
+        shipmentReq.setRoute("Manila -> Baguio");
+        shipmentReq.setDescription("Payment Sync Test");
+        shipmentReq.setQuantity(1);
+        shipmentReq.setChargeModel(ChargeModel.FLAT);
+        shipmentReq.setShippingFee(new BigDecimal("1000.00"));
+        shipmentReq.setOtherCharges(BigDecimal.ZERO);
+        shipmentReq.setPaidAtRegistration(false);
+        shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipmentReq.setParcels(List.of(
+                new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("15"), new BigDecimal("15"), new BigDecimal("15"))
+        ));
+
+        var regRes = mockMvc.perform(post("/api/v1/shipments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(shipmentReq)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        String shipmentId = objectMapper.readTree(regRes.getResponse().getContentAsString()).get("shipmentId").asText();
+
+        // 2. Record initial payment of 300.00 prior to saving SOA
+        PaymentRecordRequest initialPayment = new PaymentRecordRequest(
+                shipmentId,
+                new BigDecimal("300.00"),
+                PaymentMethod.CASH,
+                "CASH-INIT-001",
+                LocalDate.now(),
+                "Initial partial payment"
+        );
+        mockMvc.perform(post("/api/v1/payments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(initialPayment)))
+                .andExpect(status().isCreated());
+
+        // 3. Save SOA for CL-001
+        SaveStatementRequest saveReq = new SaveStatementRequest(
+                "CL-001",
+                LocalDate.now(),
+                BigDecimal.ZERO,
+                null,
+                "Carlos Mendoza"
+        );
+        var saveRes = mockMvc.perform(post("/api/v1/soa/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(saveReq)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalCharges").value(1000.00))
+                .andExpect(jsonPath("$.totalPaid").value(300.00))
+                .andExpect(jsonPath("$.amountDue").value(700.00))
+                .andExpect(jsonPath("$.isSaved").value(true))
+                .andReturn();
+
+        String statementId = objectMapper.readTree(saveRes.getResponse().getContentAsString()).get("soaNo").asText();
+
+        // 4. Record subsequent payment of 200.00 after SOA is saved
+        PaymentRecordRequest subsequentPayment = new PaymentRecordRequest(
+                shipmentId,
+                new BigDecimal("200.00"),
+                PaymentMethod.GCASH,
+                "GCASH-SUB-002",
+                LocalDate.now(),
+                "Subsequent payment after SOA finalized"
+        );
+        mockMvc.perform(post("/api/v1/payments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(subsequentPayment)))
+                .andExpect(status().isCreated());
+
+        // 5. Verify statement preview dynamically reflects live payments (totalPaid = 500.00, amountDue = 500.00)
+        mockMvc.perform(get("/api/v1/soa/preview")
+                        .param("clientId", "CL-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.clientId").value("CL-001"))
+                .andExpect(jsonPath("$.isSaved").value(true))
+                .andExpect(jsonPath("$.totalCharges").value(1000.00))
+                .andExpect(jsonPath("$.totalPaid").value(500.00))
+                .andExpect(jsonPath("$.amountDue").value(500.00));
+
+        // 6. Verify persisted SOA entity in database is synchronized
+        Soa persistedSoa = soaRepository.findById(statementId).orElseThrow();
+        assertEquals(0, new BigDecimal("500.00").compareTo(persistedSoa.getTotalPaid()));
+        assertEquals(0, new BigDecimal("500.00").compareTo(persistedSoa.getOutstandingBalance()));
+
+        // 7. Verify persisted WeeklyCollection entity in database is also synchronized
+        com.tnl.logistics.model.WeeklyCollection persistedCollection = persistedSoa.getCollection();
+        assertEquals(0, new BigDecimal("500.00").compareTo(persistedCollection.getTotalPaid()));
+        assertEquals(0, new BigDecimal("500.00").compareTo(persistedCollection.getBalance()));
+        assertEquals("FOR_COLLECTION", persistedCollection.getStatus());
     }
 }

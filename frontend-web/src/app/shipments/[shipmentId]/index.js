@@ -66,13 +66,18 @@ export default function ShipmentDetailScreen() {
     };
   }, [loadShipment, shipmentId]);
 
-  const handlePrintAll = async () => {
+  const handlePrintAll = () => {
+    setPrintModalVisible(true);
+  };
+
+  const handleConfirmPrintAll = async () => {
     try {
       await printLabels(shipmentId);
-      setPrintModalVisible(true);
       loadShipment(false);
     } catch (err) {
-      setPrintModalVisible(true);
+      console.warn('Failed to record print labels:', err?.message);
+    } finally {
+      setPrintModalVisible(false);
     }
   };
 
@@ -216,20 +221,12 @@ export default function ShipmentDetailScreen() {
           <Card
             title={`PARCEL UNITS (${shipment.units?.length || 0})`}
             right={
-              <View style={styles.headerActions}>
-                <Button
-                  label={`Print All Labels (${shipment.units?.length || 0})`}
-                  variant="secondary"
-                  onPress={handlePrintAll}
-                  style={styles.headerBtn}
-                />
-                <Button
-                  label="Reprint All"
-                  variant="secondary"
-                  onPress={handlePrintAll}
-                  style={styles.headerBtn}
-                />
-              </View>
+              <Button
+                label={`Print All Labels (${shipment.units?.length || 0})`}
+                variant="secondary"
+                onPress={handlePrintAll}
+                style={styles.headerBtn}
+              />
             }
           >
             <View style={styles.unitsTable}>
@@ -354,7 +351,7 @@ export default function ShipmentDetailScreen() {
         visible={printModalVisible}
         shipment={shipment}
         onClose={() => setPrintModalVisible(false)}
-        onPrint={() => setPrintModalVisible(false)}
+        onPrint={handleConfirmPrintAll}
       />
 
       {/* Interactive Single-Unit QR Code Modal */}

@@ -48,7 +48,7 @@ export default function WaybillsScreen() {
         setManifest(null);
       }
     } catch (err) {
-      console.error('Failed to load waybill data:', err);
+      console.warn('Failed to load waybill data:', err?.message || err);
       setFeedbackMsg({ type: 'error', text: 'Failed to load waybill records.' });
     } finally {
       setLoading(false);
@@ -67,7 +67,7 @@ export default function WaybillsScreen() {
         setSelectedHauler(haulers[0].fullName || haulers[0].displayLabel);
       }
     } catch (err) {
-      console.error('Failed to load manifest for shipment:', shipmentId, err);
+      console.warn('Failed to load manifest for shipment:', shipmentId, err?.message || err);
       setFeedbackMsg({ type: 'error', text: `Failed to load manifest for ${shipmentId}.` });
     }
   };
@@ -83,7 +83,13 @@ export default function WaybillsScreen() {
   };
 
   // Stage 1: Mark as Sent to Hauler
-  const handleSendToHauler = async () => {
+  const handleSendToHauler = async (e) => {
+    if (e && typeof e.preventDefault === 'function') {
+      e.preventDefault();
+    }
+    if (e && typeof e.stopPropagation === 'function') {
+      e.stopPropagation();
+    }
     if (!selectedShipmentId || !selectedHauler) {
       setFeedbackMsg({ type: 'error', text: 'Please select a hauler.' });
       return;
@@ -107,15 +113,22 @@ export default function WaybillsScreen() {
 
       setFeedbackMsg({ type: 'success', text: `Waybill dispatched to ${selectedHauler}.` });
     } catch (err) {
-      console.error('Failed to dispatch to hauler:', err);
-      setFeedbackMsg({ type: 'error', text: 'Failed to update waybill status.' });
+      const errorMsg = err?.response?.data?.message || 'Failed to update waybill status.';
+      console.warn('Failed to dispatch to hauler:', errorMsg);
+      setFeedbackMsg({ type: 'error', text: errorMsg });
     } finally {
       setActionLoading(false);
     }
   };
 
   // Stage 2: Mark as Signed / Completed
-  const handleCompleteWaybill = async () => {
+  const handleCompleteWaybill = async (e) => {
+    if (e && typeof e.preventDefault === 'function') {
+      e.preventDefault();
+    }
+    if (e && typeof e.stopPropagation === 'function') {
+      e.stopPropagation();
+    }
     if (!selectedShipmentId) return;
 
     try {
@@ -135,8 +148,9 @@ export default function WaybillsScreen() {
 
       setFeedbackMsg({ type: 'success', text: 'Waybill marked as Signed / Completed.' });
     } catch (err) {
-      console.error('Failed to complete waybill:', err);
-      setFeedbackMsg({ type: 'error', text: 'Failed to record signed Proof of Delivery.' });
+      const errorMsg = err?.response?.data?.message || 'Failed to record signed Proof of Delivery.';
+      console.warn('Failed to complete waybill:', errorMsg);
+      setFeedbackMsg({ type: 'error', text: errorMsg });
     } finally {
       setActionLoading(false);
     }
@@ -362,7 +376,7 @@ export default function WaybillsScreen() {
 
                     <Pressable
                       style={[styles.actionBtn, actionLoading && styles.btnDisabled]}
-                      onPress={handleCompleteWaybill}
+                      onPress={(e) => handleCompleteWaybill(e)}
                       disabled={actionLoading}
                     >
                       {actionLoading ? (
@@ -401,7 +415,7 @@ export default function WaybillsScreen() {
 
                     <Pressable
                       style={[styles.actionBtn, actionLoading && styles.btnDisabled]}
-                      onPress={handleSendToHauler}
+                      onPress={(e) => handleSendToHauler(e)}
                       disabled={actionLoading}
                     >
                       {actionLoading ? (

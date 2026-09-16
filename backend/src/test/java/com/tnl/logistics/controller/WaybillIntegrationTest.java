@@ -143,7 +143,7 @@ public class WaybillIntegrationTest {
                 .andExpect(jsonPath("$.waybillStatus").value("Waybill: Sent to Hauler"))
                 .andExpect(jsonPath("$.hauler").value("Rogelio Aquino"));
 
-        // 7. Complete delivery with Client Signature
+        // 7a. Attempting to complete delivery while parcels are still in REGISTERED status fails with HTTP 400
         WaybillStatusUpdateRequest completeReq = new WaybillStatusUpdateRequest(
                 null,
                 "Delacruz General Merchandise",
@@ -154,18 +154,32 @@ public class WaybillIntegrationTest {
         mockMvc.perform(post("/api/v1/waybills/complete/" + shipmentId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(completeReq)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Cannot complete waybill: All shipment parcels must be in LOADED_TO_HAULER or COMPLETED status before signing proof of delivery."));
+
+        // 7b. Advance parcels to LOADED_TO_HAULER
+        List<com.tnl.logistics.model.ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
+        for (com.tnl.logistics.model.ParcelUnit p : parcels) {
+            p.setCurrentStatus(com.tnl.logistics.model.ParcelStatus.LOADED_TO_HAULER);
+            parcelUnitRepository.save(p);
+        }
+
+        // 7c. Complete delivery with Client Signature now succeeds
+        mockMvc.perform(post("/api/v1/waybills/complete/" + shipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(completeReq)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SIGNED_COMPLETED"))
                 .andExpect(jsonPath("$.statusLabel").value("Signed / Completed"))
                 .andExpect(jsonPath("$.signedBy").value("Delacruz General Merchandise"));
 
-        // 8. Verify shipment detail view shows "Waybill: Signed / Completed", while parcel tracking status remains intact (QR Generated)
+        // 8. Verify shipment detail view shows "Waybill: Signed / Completed", and shipment status rollup advances to Completed
         mockMvc.perform(get("/api/v1/shipments/" + shipmentId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.waybillStatus").value("Waybill: Signed / Completed"))
                 .andExpect(jsonPath("$.signedBy").value("Delacruz General Merchandise"))
-                .andExpect(jsonPath("$.status").value("QR Generated"))
-                .andExpect(jsonPath("$.statusRollup").value("2 / 2 QR Generated"));
+                .andExpect(jsonPath("$.status").value("Completed"))
+                .andExpect(jsonPath("$.statusRollup").value("2 / 2 Completed"));
 
         // 9. Verify waybills master directory listing
         mockMvc.perform(get("/api/v1/waybills?status=SIGNED_COMPLETED"))
@@ -286,13 +300,13 @@ public class WaybillIntegrationTest {
 
     @Test
     @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
-    void testWaybillCompletionPreservesParcelTrackingState() throws Exception {
+    void testWaybillCompletionRequiresLoadedToHaulerAndAdvancesShipmentStatus() throws Exception {
         // 1. Register shipment with 2 parcels
         ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("20"), new BigDecimal("20"), new BigDecimal("20"));
         ParcelUnitRequest p2 = new ParcelUnitRequest(2, new BigDecimal("3.0"), new BigDecimal("30"), new BigDecimal("30"), new BigDecimal("30"));
         ShipmentRegistrationRequest regReq = new ShipmentRegistrationRequest();
         regReq.setClientId("CL-001");
-        regReq.setRecipientName("Decoupled Consignee");
+        regReq.setRecipientName("Strict Consignee");
         regReq.setRecipientAddress("Baguio City");
         regReq.setRecipientContact("0917-000-0000");
         regReq.setChargeModel(ChargeModel.FLAT);
@@ -317,35 +331,156 @@ public class WaybillIntegrationTest {
                 "Pedro Driver",
                 "0918-000-1111",
                 "XYZ-9999",
-                "Decouple test dispatch"
+                "Strict test dispatch"
         );
         mockMvc.perform(post("/api/v1/waybills/send-to-hauler")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createReq)))
                 .andExpect(status().isOk());
 
-        // 3. Mark waybill signed completed
+        // 3. Mark waybill signed completed while parcels are still in REGISTERED status fails with HTTP 400
         WaybillStatusUpdateRequest completeReq = new WaybillStatusUpdateRequest(
                 null,
-                "Decoupled Consignee Signer",
+                "Strict Consignee Signer",
                 null,
                 "Signed POD"
         );
         mockMvc.perform(post("/api/v1/waybills/complete/" + shipmentId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(completeReq)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Cannot complete waybill: All shipment parcels must be in LOADED_TO_HAULER or COMPLETED status before signing proof of delivery."));
+
+        // 4. Advance only parcel 1 to LOADED_TO_HAULER -> partial readiness is still rejected
+        List<com.tnl.logistics.model.ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
+        parcels.get(0).setCurrentStatus(com.tnl.logistics.model.ParcelStatus.LOADED_TO_HAULER);
+        parcelUnitRepository.save(parcels.get(0));
+
+        mockMvc.perform(post("/api/v1/waybills/complete/" + shipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(completeReq)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Cannot complete waybill: All shipment parcels must be in LOADED_TO_HAULER or COMPLETED status before signing proof of delivery."));
+
+        // 5. Advance parcel 2 to LOADED_TO_HAULER -> all parcels ready
+        parcels.get(1).setCurrentStatus(com.tnl.logistics.model.ParcelStatus.LOADED_TO_HAULER);
+        parcelUnitRepository.save(parcels.get(1));
+
+        // 6. Complete waybill now succeeds
+        mockMvc.perform(post("/api/v1/waybills/complete/" + shipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(completeReq)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SIGNED_COMPLETED"))
-                .andExpect(jsonPath("$.signedBy").value("Decoupled Consignee Signer"));
+                .andExpect(jsonPath("$.signedBy").value("Strict Consignee Signer"));
 
-        // 4. Verify parcels in database are still in QR_GENERATED status and no synthetic COMPLETED events were created
-        List<com.tnl.logistics.model.ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
-        org.junit.jupiter.api.Assertions.assertEquals(2, parcels.size());
-        for (com.tnl.logistics.model.ParcelUnit parcel : parcels) {
-            org.junit.jupiter.api.Assertions.assertEquals(com.tnl.logistics.model.ParcelStatus.QR_GENERATED, parcel.getCurrentStatus());
+        // 7. Verify all parcels in database transitioned to COMPLETED, vehicle cleared, and tracking events exist
+        List<com.tnl.logistics.model.ParcelUnit> updatedParcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
+        org.junit.jupiter.api.Assertions.assertEquals(2, updatedParcels.size());
+        for (com.tnl.logistics.model.ParcelUnit parcel : updatedParcels) {
+            org.junit.jupiter.api.Assertions.assertEquals(com.tnl.logistics.model.ParcelStatus.COMPLETED, parcel.getCurrentStatus());
+            org.junit.jupiter.api.Assertions.assertNull(parcel.getCurrentVehicle());
             List<com.tnl.logistics.model.TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(parcel.getTrackingId());
             boolean hasCompletedEvent = events.stream().anyMatch(e -> e.getStatus() == com.tnl.logistics.model.ParcelStatus.COMPLETED);
-            org.junit.jupiter.api.Assertions.assertFalse(hasCompletedEvent, "Should not contain synthetic COMPLETED tracking event");
+            org.junit.jupiter.api.Assertions.assertTrue(hasCompletedEvent, "Must contain COMPLETED tracking event");
         }
+
+        // 8. Verify shipment overall status is now Completed
+        mockMvc.perform(get("/api/v1/shipments/" + shipmentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("Completed"))
+                .andExpect(jsonPath("$.statusRollup").value("2 / 2 Completed"));
+    }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testWaybillCompletionSucceedsWhenParcelsAreMixedLoadedToHaulerAndAlreadyCompleted() throws Exception {
+        // 1. Register shipment with 2 parcels
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("20"), new BigDecimal("20"), new BigDecimal("20"));
+        ParcelUnitRequest p2 = new ParcelUnitRequest(2, new BigDecimal("3.0"), new BigDecimal("30"), new BigDecimal("30"), new BigDecimal("30"));
+        ShipmentRegistrationRequest regReq = new ShipmentRegistrationRequest();
+        regReq.setClientId("CL-001");
+        regReq.setRecipientName("Mixed Parcel Consignee");
+        regReq.setRecipientAddress("Baguio City");
+        regReq.setRecipientContact("0917-000-0000");
+        regReq.setChargeModel(ChargeModel.FLAT);
+        regReq.setShippingFee(new BigDecimal("500.00"));
+        regReq.setQuantity(2);
+        regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setParcels(List.of(p1, p2));
+
+        MvcResult regResult = mockMvc.perform(post("/api/v1/shipments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(regReq)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse shipResp = objectMapper.readValue(regResult.getResponse().getContentAsString(), ShipmentResponse.class);
+        String shipmentId = shipResp.getShipmentId();
+
+        // 2. Dispatch waybill to hauler
+        WaybillCreateRequest createReq = new WaybillCreateRequest(
+                shipmentId,
+                "Northern Hauler Co",
+                "Juan Driver",
+                "0918-999-8888",
+                "TRK-9876",
+                "Mixed parcel dispatch"
+        );
+        mockMvc.perform(post("/api/v1/waybills/send-to-hauler")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createReq)))
+                .andExpect(status().isOk());
+
+        // 3. Simulate Box A already delivered at doorstep via mobile scan (COMPLETED)
+        List<com.tnl.logistics.model.ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
+        com.tnl.logistics.model.ParcelUnit boxA = parcels.get(0);
+        boxA.setCurrentStatus(com.tnl.logistics.model.ParcelStatus.COMPLETED);
+        parcelUnitRepository.save(boxA);
+
+        com.tnl.logistics.model.AppUser actingStaff = appUserRepository.findAll().stream().findFirst().orElseThrow();
+        com.tnl.logistics.model.TrackingEvent doorstepEvent = new com.tnl.logistics.model.TrackingEvent(
+                boxA,
+                com.tnl.logistics.model.ParcelStatus.COMPLETED,
+                null,
+                actingStaff,
+                "Delivered at doorstep via mobile scan"
+        );
+        trackingEventRepository.save(doorstepEvent);
+
+        // Box B is still with hauler
+        com.tnl.logistics.model.ParcelUnit boxB = parcels.get(1);
+        boxB.setCurrentStatus(com.tnl.logistics.model.ParcelStatus.LOADED_TO_HAULER);
+        parcelUnitRepository.save(boxB);
+
+        // 4. Complete waybill via POD signoff
+        WaybillStatusUpdateRequest completeReq = new WaybillStatusUpdateRequest(
+                null,
+                "Consignee Receiver",
+                null,
+                "Received both packages safely"
+        );
+        mockMvc.perform(post("/api/v1/waybills/complete/" + shipmentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(completeReq)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SIGNED_COMPLETED"))
+                .andExpect(jsonPath("$.signedBy").value("Consignee Receiver"));
+
+        // 5. Verify Box B advanced to COMPLETED, Box A remained COMPLETED
+        com.tnl.logistics.model.ParcelUnit updatedBoxA = parcelUnitRepository.findById(boxA.getTrackingId()).orElseThrow();
+        com.tnl.logistics.model.ParcelUnit updatedBoxB = parcelUnitRepository.findById(boxB.getTrackingId()).orElseThrow();
+        org.junit.jupiter.api.Assertions.assertEquals(com.tnl.logistics.model.ParcelStatus.COMPLETED, updatedBoxA.getCurrentStatus());
+        org.junit.jupiter.api.Assertions.assertEquals(com.tnl.logistics.model.ParcelStatus.COMPLETED, updatedBoxB.getCurrentStatus());
+
+        // 6. Verify Box A did not receive a duplicate COMPLETED tracking event
+        List<com.tnl.logistics.model.TrackingEvent> boxAEvents = trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(boxA.getTrackingId());
+        long boxACompletedCount = boxAEvents.stream().filter(e -> e.getStatus() == com.tnl.logistics.model.ParcelStatus.COMPLETED).count();
+        org.junit.jupiter.api.Assertions.assertEquals(1, boxACompletedCount, "Box A must have exactly 1 COMPLETED event");
+
+        // 7. Verify Box B received its POD signoff COMPLETED tracking event
+        List<com.tnl.logistics.model.TrackingEvent> boxBEvents = trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(boxB.getTrackingId());
+        boolean boxBHasCompleted = boxBEvents.stream().anyMatch(e -> e.getStatus() == com.tnl.logistics.model.ParcelStatus.COMPLETED);
+        org.junit.jupiter.api.Assertions.assertTrue(boxBHasCompleted, "Box B must have received COMPLETED event");
     }
 }
