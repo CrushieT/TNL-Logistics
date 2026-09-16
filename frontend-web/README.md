@@ -34,114 +34,81 @@ the API is wired up.
 
 ```
 frontend-web/
-├── app/                          # Expo Router file-based routes
-│   ├── _layout.js                # Root Stack navigator
-│   ├── index.js                  # Dashboard
-│   ├── register.js               # Register Shipment (form + result view)
-│   ├── shipments/
-│   │   ├── index.js              # Shipments list (search/filter/table)
-│   │   └── [shipmentId]/
-│   │       ├── index.js          # Shipment detail (units, payment)
-│   │       └── units/
-│   │           └── [trackingId].js  # Parcel unit detail + tracking history
-│   ├── tracking-logs.js          # placeholder — wire to GET /tracking-logs
-│   ├── clients.js                # placeholder — wire to GET /clients
-│   ├── payments.js               # placeholder
-│   ├── weekly-collections.js     # placeholder
-│   ├── statements.js             # placeholder — Statements of Account (SOA)
-│   ├── reports.js                # placeholder
-│   ├── users.js                  # placeholder
-│   └── settings.js               # placeholder
+├── src/
+│   ├── app/                          # Expo Router file-based routes
+│   │   ├── _layout.js                # Root Stack navigator & route guard
+│   │   ├── +not-found.js             # Catch-all 404 Route Not Found operations card
+│   │   ├── login.js                  # Screen 01 Desktop Login with brand logo & rate limiting
+│   │   ├── index.js                  # Operations Dashboard
+│   │   ├── register.js               # Register Shipment (form + result view)
+│   │   ├── shipments/
+│   │   │   ├── index.js              # Shipments list (search/filter/table)
+│   │   │   └── [shipmentId]/
+│   │   │       ├── index.js          # Shipment detail (units, payment)
+│   │   │       └── units/
+│   │   │           └── [trackingId].js  # Parcel unit detail + tracking history
+│   │   ├── vehicles.js               # Vehicle fleet management & smart delete
+│   │   ├── clients.js                # Client directory & profile view
+│   │   ├── waybills.js               # Waybill management & printable manifests
+│   │   ├── payments.js               # Screen 18 Payment recording & installment ledger
+│   │   ├── weekly-collections.js     # Screen 19 Weekly Collections consolidation dashboard
+│   │   ├── statements.js             # Screen 20 Statements of Account (SOA) preview & deductions
+│   │   ├── statements/
+│   │   │   └── print.js              # Screen 22 Dedicated isolated printable SOA document
+│   │   ├── tracking-logs.js          # Screen 17 Global tracking logs audit feed & real-time SSE scan stream
+│   │   ├── reports.js                # Screen 26 Operational & financial reports with dual-bar charts & A4 print modal
+│   │   └── users.js                  # Screen 27 User & staff management directory, credential resets & security controls
+│   │
+│   ├── components/                   # Common UI Components
+│   │   ├── layout/
+│   │   │   ├── AppShell.js           # Responsive Sidebar + TopBar shell
+│   │   │   ├── Sidebar.js            # Left nav (Operations / Billing / Admin)
+│   │   │   └── TopBar.js             # Real-time parcel & shipment KPI strip
+│   │   └── common/                   # MetricCards, StatusBadges, Buttons, Inputs
+│   │
+│   ├── features/                     # Domain Feature Modules
+│   │   ├── shipments/                # Shipment registration, table, QR preview
+│   │   ├── vehicles/                 # Fleet registry, CRUD modals, live counters
+│   │   ├── clients/                  # Client directory, profile view, rate models
+│   │   ├── waybills/                 # Waybill manifest cards, hauler assignment
+│   │   ├── payments/                 # Record payment modal, installment ledger modal
+│   │   ├── collections/              # Weekly table, Batch SOA modal, Statement paper card
+│   │   ├── tracking-logs/            # Audit event table, metrics bar, debounced filters
+│   │   ├── reports/                  # Dual-bar chart, Thursday card, KPI strip, multi-domain tabs
+│   │   └── users/                    # Create/Edit/View modals, Reset Password & PIN dialogs, typed ID confirmation modal, usersApi
+│   │
+│   ├── services/
+│   │   └── api/
+│   │       ├── client.js             # Axios client with JWT auto-refresh & 401/403 retry
+│   │       └── sseClient.js          # Server-Sent Events real-time event subscriptions
+│   │
+│   └── theme/                        # Design System Tokens (Colors, Typography, Spacing)
 │
-├── components/
-│   ├── ShipmentForm.js           # Register Shipment form
-│   ├── ShipmentResultView.js     # Post-registration confirmation screen
-│   ├── ShipmentsTable.js         # Shipments list table
-│   ├── PrintLabelsModal.js       # "Print · N Labels" modal
-│   ├── LabelPreview.js           # Physical label card (QR + meta)
-│   └── common/
-│       ├── AppShell.js           # Sidebar + top bar + scroll wrapper
-│       ├── Sidebar.js            # Left nav (Operations/Billing/Admin)
-│       ├── TopBar.js             # Shipment/parcel count strip + date
-│       ├── PageHeader.js         # Eyebrow + title + action slot
-│       ├── Card.js               # Bordered panel used everywhere
-│       ├── Button.js             # primary/accent/secondary/ghost/danger
-│       ├── FormField.js          # Labeled text input
-│       ├── SelectField.js        # Labeled dropdown (native <select> on web)
-│       ├── SearchFilterBar.js    # Search box + filter dropdowns
-│       ├── StatusBadge.js        # Status/payment/label pill
-│       ├── MetricCard.js         # Dashboard top-row tile
-│       ├── DonutChart.js         # Parcel units by status
-│       ├── BarChart.js           # Weekly registrations
-│       ├── ComparisonBars.js     # Outstanding vs collected
-│       ├── ActivityRow.js        # Recent activity list row
-│       ├── QRPlaceholder.js      # Deterministic pseudo-QR (swap for real lib)
-│       ├── Toast.js              # Bottom-right success toast
-│       └── ComingSoon.js         # Placeholder screen for unbuilt sections
-│
-├── api/
-│   ├── client.js                 # Axios instance, JWT auto-attach, 401 handling
-│   └── shipments.js              # Shipment/client/tracking request functions
-│
-├── constants/
-│   └── theme.js                  # Design tokens: colors, type, spacing, status maps
-│
-├── app.json                      # Expo web configuration
 ├── package.json
-├── .env.example
-├── .gitignore
 └── README.md
 ```
 
 ## Design tokens
 
 All colors, type, spacing, and status-pill mappings live in
-`constants/theme.js`. Nothing else should hardcode a hex value or font —
+`src/theme/`. Nothing else should hardcode a hex value or font —
 import from there so a future re-theme only touches one file.
 
 Key choices lifted from the prototype:
 - **Font:** system monospace stack throughout (labels, values, buttons — everything)
 - **Canvas:** `#F3F2ED` off-white; **Surface:** `#FFFFFF` cards on hairline `#E1DFD5` borders
 - **Accent:** `#C6491F` burnt orange-red, reserved for primary actions, active nav, and balances due
-- **Status pills:** blue = Registered/QR Generated, muted = Loaded on Truck, green = Arrived/Loaded to Hauler
+- **Status pills:** blue = Registered/QR Generated, muted = Loaded on Truck, green = Arrived/Loaded to Hauler/SOA Generated
 
-## Wiring up the real backend
+## Feature Implementations
 
-Every list/detail screen currently ships with realistic fallback data so
-the UI renders before the API exists. Each screen calls its real endpoint
-first (see `api/shipments.js`) and only falls back on request failure —
-so as soon as the corresponding Spring Boot endpoint returns real JSON in
-the same shape, the fallback data stops being used automatically. No
-screen code needs to change.
-
-Expected endpoints (adjust paths in `api/shipments.js` to match your
-actual controller mappings):
-
-| Function | Method | Path |
-|---|---|---|
-| `getDashboardSummary()` | GET | `/dashboard/summary` |
-| `listShipments(params)` | GET | `/shipments` |
-| `getShipment(id)` | GET | `/shipments/{id}` |
-| `registerShipment(payload)` | POST | `/shipments` |
-| `getParcelUnit(trackingId)` | GET | `/parcel-units/{trackingId}` |
-| `listClients()` | GET | `/clients` |
-| `printLabels(shipmentId, packageIds)` | POST | `/shipments/{id}/labels/print` |
-| `listTrackingLogs(params)` | GET | `/tracking-logs` |
-
-## Notes / TODO for whoever picks this up
-
-- `QRPlaceholder.js` renders a **visual, non-scannable** stand-in QR so the
-  UI is demoable without a QR-generation dependency. Swap in a real QR
-  library (e.g. `react-native-qrcode-svg`) once the backend returns the
-  actual QR payload (the plain tracking-ID string per the locked schema
-  decision).
-- `PrintLabelsModal`'s "Print" button currently just closes the modal —
-  wire it to the browser print dialog (`window.print()` scoped to the
-  label grid) or to `printLabels()` + a generated PDF from the backend.
-- Auth/login screen isn't included yet — `api/client.js` already handles
-  JWT storage and 401s, so a login screen just needs to call `setToken()`
-  on success.
-- Placeholder screens (Tracking Logs, Clients, Payments, Weekly
-  Collections, Statements, Reports, Users, Settings) exist so sidebar
-  navigation never 404s — replace `<ComingSoon />` with real screens as
-  each is built out.
+1. **Shipment Management (Screens 1–5):** Full volumetric calculation, instant vector thermal QR printing, tracking inspection, and parcel timeline audit.
+2. **Fleet & Client Management (Screens 7, 15, 16):** Live on-truck cargo counters, smart delete engine, and profile balance rollups.
+3. **Waybills & Freight Manifests (Screens 11, 13):** Sequential auto-numbering, 3-stage custody transition, and landscape printable manifest.
+4. **Payments & Installments Ledger (Screen 18):** Payment recording with balance ceiling restriction, reference validation (Cash, GCash, Bank Transfer, Cheque), and compounding ledger audit.
+5. **Weekly Collections Consolidation (Screen 19):** Thursday consolidation dashboard, active cycle dropdown filters, and single & batch SOA generation triggers.
+6. **Statement of Account Document & Print (Screens 20, 22):** Multi-page A4 printable document with dynamic pagination, continuation headers, deduction adjustments, authorized collector selection, and isolated browser printing.
+7. **Authentication & Session Protection (Screen 01):** Desktop login with brand artwork, central route guarding with return URL redirection, in-memory rate limit lockout with live countdown, and sidebar user session controls.
+8. **Global Tracking Logs Feed (Screen 17):** Real-time SSE scan stream with monospaced burnt-orange badges, 4-card live metrics strip, debounced search & status pills, and standardized pagination footer.
+9. **Operational & Financial Reports (Screen 26):** Dual-bar chart comparing client charges vs collections, Thursday collection cycle summary card, top 5 KPIs, date range filter presets, fluid 100% full-width tables, daily operations timeline with empty days toggle and reverse chronological ordering, client receivables aging breakdown, and browser A4 printable document modal.
+10. **User & Staff Management (Screen 27):** Paginated staff table with role/status filters, auto-generated temporary password generation (`TNL-XXXX`) with clipboard copy feedback, dual mobile PIN setup (Option A default + Option B override), dedicated password/PIN reset modals with immediate token invalidation, destructive confirmation prompts with typed User ID verification, and single-admin invariant enforcement.

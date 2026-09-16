@@ -22,11 +22,12 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles("dev")
+@ActiveProfiles("test")
 @Transactional
 public class TrackingAndVehicleIntegrationTest {
 
@@ -60,19 +61,27 @@ public class TrackingAndVehicleIntegrationTest {
     private String officeToken;
     private String fieldToken;
 
+    @Autowired
+    private com.tnl.logistics.repository.WaybillRepository waybillRepository;
+
     @BeforeEach
     public void setup() {
+        waybillRepository.deleteAll();
         trackingEventRepository.deleteAll();
         parcelUnitRepository.deleteAll();
         paymentRepository.deleteAll();
         shipmentRepository.deleteAll();
         vehicleRepository.deleteAll();
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("office", "OFFICE_STAFF");
-        fieldToken = "Bearer " + JwtTokenProvider.generateToken("field", "FIELD_STAFF");
+        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
 
-        if (clientRepository.findById("CL-001").isEmpty()) {
-            clientRepository.save(new Client("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com"));
+        Client client = clientRepository.findById("CL-001").orElse(null);
+        if (client == null) {
+            clientRepository.save(new Client("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com", ChargeModel.FLAT, true));
+        } else if (!Boolean.TRUE.equals(client.getActive())) {
+            client.setActive(true);
+            clientRepository.save(client);
         }
     }
 
@@ -150,8 +159,11 @@ public class TrackingAndVehicleIntegrationTest {
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
         regReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2.5"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10"))));
 
-        ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "office");
+        ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "USR-OFFICE");
         String trackingId = shipResp.getTrackingIds().get(0);
+
+        ParcelUnit initialUnit = parcelUnitRepository.findById(trackingId).orElseThrow();
+        assertEquals(ParcelStatus.QR_GENERATED, initialUnit.getCurrentStatus());
 
         // 3. Scan: QR_GENERATED -> LOADED_ON_TRUCK (Valid with active vehicle)
         TrackingScanRequest scan1 = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Loaded at Manila Depot");
@@ -223,7 +235,7 @@ public class TrackingAndVehicleIntegrationTest {
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
         regReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
-        ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "office");
+        ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "USR-OFFICE");
         String trackingId = shipResp.getTrackingIds().get(0);
 
         // 2. Attempt skipping from QR_GENERATED straight to LOADED_TO_HAULER (Should fail)
@@ -241,6 +253,20 @@ public class TrackingAndVehicleIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(missingVehicle)))
                 .andExpect(status().isBadRequest());
+
+        // 4. Attempt skipping from REGISTERED straight to LOADED_ON_TRUCK (Should fail)
+        Shipment shipment = shipmentRepository.findById(shipResp.getShipmentId()).orElseThrow();
+        ParcelUnit regUnit = new ParcelUnit("TRK-TEST-REG01", shipment, 2, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("0.001"));
+        regUnit.setCurrentStatus(ParcelStatus.REGISTERED);
+        parcelUnitRepository.saveAndFlush(regUnit);
+
+        TrackingScanRequest invalidFromReg = new TrackingScanRequest("TRK-TEST-REG01", ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Skip QR");
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", fieldToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invalidFromReg)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Invalid status transition for TRK-TEST-REG01: Cannot move from REGISTERED directly to LOADED_ON_TRUCK. Expected next status is QR_GENERATED."));
     }
 
     @Test
@@ -275,7 +301,7 @@ public class TrackingAndVehicleIntegrationTest {
                 new ParcelUnitRequest(2, new BigDecimal("5"), new BigDecimal("30"), new BigDecimal("30"), new BigDecimal("30"))
         ));
 
-        ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "office");
+        ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "USR-OFFICE");
         String t1 = shipResp.getTrackingIds().get(0);
         String t2 = shipResp.getTrackingIds().get(1);
 

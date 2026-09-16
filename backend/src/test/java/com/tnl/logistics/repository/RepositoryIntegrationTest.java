@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -18,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Verifies JPA entity schema mappings and CRUD repository actions under dev profile.
  */
 @SpringBootTest
-@ActiveProfiles("dev")
+@ActiveProfiles("test")
 @Transactional
 public class RepositoryIntegrationTest {
 
@@ -57,9 +58,9 @@ public class RepositoryIntegrationTest {
         assertEquals("ABC-1234", foundVehicle.get().getPlateNumber());
 
         // 3. Client CRUD
-        Client client = new Client("CL-001", "Client A", "Address A", "09171234567", "clienta@example.com");
+        Client client = new Client("CL-REPO-001", "Client A", "Address A", "09171234567", "clienta@example.com");
         clientRepository.save(client);
-        Optional<Client> foundClient = clientRepository.findById("CL-001");
+        Optional<Client> foundClient = clientRepository.findById("CL-REPO-001");
         assertTrue(foundClient.isPresent());
         assertEquals("Client A", foundClient.get().getName());
 
@@ -85,5 +86,11 @@ public class RepositoryIntegrationTest {
         Payment payment = new Payment(shipment, new BigDecimal("100.00"), PaymentMethod.CASH, LocalDate.now());
         paymentRepository.save(payment);
         assertNotNull(payment.getPaymentId());
+    }
+
+    @Test
+    public void testFindDistinctRegistrationDates() {
+        List<LocalDate> dates = shipmentRepository.findDistinctRegistrationDates();
+        assertNotNull(dates);
     }
 }

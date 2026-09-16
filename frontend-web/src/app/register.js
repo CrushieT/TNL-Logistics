@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import AppShell from '../components/layout/AppShell';
 import PageHeader from '../components/layout/PageHeader';
 import Toast from '../components/common/Toast';
-import { ShipmentForm, ShipmentResultView, PrintLabelsModal, registerShipment } from '../features/shipments';
+import { ShipmentForm, ShipmentResultView, PrintLabelsModal, registerShipment, printLabels } from '../features/shipments';
 import { listClients, createClient } from '../features/clients';
 import { colors, fonts, spacing, radius } from '../theme';
 
@@ -17,23 +17,24 @@ export default function RegisterShipmentScreen() {
   const [toastVisible, setToastVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  // Load clients from backend GET /api/v1/clients
+  // Load active clients from backend GET /api/v1/clients?active=true
   useEffect(() => {
     let isMounted = true;
-    listClients()
+    listClients({ active: true })
       .then((data) => {
         if (isMounted) {
-          if (data && data.length > 0) {
-            setClients(data);
+          const list = Array.isArray(data) ? data : (data?.content || []);
+          if (list.length > 0) {
+            setClients(list);
           } else {
-            setClients([{ id: 'CL-001', code: 'CL-001', name: 'Northbridge Trading' }]);
+            setClients([{ id: 'CL-001', code: 'CL-001', name: 'Northbridge Trading', active: true }]);
           }
         }
       })
       .catch((err) => {
         if (isMounted) {
           console.warn('Could not load clients from server:', err?.message);
-          setClients([{ id: 'CL-001', code: 'CL-001', name: 'Northbridge Trading' }]);
+          setClients([{ id: 'CL-001', code: 'CL-001', name: 'Northbridge Trading', active: true }]);
         }
       });
 
@@ -112,11 +113,19 @@ export default function RegisterShipmentScreen() {
           visible={modalVisible}
           shipment={result}
           onClose={() => setModalVisible(false)}
-          onPrint={() => setModalVisible(false)}
+          onPrint={async () => {
+            try {
+              await printLabels(result.shipmentId);
+            } catch (err) {
+              console.warn('Failed to record print labels:', err?.message);
+            } finally {
+              setModalVisible(false);
+            }
+          }}
         />
         <Toast
           visible={toastVisible}
-          message={`✓ Shipment ${result.shipmentId} registered · ${result.units.length} QR codes generated`}
+          message={`Shipment ${result.shipmentId} registered | ${result.units.length} QR codes generated`}
           onDismiss={() => setToastVisible(false)}
         />
       </AppShell>
@@ -125,7 +134,7 @@ export default function RegisterShipmentScreen() {
 
   return (
     <AppShell>
-      <PageHeader eyebrow="Scenario 1 · Encode & Identify" title="Register Shipment" />
+      <PageHeader eyebrow="OPERATIONS" title="Register Shipment" />
 
       {/* Error Alert Banner */}
       {errorMessage ? (

@@ -2,16 +2,17 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors, fonts, spacing } from '../../theme';
 
-export default function ComparisonBars({ rows, axisMax, axisSteps = 5 }) {
-  const max = axisMax || Math.max(...rows.map((r) => r.value), 1);
+export default function ComparisonBars({ rows = [], axisMax, axisSteps = 5 }) {
+  const rawMax = Math.max(...rows.map((r) => Number(r.value) || 0), 0);
+  const max = axisMax || (rawMax > 0 ? rawMax : 100);
   const step = max / axisSteps;
   const axisValues = Array.from({ length: axisSteps + 1 }, (_, i) => Math.round(step * i));
 
   return (
     <View>
       <View style={styles.rows}>
-        {rows.map((r) => (
-          <View key={r.label} style={styles.row}>
+        {rows.map((r, idx) => (
+          <View key={r.label || idx} style={styles.row}>
             <Text style={styles.rowLabel}>{r.label}</Text>
             <View style={styles.track}>
               <View
@@ -25,8 +26,8 @@ export default function ComparisonBars({ rows, axisMax, axisSteps = 5 }) {
         ))}
       </View>
       <View style={styles.axisRow}>
-        {axisValues.map((v) => (
-          <Text key={v} style={styles.axisLabel}>
+        {axisValues.map((v, index) => (
+          <Text key={`axis-tick-${index}`} style={styles.axisLabel}>
             {v.toLocaleString()}
           </Text>
         ))}

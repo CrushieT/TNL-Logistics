@@ -1,0 +1,277 @@
+package com.tnl.logistics.service.impl;
+
+import com.tnl.logistics.dto.PaymentRecordRequest;
+import com.tnl.logistics.dto.PaymentResponse;
+import com.tnl.logistics.dto.ShipmentPaymentSummaryResponse;
+import com.tnl.logistics.model.AppUser;
+import com.tnl.logistics.model.Payment;
+import com.tnl.logistics.model.PaymentMethod;
+import com.tnl.logistics.model.Shipment;
+import com.tnl.logistics.model.Soa;
+import com.tnl.logistics.model.WeeklyCollection;
+import com.tnl.logistics.repository.AppUserRepository;
+import com.tnl.logistics.repository.PaymentRepository;
+import com.tnl.logistics.repository.ShipmentRepository;
+import com.tnl.logistics.repository.SoaRepository;
+import com.tnl.logistics.repository.WeeklyCollectionRepository;
+import com.tnl.logistics.service.PaymentService;
+import com.tnl.logistics.service.SseService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * Implementation of PaymentService providing payment recording,
+ * audit history querying, balance recalculation, and payment search.
+ */
+@Service
+@Transactional
+public class PaymentServiceImpl implements PaymentService {
+
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("MMM d, yyyy");
+
+    private final PaymentRepository paymentRepository;
+    private final ShipmentRepository shipmentRepository;
+    private final AppUserRepository appUserRepository;
+    private final SoaRepository soaRepository;
+    private final WeeklyCollectionRepository weeklyCollectionRepository;
+    private final SseService sseService;
+
+    public PaymentServiceImpl(PaymentRepository paymentRepository,
+                              ShipmentRepository shipmentRepository,
+                              AppUserRepository appUserRepository,
+                              SoaRepository soaRepository,
+                              WeeklyCollectionRepository weeklyCollectionRepository,
+                              SseService sseService) {
+        this.paymentRepository = paymentRepository;
+        this.shipmentRepository = shipmentRepository;
+        this.appUserRepository = appUserRepository;
+        this.soaRepository = soaRepository;
+        this.weeklyCollectionRepository = weeklyCollectionRepository;
+        this.sseService = sseService;
+    }
+
+    @Override
+    public PaymentResponse recordPayment(PaymentRecordRequest request, String actingStaffUserId) {
+        Shipment shipment = shipmentRepository.findByIdForUpdate(request.getShipmentId())
+                .orElseThrow(() -> new IllegalArgumentException("Shipment not found: " + request.getShipmentId()));
+
+        AppUser actingStaff = null;
+        if (actingStaffUserId != null && !actingStaffUserId.isBlank()) {
+            actingStaff = appUserRepository.findById(actingStaffUserId).orElse(null);
+        }
+
+        List<Payment> existingPayments = paymentRepository.findByShipment_ShipmentId(shipment.getShipmentId());
+        BigDecimal totalPaidBefore = existingPayments.stream()
+                .map(Payment::getAmountPaid)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal remainingBalance = shipment.getTotalAmount().subtract(totalPaidBefore);
+        if (remainingBalance.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalStateException(String.format("Shipment %s is already fully paid.", shipment.getShipmentId()));
+        }
+
+        if (request.getAmountPaid().compareTo(remainingBalance) > 0) {
+            throw new IllegalArgumentException(String.format(
+                    "Payment amount ₱%s exceeds remaining balance ₱%s for shipment %s",
+                    request.getAmountPaid(), remainingBalance, shipment.getShipmentId()));
+        }
+
+        LocalDate payDate = request.getPaymentDate() != null ? request.getPaymentDate() : LocalDate.now();
+        String refNo = (request.getReferenceNo() != null && !request.getReferenceNo().isBlank())
+                ? request.getReferenceNo().trim()
+                : null;
+        String remarks = (request.getRemarks() != null && !request.getRemarks().isBlank())
+                ? request.getRemarks().trim()
+                : null;
+
+        if ((request.getMethod() == PaymentMethod.GCASH || request.getMethod() == PaymentMethod.BANK || request.getMethod() == PaymentMethod.CHEQUE)
+                && (refNo == null || refNo.isBlank())) {
+            throw new IllegalArgumentException(String.format("Reference number is required for %s payments.", request.getMethod().name()));
+        }
+
+        Payment payment = new Payment(
+                shipment,
+                request.getAmountPaid(),
+                request.getMethod(),
+                payDate,
+                actingStaff,
+                remarks
+        );
+        payment.setReferenceNo(refNo);
+        if (shipment.getStatementId() != null && !shipment.getStatementId().isBlank()) {
+            payment.setStatementId(shipment.getStatementId());
+        }
+
+        Payment saved = paymentRepository.save(payment);
+
+        if (shipment.getStatementId() != null && !shipment.getStatementId().isBlank()) {
+            soaRepository.findById(shipment.getStatementId()).ifPresent(soa -> {
+                BigDecimal currentTotalPaid = soa.getTotalPaid() != null ? soa.getTotalPaid() : BigDecimal.ZERO;
+                BigDecimal updatedTotalPaid = currentTotalPaid.add(saved.getAmountPaid());
+                soa.setTotalPaid(updatedTotalPaid);
+
+                BigDecimal charges = soa.getCurrentCharges() != null ? soa.getCurrentCharges() : BigDecimal.ZERO;
+                BigDecimal deductions = soa.getDeductions() != null ? soa.getDeductions() : BigDecimal.ZERO;
+                BigDecimal updatedBalance = charges.subtract(updatedTotalPaid).subtract(deductions);
+                if (updatedBalance.compareTo(BigDecimal.ZERO) < 0) {
+                    updatedBalance = BigDecimal.ZERO;
+                }
+                soa.setOutstandingBalance(updatedBalance);
+                soaRepository.save(soa);
+
+                WeeklyCollection collection = soa.getCollection();
+                if (collection == null && soa.getClient() != null && soa.getStatementDate() != null) {
+                    collection = weeklyCollectionRepository.findByClient_ClientIdAndCollectionDate(
+                            soa.getClient().getClientId(), soa.getStatementDate()
+                    ).orElse(null);
+                }
+                if (collection != null) {
+                    collection.setTotalPaid(updatedTotalPaid);
+                    collection.setBalance(updatedBalance);
+                    collection.setStatus(updatedBalance.compareTo(BigDecimal.ZERO) == 0 ? "PAID" : "FOR_COLLECTION");
+                    weeklyCollectionRepository.save(collection);
+                }
+            });
+        }
+
+        BigDecimal totalPaidAfter = totalPaidBefore.add(saved.getAmountPaid());
+        BigDecimal balanceAfter = shipment.getTotalAmount().subtract(totalPaidAfter);
+        if (balanceAfter.compareTo(BigDecimal.ZERO) < 0) {
+            balanceAfter = BigDecimal.ZERO;
+        }
+
+        String paymentStatus = totalPaidAfter.compareTo(shipment.getTotalAmount()) >= 0
+                ? "Paid"
+                : (totalPaidAfter.compareTo(BigDecimal.ZERO) > 0 ? "Partial" : "Unpaid");
+
+        PaymentResponse response = mapToResponse(saved, shipment, totalPaidAfter, balanceAfter, paymentStatus);
+
+        try {
+            sseService.broadcastPaymentRecorded(response);
+        } catch (Exception ignored) {}
+
+        return response;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ShipmentPaymentSummaryResponse getPaymentsByShipmentId(String shipmentId) {
+        Shipment shipment = shipmentRepository.findById(shipmentId)
+                .orElseThrow(() -> new IllegalArgumentException("Shipment not found: " + shipmentId));
+
+        List<Payment> payments = paymentRepository.findByShipment_ShipmentIdOrderByRecordedAtDesc(shipmentId);
+
+        BigDecimal totalPaid = payments.stream()
+                .map(Payment::getAmountPaid)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal rawBalance = shipment.getTotalAmount().subtract(totalPaid);
+        BigDecimal balance = rawBalance.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : rawBalance;
+
+        String paymentStatus = totalPaid.compareTo(shipment.getTotalAmount()) >= 0
+                ? "Paid"
+                : (totalPaid.compareTo(BigDecimal.ZERO) > 0 ? "Partial" : "Unpaid");
+
+        List<PaymentResponse> paymentResponses = payments.stream()
+                .map(p -> mapToResponse(p, shipment, totalPaid, balance, paymentStatus))
+                .collect(Collectors.toList());
+
+        return new ShipmentPaymentSummaryResponse(
+                shipment.getShipmentId(),
+                shipment.getClient() != null ? shipment.getClient().getClientId() : null,
+                shipment.getClient() != null ? shipment.getClient().getName() : "—",
+                shipment.getRecipientName(),
+                shipment.getTotalAmount(),
+                totalPaid,
+                balance,
+                paymentStatus,
+                paymentResponses
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<PaymentResponse> getPayments(String search, PaymentMethod method, String clientId,
+                                            LocalDate startDate, LocalDate endDate, Pageable pageable) {
+        String cleanSearch = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
+        String cleanClientId = (clientId != null && !clientId.equalsIgnoreCase("ALL")) ? clientId.trim() : null;
+
+        Page<Payment> paymentsPage = paymentRepository.searchPayments(cleanSearch, method, cleanClientId, startDate, endDate, pageable);
+        List<Payment> payments = paymentsPage.getContent();
+        if (payments.isEmpty()) {
+            return new PageImpl<>(Collections.emptyList(), pageable, paymentsPage.getTotalElements());
+        }
+
+        Set<String> shipmentIds = payments.stream()
+                .filter(p -> p.getShipment() != null)
+                .map(p -> p.getShipment().getShipmentId())
+                .collect(Collectors.toSet());
+
+        Map<String, BigDecimal> totalPaidByShipment = Collections.emptyMap();
+        if (!shipmentIds.isEmpty()) {
+            List<Payment> allForShipments = paymentRepository.findByShipment_ShipmentIdIn(shipmentIds);
+            totalPaidByShipment = allForShipments.stream()
+                    .filter(p -> p.getShipment() != null && p.getAmountPaid() != null)
+                    .collect(Collectors.groupingBy(
+                            p -> p.getShipment().getShipmentId(),
+                            Collectors.reducing(BigDecimal.ZERO, Payment::getAmountPaid, BigDecimal::add)
+                    ));
+        }
+
+        final Map<String, BigDecimal> finalPaidMap = totalPaidByShipment;
+        List<PaymentResponse> responses = payments.stream().map(p -> {
+            Shipment s = p.getShipment();
+            BigDecimal totalPaid = (s != null)
+                    ? finalPaidMap.getOrDefault(s.getShipmentId(), BigDecimal.ZERO)
+                    : BigDecimal.ZERO;
+            BigDecimal totalAmount = (s != null && s.getTotalAmount() != null) ? s.getTotalAmount() : BigDecimal.ZERO;
+            BigDecimal balance = totalAmount.subtract(totalPaid);
+            if (balance.compareTo(BigDecimal.ZERO) < 0) balance = BigDecimal.ZERO;
+
+            String status = totalPaid.compareTo(totalAmount) >= 0
+                    ? "Paid"
+                    : (totalPaid.compareTo(BigDecimal.ZERO) > 0 ? "Partial" : "Unpaid");
+
+            return mapToResponse(p, s, totalPaid, balance, status);
+        }).collect(Collectors.toList());
+
+        return new PageImpl<>(responses, pageable, paymentsPage.getTotalElements());
+    }
+
+    private PaymentResponse mapToResponse(Payment p, Shipment s, BigDecimal totalPaid, BigDecimal balance, String status) {
+        String staffName = p.getStaff() != null ? p.getStaff().getFullName() : "Office Staff";
+        String dateFormatted = p.getPaymentDate() != null ? p.getPaymentDate().format(DATE_FORMATTER) : "—";
+
+        return new PaymentResponse(
+                p.getPaymentId(),
+                s.getShipmentId(),
+                s.getClient() != null ? s.getClient().getClientId() : null,
+                s.getClient() != null ? s.getClient().getName() : "—",
+                s.getRecipientName(),
+                p.getAmountPaid(),
+                p.getMethod(),
+                p.getReferenceNo() != null ? p.getReferenceNo() : "—",
+                p.getPaymentDate(),
+                dateFormatted,
+                staffName,
+                p.getRemarks(),
+                p.getRecordedAt(),
+                s.getTotalAmount(),
+                totalPaid,
+                balance,
+                status
+        );
+    }
+}

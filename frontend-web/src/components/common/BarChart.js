@@ -29,11 +29,13 @@ export default function BarChart({ data, height = 130, maxValue }) {
       </View>
       <View style={styles.axisRow}>
         <Text style={styles.axisLabelLeft}>0</Text>
-        {data.map((d) => (
-          <Text key={d.label} style={styles.axisLabel}>
-            {d.label}
-          </Text>
-        ))}
+        <View style={styles.labelsContainer}>
+          {data.map((d) => (
+            <Text key={d.label} style={styles.axisLabel}>
+              {d.label}
+            </Text>
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -43,11 +45,12 @@ const styles = StyleSheet.create({
   chartArea: {
     justifyContent: 'flex-end',
     position: 'relative',
+    paddingLeft: 20,
   },
   gridLines: {
     position: 'absolute',
     top: 0,
-    left: 0,
+    left: 20,
     right: 0,
     bottom: 20,
     justifyContent: 'space-between',
@@ -75,15 +78,20 @@ const styles = StyleSheet.create({
   },
   axisRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    alignItems: 'center',
     marginTop: spacing.xs,
   },
   axisLabelLeft: {
-    position: 'absolute',
-    left: 0,
+    width: 20,
     fontFamily: fonts.mono,
     fontSize: 10.5,
     color: colors.inkFaint,
+    textAlign: 'left',
+  },
+  labelsContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
   },
   axisLabel: {
     flex: 1,

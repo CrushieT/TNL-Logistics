@@ -4,13 +4,14 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import java.util.Objects;
 import org.hibernate.annotations.CreationTimestamp;
+import org.springframework.data.domain.Persistable;
 
 /**
  * Entity mapping to the app_user database table.
  */
 @Entity
 @Table(name = "app_user")
-public class AppUser {
+public class AppUser implements Persistable<String> {
 
     @Id
     @Column(name = "user_id", length = 20)
@@ -35,9 +36,42 @@ public class AppUser {
     @Column(name = "must_change_password", nullable = false)
     private Boolean mustChangePassword = true;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "staff_type")
+    private StaffType staffType;
+
+    @Column(name = "hauler_company", length = 100)
+    private String haulerCompany;
+
+    @Column(name = "pin_hash", length = 255)
+    private String pinHash;
+
+    @Column(name = "token_version", nullable = false)
+    private Integer tokenVersion = 1;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    @Transient
+    private boolean isNew = true;
+
+    @Override
+    public String getId() {
+        return userId;
+    }
+
+    @Override
+    public boolean isNew() {
+        return isNew;
+    }
+
+    @PostLoad
+    @PostPersist
+    void markNotNew() {
+        this.isNew = false;
+    }
+
 
     public AppUser() {}
 
@@ -49,7 +83,26 @@ public class AppUser {
         this.role = role;
     }
 
+    public AppUser(String userId, String username, String passwordHash, String fullName, UserRole role, StaffType staffType, String haulerCompany) {
+        this.userId = userId;
+        this.username = username;
+        this.passwordHash = passwordHash;
+        this.fullName = fullName;
+        this.role = role;
+        this.staffType = staffType;
+        this.haulerCompany = haulerCompany;
+    }
+
     // Getters and Setters
+    public StaffType getStaffType() { return staffType; }
+    public void setStaffType(StaffType staffType) { this.staffType = staffType; }
+
+    public String getHaulerCompany() { return haulerCompany; }
+    public void setHaulerCompany(String haulerCompany) { this.haulerCompany = haulerCompany; }
+
+    public String getPinHash() { return pinHash; }
+    public void setPinHash(String pinHash) { this.pinHash = pinHash; }
+
     public String getUserId() { return userId; }
     public void setUserId(String userId) { this.userId = userId; }
 
@@ -70,6 +123,10 @@ public class AppUser {
 
     public Boolean getMustChangePassword() { return mustChangePassword; }
     public void setMustChangePassword(Boolean mustChangePassword) { this.mustChangePassword = mustChangePassword; }
+
+    public Integer getTokenVersion() { return tokenVersion != null ? tokenVersion : 1; }
+    public void setTokenVersion(Integer tokenVersion) { this.tokenVersion = tokenVersion != null ? tokenVersion : 1; }
+    public void incrementTokenVersion() { this.tokenVersion = (this.tokenVersion != null ? this.tokenVersion : 1) + 1; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
 

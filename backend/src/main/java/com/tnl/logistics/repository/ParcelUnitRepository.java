@@ -1,11 +1,14 @@
 package com.tnl.logistics.repository;
 
 import com.tnl.logistics.model.ParcelUnit;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -15,10 +18,16 @@ import java.util.Optional;
 @Repository
 public interface ParcelUnitRepository extends JpaRepository<ParcelUnit, String> {
 
-    @Query("SELECT MAX(p.trackingId) FROM ParcelUnit p WHERE p.trackingId LIKE :prefix")
-    Optional<String> findMaxTrackingIdWithPrefix(@Param("prefix") String prefix);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM ParcelUnit p WHERE p.trackingId = :trackingId")
+    Optional<ParcelUnit> findByIdWithPessimisticLock(@Param("trackingId") String trackingId);
 
     List<ParcelUnit> findByShipment_ShipmentIdOrderBySeqAsc(String shipmentId);
+
+    List<ParcelUnit> findByShipment_ShipmentIdAndTrackingIdIn(String shipmentId, Collection<String> trackingIds);
+
+    @Query("SELECT p FROM ParcelUnit p LEFT JOIN FETCH p.currentVehicle WHERE p.shipment.shipmentId IN :shipmentIds ORDER BY p.seq ASC")
+    List<ParcelUnit> findByShipment_ShipmentIdInOrderBySeqAsc(@Param("shipmentIds") Collection<String> shipmentIds);
 
     long countByCurrentVehicle_VehicleIdAndCurrentStatus(String vehicleId, com.tnl.logistics.model.ParcelStatus currentStatus);
 
@@ -28,4 +37,12 @@ public interface ParcelUnitRepository extends JpaRepository<ParcelUnit, String> 
            "WHERE p.currentStatus = :status AND p.currentVehicle IS NOT NULL " +
            "GROUP BY p.currentVehicle.vehicleId")
     List<Object[]> countLoadedParcelsGroupedByVehicle(@Param("status") com.tnl.logistics.model.ParcelStatus status);
+
+    @Query("SELECT p.currentStatus, COUNT(p) FROM ParcelUnit p GROUP BY p.currentStatus")
+    List<Object[]> countParcelsGroupedByStatus();
+
+    @Query("SELECT p.currentStatus, COUNT(p) FROM ParcelUnit p " +
+           "WHERE p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered <= :cycleEnd " +
+           "GROUP BY p.currentStatus")
+    List<Object[]> countParcelsGroupedByStatusBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart, @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
 }

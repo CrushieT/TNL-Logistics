@@ -64,6 +64,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
   1. Executed automated test suite commands and results.
   2. Step-by-step manual testing instructions (API endpoints, payloads, or UI flows).
   3. Expected database state and response outputs to verify success.
+  For thorough verification (schema validation, role-gating, concurrency, negative cases), invoke `/test check recent changes` rather than duplicating that depth here.
 
 ## 5. Production-Ready Code
 
@@ -82,8 +83,8 @@ Question: "Would I deploy this today?" If no, don't commit it.
 
 **Keep system guidelines and folder structure layouts updated.**
 
-- **Project Structure Alignment:** Any time the workspace directory tree, folder layout, file names, or package layout is modified (e.g. adding, deleting, moving, or renaming directories/files), you MUST immediately update [`.agents/rules/project-structure.md`](file:///C:/Users/Aundray/Desktop/Project/Tracking/logistics/.agents/rules/project-structure.md) to keep the documentation synchronized.
-- **Build Plan Progress Alignment:** Any time a phase, feature slice, or development milestone is completed, added, or modified, you MUST immediately update [`.docs/build-plan.md`](file:///C:/Users/Aundray/Desktop/Project/Tracking/logistics/.docs/build-plan.md) to reflect the current progress status (`[COMPLETED]`, `[CURRENT FOCUS]`, `[UPCOMING]`). Do not use emojis in status tags.
+- **Project Structure Alignment:** Any time the workspace directory tree, folder layout, file names, or package layout is modified (e.g. adding, deleting, moving, or renaming directories/files), you MUST immediately update [`.agents/rules/project-structure.md`](./project-structure.md) to keep the documentation synchronized.
+- **Build Plan Progress Alignment:** Any time a phase, feature slice, or development milestone is completed, added, or modified, you MUST immediately update [`.agents/rules/build-plan.md`](./build-plan.md) to reflect the current progress status (`[COMPLETED]`, `[CURRENT FOCUS]`, `[UPCOMING]`). Do not use emojis in status tags.
 
 ## 7. Error Explanation Before Code Fixes
 

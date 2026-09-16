@@ -1,3 +1,4 @@
+import CheckIcon from '../components/common/CheckIcon';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
@@ -9,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import AppShell from '../components/layout/AppShell';
+import PageHeader from '../components/layout/PageHeader';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import StatusBadge from '../components/common/StatusBadge';
@@ -157,25 +159,25 @@ export default function VehiclesScreen() {
   return (
     <AppShell>
       {/* Header Row */}
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.eyebrow}>FLEET REGISTRY · ADMIN / OFFICE</Text>
-          <Text style={styles.title}>VEHICLES / TRUCKS</Text>
-        </View>
-        <Button
-          label="+ Register Vehicle"
-          variant="primary"
-          onPress={() => {
-            setVehicleToEdit(null);
-            setRegisterModalVisible(true);
-          }}
-        />
-      </View>
+      <PageHeader
+        eyebrow="OPERATIONS"
+        title="Vehicles / Trucks"
+        right={
+          <Button
+            label="Register Vehicle"
+            variant="primary"
+            onPress={() => {
+              setVehicleToEdit(null);
+              setRegisterModalVisible(true);
+            }}
+          />
+        }
+      />
 
       {/* Notice Banner */}
       <View style={styles.banner}>
         <Text style={styles.bannerText}>
-          Only <Text style={styles.boldText}>Active</Text> vehicles appear in the mobile field truck selection. Field Staff never type a plate manually — they pick a registered truck when confirming <Text style={styles.boldText}>Loaded on Truck</Text>.
+          Only <Text style={styles.boldText}>Active</Text> vehicles appear in the mobile field truck selection. Field Staff never type a plate manually; they pick a registered truck when confirming <Text style={styles.boldText}>Loaded on Truck</Text>.
         </Text>
       </View>
 
@@ -183,7 +185,7 @@ export default function VehiclesScreen() {
       {feedback ? (
         <View style={styles.feedbackAlert}>
           <View style={styles.feedbackContent}>
-            <Text style={styles.feedbackCheckmark}>✓</Text>
+            <CheckIcon size={14} color="#15803D" style={{ marginRight: 8, marginTop: 1 }} />
             <Text style={styles.feedbackText}>{feedback.message}</Text>
           </View>
           <Pressable onPress={() => setFeedback(null)} style={styles.feedbackCloseBtn}>
@@ -278,7 +280,7 @@ export default function VehiclesScreen() {
                   />
                 </View>
                 <Text style={[styles.cellOnTruck, { flex: 0.9 }]}>{v.onTruckCount || 0}</Text>
-                <Text style={[styles.cellFaint, { flex: 1.5 }]}>{v.remarks || '—'}</Text>
+                <Text style={[styles.cellFaint, { flex: 1.5 }]}>{v.remarks || '-'}</Text>
                 <View style={[styles.actionsCell, { flex: 1.2 }]}>
                   <Pressable
                     onPress={() => {
@@ -288,7 +290,7 @@ export default function VehiclesScreen() {
                   >
                     <Text style={styles.actionEdit}>Edit</Text>
                   </Pressable>
-                  <Text style={styles.actionSep}>·</Text>
+                  <Text style={styles.actionSep}>|</Text>
                   <Pressable onPress={() => setVehicleToDelete(v)}>
                     <Text style={styles.actionDelete}>Delete</Text>
                   </Pressable>
@@ -302,7 +304,7 @@ export default function VehiclesScreen() {
                 <Text style={styles.paginationText}>
                   Showing <Text style={styles.paginationTextStrong}>{paginatedVehicles.length}</Text> of{' '}
                   <Text style={styles.paginationTextStrong}>{filteredVehicles.length}</Text> vehicles
-                  <Text style={styles.paginationDot}> · </Text>
+                  <Text style={styles.paginationDot}> | </Text>
                   Page <Text style={styles.paginationTextStrong}>{currentPage}</Text> of{' '}
                   <Text style={styles.paginationTextStrong}>{totalPages || 1}</Text>
                 </Text>
@@ -324,7 +326,7 @@ export default function VehiclesScreen() {
                 ) : null}
 
                 <Button
-                  label="← Previous"
+                  label="Previous"
                   variant="secondary"
                   disabled={currentPage <= 1 || loading}
                   onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
@@ -332,7 +334,7 @@ export default function VehiclesScreen() {
                 />
 
                 <Button
-                  label="Next →"
+                  label="Next"
                   variant="secondary"
                   disabled={currentPage >= totalPages || loading}
                   onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}

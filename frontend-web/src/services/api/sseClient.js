@@ -1,66 +1,141 @@
-import { ensureAuthenticated } from './client';
+import { getToken, isAuthenticated } from './client';
 import { Platform } from 'react-native';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
-let globalEventSource = null;
+let activeAbortController = null;
+let isConnecting = false;
+let reconnectTimer = null;
 const listeners = new Set();
 
+function dispatchEvent(type, data) {
+  listeners.forEach((listener) => {
+    try {
+      listener({ type, data });
+    } catch (err) {
+      // Ignore subscriber execution errors
+    }
+  });
+}
+
 export async function initRealtimeConnection() {
-  if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof EventSource === 'undefined') {
+  if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof fetch === 'undefined') {
     return null;
   }
 
-  if (globalEventSource && globalEventSource.readyState !== EventSource.CLOSED) {
-    return globalEventSource;
+  if (!isAuthenticated()) {
+    return null;
   }
 
-  const token = await ensureAuthenticated();
-  const url = `${API_BASE_URL}/events/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  if (activeAbortController || isConnecting) {
+    return activeAbortController;
+  }
+
+  isConnecting = true;
+  const abortController = new AbortController();
+  activeAbortController = abortController;
+
+  const token = getToken();
+  const url = `${API_BASE_URL}/events/stream`;
 
   try {
-    globalEventSource = new EventSource(url);
-
-    globalEventSource.addEventListener('INIT', () => {
-      // Handshake established
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
+      signal: abortController.signal,
     });
 
-    globalEventSource.addEventListener('STATUS_UPDATE', (e) => {
-      try {
-        const payload = JSON.parse(e.data);
-        listeners.forEach((listener) => {
-          try { listener({ type: 'STATUS_UPDATE', data: payload }); } catch (err) {}
-        });
-      } catch (err) {}
-    });
+    isConnecting = false;
 
-    globalEventSource.addEventListener('SHIPMENT_CREATED', (e) => {
-      try {
-        const payload = JSON.parse(e.data);
-        listeners.forEach((listener) => {
-          try { listener({ type: 'SHIPMENT_CREATED', data: payload }); } catch (err) {}
-        });
-      } catch (err) {}
-    });
+    if (!response.ok || !response.body) {
+      throw new Error(`SSE connection failed with HTTP status ${response.status}`);
+    }
 
-    globalEventSource.addEventListener('LABEL_PRINTED', (e) => {
-      try {
-        const payload = JSON.parse(e.data);
-        listeners.forEach((listener) => {
-          try { listener({ type: 'LABEL_PRINTED', data: payload }); } catch (err) {}
-        });
-      } catch (err) {}
-    });
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let currentEvent = 'message';
+    let currentData = '';
 
-    globalEventSource.onerror = () => {
-      // Browser EventSource automatically reconnects per standard specification
-    };
+    while (!abortController.signal.aborted) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
 
-    return globalEventSource;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split(/\r\n|\r|\n/);
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith(':')) {
+          // Heartbeat or comment line; skip
+          continue;
+        }
+
+        if (line === '') {
+          if (currentData) {
+            let parsedData = currentData;
+            try {
+              parsedData = JSON.parse(currentData);
+            } catch (_) {
+              // Unparsed string payload
+            }
+            dispatchEvent(currentEvent, parsedData);
+          }
+          currentEvent = 'message';
+          currentData = '';
+          continue;
+        }
+
+        if (line.startsWith('event:')) {
+          currentEvent = line.slice(6).trim();
+        } else if (line.startsWith('data:')) {
+          const chunk = line.slice(5).trim();
+          currentData = currentData ? `${currentData}\n${chunk}` : chunk;
+        }
+      }
+    }
   } catch (err) {
-    console.warn('Realtime SSE initialization failed:', err?.message);
-    return null;
+    if (abortController.signal.aborted) {
+      return null;
+    }
+    console.warn('Realtime SSE stream interrupted:', err?.message);
+  } finally {
+    isConnecting = false;
+    if (activeAbortController === abortController) {
+      activeAbortController = null;
+    }
+
+    if (listeners.size > 0 && isAuthenticated() && !abortController.signal.aborted) {
+      if (!reconnectTimer) {
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          if (listeners.size > 0 && isAuthenticated()) {
+            initRealtimeConnection();
+          }
+        }, 5000);
+      }
+    }
   }
+
+  return activeAbortController;
+}
+
+export function closeRealtimeConnection() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  if (activeAbortController) {
+    activeAbortController.abort();
+    activeAbortController = null;
+  }
+  isConnecting = false;
 }
 
 /**
@@ -72,5 +147,8 @@ export function subscribeRealtimeEvents(callback) {
 
   return () => {
     listeners.delete(callback);
+    if (listeners.size === 0) {
+      closeRealtimeConnection();
+    }
   };
 }

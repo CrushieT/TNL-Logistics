@@ -5,6 +5,7 @@ import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.*;
 import com.tnl.logistics.service.ShipmentService;
 import com.tnl.logistics.service.SseService;
+import com.tnl.logistics.service.IdentifierCounterService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -34,7 +35,11 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final PaymentRepository paymentRepository;
     private final AppUserRepository appUserRepository;
     private final TrackingEventRepository trackingEventRepository;
+    private final WaybillRepository waybillRepository;
     private final SseService sseService;
+    private final PrintEventRepository printEventRepository;
+    private final com.tnl.logistics.service.SystemSettingService systemSettingService;
+    private final IdentifierCounterService identifierCounterService;
 
     public ShipmentServiceImpl(ShipmentRepository shipmentRepository,
                                ParcelUnitRepository parcelUnitRepository,
@@ -42,23 +47,64 @@ public class ShipmentServiceImpl implements ShipmentService {
                                PaymentRepository paymentRepository,
                                AppUserRepository appUserRepository,
                                TrackingEventRepository trackingEventRepository,
-                               SseService sseService) {
+                               WaybillRepository waybillRepository,
+                               SseService sseService,
+                               PrintEventRepository printEventRepository,
+                               com.tnl.logistics.service.SystemSettingService systemSettingService,
+                               IdentifierCounterService identifierCounterService) {
         this.shipmentRepository = shipmentRepository;
         this.parcelUnitRepository = parcelUnitRepository;
         this.clientRepository = clientRepository;
         this.paymentRepository = paymentRepository;
         this.appUserRepository = appUserRepository;
         this.trackingEventRepository = trackingEventRepository;
+        this.waybillRepository = waybillRepository;
         this.sseService = sseService;
+        this.printEventRepository = printEventRepository;
+        this.systemSettingService = systemSettingService;
+        this.identifierCounterService = identifierCounterService;
     }
 
     @Override
-    public synchronized ShipmentResponse registerShipment(ShipmentRegistrationRequest request, String actingStaffUsername) {
+    public ShipmentResponse registerShipment(ShipmentRegistrationRequest request, String actingStaffUserId) {
         Client client = clientRepository.findById(request.getClientId())
                 .orElseThrow(() -> new IllegalArgumentException("Client not found with ID: " + request.getClientId()));
 
-        AppUser actingStaff = appUserRepository.findByUsername(actingStaffUsername)
-                .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUsername));
+        if (Boolean.FALSE.equals(client.getActive())) {
+            throw new IllegalArgumentException("Cannot register shipment for inactive client: " + client.getName());
+        }
+
+        AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
+                .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
+
+        // Validate parcel items count and contiguous sequence (Item 4)
+        if (request.getParcels() == null || request.getParcels().isEmpty()) {
+            throw new IllegalArgumentException("Shipment must contain at least one parcel unit.");
+        }
+
+        if (request.getQuantity() == null || !request.getQuantity().equals(request.getParcels().size())) {
+            throw new IllegalArgumentException(String.format(
+                    "Shipment quantity (%s) must match parcel items count (%d).",
+                    request.getQuantity(),
+                    request.getParcels().size()
+            ));
+        }
+
+        List<Integer> seqNumbers = request.getParcels().stream()
+                .map(ParcelUnitRequest::getSeq)
+                .sorted()
+                .toList();
+
+        for (int i = 0; i < seqNumbers.size(); i++) {
+            int expectedSeq = i + 1;
+            Integer actualSeq = seqNumbers.get(i);
+            if (actualSeq == null || actualSeq != expectedSeq) {
+                throw new IllegalArgumentException(String.format(
+                        "Parcel sequence numbers must form a contiguous sequence from 1 to %d without duplicates or gaps.",
+                        seqNumbers.size()
+                ));
+            }
+        }
 
         // 1. Pricing Model Calculations
         BigDecimal totalAmount;
@@ -74,15 +120,7 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         // 2. Generate Sequential Shipment ID: SHP-YYYY-XXX
         String currentYear = String.valueOf(LocalDate.now().getYear());
-        String shipmentPrefix = "SHP-" + currentYear + "-";
-        String maxShipmentId = shipmentRepository.findMaxShipmentIdWithPrefix(shipmentPrefix + "%").orElse(null);
-        int nextShipmentSeq = 1;
-        if (maxShipmentId != null && maxShipmentId.length() >= shipmentPrefix.length() + 3) {
-            String seqStr = maxShipmentId.substring(shipmentPrefix.length());
-            try {
-                nextShipmentSeq = Integer.parseInt(seqStr) + 1;
-            } catch (NumberFormatException ignored) {}
-        }
+        long nextShipmentSeq = identifierCounterService.next(IdentifierCounterService.IdentifierFamily.SHIPMENT, Integer.valueOf(currentYear));
         String shipmentId = String.format("SHP-%s-%03d", currentYear, nextShipmentSeq);
 
         // 3. Save Shipment Entity
@@ -106,15 +144,11 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         // 4. Generate Sequential Tracking IDs (TRK-YYYY-XXXXXX) & Process Parcel Units
         List<String> trackingIds = new ArrayList<>();
-        String trackingPrefix = "TRK-" + currentYear + "-";
-        String maxTrackingId = parcelUnitRepository.findMaxTrackingIdWithPrefix(trackingPrefix + "%").orElse(null);
-        int nextTrackingSeq = 1;
-        if (maxTrackingId != null && maxTrackingId.length() >= trackingPrefix.length() + 6) {
-            String seqStr = maxTrackingId.substring(trackingPrefix.length());
-            try {
-                nextTrackingSeq = Integer.parseInt(seqStr) + 1;
-            } catch (NumberFormatException ignored) {}
-        }
+        long nextTrackingSeq = identifierCounterService.next(
+                IdentifierCounterService.IdentifierFamily.TRACKING,
+                Integer.valueOf(currentYear),
+                request.getParcels().size()
+        );
 
         for (ParcelUnitRequest parcelReq : request.getParcels()) {
             String trackingId = String.format("TRK-%s-%06d", currentYear, nextTrackingSeq++);
@@ -139,7 +173,7 @@ public class ShipmentServiceImpl implements ShipmentService {
                     parcelReq.getWidthCm(),
                     volumeCbm
             );
-            unit.setCurrentStatus(ParcelStatus.REGISTERED);
+            unit.setCurrentStatus(ParcelStatus.QR_GENERATED);
             parcelUnitRepository.save(unit);
 
             // Audit log initial REGISTERED tracking scan event
@@ -190,24 +224,80 @@ public class ShipmentServiceImpl implements ShipmentService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<ShipmentSummaryResponse> getShipments(String search, String status, String paymentStatus, Pageable pageable) {
+    public Page<ShipmentSummaryResponse> getShipments(String search, String status, String paymentStatus, String vehicleId, Pageable pageable) {
         String cleanSearch = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
-        Page<Shipment> shipmentsPage = shipmentRepository.searchShipments(cleanSearch, pageable);
+        String cleanStatus = normalizeStatus(status);
+        String cleanPayment = normalizePayment(paymentStatus);
+        String cleanVehicle = normalizeVehicle(vehicleId);
 
-        List<ShipmentSummaryResponse> summaries = shipmentsPage.getContent().stream()
-                .map(this::mapToSummaryResponse)
-                .filter(s -> {
-                    if (status != null && !status.equalsIgnoreCase("ALL")) {
-                        if (!s.getStatus().equalsIgnoreCase(status)) return false;
-                    }
-                    if (paymentStatus != null && !paymentStatus.equalsIgnoreCase("ALL")) {
-                        if (!s.getPayment().equalsIgnoreCase(paymentStatus)) return false;
-                    }
-                    return true;
-                })
+        Page<Shipment> shipmentsPage = shipmentRepository.searchShipmentsWithFilters(cleanSearch, cleanStatus, cleanPayment, cleanVehicle, pageable);
+        List<Shipment> shipments = shipmentsPage.getContent();
+        if (shipments.isEmpty()) {
+            return new PageImpl<>(Collections.emptyList(), pageable, shipmentsPage.getTotalElements());
+        }
+
+        List<String> shipmentIds = shipments.stream()
+                .map(Shipment::getShipmentId)
+                .collect(Collectors.toList());
+
+        List<ParcelUnit> allParcels = parcelUnitRepository.findByShipment_ShipmentIdInOrderBySeqAsc(shipmentIds);
+        Map<String, List<ParcelUnit>> parcelsByShipment = allParcels.stream()
+                .filter(p -> p.getShipment() != null)
+                .collect(Collectors.groupingBy(p -> p.getShipment().getShipmentId()));
+
+        List<Payment> allPayments = paymentRepository.findByShipment_ShipmentIdIn(shipmentIds);
+        Map<String, List<Payment>> paymentsByShipment = allPayments.stream()
+                .filter(p -> p.getShipment() != null)
+                .collect(Collectors.groupingBy(p -> p.getShipment().getShipmentId()));
+
+        // Check if any parcels need vehicle fallback from tracking events
+        List<String> trackingIdsNeedingVehicle = allParcels.stream()
+                .filter(p -> p.getCurrentVehicle() == null)
+                .map(ParcelUnit::getTrackingId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        Map<String, TrackingEvent> latestEventWithVehicleByTrackingId = new HashMap<>();
+        if (!trackingIdsNeedingVehicle.isEmpty()) {
+            List<TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdInAndVehicleNotNullOrderByEventTimestampAsc(trackingIdsNeedingVehicle);
+            for (TrackingEvent ev : events) {
+                if (ev.getParcelUnit() != null) {
+                    latestEventWithVehicleByTrackingId.put(ev.getParcelUnit().getTrackingId(), ev);
+                }
+            }
+        }
+
+        List<ShipmentSummaryResponse> summaries = shipments.stream()
+                .map(s -> mapToSummaryResponse(
+                        s,
+                        parcelsByShipment.getOrDefault(s.getShipmentId(), Collections.emptyList()),
+                        paymentsByShipment.getOrDefault(s.getShipmentId(), Collections.emptyList()),
+                        latestEventWithVehicleByTrackingId
+                ))
                 .collect(Collectors.toList());
 
         return new PageImpl<>(summaries, pageable, shipmentsPage.getTotalElements());
+    }
+
+    private String normalizeVehicle(String vehicleId) {
+        if (vehicleId == null || vehicleId.trim().isEmpty() || vehicleId.equalsIgnoreCase("ALL")) {
+            return null;
+        }
+        return vehicleId.trim();
+    }
+
+    private String normalizeStatus(String status) {
+        if (status == null || status.trim().isEmpty() || status.equalsIgnoreCase("ALL")) {
+            return null;
+        }
+        return status.trim().toUpperCase().replace(" ", "_");
+    }
+
+    private String normalizePayment(String paymentStatus) {
+        if (paymentStatus == null || paymentStatus.trim().isEmpty() || paymentStatus.equalsIgnoreCase("ALL")) {
+            return null;
+        }
+        return paymentStatus.trim().toUpperCase();
     }
 
     @Override
@@ -294,8 +384,11 @@ public class ShipmentServiceImpl implements ShipmentService {
         BigDecimal unitVolumeCm3 = length.multiply(width).multiply(height);
         BigDecimal totalVolumeCm3 = unitVolumeCm3.multiply(new BigDecimal(shipment.getQuantity()));
 
-        // Volumetric weight: totalVolumeCm3 / 5000
-        BigDecimal volumetricWeight = totalVolumeCm3.divide(new BigDecimal("5000"), 2, RoundingMode.HALF_UP);
+        // Volumetric weight: totalVolumeCm3 / divisor
+        int divisor = (systemSettingService != null && systemSettingService.getVolumetricDivisor() != null)
+                ? systemSettingService.getVolumetricDivisor()
+                : 5000;
+        BigDecimal volumetricWeight = totalVolumeCm3.divide(new BigDecimal(String.valueOf(divisor)), 2, RoundingMode.HALF_UP);
 
         // Billable weight: max(actualWeight, volumetricWeight)
         BigDecimal billableWeight = actualWeight.max(volumetricWeight);
@@ -309,12 +402,21 @@ public class ShipmentServiceImpl implements ShipmentService {
         resp.setBillableWeightKg(billableWeight);
 
         // Waybill summary
-        resp.setWaybillStatus("Waybill: Signed / Completed");
-        resp.setHauler("Cordillera Freight");
-        resp.setWaybillGeneratedDate(shipment.getDateRegistered() != null
-                ? shipment.getDateRegistered().format(DATE_FORMATTER)
-                : "Aug 5, 2026");
-        resp.setSignedBy("R. Aquino");
+        Waybill waybill = waybillRepository.findByShipment_ShipmentId(shipment.getShipmentId()).orElse(null);
+        if (waybill != null) {
+            String wbStatusLabel = waybill.getStatus() == com.tnl.logistics.model.WaybillStatus.SIGNED_COMPLETED
+                    ? "Waybill: Signed / Completed"
+                    : (waybill.getStatus() == com.tnl.logistics.model.WaybillStatus.SENT_TO_HAULER ? "Waybill: Sent to Hauler" : "Waybill: Generated");
+            resp.setWaybillStatus(wbStatusLabel);
+            resp.setHauler(waybill.getHaulerName());
+            resp.setWaybillGeneratedDate(waybill.getGeneratedAt() != null ? waybill.getGeneratedAt().format(DATE_FORMATTER) : "—");
+            resp.setSignedBy(waybill.getSignedBy());
+        } else {
+            resp.setWaybillStatus("Waybill: Not Generated");
+            resp.setHauler("—");
+            resp.setWaybillGeneratedDate("—");
+            resp.setSignedBy(null);
+        }
 
         List<ParcelUnitResponse> unitResponses = parcels.stream().map(p -> new ParcelUnitResponse(
                 p.getTrackingId(),
@@ -372,35 +474,89 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         int totalLabelsPrinted = parcel.getLabelStatus() == LabelStatus.PRINTED ? (1 + parcel.getReprintCount()) : 0;
 
+        Optional<PrintEvent> latestPrintOpt = printEventRepository.findTopByParcelUnit_TrackingIdOrderByPrintTimestampDescPrintIdDesc(trackingId);
+        String printStatus = parcel.getLabelStatus() == LabelStatus.PRINTED ? "Printed" : "Pending";
+        String printDate;
+        String printStaff;
+        String printPrinter;
+
+        if (latestPrintOpt.isPresent()) {
+            PrintEvent event = latestPrintOpt.get();
+            printDate = event.getPrintTimestamp() != null
+                    ? event.getPrintTimestamp().format(DATE_FORMATTER) + " · " + event.getPrintTimestamp().format(TIME_FORMATTER)
+                    : "—";
+            printStaff = event.getStaff() != null ? event.getStaff().getFullName() : "Office Staff";
+            printPrinter = event.getPrinterId() != null ? event.getPrinterId() : "Brother RJ-2035B";
+        } else if (parcel.getLabelStatus() == LabelStatus.PRINTED) {
+            printDate = shipment.getDateRegistered() != null
+                    ? shipment.getDateRegistered().format(DATE_FORMATTER) + " · " + shipment.getDateRegistered().format(TIME_FORMATTER)
+                    : "—";
+            printStaff = events.stream()
+                    .filter(e -> e.getStaff() != null)
+                    .map(e -> e.getStaff().getFullName())
+                    .findFirst()
+                    .orElse("Office Staff");
+            printPrinter = "Brother RJ-2035B";
+        } else {
+            printDate = "—";
+            printStaff = "—";
+            printPrinter = "—";
+        }
+
         resp.setPrinting(new PrintInfoDto(
-                parcel.getLabelStatus() == LabelStatus.PRINTED ? "Printed" : "Pending",
-                shipment.getDateRegistered() != null ? shipment.getDateRegistered().format(DATE_FORMATTER) + " · " + shipment.getDateRegistered().format(TIME_FORMATTER) : "Aug 24, 2026",
-                "Maria Santos",
-                "Brother RJ-2035B",
-                totalLabelsPrinted > 0 ? totalLabelsPrinted : 1
+                printStatus,
+                printDate,
+                printStaff,
+                printPrinter,
+                totalLabelsPrinted > 0 ? totalLabelsPrinted : 0
         ));
 
         return resp;
     }
 
     @Override
-    public void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUsername) {
+    public void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUserId, String printerId) {
+        if (!shipmentRepository.existsById(shipmentId)) {
+            throw new IllegalArgumentException("Shipment not found with ID: " + shipmentId);
+        }
+
         List<ParcelUnit> parcels;
         if (packageIds == null || packageIds.isEmpty()) {
             parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
         } else {
-            parcels = parcelUnitRepository.findAllById(packageIds);
+            parcels = parcelUnitRepository.findByShipment_ShipmentIdAndTrackingIdIn(shipmentId, packageIds);
+            if (parcels.size() != packageIds.size()) {
+                throw new IllegalArgumentException("One or more tracking IDs do not belong to shipment: " + shipmentId);
+            }
         }
 
+        AppUser actingStaff = null;
+        if (actingStaffUserId != null && !actingStaffUserId.isBlank()) {
+            actingStaff = appUserRepository.findById(actingStaffUserId).orElse(null);
+        }
+        if (actingStaff == null) {
+            actingStaff = appUserRepository.findAll().stream().findFirst().orElse(null);
+        }
+
+        String assignedPrinter = (printerId != null && !printerId.isBlank()) ? printerId : "Brother RJ-2035B";
+
         for (ParcelUnit parcel : parcels) {
+            PrintKind printKind;
             if (parcel.getLabelStatus() == LabelStatus.NOT_PRINTED) {
                 // First print: marks as Printed, keeping reprintCount at 0
                 parcel.setLabelStatus(LabelStatus.PRINTED);
+                printKind = PrintKind.PRINT;
             } else {
                 // Subsequent prints: increment reprintCount (1, 2, 3...)
                 parcel.setReprintCount(parcel.getReprintCount() + 1);
+                printKind = PrintKind.REPRINT;
             }
-            parcelUnitRepository.save(parcel);
+            parcelUnitRepository.saveAndFlush(parcel);
+ 
+            if (actingStaff != null) {
+                PrintEvent printEvent = new PrintEvent(parcel, printKind, 1, actingStaff, assignedPrinter);
+                printEventRepository.saveAndFlush(printEvent);
+            }
         }
 
         try {
@@ -408,12 +564,18 @@ public class ShipmentServiceImpl implements ShipmentService {
         } catch (Exception ignored) {}
     }
 
-    private ShipmentSummaryResponse mapToSummaryResponse(Shipment s) {
-        List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(s.getShipmentId());
-        List<Payment> payments = paymentRepository.findByShipment_ShipmentId(s.getShipmentId());
+    private ShipmentSummaryResponse mapToSummaryResponse(
+            Shipment s,
+            List<ParcelUnit> parcels,
+            List<Payment> payments,
+            Map<String, TrackingEvent> latestEventWithVehicleByTrackingId
+    ) {
+        if (parcels == null) parcels = Collections.emptyList();
+        if (payments == null) payments = Collections.emptyList();
 
         BigDecimal totalPaid = payments.stream()
                 .map(Payment::getAmountPaid)
+                .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal balance = s.getTotalAmount().subtract(totalPaid);
         if (balance.compareTo(BigDecimal.ZERO) < 0) balance = BigDecimal.ZERO;
@@ -427,10 +589,33 @@ public class ShipmentServiceImpl implements ShipmentService {
                 ? s.getDateRegistered().format(DATE_FORMATTER)
                 : "Aug 24, 2026";
 
+        String vehicleId = null;
+        String vehiclePlate = null;
+        for (ParcelUnit p : parcels) {
+            if (p.getCurrentVehicle() != null) {
+                vehicleId = p.getCurrentVehicle().getVehicleId();
+                vehiclePlate = p.getCurrentVehicle().getPlateNumber();
+                break;
+            }
+        }
+        if (vehicleId == null && !parcels.isEmpty() && latestEventWithVehicleByTrackingId != null) {
+            for (ParcelUnit p : parcels) {
+                TrackingEvent ev = latestEventWithVehicleByTrackingId.get(p.getTrackingId());
+                if (ev != null && ev.getVehicle() != null) {
+                    vehicleId = ev.getVehicle().getVehicleId();
+                    vehiclePlate = ev.getVehicle().getPlateNumber();
+                    break;
+                }
+            }
+        }
+
+        String clientId = s.getClient() != null ? s.getClient().getClientId() : null;
+        String clientName = s.getClient() != null ? s.getClient().getName() : "—";
+
         return new ShipmentSummaryResponse(
                 s.getShipmentId(),
-                s.getClient().getClientId(),
-                s.getClient().getName(),
+                clientId,
+                clientName,
                 s.getRecipientName(),
                 s.getRecipientContact(),
                 s.getQuantity(),
@@ -442,8 +627,26 @@ public class ShipmentServiceImpl implements ShipmentService {
                 balance,
                 s.getRoute() != null ? s.getRoute() : "Manila → TNL Baguio",
                 s.getDateRegistered(),
-                dateLabel
+                dateLabel,
+                vehicleId,
+                vehiclePlate
         );
+    }
+
+    private ShipmentSummaryResponse mapToSummaryResponse(Shipment s) {
+        List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(s.getShipmentId());
+        List<Payment> payments = paymentRepository.findByShipment_ShipmentId(s.getShipmentId());
+        Map<String, TrackingEvent> eventMap = new HashMap<>();
+        if (!parcels.isEmpty()) {
+            List<String> tIds = parcels.stream().map(ParcelUnit::getTrackingId).collect(Collectors.toList());
+            List<TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdInAndVehicleNotNullOrderByEventTimestampAsc(tIds);
+            for (TrackingEvent ev : events) {
+                if (ev.getParcelUnit() != null) {
+                    eventMap.put(ev.getParcelUnit().getTrackingId(), ev);
+                }
+            }
+        }
+        return mapToSummaryResponse(s, parcels, payments, eventMap);
     }
 
     private static class RollupStatus {
@@ -464,6 +667,10 @@ public class ShipmentServiceImpl implements ShipmentService {
         Map<ParcelStatus, Long> counts = parcels.stream()
                 .collect(Collectors.groupingBy(ParcelUnit::getCurrentStatus, Collectors.counting()));
 
+        if (counts.containsKey(ParcelStatus.COMPLETED)) {
+            long c = counts.get(ParcelStatus.COMPLETED);
+            return new RollupStatus("Completed", c + " / " + total + " Completed");
+        }
         if (counts.containsKey(ParcelStatus.LOADED_TO_HAULER)) {
             long c = counts.get(ParcelStatus.LOADED_TO_HAULER);
             return new RollupStatus("Loaded to Hauler", c + " / " + total + " Loaded to Hauler");
@@ -492,6 +699,7 @@ public class ShipmentServiceImpl implements ShipmentService {
             case LOADED_ON_TRUCK: return "Loaded on Truck";
             case ARRIVED_AT_TNL: return "Arrived at TNL";
             case LOADED_TO_HAULER: return "Loaded to Hauler";
+            case COMPLETED: return "Completed";
             case REGISTERED:
             default: return "Registered";
         }

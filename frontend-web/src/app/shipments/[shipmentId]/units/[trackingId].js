@@ -5,7 +5,7 @@ import AppShell from '../../../../components/layout/AppShell';
 import Card from '../../../../components/common/Card';
 import StatusBadge from '../../../../components/common/StatusBadge';
 import QRCodeGenerator from '../../../../components/common/QRCodeGenerator';
-import { getParcelUnit, subscribeRealtimeEvents } from '../../../../features/shipments';
+import { getParcelUnit, printLabels, subscribeRealtimeEvents } from '../../../../features/shipments';
 import { colors, fonts, spacing, radius, type } from '../../../../theme';
 
 const STATUS_FLOW = ['Registered', 'QR Generated', 'Loaded on Truck', 'Arrived at TNL', 'Loaded to Hauler'];
@@ -63,7 +63,7 @@ export default function ParcelUnitDetailScreen() {
     return (
       <AppShell>
         <Pressable onPress={() => router.push(`/shipments/${shipmentId}`)}>
-          <Text style={styles.backLink}>← {shipmentId}</Text>
+          <Text style={styles.backLink}>Back to {shipmentId}</Text>
         </Pressable>
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={colors.ink} size="large" />
@@ -77,7 +77,7 @@ export default function ParcelUnitDetailScreen() {
     return (
       <AppShell>
         <Pressable onPress={() => router.push(`/shipments/${shipmentId}`)}>
-          <Text style={styles.backLink}>← {shipmentId}</Text>
+          <Text style={styles.backLink}>Back to {shipmentId}</Text>
         </Pressable>
         <Card>
           <Text style={styles.notFoundText}>Parcel unit {trackingId} was not found.</Text>
@@ -94,17 +94,32 @@ export default function ParcelUnitDetailScreen() {
   const completedEventNames = new Set(completedEvents.map((e) => e.event));
   const nextPendingStatus = STATUS_FLOW.find((s) => !completedEventNames.has(s));
 
+  const handleReprint = async () => {
+    try {
+      if (typeof window !== 'undefined' && window.print) {
+        window.print();
+      }
+      if (shipmentId && trackingId) {
+        await printLabels(shipmentId, [trackingId]);
+      }
+    } catch (err) {
+      console.warn('Failed to record label reprint:', err?.message);
+    } finally {
+      load(false);
+    }
+  };
+
   return (
     <AppShell>
       <Pressable onPress={() => router.push(`/shipments/${shipmentId}`)}>
-        <Text style={styles.backLink}>← {shipmentId}</Text>
+        <Text style={styles.backLink}>Back to {shipmentId}</Text>
       </Pressable>
 
       {/* Header Row */}
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.eyebrow}>
-            {unit.trackingId} · PACKAGE {unit.packageIndex} OF {unit.packageCount}
+            {unit.trackingId} | PACKAGE {unit.packageIndex} OF {unit.packageCount}
           </Text>
           <Text style={styles.title}>{(unit.recipientName || '').toUpperCase()}</Text>
         </View>
@@ -142,8 +157,8 @@ export default function ParcelUnitDetailScreen() {
                 <Text style={styles.fieldValue}>{unit.client}</Text>
               </View>
               <View style={styles.gridCol}>
-                <Text style={styles.fieldLabel}>DIMENSIONS · VOLUME</Text>
-                <Text style={styles.fieldValue}>{dimensionsLabel} · {volumeLabel}</Text>
+                <Text style={styles.fieldLabel}>DIMENSIONS: VOLUME</Text>
+                <Text style={styles.fieldValue}>{dimensionsLabel} | {volumeLabel}</Text>
               </View>
               <View style={styles.gridCol}>
                 <Text style={styles.fieldLabel}>ROUTE</Text>
@@ -155,7 +170,7 @@ export default function ParcelUnitDetailScreen() {
           {/* Card 2: Tracking History */}
           <Card
             title="TRACKING HISTORY"
-            right={<Text style={styles.appendOnly}>append-only · this package only</Text>}
+            right={<Text style={styles.appendOnly}>append-only | this package only</Text>}
           >
             <View style={styles.timeline}>
               {/* Completed Events */}
@@ -173,7 +188,7 @@ export default function ParcelUnitDetailScreen() {
                     <View style={[styles.timelineContent, hasNextItem && styles.timelineContentSpacing]}>
                       <View style={styles.eventTitleRow}>
                         <Text style={styles.eventTitle}>{entry.event}</Text>
-                        <Text style={styles.eventTimestamp}>{entry.date} · {entry.time}</Text>
+                        <Text style={styles.eventTimestamp}>{entry.date}, {entry.time}</Text>
                       </View>
                       <Text style={styles.eventStaff}>by {entry.by}</Text>
                     </View>
@@ -189,7 +204,7 @@ export default function ParcelUnitDetailScreen() {
                   </View>
                   <View style={styles.timelineContent}>
                     <Text style={styles.pendingStatusText}>
-                      {nextPendingStatus} — pending mobile scan
+                      {nextPendingStatus} (pending mobile scan)
                     </Text>
                   </View>
                 </View>
@@ -214,24 +229,9 @@ export default function ParcelUnitDetailScreen() {
           {/* Action Buttons */}
           <Pressable
             style={styles.reprintBtn}
-            onPress={() => {
-              if (typeof window !== 'undefined' && window.print) {
-                window.print();
-              }
-            }}
+            onPress={handleReprint}
           >
             <Text style={styles.reprintBtnText}>Reprint Label</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.quickReprintBtn}
-            onPress={() => {
-              if (typeof window !== 'undefined' && window.print) {
-                window.print();
-              }
-            }}
-          >
-            <Text style={styles.quickReprintText}>Quick Reprint ({unit.reprintCount || 0})</Text>
           </Pressable>
 
           {/* Label Printing Card */}
@@ -244,7 +244,7 @@ export default function ParcelUnitDetailScreen() {
                 <Text style={styles.printType}>Print</Text>
                 <Text style={styles.printDate}>{unit.printing?.date}</Text>
                 <Text style={styles.printStaff}>
-                  by {unit.printing?.by} · {unit.printing?.printer}
+                  by {unit.printing?.by} | {unit.printing?.printer}
                 </Text>
               </View>
               <Text style={styles.printLabelCount}>{unit.printing?.count || 1} label</Text>
@@ -488,20 +488,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.3,
-  },
-  quickReprintBtn: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: radius.sm,
-  },
-  quickReprintText: {
-    fontFamily: fonts.mono,
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: colors.ink,
   },
   printingCard: {
     marginTop: spacing.xs,

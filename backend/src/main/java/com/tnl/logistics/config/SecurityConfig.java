@@ -1,5 +1,6 @@
 package com.tnl.logistics.config;
 
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -20,6 +21,12 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableMethodSecurity
 public class SecurityConfig {
 
+	private final com.tnl.logistics.repository.AppUserRepository appUserRepository;
+
+	public SecurityConfig(com.tnl.logistics.repository.AppUserRepository appUserRepository) {
+		this.appUserRepository = appUserRepository;
+	}
+
 	@Bean
 	public BCryptPasswordEncoder passwordEncoder() {
 		return new BCryptPasswordEncoder();
@@ -32,6 +39,8 @@ public class SecurityConfig {
 			.csrf(csrf -> csrf.disable()) // Disabled for stateless APIs
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 			.authorizeHttpRequests(auth -> auth
+				// Allow internal async and error dispatches (prevents SSE disconnect loops)
+				.dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
 				// Allow CORS preflight OPTIONS requests
 				.requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
 				// Allow public access to API documentation (Swagger/OpenAPI)
@@ -40,14 +49,20 @@ public class SecurityConfig {
 						"/swagger-ui/**",
 						"/swagger-ui.html"
 				).permitAll()
-				// Allow public access to Login auth endpoint
-				.requestMatchers("/api/v1/auth/login").permitAll()
+				// Allow public access to Login and First Boot auth endpoints
+				.requestMatchers(
+						"/api/v1/auth/login",
+						"/api/v1/auth/first-boot-status",
+						"/api/v1/auth/first-boot-admin"
+				).permitAll()
+				// Allow internal Spring Boot error dispatch
+				.requestMatchers("/error").permitAll()
 				// Secure all other REST API endpoints
 				.requestMatchers("/api/v1/**").authenticated()
 				.anyRequest().authenticated()
 			)
 			// Wire the JWT token verification filter
-			.addFilterBefore(new JwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+			.addFilterBefore(new JwtAuthenticationFilter(appUserRepository), UsernamePasswordAuthenticationFilter.class);
 
 		return http.build();
 	}

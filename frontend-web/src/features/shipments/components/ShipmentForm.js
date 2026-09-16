@@ -38,7 +38,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
   const [heightCm, setHeightCm] = useState('15');
 
   // Charges & Options
-  const [route, setRoute] = useState('Manila → TNL Baguio');
+  const [route, setRoute] = useState('Manila to TNL Baguio');
   const [chargeModel, setChargeModel] = useState('FLAT');
   const [shippingFee, setShippingFee] = useState('500');
   const [otherCharges, setOtherCharges] = useState('0');
@@ -47,22 +47,28 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
   // Field Validation Errors
   const [errors, setErrors] = useState({});
 
-  // Automatically sync client selection when clients list loads from backend
+  // Automatically sync client selection to first active client when clients list loads
   useEffect(() => {
-    if (!clientId && clients && clients.length > 0) {
-      const defaultId = clients[0].id || clients[0].clientId || '';
-      setClientId(defaultId);
-      setErrors((prev) => ({ ...prev, clientId: null }));
+    const activeClients = (clients || []).filter((c) => c.active !== false);
+    if (activeClients.length > 0) {
+      const isCurrentActive = activeClients.some((c) => (c.id || c.clientId) === clientId);
+      if (!clientId || !isCurrentActive) {
+        const defaultId = activeClients[0].id || activeClients[0].clientId || '';
+        setClientId(defaultId);
+        setErrors((prev) => ({ ...prev, clientId: null }));
+      }
     }
   }, [clients, clientId]);
 
   const clientOptions = useMemo(
     () =>
-      clients.map((c) => {
-        const val = c.id || c.clientId;
-        const code = c.code || c.clientId || c.id;
-        return { value: val, label: `${code} — ${c.name}` };
-      }),
+      (clients || [])
+        .filter((c) => c.active !== false)
+        .map((c) => {
+          const val = c.id || c.clientId;
+          const code = c.code || c.clientId || c.id;
+          return { value: val, label: `${code}: ${c.name}` };
+        }),
     [clients]
   );
 
@@ -154,7 +160,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
       lengthCm: parseFloat(lengthCm) || 20.0,
       widthCm: parseFloat(widthCm) || 10.0,
       heightCm: parseFloat(heightCm) || 15.0,
-      route: route.trim() || 'Manila → TNL Baguio',
+      route: route.trim() || 'Manila to TNL Baguio',
       chargeModel,
       shippingFee: parseFloat(shippingFee) || 0,
       otherCharges: parseFloat(otherCharges) || 0,
@@ -235,7 +241,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
                 error={errors.clientId}
               />
               <Text style={styles.helperNote}>
-                Payments consolidate per client — multiple shipments bill as one SOA.
+                Payments consolidate per client; multiple shipments bill as one SOA.
               </Text>
             </>
           ) : (
@@ -373,7 +379,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
           </View>
 
           <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
-            <FormField label="Route" value={route} onChangeText={setRoute} placeholder="Manila → TNL Baguio" />
+            <FormField label="Route" value={route} onChangeText={setRoute} placeholder="Manila to TNL Baguio" />
           </View>
         </View>
 
@@ -500,7 +506,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
 
           <View style={[styles.submitContainer, isMobile && styles.submitContainerMobile]}>
             <Button
-              label={submitting ? 'Registering...' : `Register & Generate ${quantity || 1} QR →`}
+              label={submitting ? 'Registering...' : `Register & Generate ${quantity || 1} QR`}
               variant="primary"
               onPress={handleSubmit}
               loading={submitting}

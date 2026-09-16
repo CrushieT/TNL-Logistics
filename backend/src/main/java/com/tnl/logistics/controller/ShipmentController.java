@@ -9,7 +9,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,8 +33,12 @@ public class ShipmentController {
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
     public ResponseEntity<ShipmentResponse> registerShipment(@Valid @RequestBody ShipmentRegistrationRequest request) {
-        String username = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        ShipmentResponse response = shipmentService.registerShipment(request, username);
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            throw new AccessDeniedException("Authenticated user context is required");
+        }
+        String actingStaffUserId = auth.getName();
+        ShipmentResponse response = shipmentService.registerShipment(request, actingStaffUserId);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -43,10 +49,11 @@ public class ShipmentController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String paymentStatus
+            @RequestParam(required = false) String paymentStatus,
+            @RequestParam(required = false) String vehicleId
     ) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "dateRegistered"));
-        Page<ShipmentSummaryResponse> shipments = shipmentService.getShipments(search, status, paymentStatus, pageable);
+        Page<ShipmentSummaryResponse> shipments = shipmentService.getShipments(search, status, paymentStatus, vehicleId, pageable);
         return ResponseEntity.ok(shipments);
     }
 
@@ -63,9 +70,14 @@ public class ShipmentController {
             @PathVariable String shipmentId,
             @RequestBody(required = false) PrintLabelRequest request
     ) {
-        String username = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            throw new AccessDeniedException("Authenticated user context is required");
+        }
+        String actingStaffUserId = auth.getName();
         List<String> packageIds = request != null ? request.getPackageIds() : null;
-        shipmentService.recordLabelPrint(shipmentId, packageIds, username);
+        String printerId = request != null ? request.getPrinterId() : null;
+        shipmentService.recordLabelPrint(shipmentId, packageIds, actingStaffUserId, printerId);
         return ResponseEntity.ok().build();
     }
 }

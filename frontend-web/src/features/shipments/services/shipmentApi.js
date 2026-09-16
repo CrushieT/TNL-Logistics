@@ -1,8 +1,9 @@
 import apiClient from '../../../services/api/client';
 
-export async function getDashboardSummary() {
+export async function getDashboardSummary(cycle) {
   try {
-    const { data } = await apiClient.get('/dashboard/summary');
+    const params = cycle ? { cycle } : {};
+    const { data } = await apiClient.get('/dashboard/summary', { params });
     return data;
   } catch (err) {
     return null;
@@ -57,7 +58,7 @@ export async function registerShipment(payload) {
     shippingFee: parseFloat(payload.shippingFee) || 0,
     otherCharges: parseFloat(payload.otherCharges) || 0,
     paidAtRegistration: Boolean(payload.paidAtRegistration),
-    route: payload.route || 'Manila → TNL Baguio',
+    route: payload.route || 'Manila to TNL Baguio',
     registeredVia: 'DESKTOP_OFFICE',
     parcels,
   };

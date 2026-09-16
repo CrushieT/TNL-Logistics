@@ -2,71 +2,269 @@ import axios from 'axios';
 import { Platform } from 'react-native';
 
 const TOKEN_KEY = 'tnl_admin_token';
+const USER_KEY = 'tnl_user_info';
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
-export async function getToken() {
+export function getToken() {
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
     return window.localStorage.getItem(TOKEN_KEY);
   }
   return null;
 }
 
-export async function setToken(token) {
+export function setToken(token) {
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
     window.localStorage.setItem(TOKEN_KEY, token);
   }
 }
 
-export async function clearToken() {
+export function clearToken() {
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
     window.localStorage.removeItem(TOKEN_KEY);
   }
 }
 
+export function getCurrentUser() {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+    const raw = window.localStorage.getItem(USER_KEY);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export function setCurrentUser(user) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+  }
+}
+
+export function clearCurrentUser() {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.removeItem(USER_KEY);
+  }
+}
+
+export function isTokenExpired(token) {
+  if (!token || typeof token !== 'string') return true;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const parsed = JSON.parse(jsonPayload);
+    if (!parsed.exp) return false;
+    return Date.now() >= (parsed.exp * 1000 - 30000);
+  } catch (err) {
+    return true;
+  }
+}
+
+export function isAuthenticated() {
+  const token = getToken();
+  return Boolean(token && !isTokenExpired(token));
+}
+
+export async function ensureAuthenticated() {
+  const token = getToken();
+  if (!token || isTokenExpired(token)) {
+    return null;
+  }
+  return token;
+}
+
+export async function login(username, password) {
+  const response = await axios.post(`${BASE_URL}/auth/login`, {
+    username,
+    password,
+  });
+
+  const { token, userId, role, mustChangePassword } = response.data;
+
+  if (role === 'FIELD_STAFF') {
+    throw new Error('Field staff accounts must use the mobile application.');
+  }
+
+  setToken(token);
+  setCurrentUser({
+    userId,
+    username,
+    role,
+    mustChangePassword,
+  });
+
+  return response.data;
+}
+
+export async function checkFirstBootStatus() {
+  try {
+    const response = await axios.get(`${BASE_URL}/auth/first-boot-status`);
+    return Boolean(response.data?.isFirstBoot);
+  } catch (error) {
+    return false;
+  }
+}
+
+export async function registerFirstBootAdmin({
+  fullName,
+  username,
+  password,
+  confirmPassword,
+  companyName,
+  companyAddress,
+  companyContact,
+  billingEmail,
+}) {
+  const response = await axios.post(`${BASE_URL}/auth/first-boot-admin`, {
+    fullName,
+    username,
+    password,
+    confirmPassword,
+    companyName,
+    companyAddress,
+    companyContact,
+    billingEmail,
+  });
+
+  const { token, userId, role, mustChangePassword } = response.data;
+
+  setToken(token);
+  setCurrentUser({
+    userId,
+    username,
+    role,
+    fullName,
+    mustChangePassword,
+  });
+
+  return response.data;
+}
+
+export function logout() {
+  clearToken();
+  clearCurrentUser();
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+    window.location.href = '/login';
+  }
+}
+
 const apiClient = axios.create({
-  baseURL: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8080/api/v1',
+  baseURL: BASE_URL,
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-export async function ensureAuthenticated() {
-  let token = await getToken();
-  if (!token) {
-    try {
-      const authRes = await axios.post('http://localhost:8080/api/v1/auth/login', {
-        username: 'admin',
-        password: 'admin123',
-      });
-      if (authRes.data?.token) {
-        token = authRes.data.token;
-        await setToken(token);
-      }
-    } catch (e) {
-      console.warn('Auto-login failed. Make sure backend is running.', e?.message);
-    }
-  }
-  return token;
-}
-
 // Attach JWT automatically on every request.
-apiClient.interceptors.request.use(async (config) => {
-  const token = await ensureAuthenticated();
-  if (token) {
+apiClient.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token && !isTokenExpired(token)) {
+    config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-// Central 401 handling.
+// Central 401 & 403 handling.
 apiClient.interceptors.response.use(
   (response) => response,
-  async (error) => {
-    if (error?.response?.status === 401) {
-      await clearToken();
+  (error) => {
+    const status = error?.response?.status;
+    const requestUrl = error?.config?.url || '';
+
+    // Ignore 401 from the login endpoint itself so login error messages can render.
+    if (status === 401 && !requestUrl.includes('/auth/login')) {
+      clearToken();
+      clearCurrentUser();
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+        if (!window.location.pathname.startsWith('/login')) {
+          const redirectPath = encodeURIComponent(window.location.pathname + window.location.search);
+          window.location.href = `/login?redirect=${redirectPath}`;
+        }
+      }
+    }
+
+    if (status === 403 && error?.response?.data?.code === 'PASSWORD_CHANGE_REQUIRED') {
+      const currentUser = getCurrentUser();
+      if (currentUser) {
+        setCurrentUser({ ...currentUser, mustChangePassword: true });
+      }
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+        if (!window.location.pathname.startsWith('/change-password')) {
+          window.location.href = '/change-password';
+        }
+      }
     }
     return Promise.reject(error);
   }
 );
+
+export async function validateSession() {
+  const token = getToken();
+  if (!token || isTokenExpired(token)) {
+    clearToken();
+    clearCurrentUser();
+    return false;
+  }
+  try {
+    const { data } = await apiClient.get('/auth/me');
+    if (data && data.username) {
+      setCurrentUser({
+        userId: data.userId,
+        username: data.username,
+        role: data.role,
+        fullName: data.fullName,
+        mustChangePassword: data.mustChangePassword,
+      });
+      return true;
+    }
+    clearToken();
+    clearCurrentUser();
+    return false;
+  } catch (error) {
+    clearToken();
+    clearCurrentUser();
+    return false;
+  }
+}
+
+export async function changePassword(oldPassword, newPassword) {
+  const response = await apiClient.post('/auth/password-change', {
+    oldPassword,
+    newPassword,
+  });
+
+  if (response.data?.token) {
+    setToken(response.data.token);
+  }
+
+  const currentUser = getCurrentUser();
+  if (currentUser) {
+    setCurrentUser({
+      ...currentUser,
+      mustChangePassword: false,
+      role: response.data?.role || currentUser.role,
+      username: response.data?.username || currentUser.username,
+      userId: response.data?.userId || currentUser.userId,
+    });
+  }
+
+  return response.data;
+}
+
+export async function verifyPassword(password) {
+  const response = await apiClient.post('/auth/verify-password', { password });
+  return response.data;
+}
 
 export default apiClient;

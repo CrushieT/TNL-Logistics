@@ -1,0 +1,289 @@
+# TNL Logistics — Master Build Plan
+
+**System Architecture:** Unified Modular Monolith (Spring Boot 3.4 + MySQL 8.0 + React Native / Expo Web & Mobile). Single shared database where every transaction encoded on PC or mobile is immediately available across all platforms in real time.
+
+**4 Independent Status Concepts (Rule 19):**
+* **Tracking Status (5-state):** `Registered` → `QR Generated` → `Loaded on Truck` → `Outload / Arrive TNL` → `Loaded to Hauler`
+* **Payment Status:** `Unpaid` → `Partially Paid` → `Paid` (and `For Collection` during Thursday batch)
+* **Label Status:** `Not Printed` → `Printed` → `Reprinted`
+* **Waybill Status (4-state):** `Not Generated` → `Generated` → `Sent to Hauler` → `Signed / Completed`
+
+---
+
+## Progress Overview
+
+| Phase | Description | Status |
+| :--- | :--- | :---: |
+| **Phase 0** | Foundation (Skeleton, Flyway Migrations V1-V6, JPA Entities, JWT Auth & Roles) | [COMPLETED] |
+| **Phase 1** | Register Shipment (`SHP-YYYY-XXX`, `TRK-YYYY-XXXXXX`), $m^3$ Volume, Vector QR Labels & Paginated Table | [COMPLETED] |
+| **Phase 2.1** | Backend: 5-State Status Flow Engine & Sequential Scan Validation (`POST /tracking-events/scan`) | [COMPLETED] |
+| **Phase 2.2** | Backend: Vehicle Fleet Management (`VH-XXX` generator & CRUD endpoints) | [COMPLETED] |
+| **Phase 2.3** | Real-Time Live Auto-Updates (Server-Sent Events streaming pipeline `GET /api/v1/events/stream`) | [COMPLETED] |
+| **Phase 2.4** | Web: Vehicle Fleet Management UI (`/vehicles` list & register modal — Desktop Screens 13/14) | [COMPLETED] |
+| **Phase 2.5** | Web & Backend: Client Management Directory & Profile View (`/clients`, `/clients/[id]` — Screens 15/16) | [COMPLETED] |
+| **Phase 3** | Waybills: `WYB-YYYY-XXXX` Generator, 4-State Lifecycle, Printable Manifest & Signature (Desktop Screens 23–25) | [COMPLETED] |
+| **Phase 4.1** | Backend: Payments & Collections Engine (`POST /api/v1/payments`, Balance Recalculation, Multi-Search & Audit) | [COMPLETED] |
+| **Phase 4.2** | Backend: Thursday Weekly Collections Consolidation & SOA Generator (3 Deductions, Net Remittance) | [COMPLETED] |
+| **Phase 4.3** | Web: Billing, Collections & Printable SOA (Desktop Screens 18–22) | [COMPLETED] |
+| **Phase 5** | Web Console: Live Dashboard, Tracking Logs Stream, Reports, Users, Settings & First Boot Setup (Screens 01, 02, 17, 26–28) | [IN PROGRESS] |
+| **Phase 6** | Role-Aware Mobile App: Scan-Only Field Staff vs. Authorized Office Mobile + Bluetooth Printing (Screens 29–53) | [UPCOMING] |
+
+---
+
+## Phase 0 — Foundation [COMPLETED]
+*Backend and database foundation.*
+
+**0.1 — Project Skeleton & Database** — **[COMPLETED]**
+- Spring Boot 3.4 with Java 21, Flyway migration versioning `V1` through `V6`.
+- MySQL connection pooling with HikariCP.
+
+**0.2 — Core JPA Entities & Schemas** — **[COMPLETED]**
+- `Client`, `Shipment`, `ParcelUnit`, `AppUser`, `Vehicle`, `TrackingEvent`, `PrintEvent`, `Payment`, `Waybill`, `SoaStatement`.
+- Physical dimensions ($L \times W \times H\text{ cm}$), auto-volume calculation ($m^3$), and volumetric weight divisor ($5000$).
+- Verified via `RepositoryIntegrationTest` suite.
+
+**0.3 — Security, JWT & RBAC** — **[COMPLETED]**
+- HMAC-SHA256 stateless JWT token provider with BCrypt password hashing and immutable user ID binding.
+- Differentiated token lifecycle architecture: 12-hour shift TTL for Web Administrator (`ADMIN`) in browser `localStorage`, and 10-day TTL for Mobile Staff (`OFFICE_STAFF`, `FIELD_STAFF`) in hardware `SecureStore` with PIN unlock; configurable via `jwt.expiration.admin-hours` and `jwt.expiration.staff-days`.
+- Dynamic invalidation of legacy overlong administrator sessions in `JwtTokenProvider.validateToken`: enforces issuance-time ceiling (`now - iat <= 12h`) and validity window bounds (`exp - iat <= 12h + 60s`) on all `ADMIN` tokens.
+- 3 distinct system roles: `ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`.
+- Instant session revocation on credential changes via `tokenVersion` claims.
+- Method security (`@PreAuthorize`) and `SecurityIntegrationTest` suite.
+
+---
+
+## Phase 1 — Register Shipment & Labels (Office Staff, PC-First) [COMPLETED]
+*First complete vertical slice.*
+
+**1.1 — Backend: Registration Engine & Sequential ID Generation** — **[COMPLETED]**
+- `POST /api/v1/shipments` — client + recipient + shipment/charges + $N$ parcel units.
+- Sequential ID generators: `SHP-YYYY-XXX` and `TRK-YYYY-XXXXXX`.
+- Pricing models: `FLAT` vs `PER_PARCEL` charge calculations (Rule 08).
+- Auto-payment created if `paidAtRegistration = true`. Initial `REGISTERED` & `QR_GENERATED` scan events logged.
+- Verified via `ShipmentIntegrationTest` suite (5 passing tests).
+
+**1.2 — Web: Shipment Registration Screen (Desktop Screens 03–05)** — **[COMPLETED]**
+- Matches client prototype (client selector + inline `+ New Client` toggle, recipient fields, charges, live total).
+- Implemented `ShipmentResultView` with summary grid, parcel table, and live label preview.
+- Implemented `PrintLabelsModal` with printable vector QR cards for all units.
+
+**1.3 — Web: Shipments Table & Package Tracking View (Desktop Screens 06–12)** — **[COMPLETED]**
+- Paginated master shipments table (`GET /api/v1/shipments`) with search and status filters.
+- Live Shipment Details view (`GET /api/v1/shipments/{shipmentId}`).
+- Single Parcel Inspection screen (`GET /api/v1/parcel-units/{trackingId}`) with dimensions, volume ($m^3$), completed-only orange tracking history, single grey next pending status, and label reprint tracking.
+
+---
+
+## Phase 2 — Status Flow, Vehicle Fleet & Real-Time Sync [COMPLETED / IN PROGRESS]
+
+**2.1 — Backend: 5-State Status Flow Engine** — **[COMPLETED]**
+- Status lifecycle: `REGISTERED` → `QR_GENERATED` → `LOADED_ON_TRUCK` → `ARRIVED_AT_TNL` → `LOADED_TO_HAULER`.
+- Strict sequential transition validation; invalid skips rejected with HTTP 400 Bad Request.
+- `POST /api/v1/tracking-events/scan` (single) and `POST /api/v1/tracking-events/batch-scan` (batch).
+- Dynamic shipment rollup status derivation (Rule 09).
+
+**2.2 — Backend: Vehicle Fleet Management Engine** — **[COMPLETED]**
+- Sequential Vehicle ID generator: `VH-001`, `VH-002`, `VH-003`...
+- CRUD endpoints: `POST /api/v1/vehicles`, `GET /api/v1/vehicles` (active fleet), `PUT /api/v1/vehicles/{id}`, `DELETE /api/v1/vehicles/{id}`.
+- Mandatory active vehicle assignment on `LOADED_ON_TRUCK` and auto-clearing upon `ARRIVED_AT_TNL` (Rule 18).
+
+**2.3 — Real-Time Live Auto-Updates (Server-Sent Events)** — **[COMPLETED]**
+- `SseService` with thread-safe client connection registry and 25-second keep-alive heartbeats.
+- `GET /api/v1/events/stream` HTTP streaming endpoint.
+- Web tables, status badges, and parcel timelines update silently in place with 0ms latency upon scan events.
+
+**2.4 — Web: Vehicle Fleet Management UI (Desktop Screens 13/14)** — **[COMPLETED]**
+- `frontend-web/src/app/vehicles.js` — Fleet list (Vehicle ID, Plate number, Type, Status badge, Remarks).
+- Register Vehicle Modal with auto-generated ID, plate number validation, and vehicle type selector.
+
+**2.5 — Web & Backend: Client Management Directory & Profile View (Desktop Screens 15/16)** — **[COMPLETED]**
+- Flyway `V9__add_client_fields_and_performance_indexes.sql` with `default_rate_type`, `active`, `date_registered`, and composite indexes.
+- Sequential ID generator `CL-001`, `CL-002`... with zero N+1 batch financial aggregations (`totalShipments`, `totalCharges`, `totalPaid`, `outstandingBalance`).
+- Hybrid smart deletion (permanent hard delete for unused clients, soft deactivation for clients with shipment history).
+- `frontend-web/src/app/clients/index.js` (Screen 15: Client Directory Table with search, persistent status pills `All`, `Active`, `Inactive`, and pagination).
+- `frontend-web/src/app/clients/[id].js` (Screen 16: Single Client Profile View with 3-metric balance rollup and embedded shipment tracking history).
+- Register & Edit Client modals, and inactive client filtering in shipment registration.
+- Client detail response accurately reflects completed deliveries count and COMPLETED parcel rollup.
+
+---
+
+## Phase 3 — Waybill Generation & Printable Manifest (Desktop Screens 23–25) — **[COMPLETED]**
+*Document handover and legal proof of delivery.*
+
+**3.1 — Backend: Waybill Engine & 4-State Lifecycle** — **[COMPLETED]**
+- Exactly ONE waybill per shipment (`1 → 1 Waybill` — Rule 21).
+- 4-State Lifecycle: `Not Generated` → `Generated` → `Sent to Hauler` → `Signed / Completed`.
+- Sequential Waybill ID generator: `WYB-YYYY-XXXX` (e.g. `WYB-2026-0001`).
+- Field Staff discriminator: `staff_type` (`INTERNAL_TRUCK` vs `HAULER_STAFF`) and `hauler_company` in `app_user` (Flyway `V10`).
+- Endpoints:
+  - `GET /api/v1/waybills/shipments` — Shipment options for top selector.
+  - `GET /api/v1/waybills/haulers` — Categorized hauler field staff and carrier options.
+  - `GET /api/v1/waybills/manifest/{shipmentId}` — Detailed waybill manifest payload with client and parcel breakdown.
+  - `POST /api/v1/waybills/send-to-hauler` — Dispatches waybill to designated hauler.
+  - `POST /api/v1/waybills/complete/{shipmentId}` — Records returned client signature metadata and completes POD.
+  - `GET /api/v1/waybills` — Paginated list of waybills with search, status, and hauler filters.
+
+**3.2 — Web: Waybill Management & Printable View (Desktop Screens 23, 24, 25)** — **[COMPLETED]**
+- **Waybills Screen (`src/app/waybills/index.js` matching `prototype waybills page.png`):**
+  - Top dropdown selector (`[ SHP-2026-005 · Mario Bautista · Not Generated v ]`), dynamic status pill, and `Open shipment →` link.
+  - 3-Stage Waybill Workflow Bar:
+    - `Not Generated`: `HAULER` dropdown (field staff haulers) + `Mark as Sent to Hauler →`.
+    - `Sent to Hauler`: `SIGNED BY` input text (pre-filled with client/recipient name) + `Mark as Signed / Completed →`.
+    - `Signed / Completed`: `✓ Completed` badge with signatory metadata and completion date.
+  - High-contrast A4 printable logistics manifest card with TNL header, hauler box, consignee box, itemized parcel tracking list, and 3 physical signature blocks.
+  - Top-right `Print / Export PDF` action triggering web print dialog.
+
+---
+
+## Phase 4 — Billing, Weekly Collections & Statement of Account (Desktop Screens 18–22)
+*Financial accounting and client billing.*
+
+**4.1 — Backend: Payments & Collections Engine** — **[COMPLETED]**
+- Flyway `V12__enhance_payment_schema.sql`: added `staff_id` (FK to `app_user`), `remarks`, and composite index on `(payment_date, method)`.
+- Flyway `V26__expand_payment_methods.sql`: expanded `payment.method` enum to include `CHEQUE` and `OTHER`.
+- Financial balance calculation and validation: strictly positive payment amounts, overpayment prevention exceeding remaining balance.
+- Automatic payment status updates: `Unpaid` → `Partially Paid` → `Paid` (with running `totalPaid` and `balance` updates).
+- REST Endpoints:
+  - `POST /api/v1/payments` — Record payment against shipment (`ADMIN`, `OFFICE_STAFF`).
+  - `GET /api/v1/payments/shipment/{shipmentId}` — Itemized shipment payment history and balance overview.
+  - `GET /api/v1/payments` — Paginated company-wide payments directory with multi-field search (shipment ID, client, recipient, ref no, method, date range).
+- Real-time Server-Sent Events (SSE) integration via `broadcastPaymentRecorded`.
+- Verified via `PaymentIntegrationTest` suite (18/18 tests passing).
+
+**4.2 — Backend: Thursday Weekly Collections Consolidation & SOA Generator** — **[COMPLETED]**
+- Flyway `V13`, `V14`, `V15`, `V16`: enhanced `soa`, created `soa_deduction` table, composite indexes, and complete cascading foreign keys.
+- Thursday Weekly Collection Consolidation Engine (Rule 13): groups unbilled shipments (`statement_id IS NULL`) and client balances.
+- Sequential SOA ID Generator: `SOA-YYYY-XXXX` (e.g. `SOA-2026-0001`).
+- 3 Business Deduction categories: `BAD_ORDER`, `DISCREPANCY`, and `CLAIM`.
+- Mathematical Net Remittance & Outstanding Balance derivation:
+  $\text{Outstanding Balance} = \text{Current Charges} + \text{Previous Balance} - \text{Deductions} - \text{Total Paid}$.
+- Immutability Lock: updates `statement_id = soa_no` on all included shipments and payments upon SOA creation.
+- REST Endpoints:
+  - `GET /api/v1/collections/weekly` — Active Thursday weekly collections overview.
+  - `GET /api/v1/collections/preview/{clientId}` — Live unbilled shipments preview for a client.
+  - `POST /api/v1/soa/generate` — Single SOA generation with itemized deductions.
+  - `POST /api/v1/soa/generate-batch` — Bulk SOA generation for collection cycle.
+  - `GET /api/v1/soa/{soaNo}` — Complete statement details and breakdown.
+  - `GET /api/v1/soa` — Paginated directory of generated SOAs.
+- Real-time SSE broadcasting via `broadcastSoaGenerated`.
+- Verified via `SoaIntegrationTest` suite (21/21 total backend tests passing).
+
+**4.3 — Web: Billing, Collections & Printable SOA (Desktop Screens 18, 19, 20, 21, 22)**  — **[COMPLETED]**
+- **Payment Management (Screen 18) — [COMPLETED]:**
+  - `/payments` directory table with payment status filter (`Unpaid`, `Partial`, `Paid`), multi-search (Shipment ID, Client Name, Recipient), and real-time outstanding balance metric card.
+  - "Record Payment" modal with real-time balance ceiling restriction, dynamic reference validation (`*` for `GCASH`, `BANK`, `CHEQUE`), and SSE live refresh.
+  - "Payment History" modal (`View` action) with itemized compounding installment ledger, date stamps, staff attribution, and financial summary.
+  - Fixed-slot action column layout (`View`, `Record →`, `Settled`) to eliminate horizontal row jitter.
+- **Weekly Collections (Screen 19) — [COMPLETED]:**
+  - `/weekly-collections` Thursday consolidation dashboard matching prototype layout with 3 metric cards (`CLIENTS`, `TOTAL DUE`, `OUTSTANDING`).
+  - Active Thursday cycle selector targeting the current closing week with dynamic endpoint integration (`GET /api/v1/collections/cycles`) to filter out empty weeks.
+  - Searchable client dropdown with outside-click dismissal and client table status filters (`All`, `Ready for SOA`, `SOA Generated`, `Settled`).
+  - Table with `CLIENT`, `SHIPMENTS`, `TOTAL CHARGES`, `PAID`, `DEDUCTIONS`, `BALANCE`, `STATUS`, and action buttons (`Generate SOA →` and `View SOA`).
+  - Batch SOA Modal with bulk generation trigger and informative notice when all SOAs for a cycle are generated.
+  - Pure on-demand Server-Sent Events (SSE) live updates with clean disconnect handling.
+- **Consolidated SOA Preview (Screen 20) — [COMPLETED]:**
+  - `/statements` itemized unbilled shipment breakdown for the billing cycle with itemized table, total charges, total paid, and deductions input card (`DeductionsInputCard.js`).
+  - Real-time deduction calculation and notes input (supporting Bad Orders, Discrepancies, Claims) with immediate backend persistence.
+- **Detailed Statement View (Screen 21) — [COMPLETED]:**
+  - `/statements` full digital multi-page Statement of Account with client info header, sequential `SOA-YYYY-XXX-WXX` number, multi-page continuation headers, page numbering (`Page X of Y`), deduction rollup directly below Total Paid, and authorized collector assignment.
+- **Printable SOA & Batch Export (Screen 22) — [COMPLETED]:**
+  - Dedicated isolated print route at `/statements/print` with `@page { margin: 0; }` browser header suppression, crisp vector borderTop rules, signature blocks (Prepared by, Collected by, Date collected), and smart batch generation on `/weekly-collections`.
+
+---
+
+## Phase 5 — Web Console: Dashboard, Reports & Administration (Desktop Screens 01, 02, 17, 26–28)
+*Operational dashboards and administrative controls.*
+
+**5.1 — Desktop Login & Route Protection (Screen 01)** — **[COMPLETED]**
+- Standalone production login screen with `TC & CT INTEGRATED LOGISTICS` artwork branding (`/login`).
+- Username/password authentication, JWT storage, and `FIELD_STAFF` desktop blocking.
+- Route guarding across all web console paths with return URL redirection (`?redirect=<path>`).
+- Dynamic sidebar session display with user avatar initials, role, and functional `SIGN OUT` action.
+- Responsive desktop card layout (`maxWidth: 500px`), optimized transparent brand logo, and viewport height adaptations.
+- Built-in in-memory login rate limiter (5 failed attempts per 60s, 60s lockout) with on-demand lazy eviction, HTTP 429 `Retry-After`, and reactive frontend countdown lock.
+- Adaptive `+not-found.js` catch-all route (inside AppShell for authenticated operators, standalone for visitors) and RBAC route guarding for `/users` and `/settings`.
+
+**5.2 — Dashboard Live Metrics (Screen 02)** — **[COMPLETED]**
+- Live operational cards: Shipments & parcel count, Today's Shipments, Unpaid Transactions, and Thursday Weekly Collection rollup.
+- Visual chart cards: Parcel Units by Status (Donut Chart), Weekly Shipment Volume (Monday–Sunday Bar Chart), and Outstanding vs Collected financial comparison bars.
+- Live recent activity feed with formatted tracking scans, staff attribution, and link to `/tracking-logs`.
+- Backend live aggregation endpoint `GET /api/v1/dashboard/summary` and real-time Server-Sent Events (SSE) synchronization.
+
+**5.3 — Global Tracking Logs Audit Feed (Screen 17)** — **[COMPLETED]**
+- Company-wide real-time audit stream showing every parcel scan, timestamp, acting staff member, and vehicle assignment.
+- 4-card live operational metrics bar (Today's Total Scans, Active Couriers, Loaded on Truck Today, Handed to Hauler Today).
+- Multi-field search (tracking ID, shipment ID, staff name) with persistent status filter pills matching prototype aesthetic.
+- Server-side paginated audit table with configurable page sizes (10, 25, 50), clickable parcel inspection links, and CSV export.
+- Optimized Server-Sent Events (SSE) synchronization: smart in-place prepend on Page 1 and non-intrusive floating pill on Page > 1.
+- REST endpoints `GET /api/v1/tracking-events` and `GET /api/v1/tracking-events/metrics` protected by RBAC (`ADMIN`, `OFFICE_STAFF`), verified via `TrackingLogIntegrationTest`.
+
+**5.4 — Operational & Financial Reports (Screen 26)** — **[COMPLETED]**
+- Implemented complete reporting hub (`frontend-web/src/app/reports.js`) with grouped dual-bar chart (charges vs collections), Thursday collection cycle summary card, and top 5 KPI cards with period filtering (`Today`, `This Week`, `This Month`, `Last 30 Days`, `Custom`).
+- Multi-domain reporting tabs: Financial & Revenue (`FinancialRevenueTab.js`), Operational Volume (`OperationalVolumeTab.js`), and Client Receivables Aging (`ReceivablesAgingTab.js`).
+- Interactive `[✓] Hide empty days` toggle on the Daily Operations Timeline (enabled by default), with reverse chronological date ordering (latest date at top) and dynamic grand total label (`Total (X active days)` vs `Total (X days)`).
+- Standardized pagination footer across all report tables and Tracking Logs matching the canonical `Showing N of T · Page X of Y [N / page ▾] [← Previous] [Next →]` pattern established in Shipments, Vehicles, and Payments.
+- CSV export per tab and browser A4 printable document modal (`PrintableReportModal.js`).
+- Real-time SSE synchronization (`STATUS_UPDATE`, `SHIPMENT_CREATED`, `PAYMENT_RECORDED`, `SOA_GENERATED`) with 300ms debounced silent reloads and window focus re-sync.
+- Backend aggregation endpoints `GET /api/v1/reports/summary` and `GET /api/v1/reports/kpis` protected by `@PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")`, verified via `ReportIntegrationTest` (5/5 passing).
+
+**5.5 — User & Staff Management (Screen 27)** — **[COMPLETED]**
+- Staff directory (`/users`) with server-side pagination, search by name, username, and ID, role and status filtering, platform access chips, and responsive design.
+- Credential management suite: auto-generated temporary passwords (`TNL-XXXX`) with clipboard copy feedback and re-roll button; mobile PIN setup (Option A "Require PIN setup on first mobile login" default + Option B collapsible manual 4-digit override); dedicated `ResetPasswordModal` and `ResetPinModal`.
+- Instant session revocation via `tokenVersion` claims and Flyway migrations `V17__add_user_pin_and_indexes.sql` and `V18__add_user_token_version.sql`.
+- Destructive action safety: `ConfirmActionModal` requiring typed User ID verification for deletion; soft-deactivation (`active = false`) for staff with linked operational audit history.
+- Single Administrator System Invariant: disallow creating additional admin accounts, prevent promoting staff to admin, prevent altering admin role, and protect the system owner (`USR-ADMIN`) from deletion across UI and backend services.
+- Full REST endpoints in `UserController.java` (`POST /api/v1/users`, `GET /api/v1/users`, `PUT /api/v1/users/{id}`, `DELETE /api/v1/users/{id}`, `PUT /api/v1/users/{id}/reset-password`, `PUT /api/v1/users/{id}/reset-pin`) secured with `@PreAuthorize("hasRole('ADMIN')")`, verified via 20 integration tests in `UserManagementIntegrationTest.java`.
+
+**5.6 — System Settings (Screen 28)** — **[COMPLETED]**
+- Flyway migration `V19__create_system_settings_table.sql` creating `system_setting` singleton configuration table with defaults.
+- Dynamic Weekly Collection Day integration across `CollectionsService`, `SoaService`, `DashboardService`, and frontend cycle dropdowns, shifting active closing dates while preserving historical finalized SOAs.
+- Dynamic cycle start date calculation (`calculateCycleStartDate`) anchored to the day following the preceding cycle (clamped to 7-day lookback floor), eliminating date overlaps during collection day transitions.
+- Intermediate ghost cycle elimination by bounding candidate historical cycle discovery strictly to pre-active windows.
+- N+1 database query optimization in `CollectionsServiceImpl.getWeeklyCollections()` by pre-fetching statement numbers into a fast in-memory lookup set.
+- Replaced legacy `getActiveCycleThursdays()` with `getActiveCycleDates()`, retaining the former as a deprecated backward-compatible delegator.
+- Dynamic volumetric divisor calculation in `ShipmentService` and reactive calculation preview formula in Settings (`e.g. 50×40×30 = 60,000 cm³ ÷ divisor = kg`).
+- Dynamic company branding (Business Name, Address, Contact, Billing Email) propagating to Statement of Account printouts, Waybill manifests, and Admin Console screens.
+- RBAC protection: Admin-only access for `/api/v1/settings` (`GET`, `PUT`) and staff-accessible `/api/v1/settings/branding`.
+- Real-time Server-Sent Events (`SETTINGS_UPDATED`) for zero-reload configuration synchronization.
+- Frontend Settings screen (`frontend-web/src/app/settings.js`) matching prototype layout with 2-card desktop grid, provisional billable weight callout, and read-only sequential ID format previews (`TRK-YYYY-`, `SHP-YYYY-`).
+- Verified via 12 integration tests in `SystemSettingIntegrationTest.java` (12/12 passing, and 102/102 backend tests passing total).
+
+**5.7 — First Boot Admin Registration & Setup Wizard** — **[COMPLETED]**
+- Public first-boot status probing endpoint (`GET /api/v1/auth/first-boot-status`) returning `FirstBootStatusResponse(isFirstBoot)` to report whether an administrator account already exists (`!existsByRole(ADMIN)`).
+- One-time initial admin registration endpoint (`POST /api/v1/auth/first-boot-admin`) accepting `FirstBootAdminRequest` with Bean validation, creating the immutable primary administrator (`userId = 'USR-ADMIN'`, `role = ADMIN`, `active = true`, `tokenVersion = 1`), updating singleton `SystemSetting` company branding, broadcasting `SETTINGS_UPDATED` SSE, and returning a freshly signed JWT token.
+- Permanent endpoint lockout: returns HTTP 409 Conflict once the primary administrator has been initialized, preventing rogue account creation.
+- Environment & seeder isolation: parameterized `app.seed.admin` property in `DataSeeder.java` and dedicated `application-firstboot.properties` profile for testing on clean isolated databases (`tnl_firstboot`).
+- Frontend 2-Step Setup Wizard (`frontend-web/src/app/setup.js`):
+  - Step 1 (Administrator Credentials): Full Name, Username, Password, and Confirm Password with SVG eye reveal toggles, minimum 8 characters, and live validation.
+  - Step 2 (Company & SOA Branding): Pre-filled defaults for *TC & CT Integrated Logistics* (Labo, Camarines Norte) with a reactive document header preview card.
+  - Auto-login: automatically sets the authenticated session upon completion and redirects directly to the operations dashboard (`/`).
+- Central route guard integration (`frontend-web/src/app/_layout.js`): proactively checks `checkFirstBootStatus()` on mount, auto-redirecting uninitialized visitors to `/setup`, and blocking initialized visitors from `/setup` back to `/login`.
+- Administrator Credential Management & Settings Protection:
+  - Settings Card (`AdminSecurityCard.js`): dedicated operations card on `/settings` with live eye visibility toggles for self-service password updates, incrementing `tokenVersion` and transparently refreshing the active session.
+  - Read-Only Admin Status: updated `EditUserModal.js` to render a fixed read-only `Active` badge for the `ADMIN` role, completely preventing self-deactivation.
+  - Password Authorization Modals: implemented reusable `ConfirmPasswordModal.js` requiring administrator password confirmation before persisting system settings or updating credentials.
+  - Rate-Limited Verification: added `POST /api/v1/auth/verify-password` using typed `PasswordVerificationRequest` and bound to `LoginRateLimiterService` (locking access after 5 consecutive failures with HTTP 429 and `Retry-After`).
+- Verified via `FirstBootIntegrationTest.java` and `SecurityIntegrationTest.java` (105/105 backend tests passing, 0 failures, 0 errors, and clean web production build).
+
+---
+
+## Phase 6 — Role-Aware Mobile Courier Portal (Mobile Screens 29–53)
+*Field staff courier app and authorized mobile office workflows.*
+
+**6.1 — Mobile PIN Login & Role-Aware Shell (Screens 29, 30, 31, 32, 33)**
+- PIN-based authentication. The user's role decides what the app becomes (Rule 17):
+  - **Field Staff (`FIELD_STAFF`):** Opens directly into **Scan-Only** mode (`Scan`, `History`, `Account`). Blocked from registration, printing, and billing.
+  - **Office Staff (`OFFICE_STAFF`):** Opens into full mobile workflow (`Find`, `Register`, `Scan`, `Printer`, `Account`).
+
+**6.2 — Authorized Mobile Registration & Bluetooth Thermal Printing (Screens 34–44)**
+- Office-authorized mobile shipment registration on site.
+- Bluetooth thermal printer pairing (Brother RJ-2035B), print single/batch labels, and reprint parcel QR stickers.
+
+**6.3 — Field Staff Scan & Track Engine (Screens 45–52)**
+- Camera QR scanner (`expo-camera`) and manual Tracking ID lookup.
+- Valid next action confirmation with active truck dropdown selector on `Loaded on Truck`.
+- Append-only audit confirmation and per-unit scan history.
+
+**6.4 — Mobile Offline Scan Queue (SQLite)**
+- Local SQLite cache for scans performed without cellular coverage.
+- Automatic background synchronization when network connectivity resumes.

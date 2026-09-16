@@ -8,6 +8,7 @@ import com.tnl.logistics.repository.ParcelUnitRepository;
 import com.tnl.logistics.repository.TrackingEventRepository;
 import com.tnl.logistics.repository.VehicleRepository;
 import com.tnl.logistics.service.VehicleService;
+import com.tnl.logistics.service.IdentifierCounterService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,29 +23,25 @@ public class VehicleServiceImpl implements VehicleService {
     private final VehicleRepository vehicleRepository;
     private final ParcelUnitRepository parcelUnitRepository;
     private final TrackingEventRepository trackingEventRepository;
+    private final IdentifierCounterService identifierCounterService;
 
     public VehicleServiceImpl(VehicleRepository vehicleRepository,
                               ParcelUnitRepository parcelUnitRepository,
-                              TrackingEventRepository trackingEventRepository) {
+                              TrackingEventRepository trackingEventRepository,
+                              IdentifierCounterService identifierCounterService) {
         this.vehicleRepository = vehicleRepository;
         this.parcelUnitRepository = parcelUnitRepository;
         this.trackingEventRepository = trackingEventRepository;
+        this.identifierCounterService = identifierCounterService;
     }
 
     @Override
-    public synchronized VehicleResponse createVehicle(VehicleRequest request) {
+    public VehicleResponse createVehicle(VehicleRequest request) {
         if (vehicleRepository.findByPlateNumber(request.getPlateNumber()).isPresent()) {
             throw new IllegalArgumentException("A vehicle with plate number " + request.getPlateNumber() + " already exists");
         }
 
-        String prefix = "VH-";
-        String maxId = vehicleRepository.findMaxVehicleIdWithPrefix(prefix + "%").orElse(null);
-        int nextSeq = 1;
-        if (maxId != null && maxId.startsWith(prefix)) {
-            try {
-                nextSeq = Integer.parseInt(maxId.substring(prefix.length())) + 1;
-            } catch (NumberFormatException ignored) {}
-        }
+        long nextSeq = identifierCounterService.next(IdentifierCounterService.IdentifierFamily.VEHICLE, null);
         String vehicleId = String.format("VH-%03d", nextSeq);
 
         String vehicleType = request.getVehicleType() != null && !request.getVehicleType().isBlank()

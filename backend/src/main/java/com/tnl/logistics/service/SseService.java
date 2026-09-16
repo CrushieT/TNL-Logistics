@@ -17,4 +17,6 @@ public interface SseService {
     void broadcastShipmentCreated(ShipmentSummaryResponse shipment);
 
     void broadcastLabelPrint(String shipmentId, List<String> trackingIds);
+
+    void broadcastPaymentRecorded(Object payment);
 }

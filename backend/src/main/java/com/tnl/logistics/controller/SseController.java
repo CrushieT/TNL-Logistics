@@ -2,6 +2,7 @@ package com.tnl.logistics.controller;
 
 import com.tnl.logistics.service.SseService;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,7 +23,9 @@ public class SseController {
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @PreAuthorize("hasAnyRole('OFFICE_STAFF', 'FIELD_STAFF', 'ADMIN')")
     public SseEmitter streamEvents(Authentication authentication) {
-        String username = authentication != null ? authentication.getName() : "anonymous";
-        return sseService.registerClient(username);
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new AccessDeniedException("Authenticated user context is required");
+        }
+        return sseService.registerClient(authentication.getName());
     }
 }

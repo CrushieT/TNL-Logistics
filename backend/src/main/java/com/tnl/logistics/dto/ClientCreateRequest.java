@@ -25,6 +25,10 @@ public class ClientCreateRequest {
     @Size(max = 150, message = "Email cannot exceed 150 characters")
     private String email;
 
+    private String defaultRateType;
+
+    private Boolean active;
+
     public ClientCreateRequest() {}
 
     public ClientCreateRequest(String name, String address, String contactNumber, String email) {
@@ -32,6 +36,15 @@ public class ClientCreateRequest {
         this.address = address;
         this.contactNumber = contactNumber;
         this.email = email;
+    }
+
+    public ClientCreateRequest(String name, String address, String contactNumber, String email, String defaultRateType, Boolean active) {
+        this.name = name;
+        this.address = address;
+        this.contactNumber = contactNumber;
+        this.email = email;
+        this.defaultRateType = defaultRateType;
+        this.active = active;
     }
 
     public String getName() { return name; }
@@ -45,4 +58,10 @@ public class ClientCreateRequest {
 
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
+
+    public String getDefaultRateType() { return defaultRateType; }
+    public void setDefaultRateType(String defaultRateType) { this.defaultRateType = defaultRateType; }
+
+    public Boolean getActive() { return active; }
+    public void setActive(Boolean active) { this.active = active; }
 }

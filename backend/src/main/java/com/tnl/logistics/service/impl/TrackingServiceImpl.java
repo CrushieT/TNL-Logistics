@@ -1,8 +1,6 @@
 package com.tnl.logistics.service.impl;
 
-import com.tnl.logistics.dto.BatchTrackingScanRequest;
-import com.tnl.logistics.dto.TrackingScanRequest;
-import com.tnl.logistics.dto.TrackingScanResponse;
+import com.tnl.logistics.dto.*;
 import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.repository.ParcelUnitRepository;
@@ -10,10 +8,14 @@ import com.tnl.logistics.repository.TrackingEventRepository;
 import com.tnl.logistics.repository.VehicleRepository;
 import com.tnl.logistics.service.SseService;
 import com.tnl.logistics.service.TrackingService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -44,12 +46,12 @@ public class TrackingServiceImpl implements TrackingService {
     }
 
     @Override
-    public TrackingScanResponse processStatusScan(TrackingScanRequest request, String actingStaffUsername) {
-        ParcelUnit parcel = parcelUnitRepository.findById(request.getTrackingId())
+    public TrackingScanResponse processStatusScan(TrackingScanRequest request, String actingStaffUserId) {
+        ParcelUnit parcel = parcelUnitRepository.findByIdWithPessimisticLock(request.getTrackingId())
                 .orElseThrow(() -> new IllegalArgumentException("Parcel unit not found: " + request.getTrackingId()));
 
-        AppUser actingStaff = appUserRepository.findByUsername(actingStaffUsername)
-                .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUsername));
+        AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
+                .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
 
         ParcelStatus currentStatus = parcel.getCurrentStatus();
         ParcelStatus targetStatus = request.getTargetStatus();
@@ -132,16 +134,29 @@ public class TrackingServiceImpl implements TrackingService {
     }
 
     @Override
-    public List<TrackingScanResponse> processBatchScan(BatchTrackingScanRequest request, String actingStaffUsername) {
+    public List<TrackingScanResponse> processBatchScan(BatchTrackingScanRequest request, String actingStaffUserId) {
+        if (request == null || request.getTrackingIds() == null || request.getTrackingIds().isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // Sort and deduplicate IDs to ensure consistent lock acquisition order across concurrent transactions
+        List<String> sortedTrackingIds = request.getTrackingIds().stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(id -> !id.isEmpty())
+                .distinct()
+                .sorted()
+                .toList();
+
         List<TrackingScanResponse> responses = new ArrayList<>();
-        for (String trackingId : request.getTrackingIds()) {
+        for (String trackingId : sortedTrackingIds) {
             TrackingScanRequest singleReq = new TrackingScanRequest(
                     trackingId,
                     request.getTargetStatus(),
                     request.getVehicleId(),
                     request.getRemarks()
             );
-            responses.add(processStatusScan(singleReq, actingStaffUsername));
+            responses.add(processStatusScan(singleReq, actingStaffUserId));
         }
         return responses;
     }
@@ -149,9 +164,9 @@ public class TrackingServiceImpl implements TrackingService {
     private void validateStateTransition(ParcelStatus current, ParcelStatus target, String trackingId) {
         switch (current) {
             case REGISTERED:
-                if (target != ParcelStatus.QR_GENERATED && target != ParcelStatus.LOADED_ON_TRUCK) {
+                if (target != ParcelStatus.QR_GENERATED) {
                     throw new IllegalStateException(String.format(
-                            "Invalid status transition for %s: Cannot move from REGISTERED directly to %s. Expected next status is QR_GENERATED or LOADED_ON_TRUCK.",
+                            "Invalid status transition for %s: Cannot move from REGISTERED directly to %s. Expected next status is QR_GENERATED.",
                             trackingId, target));
                 }
                 break;
@@ -177,8 +192,15 @@ public class TrackingServiceImpl implements TrackingService {
                 }
                 break;
             case LOADED_TO_HAULER:
+                if (target != ParcelStatus.COMPLETED) {
+                    throw new IllegalStateException(String.format(
+                            "Invalid status transition for %s: Cannot move from LOADED_TO_HAULER directly to %s. Expected next status is COMPLETED.",
+                            trackingId, target));
+                }
+                break;
+            case COMPLETED:
                 throw new IllegalStateException(String.format(
-                        "Parcel %s is already in terminal state LOADED_TO_HAULER. No further status transitions allowed.",
+                        "Parcel %s is already in terminal state COMPLETED. No further status transitions allowed.",
                         trackingId));
             default:
                 break;
@@ -193,6 +215,9 @@ public class TrackingServiceImpl implements TrackingService {
         Map<ParcelStatus, Long> counts = parcels.stream()
                 .collect(Collectors.groupingBy(ParcelUnit::getCurrentStatus, Collectors.counting()));
 
+        if (counts.containsKey(ParcelStatus.COMPLETED)) {
+            return counts.get(ParcelStatus.COMPLETED) + " / " + total + " Completed";
+        }
         if (counts.containsKey(ParcelStatus.LOADED_TO_HAULER)) {
             return counts.get(ParcelStatus.LOADED_TO_HAULER) + " / " + total + " Loaded to Hauler";
         }
@@ -217,6 +242,86 @@ public class TrackingServiceImpl implements TrackingService {
             case LOADED_ON_TRUCK: return "Loaded on Truck";
             case ARRIVED_AT_TNL: return "Arrived at TNL";
             case LOADED_TO_HAULER: return "Loaded to Hauler";
+            case COMPLETED: return "Completed";
+            case REGISTERED:
+            default: return "Registered";
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<TrackingLogEntryResponse> getTrackingLogs(String search, ParcelStatus status,
+                                                          LocalDate startDate, LocalDate endDate,
+                                                          Pageable pageable) {
+        String cleanSearch = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
+
+        LocalDateTime startDateTime = (startDate != null) ? startDate.atStartOfDay() : null;
+        LocalDateTime endDateTime = (endDate != null) ? endDate.atTime(23, 59, 59, 999999999) : null;
+
+        Page<TrackingEvent> eventsPage = trackingEventRepository.searchTrackingEvents(
+                cleanSearch, status, startDateTime, endDateTime, pageable);
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a", Locale.ENGLISH);
+
+        return eventsPage.map(event -> {
+            ParcelUnit parcel = event.getParcelUnit();
+            Shipment shipment = (parcel != null) ? parcel.getShipment() : null;
+            AppUser staff = event.getStaff();
+            Vehicle vehicle = event.getVehicle();
+
+            String packageDisplay = (parcel != null && shipment != null && shipment.getQuantity() != null)
+                    ? parcel.getSeq() + " of " + shipment.getQuantity()
+                    : "1 of 1";
+
+            String formattedTimestamp = (event.getEventTimestamp() != null)
+                    ? event.getEventTimestamp().format(formatter)
+                    : "";
+
+            String statusDisplay = formatStatusDisplay(event.getStatus());
+
+            return new TrackingLogEntryResponse(
+                    event.getEventId(),
+                    (parcel != null) ? parcel.getTrackingId() : null,
+                    (shipment != null) ? shipment.getShipmentId() : null,
+                    packageDisplay,
+                    (event.getStatus() != null) ? event.getStatus().name() : null,
+                    statusDisplay,
+                    (vehicle != null) ? vehicle.getVehicleId() : null,
+                    (vehicle != null) ? vehicle.getPlateNumber() : null,
+                    (staff != null) ? staff.getUsername() : null,
+                    (staff != null) ? staff.getFullName() : null,
+                    (staff != null && staff.getRole() != null) ? staff.getRole().name() : null,
+                    (staff != null && staff.getStaffType() != null) ? staff.getStaffType().name() : null,
+                    event.getRemarks(),
+                    event.getEventTimestamp(),
+                    formattedTimestamp
+            );
+        });
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public TrackingMetricsResponse getTodayTrackingMetrics() {
+        LocalDate today = LocalDate.now();
+        LocalDateTime startOfDay = today.atStartOfDay();
+        LocalDateTime endOfDay = today.atTime(23, 59, 59, 999999999);
+
+        long totalScans = trackingEventRepository.countOperationalScansBetween(startOfDay, endOfDay);
+        long activeCouriers = trackingEventRepository.countDistinctCouriersBetween(startOfDay, endOfDay);
+        long loadedOnTruck = trackingEventRepository.countStatusBetween(ParcelStatus.LOADED_ON_TRUCK, startOfDay, endOfDay);
+        long handedToHauler = trackingEventRepository.countStatusBetween(ParcelStatus.LOADED_TO_HAULER, startOfDay, endOfDay);
+
+        return new TrackingMetricsResponse(totalScans, activeCouriers, loadedOnTruck, handedToHauler);
+    }
+
+    private String formatStatusDisplay(ParcelStatus status) {
+        if (status == null) return "Registered";
+        switch (status) {
+            case QR_GENERATED: return "QR Generated";
+            case LOADED_ON_TRUCK: return "Loaded on Truck";
+            case ARRIVED_AT_TNL: return "Outload / Arrive TNL";
+            case LOADED_TO_HAULER: return "Loaded to Hauler";
+            case COMPLETED: return "Completed";
             case REGISTERED:
             default: return "Registered";
         }

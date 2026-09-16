@@ -24,7 +24,7 @@ export default function PrintLabelsModal({ visible, shipment, onClose, onPrint }
           {/* Modal Header */}
           <View style={styles.dialogHeader}>
             <Text style={styles.dialogTitle}>
-              PRINT · {count} {count === 1 ? 'LABEL' : 'LABELS'}
+              PRINT: {count} {count === 1 ? 'LABEL' : 'LABELS'}
             </Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Text style={styles.closeBtnText}>✕</Text>
@@ -32,7 +32,7 @@ export default function PrintLabelsModal({ visible, shipment, onClose, onPrint }
           </View>
 
           <Text style={styles.dialogSubtitle}>
-            {count} parcel {count === 1 ? 'label' : 'labels'} will be printed — each carries its own unique QR + Tracking ID and package sequence.
+            {count} parcel {count === 1 ? 'label' : 'labels'} will be printed, each carrying its own unique QR + Tracking ID and package sequence.
           </Text>
 
           {/* Scrollable Label Cards Grid */}
@@ -73,7 +73,7 @@ export default function PrintLabelsModal({ visible, shipment, onClose, onPrint }
                         </Text>
                       ) : null}
                       <Text style={styles.recipientAddressText} numberOfLines={2}>
-                        {shipment.recipientDetails?.address || '—'}
+                        {shipment.recipientDetails?.address || '-'}
                       </Text>
                     </View>
                   </View>
@@ -97,7 +97,7 @@ export default function PrintLabelsModal({ visible, shipment, onClose, onPrint }
                       </Text>
                       <Text style={styles.footerItem}>
                         <Text style={styles.footerMuted}>Route: </Text>
-                        {shipment.route || 'Manila → TNL Baguio'}
+                        {shipment.route || 'Manila to TNL Baguio'}
                       </Text>
                     </View>
                     <View style={styles.totalRow}>
