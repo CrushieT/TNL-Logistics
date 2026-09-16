@@ -11,6 +11,8 @@ import com.tnl.logistics.dto.ShipmentRegistrationRequest;
 import com.tnl.logistics.dto.ShipmentResponse;
 import com.tnl.logistics.model.ChargeModel;
 import com.tnl.logistics.model.Client;
+import com.tnl.logistics.model.ParcelStatus;
+import com.tnl.logistics.model.ParcelUnit;
 import com.tnl.logistics.model.RegisteredVia;
 import com.tnl.logistics.repository.ClientRepository;
 import com.tnl.logistics.repository.ParcelUnitRepository;
@@ -310,6 +312,61 @@ public class ClientIntegrationTest {
         JsonNode allRoot = objectMapper.readTree(allRes.getResponse().getContentAsString());
         assertTrue(allRoot.isArray(), "all=true parameter must return a JSON array");
         assertEquals(1, allRoot.size());
+    }
+
+    @Test
+    public void testClientDetailIncludesCompletedShipmentsInRollupAndCounters() throws Exception {
+        // 1. Create client
+        Client client = new Client(
+                "CL-001",
+                "Northbridge Trading",
+                "Binondo, Manila",
+                "0917-555-0148",
+                "orders@northbridge.ph",
+                ChargeModel.FLAT,
+                true
+        );
+        clientRepository.saveAndFlush(client);
+
+        // 2. Register a shipment with 2 parcels
+        ShipmentRegistrationRequest regReq = new ShipmentRegistrationRequest();
+        regReq.setClientId("CL-001");
+        regReq.setRecipientName("Juan Dela Cruz");
+        regReq.setRecipientAddress("Baguio City");
+        regReq.setRecipientContact("09181112222");
+        regReq.setQuantity(2);
+        regReq.setChargeModel(ChargeModel.FLAT);
+        regReq.setShippingFee(new BigDecimal("1000.00"));
+        regReq.setPaidAtRegistration(true);
+        regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setParcels(List.of(
+                new ParcelUnitRequest(1, new BigDecimal("2"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10")),
+                new ParcelUnitRequest(2, new BigDecimal("3"), new BigDecimal("25"), new BigDecimal("15"), new BigDecimal("10"))
+        ));
+        ShipmentResponse created = shipmentService.registerShipment(regReq, "USR-OFFICE");
+        String shipmentId = created.getShipmentId();
+
+        // 3. Mark all parcels as COMPLETED
+        List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
+        assertEquals(2, parcels.size());
+        for (ParcelUnit unit : parcels) {
+            unit.setCurrentStatus(ParcelStatus.COMPLETED);
+        }
+        parcelUnitRepository.saveAllAndFlush(parcels);
+
+        // 4. Request client detail
+        MvcResult detailRes = mockMvc.perform(get("/api/v1/clients/CL-001")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        ClientDetailResponse detail = objectMapper.readValue(detailRes.getResponse().getContentAsString(), ClientDetailResponse.class);
+        assertEquals(1, detail.getTotalShipments());
+        assertEquals(2, detail.getTotalParcels());
+        assertEquals(1L, detail.getCompletedDeliveries());
+        assertEquals(1, detail.getShipments().size());
+        assertEquals("Completed", detail.getShipments().get(0).getStatus());
+        assertEquals("2 / 2 Completed", detail.getShipments().get(0).getStatusRollup());
     }
 }
 

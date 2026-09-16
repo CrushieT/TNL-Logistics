@@ -229,6 +229,61 @@ Label status and reprint counters only increment when printing is physically ini
 
 ---
 
+## 9. Align Payment Methods with the Database Enum [COMPLETED]
+
+**Status:** COMPLETED
+**Priority:** P1 (Data Integrity & Synchronized Schema)
+
+**Problem:**
+In `PaymentMethod.java` (lines 13–14), the enum defines `CHEQUE` and `OTHER` alongside `CASH`, `BANK`, and `GCASH`. Selecting `CHEQUE` or `OTHER` in the payment interface serializes one of these values, but in MySQL, the `payment.method` column was established in `V1__init_schema.sql` as `ENUM('CASH','BANK','GCASH') NOT NULL` and no later migration expands it. MySQL will reject those payment records with a data-truncation error (`Data truncated for column 'method'`), violating the core architectural invariant of a synchronized database schema (`AGENTS.md`).
+
+**Implementation:**
+1. Create forward Flyway migration `V26__expand_payment_methods.sql`:
+   ```sql
+   ALTER TABLE payment
+       MODIFY COLUMN method ENUM('CASH', 'BANK', 'GCASH', 'CHEQUE', 'OTHER') NOT NULL;
+   ```
+2. Verify that `PaymentMethod.java` string deserialization and database mapping cleanly persist and retrieve `"CHEQUE"` and `"OTHER"`.
+3. Add regression tests in `PaymentIntegrationTest.java` verifying payments recorded via `CHEQUE` and `OTHER` are persisted and retrieved successfully without truncation errors.
+
+**Acceptance Criteria:**
+Payments recorded with `CHEQUE` or `OTHER` persist to MySQL without errors, matching the application enum definition.
+
+---
+
+## 10. Include Completed Parcels in Client Status Rollups [COMPLETED]
+
+**Status:** COMPLETED
+**Priority:** P2 (Domain Consistency & Rollup Accuracy)
+
+**Problem:**
+In `ClientServiceImpl.java`:
+- Lines 362–378 (`computeRollupStatus`): When every parcel in a client shipment reaches `COMPLETED`, this method has no terminal-status branch and falls through to `Registered`. Client detail responses therefore display finalized shipments as registered.
+- Line 155 (`getClientDetails`): The `completedDeliveries` counter only checks for `"Arrived at TNL"` and `"Loaded to Hauler"`, omitting `"Completed"`. Client detail responses omit finalized shipments from `completedDeliveries`.
+
+**Implementation:**
+1. In `ClientServiceImpl.computeRollupStatus`, handle `ParcelStatus.COMPLETED` at the top of the rollup hierarchy (matching `ShipmentServiceImpl.java`):
+   ```java
+   if (counts.containsKey(ParcelStatus.COMPLETED)) {
+       long c = counts.get(ParcelStatus.COMPLETED);
+       return new RollupStatus("Completed", c + " / " + total + " Completed");
+   }
+   ```
+2. In `ClientServiceImpl.getClientDetails`, count `"Completed"` shipments as completed deliveries:
+   ```java
+   if ("Completed".equalsIgnoreCase(rollup.overallStatus)
+           || "Loaded to Hauler".equalsIgnoreCase(rollup.overallStatus)
+           || "Arrived at TNL".equalsIgnoreCase(rollup.overallStatus)) {
+       completedDeliveries++;
+   }
+   ```
+3. Add regression test in `ClientIntegrationTest.java` verifying that shipments with all parcels in `COMPLETED` evaluate to `"Completed"` status and increment `completedDeliveries`.
+
+**Acceptance Criteria:**
+Client detail responses accurately display `"Completed"` for delivered shipments and include them in the `completedDeliveries` tally.
+
+---
+
 ## Execution Slices & Backlog Sequence
 
 | Slice | Scope | Focus Items | Target Branch |
@@ -237,6 +292,7 @@ Label status and reprint counters only increment when printing is physically ini
 | **Slice B** [COMPLETED] | Data & Billing Invariants | Item 4 (Parcel Count Match) & Item 6 (Scoped Label Print) | `backend/bugfix/shipment-integrity-checks` |
 | **Slice C** [COMPLETED] | Lifecycle & State Machines | Item 2 (Waybill Transitions), Item 3 (Waybill Decoupling), Item 5 (QR State) | `backend/bugfix/lifecycle-state-hardening` |
 | **Slice D** [COMPLETED] | Concurrency & Frontend | Item 7 (Pessimistic Scan Lock) & Item 8 (Frontend Print Trigger) | `fullstack/bugfix/scan-concurrency-and-print-ux` |
+| **Slice E** [COMPLETED] | Schema & Client Rollup | Item 9 (Payment Enum Migration) & Item 10 (Client Completed Rollup) | `fullstack/bugfix/payment-enum-and-client-rollup` |
 
 ---
 

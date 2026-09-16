@@ -152,7 +152,9 @@ public class ClientServiceImpl implements ClientService {
                     : (sPaid.compareTo(BigDecimal.ZERO) > 0 ? "Partial" : "Unpaid");
 
             RollupStatus rollup = computeRollupStatus(parcels);
-            if ("Arrived at TNL".equalsIgnoreCase(rollup.overallStatus) || "Loaded to Hauler".equalsIgnoreCase(rollup.overallStatus)) {
+            if ("Completed".equalsIgnoreCase(rollup.overallStatus)
+                    || "Loaded to Hauler".equalsIgnoreCase(rollup.overallStatus)
+                    || "Arrived at TNL".equalsIgnoreCase(rollup.overallStatus)) {
                 completedDeliveries++;
             }
 
@@ -359,6 +361,10 @@ public class ClientServiceImpl implements ClientService {
         Map<ParcelStatus, Long> counts = parcels.stream()
                 .collect(Collectors.groupingBy(ParcelUnit::getCurrentStatus, Collectors.counting()));
 
+        if (counts.containsKey(ParcelStatus.COMPLETED)) {
+            long c = counts.get(ParcelStatus.COMPLETED);
+            return new RollupStatus("Completed", c + " / " + total + " Completed");
+        }
         if (counts.containsKey(ParcelStatus.LOADED_TO_HAULER)) {
             long c = counts.get(ParcelStatus.LOADED_TO_HAULER);
             return new RollupStatus("Loaded to Hauler", c + " / " + total + " Loaded to Hauler");

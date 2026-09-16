@@ -103,6 +103,7 @@
 - `frontend-web/src/app/clients/index.js` (Screen 15: Client Directory Table with search, persistent status pills `All`, `Active`, `Inactive`, and pagination).
 - `frontend-web/src/app/clients/[id].js` (Screen 16: Single Client Profile View with 3-metric balance rollup and embedded shipment tracking history).
 - Register & Edit Client modals, and inactive client filtering in shipment registration.
+- Client detail response accurately reflects completed deliveries count and COMPLETED parcel rollup.
 
 ---
 
@@ -139,6 +140,7 @@
 
 **4.1 — Backend: Payments & Collections Engine** — **[COMPLETED]**
 - Flyway `V12__enhance_payment_schema.sql`: added `staff_id` (FK to `app_user`), `remarks`, and composite index on `(payment_date, method)`.
+- Flyway `V26__expand_payment_methods.sql`: expanded `payment.method` enum to include `CHEQUE` and `OTHER`.
 - Financial balance calculation and validation: strictly positive payment amounts, overpayment prevention exceeding remaining balance.
 - Automatic payment status updates: `Unpaid` → `Partially Paid` → `Paid` (with running `totalPaid` and `balance` updates).
 - REST Endpoints:

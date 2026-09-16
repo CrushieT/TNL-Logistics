@@ -367,5 +367,94 @@ public class PaymentIntegrationTest {
     void testShipmentRepositoryFindByIdForUpdate() {
         assertTrue(shipmentRepository.findByIdForUpdate("NON-EXISTENT-ID").isEmpty());
     }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testPaymentWithChequeAndOtherMethodsPersistSuccessfully() throws Exception {
+        ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
+        shipmentReq.setClientId("CL-001");
+        shipmentReq.setRecipientName("Cheque Test Recipient");
+        shipmentReq.setRecipientContact("0917-777-6666");
+        shipmentReq.setRecipientAddress("Baguio City");
+        shipmentReq.setRoute("Manila → TNL Baguio Hub");
+        shipmentReq.setDescription("Office Supplies");
+        shipmentReq.setQuantity(1);
+        shipmentReq.setChargeModel(ChargeModel.FLAT);
+        shipmentReq.setShippingFee(new BigDecimal("2000.00"));
+        shipmentReq.setOtherCharges(BigDecimal.ZERO);
+        shipmentReq.setPaidAtRegistration(false);
+        shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipmentReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("3.0"), new BigDecimal("15"), new BigDecimal("15"), new BigDecimal("15"))));
+
+        MvcResult createResult = mockMvc.perform(post("/api/v1/shipments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(shipmentReq)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse shipment = objectMapper.readValue(createResult.getResponse().getContentAsString(), ShipmentResponse.class);
+        String shipmentId = shipment.getShipmentId();
+
+        // 1. CHEQUE payment without reference number -> rejected with 400
+        PaymentRecordRequest invalidCheque = new PaymentRecordRequest(
+                shipmentId,
+                new BigDecimal("500.00"),
+                PaymentMethod.CHEQUE,
+                null,
+                LocalDate.now(),
+                "Missing ref"
+        );
+        mockMvc.perform(post("/api/v1/payments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invalidCheque)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("Reference number is required for CHEQUE")));
+
+        // 2. Record valid payment with CHEQUE (reference number provided)
+        PaymentRecordRequest chequePayment = new PaymentRecordRequest(
+                shipmentId,
+                new BigDecimal("1200.00"),
+                PaymentMethod.CHEQUE,
+                "CHQ-987654",
+                LocalDate.now(),
+                "Corporate check deposit"
+        );
+
+        mockMvc.perform(post("/api/v1/payments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(chequePayment)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.method").value("CHEQUE"))
+                .andExpect(jsonPath("$.referenceNo").value("CHQ-987654"))
+                .andExpect(jsonPath("$.amountPaid").value(1200.00))
+                .andExpect(jsonPath("$.shipmentBalance").value(800.00))
+                .andExpect(jsonPath("$.shipmentPaymentStatus").value("Partial"));
+
+        // 3. Record valid payment with OTHER (reference number optional)
+        PaymentRecordRequest otherPayment = new PaymentRecordRequest(
+                shipmentId,
+                new BigDecimal("800.00"),
+                PaymentMethod.OTHER,
+                null,
+                LocalDate.now(),
+                "Promotional voucher credit"
+        );
+
+        mockMvc.perform(post("/api/v1/payments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(otherPayment)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.method").value("OTHER"))
+                .andExpect(jsonPath("$.amountPaid").value(800.00))
+                .andExpect(jsonPath("$.shipmentBalance").value(0.00))
+                .andExpect(jsonPath("$.shipmentPaymentStatus").value("Paid"));
+
+        // 4. Verify payment history lists both CHEQUE and OTHER payments correctly
+        mockMvc.perform(get("/api/v1/payments/shipment/" + shipmentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.payments.length()").value(2))
+                .andExpect(jsonPath("$.payments[0].method").value("CHEQUE"))
+                .andExpect(jsonPath("$.payments[1].method").value("OTHER"));
+    }
 }
 
