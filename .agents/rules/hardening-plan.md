@@ -55,19 +55,19 @@ Running `mvn spring-boot:run -Dspring-boot.run.arguments="--app.migration.legacy
 
 **Problem:**
 In `WaybillServiceImpl.java`:
-- `sendWaybillToHauler` (line 177) does not verify that the waybill is currently in `GENERATED` status. A caller can re-dispatch an already signed/completed waybill, overwriting its status back to `SENT_TO_HAULER`.
-- `markSignedCompleted` (line 200) does not verify that the waybill is currently in `SENT_TO_HAULER` status. A caller can directly mark a `GENERATED` waybill as completed, bypassing physical hauler dispatch.
+- `sendWaybillToHauler` did not verify that the waybill is currently in `GENERATED` status. A caller could re-dispatch an already signed/completed waybill, overwriting its status back to `SENT_TO_HAULER`.
+- `markSignedCompleted` did not verify that the waybill is currently in `SENT_TO_HAULER` status. A caller could directly mark a `GENERATED` waybill as completed, bypassing physical hauler dispatch.
 
 **Implementation:**
 1. In `WaybillServiceImpl.sendWaybillToHauler`:
-   - Assert `waybill.getStatus() == WaybillStatus.GENERATED`.
+   - Assert `waybill == null || waybill.getStatus() == WaybillStatus.GENERATED`.
    - Throw `IllegalStateException("Cannot dispatch waybill in status " + waybill.getStatus() + ". Expected GENERATED.")` if invalid.
 2. In `WaybillServiceImpl.markSignedCompleted`:
    - Assert `waybill.getStatus() == WaybillStatus.SENT_TO_HAULER`.
-   - Throw `IllegalStateException("Cannot sign waybill in status " + waybill.getStatus() + ". Expected SENT_TO_HAULER.")` if invalid.
+   - Throw `IllegalStateException("Cannot complete waybill in status " + waybill.getStatus() + ". Expected SENT_TO_HAULER.")` if invalid.
 3. Add regression tests in `WaybillIntegrationTest.java`:
-   - Dispatching a `SIGNED_COMPLETED` waybill returns HTTP 400/409.
-   - Signing a `GENERATED` waybill without prior dispatch returns HTTP 400/409.
+   - Dispatching a `SIGNED_COMPLETED` or `SENT_TO_HAULER` waybill returns HTTP 400.
+   - Signing a `GENERATED` waybill without prior dispatch returns HTTP 400.
    - Normal flow (`GENERATED -> SENT_TO_HAULER -> SIGNED_COMPLETED`) succeeds.
 
 **Acceptance Criteria:**
@@ -75,26 +75,30 @@ Waybill state transitions strictly adhere to `GENERATED -> SENT_TO_HAULER -> SIG
 
 ---
 
-## 3. Decouple Waybill Completion from Parcel Tracking [COMPLETED]
+## 3. Enforce Parcel Loaded-to-Hauler Requirement for Waybill POD Completion [COMPLETED]
 
 **Status:** COMPLETED
-**Priority:** P1 (Architectural Invariant & Rule 19)
+**Priority:** P1 (Lifecycle State Machine Integrity)
 
 **Problem:**
-In `WaybillServiceImpl.java` (lines 213–236), completing a waybill forcefully mutates all parcel units under the shipment to `ParcelStatus.COMPLETED` and generates synthetic tracking events. This cross-couples the independent Waybill and Tracking lifecycles, contrary to Rule 19 in `AGENTS.md`. Furthermore, if parcels were only `REGISTERED` or `LOADED_ON_TRUCK`, waybill completion forces them straight to `COMPLETED`, bypassing intermediate physical custody scans.
+Completing a waybill signs the Proof of Delivery (POD) acknowledging receipt by the consignee. However:
+- If parcels were only in `REGISTERED`, `QR_GENERATED`, `LOADED_ON_TRUCK`, or `ARRIVED_AT_TNL` status, allowing POD completion bypassed intermediate physical custody scans.
+- Conversely, removing parcel status updates entirely on POD signing left delivered parcels indefinitely stranded in `LOADED_TO_HAULER` status with the shipment rollup never reaching `Completed`.
 
 **Implementation:**
-1. Align with the 4 Decoupled Lifecycles in `AGENTS.md`:
-   - Tracking Status: `REGISTERED` -> `QR_GENERATED` -> `LOADED_ON_TRUCK` -> `ARRIVED_AT_TNL` -> `LOADED_TO_HAULER`.
-   - Waybill Status: `NOT_GENERATED` -> `GENERATED` -> `SENT_TO_HAULER` -> `SIGNED_COMPLETED`.
-2. In `WaybillServiceImpl.markSignedCompleted`:
-   - Remove the blanket overwrite that forces all parcels to `COMPLETED`.
-   - Completing a waybill signs the Proof of Delivery (POD) and updates `waybill.setStatus(SIGNED_COMPLETED)`.
-   - If business requirements require parcel completion upon delivery, only parcels already in `LOADED_TO_HAULER` may advance to delivered/completed status, preserving state machine continuity.
-3. Update `WaybillIntegrationTest` and frontend manifests to reflect decoupled lifecycle metrics.
+1. In `WaybillServiceImpl.markSignedCompleted`:
+   - Enforce prerequisite: All parcels under the shipment must be in `ParcelStatus.LOADED_TO_HAULER` status prior to signing POD.
+   - If any parcel is not `LOADED_TO_HAULER` (or if parcels list is empty), reject completion with `IllegalStateException("Cannot complete waybill: All shipment parcels must be in LOADED_TO_HAULER status before signing proof of delivery.")` (HTTP 400 Bad Request).
+   - Upon valid POD signing (`SIGNED_COMPLETED`), advance all parcel units to `ParcelStatus.COMPLETED`, clear `currentVehicle` (`null`), persist an audit `TrackingEvent` (`COMPLETED`), and broadcast SSE tracking scan notifications.
+   - As a consequence of all parcels reaching `COMPLETED`, the shipment's dynamic rollup status transitions to `Completed`.
+2. Update `WaybillIntegrationTest.java`:
+   - Verify completion is rejected when parcels are `REGISTERED` or partially ready.
+   - Verify completion succeeds when all parcels are `LOADED_TO_HAULER`, correctly transitioning parcels and shipment rollup to `Completed`.
+3. In `frontend-web/src/app/waybills/index.js`:
+   - Surface server error message in UI feedback banner if completion is attempted before parcels are loaded to hauler.
 
 **Acceptance Criteria:**
-Waybill signing updates the Waybill entity without corrupting parcel tracking integrity or bypassing custody scans.
+Waybill signing strictly requires all parcels to be in `LOADED_TO_HAULER`, and upon successful signing, transitions parcels and shipment to `Completed` with full audit events.
 
 ---
 
