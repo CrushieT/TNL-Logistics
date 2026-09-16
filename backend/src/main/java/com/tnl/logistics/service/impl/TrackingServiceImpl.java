@@ -135,8 +135,21 @@ public class TrackingServiceImpl implements TrackingService {
 
     @Override
     public List<TrackingScanResponse> processBatchScan(BatchTrackingScanRequest request, String actingStaffUserId) {
+        if (request == null || request.getTrackingIds() == null || request.getTrackingIds().isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // Sort and deduplicate IDs to ensure consistent lock acquisition order across concurrent transactions
+        List<String> sortedTrackingIds = request.getTrackingIds().stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(id -> !id.isEmpty())
+                .distinct()
+                .sorted()
+                .toList();
+
         List<TrackingScanResponse> responses = new ArrayList<>();
-        for (String trackingId : request.getTrackingIds()) {
+        for (String trackingId : sortedTrackingIds) {
             TrackingScanRequest singleReq = new TrackingScanRequest(
                     trackingId,
                     request.getTargetStatus(),

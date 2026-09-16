@@ -221,20 +221,12 @@ export default function ShipmentDetailScreen() {
           <Card
             title={`PARCEL UNITS (${shipment.units?.length || 0})`}
             right={
-              <View style={styles.headerActions}>
-                <Button
-                  label={`Print All Labels (${shipment.units?.length || 0})`}
-                  variant="secondary"
-                  onPress={handlePrintAll}
-                  style={styles.headerBtn}
-                />
-                <Button
-                  label="Reprint All"
-                  variant="secondary"
-                  onPress={handlePrintAll}
-                  style={styles.headerBtn}
-                />
-              </View>
+              <Button
+                label={`Print All Labels (${shipment.units?.length || 0})`}
+                variant="secondary"
+                onPress={handlePrintAll}
+                style={styles.headerBtn}
+              />
             }
           >
             <View style={styles.unitsTable}>

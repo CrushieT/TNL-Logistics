@@ -222,8 +222,9 @@ public class SoaServiceImpl implements SoaService {
                     return weeklyCollectionRepository.save(newCol);
                 });
 
-        // 2. Ensure SoaBatch record exists
-        String batchId = "BATCH-" + targetThursday + "-MANUAL";
+        // 2. Ensure SoaBatch record exists scoped to client and collection
+        String rawBatchId = "BATCH-" + targetThursday + "-" + client.getClientId();
+        final String batchId = rawBatchId.length() > 30 ? rawBatchId.substring(0, 30) : rawBatchId;
         SoaBatch batch = soaBatchRepository.findById(batchId)
                 .orElseGet(() -> {
                     AppUser creator = appUserRepository.findById(actingUserId)
@@ -316,11 +317,20 @@ public class SoaServiceImpl implements SoaService {
             soaRepository.save(soa);
         }
 
-        // 5. Link statement_id on cycle shipments
+        // 5. Link statement_id on cycle shipments and included payments
         for (Shipment s : shipments) {
             if (s.getStatementId() == null || s.getStatementId().trim().isEmpty()) {
                 s.setStatementId(soa.getSoaNo());
                 shipmentRepository.save(s);
+            }
+        }
+        if (!shipmentIds.isEmpty()) {
+            List<Payment> unlinkedPayments = paymentRepository.findByShipment_ShipmentIdIn(shipmentIds);
+            for (Payment p : unlinkedPayments) {
+                if (p.getStatementId() == null || p.getStatementId().trim().isEmpty()) {
+                    p.setStatementId(soa.getSoaNo());
+                    paymentRepository.save(p);
+                }
             }
         }
 

@@ -96,15 +96,15 @@ export default function ParcelUnitDetailScreen() {
 
   const handleReprint = async () => {
     try {
+      if (typeof window !== 'undefined' && window.print) {
+        window.print();
+      }
       if (shipmentId && trackingId) {
         await printLabels(shipmentId, [trackingId]);
       }
     } catch (err) {
       console.warn('Failed to record label reprint:', err?.message);
     } finally {
-      if (typeof window !== 'undefined' && window.print) {
-        window.print();
-      }
       load(false);
     }
   };
@@ -232,13 +232,6 @@ export default function ParcelUnitDetailScreen() {
             onPress={handleReprint}
           >
             <Text style={styles.reprintBtnText}>Reprint Label</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.quickReprintBtn}
-            onPress={handleReprint}
-          >
-            <Text style={styles.quickReprintText}>Quick Reprint ({unit.reprintCount || 0})</Text>
           </Pressable>
 
           {/* Label Printing Card */}
@@ -495,20 +488,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.3,
-  },
-  quickReprintBtn: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: radius.sm,
-  },
-  quickReprintText: {
-    fontFamily: fonts.mono,
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: colors.ink,
   },
   printingCard: {
     marginTop: spacing.xs,

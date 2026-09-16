@@ -168,4 +168,106 @@ public class TrackingConcurrencyIntegrationTest {
         assertNotNull(unit.getCurrentVehicle());
         assertEquals(testVehicleId, unit.getCurrentVehicle().getVehicleId());
     }
+
+    @Test
+    public void testConcurrentReverseOrderBatchScansDoNotDeadlock() throws Exception {
+        Vehicle vehicle = vehicleRepository.saveAndFlush(new Vehicle(testVehicleId, "CONC-1234", "Concurrency Van"));
+
+        ShipmentRegistrationRequest regReq = new ShipmentRegistrationRequest();
+        regReq.setClientId("CL-001");
+        regReq.setRecipientName("Batch Deadlock Test");
+        regReq.setRecipientAddress("Pasay City");
+        regReq.setRecipientContact("09183334444");
+        regReq.setQuantity(2);
+        regReq.setChargeModel(ChargeModel.FLAT);
+        regReq.setShippingFee(new BigDecimal("500.00"));
+        regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setParcels(List.of(
+                new ParcelUnitRequest(1, new BigDecimal("1.5"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10")),
+                new ParcelUnitRequest(2, new BigDecimal("2.0"), new BigDecimal("12"), new BigDecimal("12"), new BigDecimal("12"))
+        ));
+
+        ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "USR-OFFICE");
+        createdShipmentId = shipResp.getShipmentId();
+        List<String> trackingIds = shipResp.getTrackingIds();
+        assertEquals(2, trackingIds.size());
+        String idA = trackingIds.get(0);
+        String idB = trackingIds.get(1);
+
+        // Thread 1 sends [idA, idB], Thread 2 sends [idB, idA] (reversed order)
+        BatchTrackingScanRequest reqForward = new BatchTrackingScanRequest(
+                List.of(idA, idB),
+                ParcelStatus.LOADED_ON_TRUCK,
+                vehicle.getVehicleId(),
+                "Forward Batch"
+        );
+        BatchTrackingScanRequest reqReverse = new BatchTrackingScanRequest(
+                List.of(idB, idA),
+                ParcelStatus.LOADED_ON_TRUCK,
+                vehicle.getVehicleId(),
+                "Reverse Batch"
+        );
+
+        String payloadForward = objectMapper.writeValueAsString(reqForward);
+        String payloadReverse = objectMapper.writeValueAsString(reqReverse);
+
+        int threadCount = 2;
+        CountDownLatch readyLatch = new CountDownLatch(threadCount);
+        CountDownLatch startGate = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+
+        List<CompletableFuture<Integer>> futures = new ArrayList<>();
+        futures.add(CompletableFuture.supplyAsync(() -> {
+            readyLatch.countDown();
+            try {
+                startGate.await();
+                MvcResult res = mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
+                                .header("Authorization", fieldToken)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(payloadForward))
+                        .andReturn();
+                return res.getResponse().getStatus();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }, executor));
+
+        futures.add(CompletableFuture.supplyAsync(() -> {
+            readyLatch.countDown();
+            try {
+                startGate.await();
+                MvcResult res = mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
+                                .header("Authorization", fieldToken)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(payloadReverse))
+                        .andReturn();
+                return res.getResponse().getStatus();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }, executor));
+
+        assertTrue(readyLatch.await(5, TimeUnit.SECONDS));
+        startGate.countDown();
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        executor.shutdown();
+        assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+
+        for (CompletableFuture<Integer> future : futures) {
+            assertEquals(200, future.get().intValue(), "Both forward and reverse batch scans must succeed without deadlocks");
+        }
+
+        ParcelUnit unitA = parcelUnitRepository.findById(idA).orElseThrow();
+        ParcelUnit unitB = parcelUnitRepository.findById(idB).orElseThrow();
+        assertEquals(ParcelStatus.LOADED_ON_TRUCK, unitA.getCurrentStatus());
+        assertEquals(ParcelStatus.LOADED_ON_TRUCK, unitB.getCurrentStatus());
+
+        // Cleanup the two parcels
+        for (String tid : trackingIds) {
+            List<TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(tid);
+            trackingEventRepository.deleteAll(events);
+            parcelUnitRepository.deleteById(tid);
+        }
+    }
 }

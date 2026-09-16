@@ -7,9 +7,11 @@ import com.tnl.logistics.model.AppUser;
 import com.tnl.logistics.model.Payment;
 import com.tnl.logistics.model.PaymentMethod;
 import com.tnl.logistics.model.Shipment;
+import com.tnl.logistics.model.Soa;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.repository.PaymentRepository;
 import com.tnl.logistics.repository.ShipmentRepository;
+import com.tnl.logistics.repository.SoaRepository;
 import com.tnl.logistics.service.PaymentService;
 import com.tnl.logistics.service.SseService;
 import org.springframework.data.domain.Page;
@@ -40,15 +42,18 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentRepository paymentRepository;
     private final ShipmentRepository shipmentRepository;
     private final AppUserRepository appUserRepository;
+    private final SoaRepository soaRepository;
     private final SseService sseService;
 
     public PaymentServiceImpl(PaymentRepository paymentRepository,
                               ShipmentRepository shipmentRepository,
                               AppUserRepository appUserRepository,
+                              SoaRepository soaRepository,
                               SseService sseService) {
         this.paymentRepository = paymentRepository;
         this.shipmentRepository = shipmentRepository;
         this.appUserRepository = appUserRepository;
+        this.soaRepository = soaRepository;
         this.sseService = sseService;
     }
 
@@ -100,8 +105,28 @@ public class PaymentServiceImpl implements PaymentService {
                 remarks
         );
         payment.setReferenceNo(refNo);
+        if (shipment.getStatementId() != null && !shipment.getStatementId().isBlank()) {
+            payment.setStatementId(shipment.getStatementId());
+        }
 
         Payment saved = paymentRepository.save(payment);
+
+        if (shipment.getStatementId() != null && !shipment.getStatementId().isBlank()) {
+            soaRepository.findById(shipment.getStatementId()).ifPresent(soa -> {
+                BigDecimal currentTotalPaid = soa.getTotalPaid() != null ? soa.getTotalPaid() : BigDecimal.ZERO;
+                BigDecimal updatedTotalPaid = currentTotalPaid.add(saved.getAmountPaid());
+                soa.setTotalPaid(updatedTotalPaid);
+
+                BigDecimal charges = soa.getCurrentCharges() != null ? soa.getCurrentCharges() : BigDecimal.ZERO;
+                BigDecimal deductions = soa.getDeductions() != null ? soa.getDeductions() : BigDecimal.ZERO;
+                BigDecimal updatedBalance = charges.subtract(updatedTotalPaid).subtract(deductions);
+                if (updatedBalance.compareTo(BigDecimal.ZERO) < 0) {
+                    updatedBalance = BigDecimal.ZERO;
+                }
+                soa.setOutstandingBalance(updatedBalance);
+                soaRepository.save(soa);
+            });
+        }
 
         BigDecimal totalPaidAfter = totalPaidBefore.add(saved.getAmountPaid());
         BigDecimal balanceAfter = shipment.getTotalAmount().subtract(totalPaidAfter);
