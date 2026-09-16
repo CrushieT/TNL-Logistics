@@ -102,7 +102,7 @@ export async function getWeeklyCollections(targetDate) {
       items,
     };
   } catch (fallbackErr) {
-    console.error('Weekly collections fallback aggregation failed:', fallbackErr);
+    console.warn('Weekly collections fallback aggregation failed:', fallbackErr?.message || fallbackErr);
     return {
       collectionDate: targetDate || new Date().toISOString().split('T')[0],
       totalDue: 0,

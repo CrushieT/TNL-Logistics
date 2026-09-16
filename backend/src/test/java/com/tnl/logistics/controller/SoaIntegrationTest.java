@@ -444,5 +444,11 @@ public class SoaIntegrationTest {
         Soa persistedSoa = soaRepository.findById(statementId).orElseThrow();
         assertEquals(0, new BigDecimal("500.00").compareTo(persistedSoa.getTotalPaid()));
         assertEquals(0, new BigDecimal("500.00").compareTo(persistedSoa.getOutstandingBalance()));
+
+        // 7. Verify persisted WeeklyCollection entity in database is also synchronized
+        com.tnl.logistics.model.WeeklyCollection persistedCollection = persistedSoa.getCollection();
+        assertEquals(0, new BigDecimal("500.00").compareTo(persistedCollection.getTotalPaid()));
+        assertEquals(0, new BigDecimal("500.00").compareTo(persistedCollection.getBalance()));
+        assertEquals("FOR_COLLECTION", persistedCollection.getStatus());
     }
 }

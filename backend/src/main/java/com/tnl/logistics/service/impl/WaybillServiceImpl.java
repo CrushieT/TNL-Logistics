@@ -204,10 +204,11 @@ public class WaybillServiceImpl implements WaybillService {
             throw new IllegalStateException("Cannot complete waybill: Shipment has no parcels.");
         }
 
-        boolean notAllLoadedToHauler = parcels.stream()
-                .anyMatch(p -> p.getCurrentStatus() != ParcelStatus.LOADED_TO_HAULER);
-        if (notAllLoadedToHauler) {
-            throw new IllegalStateException("Cannot complete waybill: All shipment parcels must be in LOADED_TO_HAULER status before signing proof of delivery.");
+        boolean notReadyForCompletion = parcels.stream()
+                .anyMatch(p -> p.getCurrentStatus() != ParcelStatus.LOADED_TO_HAULER
+                            && p.getCurrentStatus() != ParcelStatus.COMPLETED);
+        if (notReadyForCompletion) {
+            throw new IllegalStateException("Cannot complete waybill: All shipment parcels must be in LOADED_TO_HAULER or COMPLETED status before signing proof of delivery.");
         }
 
         String signedByName = (request.getSignedBy() != null && !request.getSignedBy().isBlank())
@@ -228,36 +229,41 @@ public class WaybillServiceImpl implements WaybillService {
 
         AppUser actingStaff = (actingStaffUserId != null) ? appUserRepository.findById(actingStaffUserId).orElse(null) : null;
 
-        // Cascade status to COMPLETED for all parcel units and record TrackingEvents
+        // Cascade status to COMPLETED for all parcel units not already completed and record TrackingEvents
         for (ParcelUnit parcel : parcels) {
-            parcel.setCurrentStatus(ParcelStatus.COMPLETED);
-            parcel.setCurrentVehicle(null);
-            parcelUnitRepository.save(parcel);
+            if (parcel.getCurrentStatus() != ParcelStatus.COMPLETED) {
+                parcel.setCurrentStatus(ParcelStatus.COMPLETED);
+                parcel.setCurrentVehicle(null);
+                parcelUnitRepository.save(parcel);
 
-            TrackingEvent event = new TrackingEvent(
-                    parcel,
-                    ParcelStatus.COMPLETED,
-                    null,
-                    actingStaff,
-                    "Delivered & signed by " + signedByName
-            );
-            event.setEventTimestamp(signedAtTime);
-            trackingEventRepository.save(event);
-
-            try {
-                TrackingScanResponse scanResp = new TrackingScanResponse(
-                        parcel.getTrackingId(),
-                        "Loaded to Hauler",
-                        "Completed",
+                TrackingEvent event = new TrackingEvent(
+                        parcel,
+                        ParcelStatus.COMPLETED,
                         null,
-                        null,
-                        signedAtTime,
-                        actingStaff != null ? actingStaff.getFullName() : "Admin",
-                        shipmentId,
-                        parcels.size() + " / " + parcels.size() + " Completed"
+                        actingStaff,
+                        "Delivered & signed by " + signedByName
                 );
-                sseService.broadcastTrackingScan(scanResp);
-            } catch (Exception ignored) {}
+                event.setEventTimestamp(signedAtTime);
+                trackingEventRepository.save(event);
+
+                try {
+                    TrackingScanResponse scanResp = new TrackingScanResponse(
+                            parcel.getTrackingId(),
+                            "Loaded to Hauler",
+                            "Completed",
+                            null,
+                            null,
+                            signedAtTime,
+                            actingStaff != null ? actingStaff.getFullName() : "Admin",
+                            shipmentId,
+                            parcels.size() + " / " + parcels.size() + " Completed"
+                    );
+                    sseService.broadcastTrackingScan(scanResp);
+                } catch (Exception ignored) {}
+            } else if (parcel.getCurrentVehicle() != null) {
+                parcel.setCurrentVehicle(null);
+                parcelUnitRepository.save(parcel);
+            }
         }
 
         return buildManifestResponse(shipment, saved, parcels);
