@@ -44,13 +44,13 @@ public class DataSeeder implements CommandLineRunner {
     public void run(String... args) throws Exception {
         if (appUserRepository.count() == 0) {
             if (seedAdmin) {
-                seedUser("USR-ADMIN", "admin", "admin123", "Maria Santos", UserRole.ADMIN, null, null);
+                seedUser("USR-ADMIN", "admin", "admin123", "Maria Santos", UserRole.ADMIN, null, null, "1111");
             }
             if (seedSampleData) {
-                seedUser("USR-OFFICE", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF, null, null);
-                seedUser("USR-FIELD", "field", "field123", "Carlos Mendoza", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.INTERNAL_TRUCK, null);
-                seedUser("USR-FIELD-2", "hauler1", "field123", "Rogelio Aquino", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.HAULER_STAFF, null);
-                seedUser("USR-FIELD-3", "hauler2", "field123", "Danilo Cruz", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.HAULER_STAFF, null);
+                seedUser("USR-OFFICE", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF, null, null, "2222");
+                seedUser("USR-FIELD", "field", "field123", "Carlos Mendoza", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.INTERNAL_TRUCK, null, "0001");
+                seedUser("USR-FIELD-2", "hauler1", "field123", "Rogelio Aquino", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.HAULER_STAFF, null, null);
+                seedUser("USR-FIELD-3", "hauler2", "field123", "Danilo Cruz", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.HAULER_STAFF, null, null);
             }
         }
 
@@ -66,6 +66,21 @@ public class DataSeeder implements CommandLineRunner {
                 if (user.getUserId() != null && user.getUserId().startsWith("USR-")) {
                     user.setMustChangePassword(false);
                     user.setTokenVersion(1);
+                    if ("USR-ADMIN".equals(user.getUserId()) && user.getPinHash() == null) {
+                        user.setPinHash(passwordEncoder.encode("1111"));
+                    }
+                    if ("USR-OFFICE".equals(user.getUserId())) {
+                        user.setFullName("Office Staff");
+                        if (user.getPinHash() == null) {
+                            user.setPinHash(passwordEncoder.encode("2222"));
+                        }
+                    }
+                    if ("USR-FIELD".equals(user.getUserId())) {
+                        user.setFullName("Carlos Mendoza");
+                        if (user.getPinHash() == null) {
+                            user.setPinHash(passwordEncoder.encode("0001"));
+                        }
+                    }
                     appUserRepository.save(user);
                 }
             });
@@ -74,6 +89,10 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void seedUser(String id, String username, String rawPassword, String fullName, UserRole role, com.tnl.logistics.model.StaffType staffType, String haulerCompany) {
+        seedUser(id, username, rawPassword, fullName, role, staffType, haulerCompany, null);
+    }
+
+    private void seedUser(String id, String username, String rawPassword, String fullName, UserRole role, com.tnl.logistics.model.StaffType staffType, String haulerCompany, String pin) {
         if (appUserRepository.findByUsername(username).isEmpty()) {
             AppUser user = new AppUser(
                 id,
@@ -85,6 +104,9 @@ public class DataSeeder implements CommandLineRunner {
                 haulerCompany
             );
             user.setMustChangePassword(false);
+            if (pin != null && !pin.isBlank()) {
+                user.setPinHash(passwordEncoder.encode(pin));
+            }
             appUserRepository.save(user);
         }
     }

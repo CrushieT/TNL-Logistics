@@ -70,16 +70,23 @@ tnl-logistics/
 │   └── README.md
 │
 ├── frontend-mobile/                  # React Native (Expo) Field Operations (JavaScript)
-│   ├── app/
-│   │   ├── (auth)/
-│   │   │   └── login.js
-│   │   ├── (main)/
-│   │   │   ├── _layout.js
-│   │   │   ├── home.js
-│   │   │   └── scan.js
-│   │   └── _layout.js
-│   ├── api/
-│   │   └── client.js
+│   ├── src/
+│   │   ├── app/                      # File-based routes
+│   │   │   ├── _layout.js            # Root Stack navigator & AuthProvider
+│   │   │   ├── (auth)/
+│   │   │   │   └── login.js          # Screen 29 PIN Login with numerical keypad
+│   │   │   └── (main)/
+│   │   │       ├── _layout.js        # Authenticated route guard
+│   │   │       ├── index.js          # Role-aware home (Office vs Field Dashboard)
+│   │   │       └── scan.js           # Screen 45 Camera QR scanner
+│   │   ├── components/               # Shared UI atoms (Keypad, PinIndicator, ActionCard, MetricCard, NoticeBanner)
+│   │   │   ├── common/
+│   │   │   └── layout/               # MobileHeader
+│   │   ├── features/                 # Domain feature slices (auth, office, field)
+│   │   ├── services/
+│   │   │   ├── api/client.js         # Axios API client with Bearer auth
+│   │   │   └── storage/secureStore.js# Hardware-backed SecureStore adapter
+│   │   └── theme/index.js            # TNL design tokens (canvas, ink, accent, keypad)
 │   ├── app.json                      # Expo configuration
 │   ├── eas.json                      # EAS Build configuration
 │   ├── package.json

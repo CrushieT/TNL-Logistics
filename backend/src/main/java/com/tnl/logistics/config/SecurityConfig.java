@@ -52,6 +52,7 @@ public class SecurityConfig {
 				// Allow public access to Login and First Boot auth endpoints
 				.requestMatchers(
 						"/api/v1/auth/login",
+						"/api/v1/auth/mobile-pin-login",
 						"/api/v1/auth/first-boot-status",
 						"/api/v1/auth/first-boot-admin"
 				).permitAll()

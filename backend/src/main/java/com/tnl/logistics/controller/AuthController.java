@@ -5,6 +5,7 @@ import com.tnl.logistics.dto.FirstBootAdminRequest;
 import com.tnl.logistics.dto.FirstBootStatusResponse;
 import com.tnl.logistics.dto.LoginRequest;
 import com.tnl.logistics.dto.LoginResponse;
+import com.tnl.logistics.dto.MobilePinLoginRequest;
 import com.tnl.logistics.dto.PasswordChangeRequest;
 import com.tnl.logistics.dto.PasswordVerificationRequest;
 import com.tnl.logistics.model.AppUser;
@@ -24,6 +25,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -98,8 +100,51 @@ public class AuthController {
                 token,
                 user.getUserId(),
                 user.getUsername(),
+                user.getFullName(),
                 user.getRole().name(),
                 user.getMustChangePassword()
+        );
+
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/mobile-pin-login")
+    public ResponseEntity<?> mobilePinLogin(@Valid @RequestBody MobilePinLoginRequest request, HttpServletRequest servletRequest) {
+        String clientIp = extractClientIp(servletRequest);
+
+        if (rateLimiterService.isBlocked(clientIp)) {
+            long retryAfter = rateLimiterService.getRemainingBlockSeconds(clientIp);
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header("Retry-After", String.valueOf(retryAfter))
+                    .body(Map.of(
+                            "message", "Too many failed login attempts. Access is locked. Please try again in " + retryAfter + " seconds.",
+                            "retryAfterSeconds", retryAfter
+                    ));
+        }
+
+        List<AppUser> activeUsersWithPin = appUserRepository.findByActiveTrueAndPinHashIsNotNull();
+        AppUser matchedUser = activeUsersWithPin.stream()
+                .filter(user -> passwordEncoder.matches(request.getPin(), user.getPinHash()))
+                .findFirst()
+                .orElse(null);
+
+        if (matchedUser == null) {
+            rateLimiterService.recordFailure(clientIp);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Invalid PIN"));
+        }
+
+        rateLimiterService.recordSuccess(clientIp);
+
+        String token = JwtTokenProvider.generateToken(matchedUser.getUserId(), matchedUser.getRole().name(), matchedUser.getTokenVersion());
+
+        LoginResponse response = new LoginResponse(
+                token,
+                matchedUser.getUserId(),
+                matchedUser.getUsername(),
+                matchedUser.getFullName(),
+                matchedUser.getRole().name(),
+                matchedUser.getMustChangePassword()
         );
 
         return ResponseEntity.ok(response);

@@ -270,12 +270,25 @@
 ## Phase 6 — Role-Aware Mobile Courier Portal (Mobile Screens 29–53)
 *Field staff courier app and authorized mobile office workflows.*
 
-**6.1 — Mobile PIN Login & Role-Aware Shell (Screens 29, 30, 31, 32, 33)**
-- PIN-based authentication (`POST /api/v1/auth/mobile-pin-login`) with numeric keypad layout and fast biometric/PIN unlock.
-- Secure token persistence in hardware `SecureStore` adhering to 10-day mobile staff lifecycle (`jwt.expiration.staff-days`).
-- Role-aware navigation structure (Rule 17):
-  - **Office Staff (`OFFICE_STAFF`):** Full mobile workflow with 5 navigation routes (`Find` / Past Shipments, `Register` / Generate Shipment, `Scan`, `Printer`, `Account`).
-  - **Field Staff (`FIELD_STAFF`):** Scan-centric workflow with 3 navigation routes (`Scan`, `My History` / Personal Courier Log, `Account`). Strictly blocked from registration, past shipment browsing, billing, and printing.
+**6.1 — Mobile PIN Login & Role-Aware Shell (Screens 29, 30, 31, 32, 33)** — **[COMPLETED]**
+- Dedicated mobile numeric PIN login endpoint (`POST /api/v1/auth/mobile-pin-login`) accepting `MobilePinLoginRequest` with Bean validation (`@Pattern(regexp = "^[0-9]{4,6}$")`).
+- Integrated with `LoginRateLimiterService` enforcing progressive lockout (5 failed attempts trigger HTTP 429 Too Many Requests with `Retry-After` header and seconds countdown).
+- BCrypt matching against active users with provisioned PIN hashes (`findByActiveTrueAndPinHashIsNotNull`), generating 10-day staff JWT tokens (`jwt.expiration.staff-days`) with `tokenVersion` tracking.
+- Seeding & credential hardening in `DataSeeder.java` for demo accounts matching prototype specifications: `1111` (Admin `admin`), `2222` (Office Staff `office`), and `0001` (Carlos Mendoza `field`).
+- Modular `frontend-mobile/src/` architecture strictly matching `frontend-web` design patterns:
+  - `src/theme/`: TNL design tokens (`canvas #F3F2ED`, `ink #1A1A1A`, `accent #C6491F`, `border #E1DFD5`, `keypadBg #EFECE6`).
+  - `src/services/storage/`: Hardware-backed `expo-secure-store` wrapper with web/memory fallback.
+  - `src/services/api/`: Centralized Axios client injecting Bearer tokens and intercepting 401/403 session revocation.
+  - `src/features/auth/`: Encapsulated auth service and `AuthContext` provider handling PIN login, session restoration, and logout.
+  - `src/components/common/`: Shared UI components (`Keypad`, `PinIndicator`, `ActionCard`, `MetricCard`, `NoticeBanner`).
+  - `src/components/layout/`: `MobileHeader` with role eyebrow, staff name, and `LOGOUT` trigger.
+- Screens & Navigation Flow:
+  - Fullscreen PIN Login (`src/app/(auth)/login.js`): 4-dot indicator, custom 3x4 numeric keypad, active lockout banner, and demo credentials footer matching `prototype pin page.png`.
+  - Role-Aware Shell (`src/app/(main)/index.js`): Authenticated root switching between `OfficeDashboard` (`OFFICE_STAFF` / `ADMIN`) and `FieldDashboard` (`FIELD_STAFF`).
+  - `OfficeDashboard`: Label printing callout, 4 operational action cards (`Find Parcel`, `Register`, `Scan QR`, `Printer`), and daily shift metric counters matching `prototype office page.png`.
+  - `FieldDashboard`: Scan-only notice banner, action cards (`Scan QR`, `Tracking History`, `Account`), and daily shift metrics matching `prototype field page.png`.
+  - QR Scanner (`src/app/(main)/scan.js`): Viewfinder overlay with camera permissions and status postback.
+- Verified via `MobileAuthIntegrationTest.java` (5 integration test scenarios) and full suite regression test (173/173 tests passing clean, 0 failures, 0 errors).
 
 **6.2 — Office Staff: Shipment Generation & Past Shipments Directory (Screens 34–40)**
 - **Shipment Generation (`Register`):** Mobile shipment creation matching core business rules:

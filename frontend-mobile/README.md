@@ -23,9 +23,9 @@ Field Operations scanning and mobile client interface built with **Expo** and **
    ```bash
    npm install
    ```
-4. Start the Expo bundler:
+4. Start the Expo bundler (runs on port 8082 to avoid conflicting with frontend-web on 8081):
    ```bash
-   npx expo start
+   npm start
    ```
 5. Scan the QR code displayed in your terminal using the **Expo Go** app (Android) or the default Camera app (iOS) to load the application.
 

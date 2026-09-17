@@ -8,15 +8,21 @@ public class LoginResponse {
     private String token;
     private String userId;
     private String username;
+    private String fullName;
     private String role;
     private boolean mustChangePassword;
 
     public LoginResponse() {}
 
     public LoginResponse(String token, String userId, String username, String role, boolean mustChangePassword) {
+        this(token, userId, username, null, role, mustChangePassword);
+    }
+
+    public LoginResponse(String token, String userId, String username, String fullName, String role, boolean mustChangePassword) {
         this.token = token;
         this.userId = userId;
         this.username = username;
+        this.fullName = fullName;
         this.role = role;
         this.mustChangePassword = mustChangePassword;
     }
@@ -29,6 +35,9 @@ public class LoginResponse {
 
     public String getUsername() { return username; }
     public void setUsername(String username) { this.username = username; }
+
+    public String getFullName() { return fullName; }
+    public void setFullName(String fullName) { this.fullName = fullName; }
 
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
