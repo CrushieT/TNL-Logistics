@@ -25,8 +25,8 @@
 | **Phase 4.1** | Backend: Payments & Collections Engine (`POST /api/v1/payments`, Balance Recalculation, Multi-Search & Audit) | [COMPLETED] |
 | **Phase 4.2** | Backend: Thursday Weekly Collections Consolidation & SOA Generator (3 Deductions, Net Remittance) | [COMPLETED] |
 | **Phase 4.3** | Web: Billing, Collections & Printable SOA (Desktop Screens 18–22) | [COMPLETED] |
-| **Phase 5** | Web Console: Live Dashboard, Tracking Logs Stream, Reports, Users, Settings & First Boot Setup (Screens 01, 02, 17, 26–28) | [IN PROGRESS] |
-| **Phase 6** | Role-Aware Mobile App: Scan-Only Field Staff vs. Authorized Office Mobile + Bluetooth Printing (Screens 29–53) | [UPCOMING] |
+| **Phase 5** | Web Console: Live Dashboard, Tracking Logs Stream, Reports, Users, Settings & First Boot Setup (Screens 01, 02, 17, 26–28) | [COMPLETED] |
+| **Phase 6** | Role-Aware Mobile App: Field Staff Scanner & Personal History vs. Office Staff Generation & Past Shipments (Screens 29–53) | [UPCOMING] |
 
 ---
 
@@ -271,19 +271,42 @@
 *Field staff courier app and authorized mobile office workflows.*
 
 **6.1 — Mobile PIN Login & Role-Aware Shell (Screens 29, 30, 31, 32, 33)**
-- PIN-based authentication. The user's role decides what the app becomes (Rule 17):
-  - **Field Staff (`FIELD_STAFF`):** Opens directly into **Scan-Only** mode (`Scan`, `History`, `Account`). Blocked from registration, printing, and billing.
-  - **Office Staff (`OFFICE_STAFF`):** Opens into full mobile workflow (`Find`, `Register`, `Scan`, `Printer`, `Account`).
+- PIN-based authentication (`POST /api/v1/auth/mobile-pin-login`) with numeric keypad layout and fast biometric/PIN unlock.
+- Secure token persistence in hardware `SecureStore` adhering to 10-day mobile staff lifecycle (`jwt.expiration.staff-days`).
+- Role-aware navigation structure (Rule 17):
+  - **Office Staff (`OFFICE_STAFF`):** Full mobile workflow with 5 navigation routes (`Find` / Past Shipments, `Register` / Generate Shipment, `Scan`, `Printer`, `Account`).
+  - **Field Staff (`FIELD_STAFF`):** Scan-centric workflow with 3 navigation routes (`Scan`, `My History` / Personal Courier Log, `Account`). Strictly blocked from registration, past shipment browsing, billing, and printing.
 
-**6.2 — Authorized Mobile Registration & Bluetooth Thermal Printing (Screens 34–44)**
-- Office-authorized mobile shipment registration on site.
-- Bluetooth thermal printer pairing (Brother RJ-2035B), print single/batch labels, and reprint parcel QR stickers.
+**6.2 — Office Staff: Shipment Generation & Past Shipments Directory (Screens 34–40)**
+- **Shipment Generation (`Register`):** Mobile shipment creation matching core business rules:
+  - Client selection with inline quick client creation.
+  - Recipient destination, contact, and address fields.
+  - Parcel unit builder: quantity, physical dimensions ($L \times W \times H\text{ cm}$), auto volume ($m^3$), and billable weight.
+  - Pricing model support: `FLAT` vs `PER_PARCEL` charge calculations and immediate payment status recording (`paidAtRegistration`).
+  - Sequential ID generation: `SHP-YYYY-XXX` and `TRK-YYYY-XXXXXX`.
+- **Past Shipments Explorer (`Find`):** Comprehensive shipment lookup and inspection:
+  - Paginated and searchable past shipments list with status pills (`Registered`, `In Transit`, `Completed`).
+  - Search by Shipment ID, Client Name, Recipient, or Tracking Number.
+  - Detailed shipment view: parcel unit breakdown, dimensions, payment status, customer information, and parcel tracking timeline.
 
-**6.3 — Field Staff Scan & Track Engine (Screens 45–52)**
-- Camera QR scanner (`expo-camera`) and manual Tracking ID lookup.
-- Valid next action confirmation with active truck dropdown selector on `Loaded on Truck`.
-- Append-only audit confirmation and per-unit scan history.
+**6.3 — Office Staff: Bluetooth Thermal Label & QR Printing (Screens 41–44)**
+- Bluetooth ESC/POS printer discovery, pairing, and status monitoring (Brother RJ-2035B / standard 2-inch thermal printer).
+- Immediate label printing upon shipment generation and reprint capabilities for individual parcel QR stickers from the past shipments directory.
+- Audit recording via `POST /api/v1/parcel-units/{trackingId}/print-label` (`NOT_PRINTED` → `PRINTED` / `REPRINTED`).
 
-**6.4 — Mobile Offline Scan Queue (SQLite)**
-- Local SQLite cache for scans performed without cellular coverage.
-- Automatic background synchronization when network connectivity resumes.
+**6.4 — Field Staff: Camera QR Scanner & Status Flow Engine (Screens 45–48)**
+- Real-time camera viewfinder QR barcode scanner (`expo-camera`) with torch toggle, haptic feedback, and manual Tracking ID input fallback.
+- Sequential transition enforcement: `REGISTERED` → `QR_GENERATED` → `LOADED_ON_TRUCK` → `ARRIVED_AT_TNL` → `LOADED_TO_HAULER`.
+- Mandatory active vehicle dropdown selector when transitioning to `LOADED_ON_TRUCK`, fetching active fleet from `GET /api/v1/vehicles`.
+- Single scan (`POST /api/v1/tracking-events/scan`) and rapid batch scan mode.
+
+**6.5 — Field Staff: Personal Scan & Tracking History (Screens 49–52)**
+- Dedicated personal activity feed displaying only the scans performed by the authenticated field staff member (`actingStaffUserId == currentUserId`).
+- Daily shift metrics: Total Scans Today, Loaded on Truck count, Arrived at TNL count, and Handed to Hauler count.
+- Chronological scan event list with timestamp, parcel tracking number, transition state, and assigned vehicle.
+- Per-unit timeline inspection and sync status indicator (Synced vs Pending Offline Sync).
+
+**6.6 — Offline Resilience & SQLite Scan Queue (Screen 53)**
+- Local SQLite database queue for buffering parcel status scans performed without cellular coverage.
+- Connectivity listener (`@react-native-community/netinfo`) with automatic background batch sync (`POST /api/v1/tracking-events/batch-scan`) upon network restoration.
+- Visual pending upload badge and sync status banner on the courier's personal scan history.
