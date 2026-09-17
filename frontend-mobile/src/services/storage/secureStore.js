@@ -99,3 +99,79 @@ export async function removeUser() {
     delete memoryStorage[USER_KEY];
   }
 }
+
+const BOUND_USER_KEY = 'tnl_mobile_bound_user';
+const APP_LOCKED_KEY = 'tnl_mobile_locked';
+
+export async function saveBoundUser(user) {
+  const userJson = JSON.stringify(user);
+  const SecureStore = await getSecureStore();
+  if (SecureStore) {
+    await SecureStore.setItemAsync(BOUND_USER_KEY, userJson);
+    return;
+  }
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem(BOUND_USER_KEY, userJson);
+  } else {
+    memoryStorage[BOUND_USER_KEY] = userJson;
+  }
+}
+
+export async function getBoundUser() {
+  let userJson = null;
+  const SecureStore = await getSecureStore();
+  if (SecureStore) {
+    userJson = await SecureStore.getItemAsync(BOUND_USER_KEY);
+  } else if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+    userJson = window.localStorage.getItem(BOUND_USER_KEY);
+  } else {
+    userJson = memoryStorage[BOUND_USER_KEY] || null;
+  }
+
+  if (!userJson) return null;
+  try {
+    return JSON.parse(userJson);
+  } catch (e) {
+    return null;
+  }
+}
+
+export async function removeBoundUser() {
+  const SecureStore = await getSecureStore();
+  if (SecureStore) {
+    await SecureStore.deleteItemAsync(BOUND_USER_KEY);
+    return;
+  }
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.removeItem(BOUND_USER_KEY);
+  } else {
+    delete memoryStorage[BOUND_USER_KEY];
+  }
+}
+
+export async function setAppLocked(isLocked) {
+  const value = isLocked ? 'true' : 'false';
+  const SecureStore = await getSecureStore();
+  if (SecureStore) {
+    await SecureStore.setItemAsync(APP_LOCKED_KEY, value);
+    return;
+  }
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem(APP_LOCKED_KEY, value);
+  } else {
+    memoryStorage[APP_LOCKED_KEY] = value;
+  }
+}
+
+export async function isAppLocked() {
+  let val = null;
+  const SecureStore = await getSecureStore();
+  if (SecureStore) {
+    val = await SecureStore.getItemAsync(APP_LOCKED_KEY);
+  } else if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+    val = window.localStorage.getItem(APP_LOCKED_KEY);
+  } else {
+    val = memoryStorage[APP_LOCKED_KEY] || null;
+  }
+  return val === 'true';
+}

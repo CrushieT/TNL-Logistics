@@ -7,16 +7,16 @@ import { FieldDashboard } from '../../features/field/components/FieldDashboard';
 import { colors } from '../../theme';
 
 export default function MainHomeScreen() {
-  const { user, logout } = useAuth();
+  const { user, fullLogout, lockSession } = useAuth();
 
-  const isOfficeStaff = user?.role === 'OFFICE_STAFF' || user?.role === 'ADMIN';
+  const isOfficeStaff = user?.role === 'OFFICE_STAFF';
 
   return (
     <SafeAreaView style={styles.safeArea}>
       {isOfficeStaff ? (
-        <OfficeDashboard user={user} onLogout={logout} />
+        <OfficeDashboard user={user} onLogout={fullLogout} onLock={lockSession} />
       ) : (
-        <FieldDashboard user={user} onLogout={logout} />
+        <FieldDashboard user={user} onLogout={fullLogout} onLock={lockSession} />
       )}
     </SafeAreaView>
   );

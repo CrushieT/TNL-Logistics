@@ -5,14 +5,30 @@ import { useAuth } from '../../features/auth/context/AuthContext';
 import { colors } from '../../theme';
 
 export default function MainLayout() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, isLocked, mustSetupPin, boundUser } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.replace('/(auth)/login');
+    if (isLoading) return;
+
+    if (isLocked) {
+      router.replace('/(auth)/pin');
+      return;
     }
-  }, [isLoading, isAuthenticated, router]);
+
+    if (mustSetupPin) {
+      router.replace('/(auth)/setup-pin');
+      return;
+    }
+
+    if (!isAuthenticated) {
+      if (boundUser) {
+        router.replace('/(auth)/pin');
+      } else {
+        router.replace('/(auth)/login');
+      }
+    }
+  }, [isLoading, isLocked, mustSetupPin, isAuthenticated, boundUser, router]);
 
   if (isLoading) {
     return (

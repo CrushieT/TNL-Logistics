@@ -1,7 +1,8 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { colors } from '../../theme';
+import { PressableScale } from './PressableScale';
 
 export function Keypad({ onKeyPress, onBackspace, disabled = false }) {
   const rows = [
@@ -22,28 +23,30 @@ export function Keypad({ onKeyPress, onBackspace, disabled = false }) {
 
             if (key === 'backspace') {
               return (
-                <TouchableOpacity
+                <PressableScale
                   key={colIndex}
-                  style={styles.key}
+                  style={styles.keyWrapper}
+                  contentStyle={styles.key}
                   onPress={onBackspace}
                   disabled={disabled}
-                  activeOpacity={0.6}
+                  activeScale={0.92}
                 >
                   <Icon source="backspace-outline" size={24} color={colors.ink} />
-                </TouchableOpacity>
+                </PressableScale>
               );
             }
 
             return (
-              <TouchableOpacity
+              <PressableScale
                 key={colIndex}
-                style={styles.key}
+                style={styles.keyWrapper}
+                contentStyle={styles.key}
                 onPress={() => onKeyPress(key)}
                 disabled={disabled}
-                activeOpacity={0.6}
+                activeScale={0.92}
               >
                 <Text style={styles.keyText}>{key}</Text>
-              </TouchableOpacity>
+              </PressableScale>
             );
           })}
         </View>
@@ -63,6 +66,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 12,
+  },
+  keyWrapper: {
+    flex: 1,
   },
   key: {
     flex: 1,

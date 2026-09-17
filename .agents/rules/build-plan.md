@@ -270,25 +270,31 @@
 ## Phase 6 — Role-Aware Mobile Courier Portal (Mobile Screens 29–53)
 *Field staff courier app and authorized mobile office workflows.*
 
-**6.1 — Mobile PIN Login & Role-Aware Shell (Screens 29, 30, 31, 32, 33)** — **[COMPLETED]**
-- Dedicated mobile numeric PIN login endpoint (`POST /api/v1/auth/mobile-pin-login`) accepting `MobilePinLoginRequest` with Bean validation (`@Pattern(regexp = "^[0-9]{4,6}$")`).
+**6.1 — Mobile Credential & PIN Workflow & Role-Aware Shell (Screens 29, 30, 31, 32, 33)** — **[COMPLETED]**
+- Stage 1 (Initial Login / Device Binding): Full Username & Password login (`POST /api/v1/auth/mobile-login`) allowing both `OFFICE_STAFF` and `FIELD_STAFF` (with Admin web-provisioned credentials), issuing a 10-day staff JWT token (`jwt.expiration.staff-days`), binding device identity to local hardware storage, returning `hasPinSet`.
+- Stage 2 (PIN Setup & Confirmation): Dedicated PIN Setup screen (`src/app/(auth)/setup-pin.js`) for accounts with `hasPinSet == false` (Option A "Require PIN setup on first mobile login" or "Clear PIN & Require Setup"), calling `POST /api/v1/auth/mobile-setup-pin` with 4-digit PIN confirmation, BCrypt hashing, and error handling.
+- Stage 3 (Shift Unlock): Quick PIN unlock screen (`src/app/(auth)/pin.js`) matching `prototype pin page.png`, displaying bound staff member's full name, role badge, 4-dot indicator, and 3x4 keypad calling `POST /api/v1/auth/mobile-pin-login` with targeted `{ username, pin }` matching, plus "Sign in with another account" unbind action.
+- Stage 4 (Header Actions & Lifecycles): `MobileHeader` supporting quick "LOCK" (locks session back to PIN screen) and "LOGOUT" (alert confirmation unbinding device and clearing stored auth).
+- Strict Role Segregation: Administrator accounts (`ADMIN`) are barred from logging into the mobile portal (`/mobile-login`, `/mobile-pin-login`, `/mobile-setup-pin`) with HTTP 403 Forbidden (`"Administrator accounts are restricted to the Web Portal."`), preserving operational boundaries.
+- High-Performance Tactile Micro-Animations: Reusable `PressableScale` atom using `Animated.spring` with `useNativeDriver: Platform.OS !== 'web'` providing 60fps mechanical press feedback across numeric keypad, action cards, primary action buttons, and header buttons with zero JavaScript thread latency or layout thrashing.
 - Integrated with `LoginRateLimiterService` enforcing progressive lockout (5 failed attempts trigger HTTP 429 Too Many Requests with `Retry-After` header and seconds countdown).
-- BCrypt matching against active users with provisioned PIN hashes (`findByActiveTrueAndPinHashIsNotNull`), generating 10-day staff JWT tokens (`jwt.expiration.staff-days`) with `tokenVersion` tracking.
-- Seeding & credential hardening in `DataSeeder.java` for demo accounts matching prototype specifications: `1111` (Admin `admin`), `2222` (Office Staff `office`), and `0001` (Carlos Mendoza `field`).
+- Seeding & credential hardening in `DataSeeder.java` for demo accounts matching prototype specifications: `2222` (Office Staff `office`), and `0001` (Carlos Mendoza `field`).
 - Modular `frontend-mobile/src/` architecture strictly matching `frontend-web` design patterns:
   - `src/theme/`: TNL design tokens (`canvas #F3F2ED`, `ink #1A1A1A`, `accent #C6491F`, `border #E1DFD5`, `keypadBg #EFECE6`).
-  - `src/services/storage/`: Hardware-backed `expo-secure-store` wrapper with web/memory fallback.
+  - `src/services/storage/`: Hardware-backed `expo-secure-store` wrapper with web/memory fallback supporting `saveBoundUser`, `getBoundUser`, `removeBoundUser`, `setAppLocked`, `isAppLocked`.
   - `src/services/api/`: Centralized Axios client injecting Bearer tokens and intercepting 401/403 session revocation.
-  - `src/features/auth/`: Encapsulated auth service and `AuthContext` provider handling PIN login, session restoration, and logout.
-  - `src/components/common/`: Shared UI components (`Keypad`, `PinIndicator`, `ActionCard`, `MetricCard`, `NoticeBanner`).
-  - `src/components/layout/`: `MobileHeader` with role eyebrow, staff name, and `LOGOUT` trigger.
+  - `src/features/auth/`: Encapsulated auth service and `AuthContext` provider handling credential login, PIN setup, PIN unlock, session lock, and full unbind logout.
+  - `src/components/common/`: Shared UI components (`Keypad`, `PinIndicator`, `PressableScale`, `ActionCard`, `MetricCard`, `NoticeBanner`).
+  - `src/components/layout/`: `MobileHeader` with role eyebrow, staff name, `LOCK`, and `LOGOUT` triggers.
 - Screens & Navigation Flow:
-  - Fullscreen PIN Login (`src/app/(auth)/login.js`): 4-dot indicator, custom 3x4 numeric keypad, active lockout banner, and demo credentials footer matching `prototype pin page.png`.
-  - Role-Aware Shell (`src/app/(main)/index.js`): Authenticated root switching between `OfficeDashboard` (`OFFICE_STAFF` / `ADMIN`) and `FieldDashboard` (`FIELD_STAFF`).
+  - Credential Login (`src/app/(auth)/login.js`): Username and password entry with TNL tracking logo, `MOBILE PORTAL` badge, and quick shortcut to PIN unlock if device is already bound.
+  - PIN Setup (`src/app/(auth)/setup-pin.js`): 2-step PIN creation & confirmation flow with 4-dot indicator and 3x4 keypad.
+  - Shift Unlock (`src/app/(auth)/pin.js`): Bound staff member card, 4-dot indicator, 3x4 numeric keypad, and "Sign in with another account" link.
+  - Role-Aware Shell (`src/app/(main)/index.js`): Authenticated root switching between `OfficeDashboard` (`OFFICE_STAFF`) and `FieldDashboard` (`FIELD_STAFF`).
   - `OfficeDashboard`: Label printing callout, 4 operational action cards (`Find Parcel`, `Register`, `Scan QR`, `Printer`), and daily shift metric counters matching `prototype office page.png`.
   - `FieldDashboard`: Scan-only notice banner, action cards (`Scan QR`, `Tracking History`, `Account`), and daily shift metrics matching `prototype field page.png`.
   - QR Scanner (`src/app/(main)/scan.js`): Viewfinder overlay with camera permissions and status postback.
-- Verified via `MobileAuthIntegrationTest.java` (5 integration test scenarios) and full suite regression test (173/173 tests passing clean, 0 failures, 0 errors).
+- Verified via `MobileAuthIntegrationTest.java` (18 integration test scenarios) and full suite regression test.
 
 **6.2 — Office Staff: Shipment Generation & Past Shipments Directory (Screens 34–40)**
 - **Shipment Generation (`Register`):** Mobile shipment creation matching core business rules:

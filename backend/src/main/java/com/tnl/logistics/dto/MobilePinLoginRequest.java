@@ -12,10 +12,17 @@ public class MobilePinLoginRequest {
     @Pattern(regexp = "^[0-9]{4,6}$", message = "PIN must be between 4 and 6 digits")
     private String pin;
 
+    private String username;
+
     public MobilePinLoginRequest() {}
 
     public MobilePinLoginRequest(String pin) {
+        this(pin, null);
+    }
+
+    public MobilePinLoginRequest(String pin, String username) {
         this.pin = pin;
+        this.username = username;
     }
 
     public String getPin() {
@@ -24,5 +31,13 @@ public class MobilePinLoginRequest {
 
     public void setPin(String pin) {
         this.pin = pin;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
     }
 }

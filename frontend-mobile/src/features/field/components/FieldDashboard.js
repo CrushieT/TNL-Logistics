@@ -6,7 +6,7 @@ import { NoticeBanner } from '../../../components/common/NoticeBanner';
 import { ActionCard } from '../../../components/common/ActionCard';
 import { MetricCard } from '../../../components/common/MetricCard';
 
-export function FieldDashboard({ user, onLogout }) {
+export function FieldDashboard({ user, onLogout, onLock }) {
   const handleScanQR = () => {
     Alert.alert('Scan QR', 'Camera QR code scanner with truck selector (Phase 6.4).');
   };
@@ -32,6 +32,7 @@ export function FieldDashboard({ user, onLogout }) {
         role={user?.role || 'FIELD_STAFF'}
         name={user?.fullName || user?.username || 'Carlo Reyes'}
         onLogout={onLogout}
+        onLock={onLock}
       />
 
       {/* Role Notice Banner */}

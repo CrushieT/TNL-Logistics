@@ -74,12 +74,14 @@ tnl-logistics/
 │   │   ├── app/                      # File-based routes
 │   │   │   ├── _layout.js            # Root Stack navigator & AuthProvider
 │   │   │   ├── (auth)/
-│   │   │   │   └── login.js          # Screen 29 PIN Login with numerical keypad
+│   │   │   │   ├── login.js          # Username & password device binding
+│   │   │   │   ├── setup-pin.js      # Mobile PIN creation & confirmation
+│   │   │   │   └── pin.js            # Screen 29 PIN quick shift unlock
 │   │   │   └── (main)/
 │   │   │       ├── _layout.js        # Authenticated route guard
 │   │   │       ├── index.js          # Role-aware home (Office vs Field Dashboard)
 │   │   │       └── scan.js           # Screen 45 Camera QR scanner
-│   │   ├── components/               # Shared UI atoms (Keypad, PinIndicator, ActionCard, MetricCard, NoticeBanner)
+│   │   ├── components/               # Shared UI atoms (Keypad, PinIndicator, PressableScale, ActionCard, MetricCard, NoticeBanner)
 │   │   │   ├── common/
 │   │   │   └── layout/               # MobileHeader
 │   │   ├── features/                 # Domain feature slices (auth, office, field)

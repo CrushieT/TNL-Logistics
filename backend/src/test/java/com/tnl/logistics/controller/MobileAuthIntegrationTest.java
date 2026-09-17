@@ -1,10 +1,12 @@
 package com.tnl.logistics.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tnl.logistics.dto.LoginRequest;
 import com.tnl.logistics.dto.MobilePinLoginRequest;
+import com.tnl.logistics.dto.MobilePinSetupRequest;
 import com.tnl.logistics.model.AppUser;
-import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.repository.AppUserRepository;
+import com.tnl.logistics.config.JwtTokenProvider;
 import com.tnl.logistics.service.LoginRateLimiterService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +19,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -47,7 +50,6 @@ public class MobileAuthIntegrationTest {
     void setUp() {
         rateLimiterService.reset();
 
-        // Seed users with PINs for testing
         AppUser officeUser = appUserRepository.findByUsername("office").orElse(null);
         if (officeUser != null) {
             officeUser.setPinHash(passwordEncoder.encode("2222"));
@@ -61,6 +63,107 @@ public class MobileAuthIntegrationTest {
             fieldUser.setFullName("Carlos Mendoza");
             appUserRepository.save(fieldUser);
         }
+
+        AppUser haulerUser = appUserRepository.findByUsername("hauler1").orElse(null);
+        if (haulerUser != null) {
+            haulerUser.setPinHash(null);
+            haulerUser.setPasswordHash(passwordEncoder.encode("field123"));
+            appUserRepository.save(haulerUser);
+        }
+    }
+
+    @Test
+    void testMobileLoginOfficeStaffSuccess() throws Exception {
+        LoginRequest request = new LoginRequest("office", "office123");
+
+        mockMvc.perform(post("/api/v1/auth/mobile-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").isString())
+                .andExpect(jsonPath("$.userId").value("USR-OFFICE"))
+                .andExpect(jsonPath("$.username").value("office"))
+                .andExpect(jsonPath("$.fullName").value("Office Staff"))
+                .andExpect(jsonPath("$.role").value("OFFICE_STAFF"))
+                .andExpect(jsonPath("$.hasPinSet").value(true));
+    }
+
+    @Test
+    void testMobileLoginFieldStaffSuccess() throws Exception {
+        LoginRequest request = new LoginRequest("field", "field123");
+
+        mockMvc.perform(post("/api/v1/auth/mobile-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").isString())
+                .andExpect(jsonPath("$.userId").value("USR-FIELD"))
+                .andExpect(jsonPath("$.username").value("field"))
+                .andExpect(jsonPath("$.fullName").value("Carlos Mendoza"))
+                .andExpect(jsonPath("$.role").value("FIELD_STAFF"))
+                .andExpect(jsonPath("$.hasPinSet").value(true));
+    }
+
+    @Test
+    void testMobileLoginFieldStaffWithoutPinRequiresSetup() throws Exception {
+        LoginRequest request = new LoginRequest("hauler1", "field123");
+
+        mockMvc.perform(post("/api/v1/auth/mobile-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").isString())
+                .andExpect(jsonPath("$.username").value("hauler1"))
+                .andExpect(jsonPath("$.hasPinSet").value(false));
+    }
+
+    @Test
+    void testMobileLoginInvalidPasswordReturnsUnauthorized() throws Exception {
+        LoginRequest request = new LoginRequest("field", "wrongpassword");
+
+        mockMvc.perform(post("/api/v1/auth/mobile-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Invalid username or password"));
+    }
+
+    @Test
+    void testMobileSetupPinSuccess() throws Exception {
+        AppUser haulerUser = appUserRepository.findByUsername("hauler1").orElseThrow();
+        String token = JwtTokenProvider.generateToken(haulerUser.getUserId(), haulerUser.getRole().name(), haulerUser.getTokenVersion());
+
+        MobilePinSetupRequest setupRequest = new MobilePinSetupRequest("7777");
+
+        mockMvc.perform(post("/api/v1/auth/mobile-setup-pin")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(setupRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("PIN configured successfully"))
+                .andExpect(jsonPath("$.hasPinSet").value(true));
+
+        // Subsequent PIN login should succeed
+        MobilePinLoginRequest loginRequest = new MobilePinLoginRequest("7777", "hauler1");
+        mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("hauler1"));
+    }
+
+    @Test
+    void testMobileSetupPinInvalidFormatReturnsBadRequest() throws Exception {
+        AppUser haulerUser = appUserRepository.findByUsername("hauler1").orElseThrow();
+        String token = JwtTokenProvider.generateToken(haulerUser.getUserId(), haulerUser.getRole().name(), haulerUser.getTokenVersion());
+
+        MobilePinSetupRequest setupRequest = new MobilePinSetupRequest("12"); // < 4 digits
+
+        mockMvc.perform(post("/api/v1/auth/mobile-setup-pin")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(setupRequest)))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -91,6 +194,28 @@ public class MobileAuthIntegrationTest {
                 .andExpect(jsonPath("$.username").value("field"))
                 .andExpect(jsonPath("$.fullName").value("Carlos Mendoza"))
                 .andExpect(jsonPath("$.role").value("FIELD_STAFF"));
+    }
+
+    @Test
+    void testMobilePinLoginTargetedWithUsernameSuccess() throws Exception {
+        MobilePinLoginRequest request = new MobilePinLoginRequest("0001", "field");
+
+        mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("field"));
+    }
+
+    @Test
+    void testMobilePinLoginTargetedWrongPinReturnsUnauthorized() throws Exception {
+        MobilePinLoginRequest request = new MobilePinLoginRequest("9999", "field");
+
+        mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Invalid PIN"));
     }
 
     @Test
@@ -132,5 +257,66 @@ public class MobileAuthIntegrationTest {
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().exists("Retry-After"))
                 .andExpect(jsonPath("$.retryAfterSeconds").isNumber());
+    }
+
+    @Test
+    void testGetCurrentUserIncludesHasPinSet() throws Exception {
+        AppUser officeUser = appUserRepository.findByUsername("office").orElseThrow();
+        String token = JwtTokenProvider.generateToken(officeUser.getUserId(), officeUser.getRole().name(), officeUser.getTokenVersion());
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("office"))
+                .andExpect(jsonPath("$.hasPinSet").value(true));
+    }
+
+    @Test
+    void testMobileLoginAdminRestrictedReturnsForbidden() throws Exception {
+        LoginRequest request = new LoginRequest("admin", "admin123");
+
+        mockMvc.perform(post("/api/v1/auth/mobile-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Administrator accounts are restricted to the Web Portal."));
+    }
+
+    @Test
+    void testMobilePinLoginAdminTargetedReturnsForbidden() throws Exception {
+        MobilePinLoginRequest request = new MobilePinLoginRequest("1111", "admin");
+
+        mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Administrator accounts are restricted to the Web Portal."));
+    }
+
+    @Test
+    void testMobilePinLoginStreamIgnoresAdminPin() throws Exception {
+        // Broadcast PIN 1111 belongs to admin, but mobile stream must ignore admin and return 401
+        MobilePinLoginRequest request = new MobilePinLoginRequest("1111");
+
+        mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Invalid PIN"));
+    }
+
+    @Test
+    void testMobileSetupPinAdminRestrictedReturnsForbidden() throws Exception {
+        AppUser adminUser = appUserRepository.findByUsername("admin").orElseThrow();
+        String token = JwtTokenProvider.generateToken(adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion());
+
+        MobilePinSetupRequest setupRequest = new MobilePinSetupRequest("5555");
+
+        mockMvc.perform(post("/api/v1/auth/mobile-setup-pin")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(setupRequest)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Administrator accounts are restricted to the Web Portal."));
     }
 }

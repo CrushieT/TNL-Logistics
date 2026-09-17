@@ -6,6 +6,7 @@ import com.tnl.logistics.dto.FirstBootStatusResponse;
 import com.tnl.logistics.dto.LoginRequest;
 import com.tnl.logistics.dto.LoginResponse;
 import com.tnl.logistics.dto.MobilePinLoginRequest;
+import com.tnl.logistics.dto.MobilePinSetupRequest;
 import com.tnl.logistics.dto.PasswordChangeRequest;
 import com.tnl.logistics.dto.PasswordVerificationRequest;
 import com.tnl.logistics.model.AppUser;
@@ -96,16 +97,98 @@ public class AuthController {
 
         String token = JwtTokenProvider.generateToken(user.getUserId(), user.getRole().name(), user.getTokenVersion());
 
+        boolean hasPin = user.getPinHash() != null && !user.getPinHash().isBlank();
         LoginResponse response = new LoginResponse(
                 token,
                 user.getUserId(),
                 user.getUsername(),
                 user.getFullName(),
                 user.getRole().name(),
-                user.getMustChangePassword()
+                user.getMustChangePassword(),
+                hasPin
         );
 
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/mobile-login")
+    public ResponseEntity<?> mobileLogin(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
+        String clientIp = extractClientIp(servletRequest);
+
+        if (rateLimiterService.isBlocked(clientIp)) {
+            long retryAfter = rateLimiterService.getRemainingBlockSeconds(clientIp);
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header("Retry-After", String.valueOf(retryAfter))
+                    .body(Map.of(
+                            "message", "Too many failed login attempts. Access is locked. Please try again in " + retryAfter + " seconds.",
+                            "retryAfterSeconds", retryAfter
+                    ));
+        }
+
+        AppUser user;
+        try {
+            String normalizedUsername = UsernameNormalizer.normalize(request.getUsername());
+            user = appUserRepository.findByUsername(normalizedUsername).orElse(null);
+        } catch (IllegalArgumentException exception) {
+            user = null;
+        }
+
+        if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            rateLimiterService.recordFailure(clientIp);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Invalid username or password"));
+        }
+
+        if (!user.getActive()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Account is deactivated"));
+        }
+
+        if (user.getRole() == UserRole.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Administrator accounts are restricted to the Web Portal."));
+        }
+
+        rateLimiterService.recordSuccess(clientIp);
+
+        String token = JwtTokenProvider.generateToken(user.getUserId(), user.getRole().name(), user.getTokenVersion());
+
+        boolean hasPin = user.getPinHash() != null && !user.getPinHash().isBlank();
+        LoginResponse response = new LoginResponse(
+                token,
+                user.getUserId(),
+                user.getUsername(),
+                user.getFullName(),
+                user.getRole().name(),
+                user.getMustChangePassword(),
+                hasPin
+        );
+
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/mobile-setup-pin")
+    public ResponseEntity<?> mobileSetupPin(@Valid @RequestBody MobilePinSetupRequest request) {
+        String userId = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+
+        AppUser user = appUserRepository.findById(userId).orElse(null);
+        if (user == null || !Boolean.TRUE.equals(user.getActive())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Session invalid or account deactivated"));
+        }
+
+        if (user.getRole() == UserRole.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Administrator accounts are restricted to the Web Portal."));
+        }
+
+        user.setPinHash(passwordEncoder.encode(request.getPin()));
+        appUserRepository.save(user);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "PIN configured successfully",
+                "hasPinSet", true
+        ));
     }
 
     @PostMapping("/mobile-pin-login")
@@ -122,11 +205,31 @@ public class AuthController {
                     ));
         }
 
-        List<AppUser> activeUsersWithPin = appUserRepository.findByActiveTrueAndPinHashIsNotNull();
-        AppUser matchedUser = activeUsersWithPin.stream()
-                .filter(user -> passwordEncoder.matches(request.getPin(), user.getPinHash()))
-                .findFirst()
-                .orElse(null);
+        AppUser matchedUser = null;
+        if (request.getUsername() != null && !request.getUsername().isBlank()) {
+            try {
+                String normalized = UsernameNormalizer.normalize(request.getUsername());
+                AppUser target = appUserRepository.findByUsername(normalized).orElse(null);
+                if (target != null && Boolean.TRUE.equals(target.getActive()) && target.getPinHash() != null) {
+                    if (target.getRole() == UserRole.ADMIN) {
+                        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                                .body(Map.of("message", "Administrator accounts are restricted to the Web Portal."));
+                    }
+                    if (passwordEncoder.matches(request.getPin(), target.getPinHash())) {
+                        matchedUser = target;
+                    }
+                }
+            } catch (IllegalArgumentException ignored) {}
+        }
+
+        if (matchedUser == null) {
+            List<AppUser> activeUsersWithPin = appUserRepository.findByActiveTrueAndPinHashIsNotNull();
+            matchedUser = activeUsersWithPin.stream()
+                    .filter(user -> user.getRole() != UserRole.ADMIN)
+                    .filter(user -> passwordEncoder.matches(request.getPin(), user.getPinHash()))
+                    .findFirst()
+                    .orElse(null);
+        }
 
         if (matchedUser == null) {
             rateLimiterService.recordFailure(clientIp);
@@ -144,7 +247,8 @@ public class AuthController {
                 matchedUser.getUsername(),
                 matchedUser.getFullName(),
                 matchedUser.getRole().name(),
-                matchedUser.getMustChangePassword()
+                matchedUser.getMustChangePassword(),
+                true
         );
 
         return ResponseEntity.ok(response);
@@ -250,12 +354,15 @@ public class AuthController {
                     .body(Map.of("message", "Session invalid or expired"));
         }
 
+        boolean hasPinSet = user.getPinHash() != null && !user.getPinHash().isBlank();
+
         return ResponseEntity.ok(Map.of(
                 "userId", user.getUserId(),
                 "username", user.getUsername(),
                 "fullName", user.getFullName(),
                 "role", user.getRole().name(),
-                "mustChangePassword", user.getMustChangePassword()
+                "mustChangePassword", user.getMustChangePassword(),
+                "hasPinSet", hasPinSet
         ));
     }
 

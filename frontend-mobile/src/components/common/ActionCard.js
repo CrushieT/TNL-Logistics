@@ -1,25 +1,31 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { colors } from '../../theme';
+import { PressableScale } from './PressableScale';
 
 export function ActionCard({ iconName, title, subtitle, onPress }) {
   return (
-    <TouchableOpacity
-      style={styles.card}
+    <PressableScale
+      style={styles.cardWrapper}
+      contentStyle={styles.card}
       onPress={onPress}
-      activeOpacity={0.7}
+      activeScale={0.96}
     >
       <View style={styles.iconWrapper}>
         <Icon source={iconName} size={24} color={colors.ink} />
       </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.subtitle}>{subtitle}</Text>
-    </TouchableOpacity>
+    </PressableScale>
   );
 }
 
 const styles = StyleSheet.create({
+  cardWrapper: {
+    flex: 1,
+    margin: 6,
+  },
   card: {
     flex: 1,
     minHeight: 124,
@@ -28,7 +34,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 4,
     padding: 16,
-    margin: 6,
     justifyContent: 'space-between',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },

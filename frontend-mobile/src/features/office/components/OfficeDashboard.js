@@ -1,11 +1,12 @@
 import React from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Alert } from 'react-native';
 import { colors } from '../../../theme';
 import { MobileHeader } from '../../../components/layout/MobileHeader';
 import { ActionCard } from '../../../components/common/ActionCard';
 import { MetricCard } from '../../../components/common/MetricCard';
+import { PressableScale } from '../../../components/common/PressableScale';
 
-export function OfficeDashboard({ user, onLogout }) {
+export function OfficeDashboard({ user, onLogout, onLock }) {
   const handleFindParcel = () => {
     Alert.alert('Find Parcel', 'Past shipment directory & parcel lookup (Phase 6.2).');
   };
@@ -28,6 +29,7 @@ export function OfficeDashboard({ user, onLogout }) {
         role={user?.role || 'OFFICE_STAFF'}
         name={user?.fullName || user?.username || 'Andrea Lim'}
         onLogout={onLogout}
+        onLock={onLock}
       />
 
       {/* Printer Status Pill */}
@@ -39,10 +41,10 @@ export function OfficeDashboard({ user, onLogout }) {
       </View>
 
       {/* Urgent Label Print Callout Banner */}
-      <TouchableOpacity
-        style={styles.labelCalloutCard}
-        activeOpacity={0.8}
+      <PressableScale
+        contentStyle={styles.labelCalloutCard}
         onPress={handlePrinter}
+        activeScale={0.97}
       >
         <View style={styles.calloutHeader}>
           <Text style={styles.calloutTitle}>1 PARCEL NEED A LABEL</Text>
@@ -51,7 +53,7 @@ export function OfficeDashboard({ user, onLogout }) {
         <Text style={styles.calloutSubtitle}>
           Generate QR on PC, then print in the field
         </Text>
-      </TouchableOpacity>
+      </PressableScale>
 
       {/* 2x2 Grid of Actions */}
       <View style={styles.gridRow}>
