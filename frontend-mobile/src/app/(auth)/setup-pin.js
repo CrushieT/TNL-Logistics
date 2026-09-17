@@ -235,13 +235,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.canvas,
   },
   container: {
+    flexGrow: 1,
+    justifyContent: 'center',
     paddingHorizontal: 28,
     paddingTop: 32,
     paddingBottom: 24,
     alignItems: 'center',
   },
   logoContainer: {
-    alignSelf: 'flex-start',
+    alignItems: 'center',
     marginBottom: 16,
   },
   logoImage: {
@@ -250,7 +252,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   badgeWrap: {
-    alignSelf: 'flex-start',
     paddingHorizontal: 8,
     paddingVertical: 3,
     backgroundColor: '#EBE9E0',
@@ -264,7 +265,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
   },
   headerBlock: {
-    alignSelf: 'flex-start',
+    alignItems: 'center',
     marginBottom: 16,
     width: '100%',
   },
@@ -275,6 +276,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     color: colors.accent,
     marginBottom: 4,
+    textAlign: 'center',
   },
   title: {
     fontSize: 18,
@@ -282,11 +284,13 @@ const styles = StyleSheet.create({
     color: colors.ink,
     letterSpacing: -0.3,
     marginBottom: 6,
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 13.5,
     color: colors.inkSoft,
     lineHeight: 20,
+    textAlign: 'center',
   },
   errorContainer: {
     width: '100%',

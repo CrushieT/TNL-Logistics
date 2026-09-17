@@ -236,13 +236,6 @@ export default function PinUnlockScreen() {
         >
           <Text style={styles.switchAccountText}>Sign in with another account</Text>
         </PressableScale>
-
-        {/* Demo Credentials Caption */}
-        <View style={styles.footer}>
-          <Text style={styles.demoCaption}>
-            Demo PINs - Office: 2222 · Field: 0001 (Admin accounts use Web Portal)
-          </Text>
-        </View>
       </ScrollView>
 
       {/* Switch Account Confirmation Modal */}
@@ -267,13 +260,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.canvas,
   },
   container: {
+    flexGrow: 1,
+    justifyContent: 'center',
     paddingHorizontal: 28,
     paddingTop: 32,
     paddingBottom: 24,
     alignItems: 'center',
   },
   logoContainer: {
-    alignSelf: 'flex-start',
+    alignItems: 'center',
     marginBottom: 14,
   },
   logoImage: {
@@ -282,7 +277,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   badgeWrap: {
-    alignSelf: 'flex-start',
     paddingHorizontal: 8,
     paddingVertical: 3,
     backgroundColor: '#EBE9E0',
@@ -388,15 +382,5 @@ const styles = StyleSheet.create({
     color: colors.inkSoft,
     textAlign: 'center',
     textDecorationLine: 'underline',
-  },
-  footer: {
-    marginTop: 'auto',
-    paddingTop: 12,
-  },
-  demoCaption: {
-    fontSize: 11,
-    fontFamily: 'monospace',
-    color: colors.inkFaint,
-    textAlign: 'center',
   },
 });

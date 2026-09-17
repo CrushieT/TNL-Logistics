@@ -248,13 +248,10 @@ export default function LoginScreen() {
             </PressableScale>
           </View>
 
-          {/* Bottom Info / Demo Caption */}
+          {/* Bottom Info */}
           <View style={styles.footer}>
             <Text style={styles.demoCaption}>
               Accounts are created and managed in the Web Admin Portal.
-            </Text>
-            <Text style={styles.demoSubCaption}>
-              Demo - Office: office / office123 · Field: field / field123
             </Text>
           </View>
         </ScrollView>
@@ -272,13 +269,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   container: {
+    flexGrow: 1,
+    justifyContent: 'center',
     paddingHorizontal: 28,
     paddingTop: 32,
     paddingBottom: 24,
     alignItems: 'center',
   },
   logoContainer: {
-    alignSelf: 'flex-start',
+    alignItems: 'center',
     marginBottom: 16,
   },
   logoImage: {
@@ -287,7 +286,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   badgeWrap: {
-    alignSelf: 'flex-start',
     paddingHorizontal: 8,
     paddingVertical: 3,
     backgroundColor: '#EBE9E0',
@@ -304,7 +302,7 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     color: colors.inkSoft,
     lineHeight: 20,
-    alignSelf: 'flex-start',
+    textAlign: 'center',
     marginBottom: 16,
   },
   boundUserPressable: {
@@ -450,11 +448,5 @@ const styles = StyleSheet.create({
     color: colors.inkSoft,
     textAlign: 'center',
     marginBottom: 4,
-  },
-  demoSubCaption: {
-    fontSize: 11,
-    fontFamily: 'monospace',
-    color: colors.inkFaint,
-    textAlign: 'center',
   },
 });
