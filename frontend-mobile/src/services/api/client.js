@@ -38,14 +38,26 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+let onSessionRevokedCallback = null;
+
+export function setSessionRevokedCallback(callback) {
+  onSessionRevokedCallback = callback;
+}
+
 // Response interceptor handling session revocation
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-      if (error.response.data?.message?.includes('revoked') || error.response.data?.message?.includes('expired')) {
-        await removeToken();
-        await removeUser();
+    const url = error.config?.url || '';
+    const isPublicAuthRoute = url.includes('/auth/mobile-login') ||
+                              url.includes('/auth/mobile-pin-login') ||
+                              url.includes('/auth/mobile-pin-status') ||
+                              url.includes('/auth/login');
+
+    if (error.response?.status === 401 && !isPublicAuthRoute) {
+      await removeToken();
+      if (typeof onSessionRevokedCallback === 'function') {
+        onSessionRevokedCallback();
       }
     }
     return Promise.reject(error);

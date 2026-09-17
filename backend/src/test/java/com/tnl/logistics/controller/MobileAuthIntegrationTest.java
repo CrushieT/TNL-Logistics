@@ -319,4 +319,60 @@ public class MobileAuthIntegrationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.message").value("Administrator accounts are restricted to the Web Portal."));
     }
+
+    @Test
+    void testMobilePinLoginWhenPinClearedReturnsConflictPinNotSet() throws Exception {
+        // hauler1 has pinHash = null (cleared or unconfigured)
+        MobilePinLoginRequest request = new MobilePinLoginRequest("0000", "hauler1");
+
+        mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PIN_NOT_SET"))
+                .andExpect(jsonPath("$.hasPinSet").value(false))
+                .andExpect(jsonPath("$.message").value("Your PIN has been cleared by an administrator. Please sign in with your password to set up a new PIN."));
+    }
+
+    @Test
+    void testMobilePinLoginWhenPinClearedDoesNotTriggerRateLimitLockout() throws Exception {
+        // 6 attempts on hauler1 (with no PIN configured) must consistently return 409 Conflict without triggering 429 lockout
+        MobilePinLoginRequest request = new MobilePinLoginRequest("0000", "hauler1");
+
+        for (int i = 0; i < 6; i++) {
+            mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("PIN_NOT_SET"));
+        }
+    }
+
+    @Test
+    void testMobilePinStatusReturnsHasPinSetFalseWhenCleared() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/mobile-pin-status")
+                        .param("username", "hauler1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("hauler1"))
+                .andExpect(jsonPath("$.hasPinSet").value(false))
+                .andExpect(jsonPath("$.role").value("FIELD_STAFF"));
+    }
+
+    @Test
+    void testMobilePinStatusReturnsHasPinSetTrueWhenConfigured() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/mobile-pin-status")
+                        .param("username", "office"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("office"))
+                .andExpect(jsonPath("$.hasPinSet").value(true))
+                .andExpect(jsonPath("$.role").value("OFFICE_STAFF"));
+    }
+
+    @Test
+    void testMobilePinStatusAdminRestrictedReturnsForbidden() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/mobile-pin-status")
+                        .param("username", "admin"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Administrator accounts are restricted to the Web Portal."));
+    }
 }

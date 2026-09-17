@@ -44,4 +44,14 @@ export const authService = {
     const response = await apiClient.get('/auth/me');
     return response.data;
   },
+
+  /**
+   * Checks the PIN configuration status for a specific staff username.
+   * @param {string} username
+   * @returns {Promise<{ username: string, fullName: string, role: string, hasPinSet: boolean }>}
+   */
+  async checkMobilePinStatus(username) {
+    const response = await apiClient.get(`/auth/mobile-pin-status?username=${encodeURIComponent(username)}`);
+    return response.data;
+  },
 };

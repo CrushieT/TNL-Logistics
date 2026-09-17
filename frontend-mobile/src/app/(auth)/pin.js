@@ -11,10 +11,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../features/auth/context/AuthContext';
+import { authService } from '../../features/auth/services/authService';
 import { PinIndicator } from '../../components/common/PinIndicator';
 import { Keypad } from '../../components/common/Keypad';
 import { colors } from '../../theme';
 import { PressableScale } from '../../components/common/PressableScale';
+import { StatusModal } from '../../components/common/StatusModal';
 
 export default function PinUnlockScreen() {
   const router = useRouter();
@@ -25,6 +27,8 @@ export default function PinUnlockScreen() {
     isLocked,
     mustSetupPin,
     fullLogout,
+    updateBoundUserPinStatus,
+    showSessionNotice,
     isLoading: authLoading,
   } = useAuth();
 
@@ -32,6 +36,7 @@ export default function PinUnlockScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const [lockoutSeconds, setLockoutSeconds] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [switchAccountModalVisible, setSwitchAccountModalVisible] = useState(false);
 
   // If already authenticated and not locked, redirect to main
   useEffect(() => {
@@ -52,6 +57,35 @@ export default function PinUnlockScreen() {
       router.replace('/(auth)/login');
     }
   }, [isAuthenticated, isLocked, mustSetupPin, boundUser, authLoading, router]);
+
+  // Proactively check if bound user's PIN was cleared by Admin in background
+  useEffect(() => {
+    let isMounted = true;
+    async function verifyBoundUserPinStatus() {
+      if (!boundUser?.username) return;
+      try {
+        const status = await authService.checkMobilePinStatus(boundUser.username);
+        if (isMounted && status?.hasPinSet === false) {
+          const targetUsername = boundUser.username;
+          showSessionNotice({
+            title: 'PIN Reset by Administrator',
+            eyebrow: 'SECURITY NOTICE',
+            message: 'Your PIN was cleared by an administrator. Please sign in with your password to configure a new PIN.',
+            confirmText: 'PROCEED TO SIGN IN',
+            username: targetUsername,
+            reason: 'pin_cleared',
+          });
+        }
+      } catch (e) {
+        // Non-blocking background status check failure
+      }
+    }
+
+    verifyBoundUserPinStatus();
+    return () => {
+      isMounted = false;
+    };
+  }, [boundUser?.username, showSessionNotice]);
 
   // Lockout countdown timer
   useEffect(() => {
@@ -88,7 +122,18 @@ export default function PinUnlockScreen() {
     } catch (error) {
       setPin('');
       const responseData = error.response?.data;
-      if (error.response?.status === 429) {
+      if (error.response?.status === 409) {
+        const targetUsername = boundUser?.username;
+        showSessionNotice({
+          title: 'PIN Reset by Administrator',
+          eyebrow: 'SECURITY NOTICE',
+          message: 'Your PIN was cleared by an administrator. Please sign in with your password to configure a new PIN.',
+          confirmText: 'PROCEED TO SIGN IN',
+          username: targetUsername,
+          reason: 'pin_cleared',
+        });
+        return;
+      } else if (error.response?.status === 429) {
         const retryAfter = responseData?.retryAfterSeconds || 60;
         setLockoutSeconds(retryAfter);
         setErrorMessage(`Too many failed attempts. Locked out for ${retryAfter}s.`);
@@ -102,9 +147,18 @@ export default function PinUnlockScreen() {
     }
   };
 
-  const handleSwitchAccount = async () => {
+  const handleSwitchAccount = () => {
+    setSwitchAccountModalVisible(true);
+  };
+
+  const handleConfirmSwitchAccount = async () => {
+    setSwitchAccountModalVisible(false);
     await fullLogout();
     router.replace('/(auth)/login');
+  };
+
+  const handleCancelSwitchAccount = () => {
+    setSwitchAccountModalVisible(false);
   };
 
   const isButtonEnabled = pin.length === 4 && !submitting && lockoutSeconds === 0;
@@ -190,6 +244,19 @@ export default function PinUnlockScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      {/* Switch Account Confirmation Modal */}
+      <StatusModal
+        visible={switchAccountModalVisible}
+        eyebrow="DEVICE UNBIND"
+        title="Switch Account?"
+        message="Are you sure you want to unbind this terminal and sign in with a different staff account?"
+        cancelText="Cancel"
+        confirmText="Switch Account"
+        confirmVariant="danger"
+        onConfirm={handleConfirmSwitchAccount}
+        onCancel={handleCancelSwitchAccount}
+      />
     </SafeAreaView>
   );
 }

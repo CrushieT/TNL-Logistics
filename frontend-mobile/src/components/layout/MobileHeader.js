@@ -1,20 +1,26 @@
-import React from 'react';
-import { StyleSheet, View, Text, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, View, Text } from 'react-native';
 import { colors } from '../../theme';
 import { PressableScale } from '../common/PressableScale';
+import { StatusModal } from '../common/StatusModal';
 
 export function MobileHeader({ role, name, onLogout, onLock }) {
+  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
   const roleDisplay = role ? role.replace('_', ' ') : 'STAFF';
 
   const handleLogoutPress = () => {
-    Alert.alert(
-      'Log Out & Unbind Device',
-      'This will remove account credentials from this device. You will need your username and password to sign in again.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Log Out', style: 'destructive', onPress: onLogout },
-      ]
-    );
+    setLogoutModalVisible(true);
+  };
+
+  const handleConfirmLogout = () => {
+    setLogoutModalVisible(false);
+    if (typeof onLogout === 'function') {
+      onLogout();
+    }
+  };
+
+  const handleCancelLogout = () => {
+    setLogoutModalVisible(false);
   };
 
   return (
@@ -33,6 +39,18 @@ export function MobileHeader({ role, name, onLogout, onLock }) {
           <Text style={styles.logoutText}>LOGOUT</Text>
         </PressableScale>
       </View>
+
+      <StatusModal
+        visible={logoutModalVisible}
+        eyebrow="SESSION"
+        title="Log Out & Unbind Device?"
+        message="This will remove account credentials from this device. You will need your username and password to sign in again."
+        cancelText="Cancel"
+        confirmText="Log Out"
+        confirmVariant="danger"
+        onConfirm={handleConfirmLogout}
+        onCancel={handleCancelLogout}
+      />
     </View>
   );
 }

@@ -15,6 +15,7 @@ import { PinIndicator } from '../../components/common/PinIndicator';
 import { Keypad } from '../../components/common/Keypad';
 import { colors } from '../../theme';
 import { PressableScale } from '../../components/common/PressableScale';
+import { StatusModal } from '../../components/common/StatusModal';
 
 export default function SetupPinScreen() {
   const router = useRouter();
@@ -25,6 +26,7 @@ export default function SetupPinScreen() {
   const [confirmPin, setConfirmPin] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [cancelModalVisible, setCancelModalVisible] = useState(false);
 
   const activeValue = step === 1 ? pin : confirmPin;
 
@@ -89,9 +91,18 @@ export default function SetupPinScreen() {
     }
   };
 
-  const handleCancel = async () => {
+  const handleCancel = () => {
+    setCancelModalVisible(true);
+  };
+
+  const handleConfirmCancel = async () => {
+    setCancelModalVisible(false);
     await fullLogout();
     router.replace('/(auth)/login');
+  };
+
+  const handleDismissCancel = () => {
+    setCancelModalVisible(false);
   };
 
   const isContinueEnabled = step === 1 && pin.length === 4;
@@ -201,6 +212,19 @@ export default function SetupPinScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Cancel PIN Setup Confirmation Modal */}
+      <StatusModal
+        visible={cancelModalVisible}
+        eyebrow="PIN CONFIGURATION"
+        title="Cancel PIN Setup?"
+        message="Are you sure you want to cancel PIN configuration and sign out? You will need to re-enter your password to sign in."
+        cancelText="Keep Setting Up"
+        confirmText="Sign Out"
+        confirmVariant="danger"
+        onConfirm={handleConfirmCancel}
+        onCancel={handleDismissCancel}
+      />
     </SafeAreaView>
   );
 }

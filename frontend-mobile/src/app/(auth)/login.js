@@ -12,13 +12,15 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../features/auth/context/AuthContext';
 import { colors } from '../../theme';
 import { PressableScale } from '../../components/common/PressableScale';
+import { NoticeBanner } from '../../components/common/NoticeBanner';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const {
     loginWithPassword,
     isAuthenticated,
@@ -28,12 +30,24 @@ export default function LoginScreen() {
     isLoading: authLoading,
   } = useAuth();
 
-  const [username, setUsername] = useState('');
+  const isPinClearedNotice = params?.reason === 'pin_cleared';
+  const isSessionExpiredNotice = params?.reason === 'session_expired';
+
+  const [username, setUsername] = useState(params?.username || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [lockoutSeconds, setLockoutSeconds] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+
+  // Pre-fill username from route param or cleared bound account
+  useEffect(() => {
+    if (params?.username && typeof params.username === 'string') {
+      setUsername(params.username);
+    } else if (boundUser?.username && boundUser.hasPinSet === false) {
+      setUsername(boundUser.username);
+    }
+  }, [params?.username, boundUser?.username, boundUser?.hasPinSet]);
 
   // If already fully authenticated, redirect to main
   useEffect(() => {
@@ -49,11 +63,11 @@ export default function LoginScreen() {
       return;
     }
 
-    // If device is already bound to a user and locked, default to PIN unlock
-    if (boundUser && isLocked) {
+    // If device is already bound to a user with PIN configured and locked, default to PIN unlock
+    if (boundUser && isLocked && boundUser.hasPinSet !== false && !params?.username && !isPinClearedNotice) {
       router.replace('/(auth)/pin');
     }
-  }, [isAuthenticated, authLoading, boundUser, isLocked, mustSetupPin, router]);
+  }, [isAuthenticated, authLoading, boundUser, isLocked, mustSetupPin, params?.username, isPinClearedNotice, router]);
 
   // Lockout countdown timer
   useEffect(() => {
@@ -127,8 +141,23 @@ export default function LoginScreen() {
             Enter your assigned staff credentials to bind this handheld terminal to your account.
           </Text>
 
-          {/* Bound User Quick Shortcut (if returning user) */}
-          {boundUser && (
+          {/* Cleared PIN / Session Notice Banners */}
+          {isPinClearedNotice && (
+            <NoticeBanner
+              title="PIN SETUP REQUIRED"
+              subtitle="Your PIN was cleared by an administrator. Please sign in with your password to set up a new PIN."
+            />
+          )}
+
+          {isSessionExpiredNotice && (
+            <NoticeBanner
+              title="SESSION EXPIRED"
+              subtitle="Your session was revoked or expired. Please sign in with your password."
+            />
+          )}
+
+          {/* Bound User Quick Shortcut (if returning user with valid PIN) */}
+          {boundUser && boundUser.hasPinSet !== false && !isPinClearedNotice && (
             <PressableScale
               style={styles.boundUserPressable}
               contentStyle={styles.boundUserBanner}

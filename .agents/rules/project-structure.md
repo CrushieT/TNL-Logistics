@@ -81,7 +81,7 @@ tnl-logistics/
 │   │   │       ├── _layout.js        # Authenticated route guard
 │   │   │       ├── index.js          # Role-aware home (Office vs Field Dashboard)
 │   │   │       └── scan.js           # Screen 45 Camera QR scanner
-│   │   ├── components/               # Shared UI atoms (Keypad, PinIndicator, PressableScale, ActionCard, MetricCard, NoticeBanner)
+│   │   ├── components/               # Shared UI atoms (Keypad, PinIndicator, PressableScale, ActionCard, MetricCard, NoticeBanner, StatusModal)
 │   │   │   ├── common/
 │   │   │   └── layout/               # MobileHeader
 │   │   ├── features/                 # Domain feature slices (auth, office, field)
