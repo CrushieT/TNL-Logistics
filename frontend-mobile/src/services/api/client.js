@@ -14,8 +14,19 @@ function resolveBaseUrl() {
   return 'http://localhost:8080/api/v1';
 }
 
+function assertSecureProductionBaseUrl(baseUrl) {
+  const isProductionBuild =
+    (typeof __DEV__ !== 'undefined' && !__DEV__) || process.env.NODE_ENV === 'production';
+
+  if (isProductionBuild && !baseUrl.startsWith('https://')) {
+    throw new Error('Production builds require an HTTPS EXPO_PUBLIC_API_URL');
+  }
+
+  return baseUrl;
+}
+
 export const apiClient = axios.create({
-  baseURL: resolveBaseUrl(),
+  baseURL: assertSecureProductionBaseUrl(resolveBaseUrl()),
   headers: {
     'Content-Type': 'application/json',
   },

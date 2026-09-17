@@ -13,6 +13,9 @@ import {
   saveBoundUser,
   getBoundUser,
   removeBoundUser,
+  saveDeviceCredentials,
+  getDeviceCredentials,
+  removeDeviceCredentials,
   setAppLocked,
   isAppLocked,
 } from '../../../services/storage/secureStore';
@@ -63,6 +66,23 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
+  const clearSession = useCallback(async () => {
+    try {
+      await Promise.all([
+        removeToken(),
+        removeUser(),
+        removeBoundUser(),
+        removeDeviceCredentials(),
+        setAppLocked(false),
+      ]);
+    } finally {
+      setToken(null);
+      setUser(null);
+      setBoundUser(null);
+      setIsLocked(false);
+    }
+  }, []);
+
   const handleNoticeConfirm = async () => {
     const currentNotice = popupNotice;
     setPopupNotice(null);
@@ -87,15 +107,7 @@ export function AuthProvider({ children }) {
       const storedBoundUser = await getBoundUser();
       const username = storedUser?.username || storedBoundUser?.username;
 
-      await removeToken();
-      await removeUser();
-      await removeBoundUser();
-      await setAppLocked(false);
-
-      setToken(null);
-      setUser(null);
-      setBoundUser(null);
-      setIsLocked(false);
+      await clearSession();
 
       showSessionNotice({
         title: 'Session Ended',
@@ -106,7 +118,7 @@ export function AuthProvider({ children }) {
         reason: 'session_expired',
       });
     });
-  }, [showSessionNotice]);
+  }, [clearSession, showSessionNotice]);
 
   // Restore stored session and device binding on mount
   useEffect(() => {
@@ -115,83 +127,84 @@ export function AuthProvider({ children }) {
         const storedBoundUser = await getBoundUser();
         const storedToken = await getToken();
         const storedUser = await getUser();
+        const storedDeviceCredentials = await getDeviceCredentials();
         const lockedStatus = await isAppLocked();
 
-        if (storedBoundUser) {
+        if (storedBoundUser && storedDeviceCredentials) {
           setBoundUser(storedBoundUser);
         }
 
-        if (storedToken && storedUser) {
-          setToken(storedToken);
-          setUser(storedUser);
-          setIsLocked(lockedStatus || false);
+        if ((storedToken && storedUser) || storedBoundUser) {
+          if (!storedDeviceCredentials) {
+            const username = storedUser?.username || storedBoundUser?.username;
+            await clearSession();
+            showSessionNotice({
+              title: 'Sign In Required',
+              eyebrow: 'DEVICE SECURITY',
+              message: 'This device must be signed in with a password before it can be unlocked with a PIN.',
+              confirmText: 'PROCEED TO SIGN IN',
+              username,
+              reason: 'device_credentials_missing',
+            });
+            return;
+          }
 
-          // Verify session freshness with server in background
-          try {
-            const freshUser = await authService.fetchCurrentUser();
-            if (freshUser) {
-              if (freshUser.hasPinSet === false) {
-                // PIN cleared by admin -> log out account completely and display notice
-                await removeToken();
-                await removeUser();
-                await removeBoundUser();
-                await setAppLocked(false);
-                setToken(null);
-                setUser(null);
-                setBoundUser(null);
-                setIsLocked(false);
+          if (storedToken && storedUser) {
+            setToken(storedToken);
+            setUser(storedUser);
+            setIsLocked(lockedStatus || false);
+
+            // Verify session freshness with server in background
+            try {
+              const freshUser = await authService.fetchCurrentUser();
+              if (freshUser) {
+                if (freshUser.hasPinSet === false) {
+                  // PIN cleared by admin -> log out account completely and display notice
+                  await clearSession();
+
+                  showSessionNotice({
+                    title: 'PIN Reset by Administrator',
+                    eyebrow: 'SECURITY NOTICE',
+                    message: 'Your PIN was cleared by an administrator. Please sign in with your password to configure a new PIN.',
+                    confirmText: 'PROCEED TO SIGN IN',
+                    username: freshUser.username,
+                    reason: 'pin_cleared',
+                  });
+                } else {
+                  setUser(freshUser);
+                }
+              }
+            } catch (verifyError) {
+              if (verifyError.response?.status === 401) {
+                // Token revoked / tokenVersion mismatch on server
+                await clearSession();
 
                 showSessionNotice({
-                  title: 'PIN Reset by Administrator',
-                  eyebrow: 'SECURITY NOTICE',
-                  message: 'Your PIN was cleared by an administrator. Please sign in with your password to configure a new PIN.',
+                  title: 'Session Ended',
+                  eyebrow: 'SESSION REVOKED',
+                  message: 'Your session was revoked or expired. Please sign in again with your password.',
                   confirmText: 'PROCEED TO SIGN IN',
-                  username: freshUser.username,
-                  reason: 'pin_cleared',
+                  username: storedUser.username,
+                  reason: 'session_expired',
                 });
-              } else {
-                setUser(freshUser);
               }
             }
-          } catch (verifyError) {
-            if (verifyError.response?.status === 401) {
-              // Token revoked / tokenVersion mismatch on server
-              await removeToken();
-              await removeUser();
-              await removeBoundUser();
-              await setAppLocked(false);
-              setToken(null);
-              setUser(null);
-              setBoundUser(null);
-              setIsLocked(false);
+          } else if (storedBoundUser) {
+            // If stored bound user has no PIN configured, clear binding and show notice
+            if (storedBoundUser.hasPinSet === false) {
+              await clearSession();
 
               showSessionNotice({
-                title: 'Session Ended',
-                eyebrow: 'SESSION REVOKED',
-                message: 'Your session was revoked or expired. Please sign in again with your password.',
+                title: 'PIN Reset by Administrator',
+                eyebrow: 'SECURITY NOTICE',
+                message: 'Your PIN was cleared by an administrator. Please sign in with your password to configure a new PIN.',
                 confirmText: 'PROCEED TO SIGN IN',
-                username: storedUser.username,
-                reason: 'session_expired',
+                username: storedBoundUser.username,
+                reason: 'pin_cleared',
               });
+            } else {
+              setIsLocked(true);
             }
-          }
-        } else if (storedBoundUser) {
-          // If stored bound user has no PIN configured, clear binding and show notice
-          if (storedBoundUser.hasPinSet === false) {
-            await removeBoundUser();
-            setBoundUser(null);
-            setIsLocked(false);
-
-            showSessionNotice({
-              title: 'PIN Reset by Administrator',
-              eyebrow: 'SECURITY NOTICE',
-              message: 'Your PIN was cleared by an administrator. Please sign in with your password to configure a new PIN.',
-              confirmText: 'PROCEED TO SIGN IN',
-              username: storedBoundUser.username,
-              reason: 'pin_cleared',
-            });
-          } else {
-            setIsLocked(true);
           }
         }
       } catch (e) {
@@ -202,14 +215,21 @@ export function AuthProvider({ children }) {
     }
 
     restoreSession();
-  }, [showSessionNotice]);
+  }, [clearSession, showSessionNotice]);
 
   const loginWithPassword = useCallback(async (username, password) => {
     setIsLoading(true);
     try {
-      const data = await authService.loginWithPassword(username, password);
-      const { token: receivedToken, ...userData } = data;
+      const existingDeviceCredentials = await getDeviceCredentials();
+      const data = await authService.loginWithPassword(username, password, existingDeviceCredentials?.deviceId);
+      const {
+        token: receivedToken,
+        deviceId,
+        deviceToken,
+        ...userData
+      } = data;
 
+      await saveDeviceCredentials(deviceId, deviceToken);
       await saveToken(receivedToken);
       await saveUser(userData);
       await saveBoundUser({
@@ -242,6 +262,10 @@ export function AuthProvider({ children }) {
     setIsLoading(true);
     try {
       const result = await authService.setupPin(pin);
+      if (!result.token) {
+        throw new Error('PIN setup did not return a replacement session. Please sign in again.');
+      }
+
       const updatedUser = user ? { ...user, hasPinSet: true } : null;
       const updatedBoundUser = boundUser ? { ...boundUser, hasPinSet: true } : null;
 
@@ -253,6 +277,9 @@ export function AuthProvider({ children }) {
         await saveBoundUser(updatedBoundUser);
         setBoundUser(updatedBoundUser);
       }
+
+      await saveToken(result.token);
+      setToken(result.token);
 
       return result;
     } finally {
@@ -267,12 +294,23 @@ export function AuthProvider({ children }) {
       if (!targetUsername) {
         throw new Error('No bound staff account found on terminal. Please sign in with your password.');
       }
-      const payload = { username: targetUsername, pin };
-      const data = await authService.loginWithPin(payload);
-      const { token: receivedToken, ...userData } = data;
+      const deviceCredentials = await getDeviceCredentials();
+      if (!deviceCredentials) {
+        await clearSession();
+        throw new Error('This device must be signed in with a password before it can be unlocked with a PIN.');
+      }
+
+      const data = await authService.loginWithPin(targetUsername, pin, deviceCredentials);
+      const {
+        token: receivedToken,
+        deviceId,
+        deviceToken,
+        ...userData
+      } = data;
 
       await saveToken(receivedToken);
       await saveUser(userData);
+      await saveDeviceCredentials(deviceId, deviceToken);
       await setAppLocked(false);
 
       setToken(receivedToken);
@@ -283,7 +321,7 @@ export function AuthProvider({ children }) {
     } finally {
       setIsLoading(false);
     }
-  }, [boundUser, user]);
+  }, [boundUser, clearSession, user]);
 
   const lockSession = useCallback(async () => {
     await setAppLocked(true);
@@ -293,19 +331,11 @@ export function AuthProvider({ children }) {
   const fullLogout = useCallback(async () => {
     setIsLoading(true);
     try {
-      await removeToken();
-      await removeUser();
-      await removeBoundUser();
-      await setAppLocked(false);
-
-      setToken(null);
-      setUser(null);
-      setBoundUser(null);
-      setIsLocked(false);
+      await clearSession();
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [clearSession]);
 
   const updateBoundUserPinStatus = useCallback(async (hasPinSet) => {
     const current = boundUser || await getBoundUser();

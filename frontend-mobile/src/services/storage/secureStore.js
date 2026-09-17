@@ -2,82 +2,68 @@ import { Platform } from 'react-native';
 
 const TOKEN_KEY = 'tnl_mobile_token';
 const USER_KEY = 'tnl_mobile_user';
+const BOUND_USER_KEY = 'tnl_mobile_bound_user';
+const APP_LOCKED_KEY = 'tnl_mobile_locked';
+const DEVICE_ID_KEY = 'tnl_mobile_device_id';
+const DEVICE_TOKEN_KEY = 'tnl_mobile_device_token';
 
 let memoryStorage = {};
 
 async function getSecureStore() {
-  if (Platform.OS !== 'web') {
-    try {
-      const SecureStore = await import('expo-secure-store');
-      return SecureStore;
-    } catch (e) {
-      return null;
-    }
+  if (Platform.OS === 'web') {
+    return null;
   }
-  return null;
+
+  return import('expo-secure-store');
+}
+
+async function saveValue(key, value) {
+  const SecureStore = await getSecureStore();
+  if (SecureStore) {
+    await SecureStore.setItemAsync(key, value);
+    return;
+  }
+
+  memoryStorage[key] = value;
+}
+
+async function getValue(key) {
+  const SecureStore = await getSecureStore();
+  if (SecureStore) {
+    return SecureStore.getItemAsync(key);
+  }
+
+  return memoryStorage[key] || null;
+}
+
+async function removeValue(key) {
+  const SecureStore = await getSecureStore();
+  if (SecureStore) {
+    await SecureStore.deleteItemAsync(key);
+    return;
+  }
+
+  delete memoryStorage[key];
 }
 
 export async function saveToken(token) {
-  const SecureStore = await getSecureStore();
-  if (SecureStore) {
-    await SecureStore.setItemAsync(TOKEN_KEY, token);
-    return;
-  }
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-    window.localStorage.setItem(TOKEN_KEY, token);
-  } else {
-    memoryStorage[TOKEN_KEY] = token;
-  }
+  await saveValue(TOKEN_KEY, token);
 }
 
 export async function getToken() {
-  const SecureStore = await getSecureStore();
-  if (SecureStore) {
-    return await SecureStore.getItemAsync(TOKEN_KEY);
-  }
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-    return window.localStorage.getItem(TOKEN_KEY);
-  }
-  return memoryStorage[TOKEN_KEY] || null;
+  return getValue(TOKEN_KEY);
 }
 
 export async function removeToken() {
-  const SecureStore = await getSecureStore();
-  if (SecureStore) {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-    return;
-  }
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-    window.localStorage.removeItem(TOKEN_KEY);
-  } else {
-    delete memoryStorage[TOKEN_KEY];
-  }
+  await removeValue(TOKEN_KEY);
 }
 
 export async function saveUser(user) {
-  const userJson = JSON.stringify(user);
-  const SecureStore = await getSecureStore();
-  if (SecureStore) {
-    await SecureStore.setItemAsync(USER_KEY, userJson);
-    return;
-  }
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-    window.localStorage.setItem(USER_KEY, userJson);
-  } else {
-    memoryStorage[USER_KEY] = userJson;
-  }
+  await saveValue(USER_KEY, JSON.stringify(user));
 }
 
 export async function getUser() {
-  let userJson = null;
-  const SecureStore = await getSecureStore();
-  if (SecureStore) {
-    userJson = await SecureStore.getItemAsync(USER_KEY);
-  } else if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-    userJson = window.localStorage.getItem(USER_KEY);
-  } else {
-    userJson = memoryStorage[USER_KEY] || null;
-  }
+  const userJson = await getValue(USER_KEY);
 
   if (!userJson) return null;
   try {
@@ -88,45 +74,15 @@ export async function getUser() {
 }
 
 export async function removeUser() {
-  const SecureStore = await getSecureStore();
-  if (SecureStore) {
-    await SecureStore.deleteItemAsync(USER_KEY);
-    return;
-  }
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-    window.localStorage.removeItem(USER_KEY);
-  } else {
-    delete memoryStorage[USER_KEY];
-  }
+  await removeValue(USER_KEY);
 }
 
-const BOUND_USER_KEY = 'tnl_mobile_bound_user';
-const APP_LOCKED_KEY = 'tnl_mobile_locked';
-
 export async function saveBoundUser(user) {
-  const userJson = JSON.stringify(user);
-  const SecureStore = await getSecureStore();
-  if (SecureStore) {
-    await SecureStore.setItemAsync(BOUND_USER_KEY, userJson);
-    return;
-  }
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-    window.localStorage.setItem(BOUND_USER_KEY, userJson);
-  } else {
-    memoryStorage[BOUND_USER_KEY] = userJson;
-  }
+  await saveValue(BOUND_USER_KEY, JSON.stringify(user));
 }
 
 export async function getBoundUser() {
-  let userJson = null;
-  const SecureStore = await getSecureStore();
-  if (SecureStore) {
-    userJson = await SecureStore.getItemAsync(BOUND_USER_KEY);
-  } else if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-    userJson = window.localStorage.getItem(BOUND_USER_KEY);
-  } else {
-    userJson = memoryStorage[BOUND_USER_KEY] || null;
-  }
+  const userJson = await getValue(BOUND_USER_KEY);
 
   if (!userJson) return null;
   try {
@@ -137,41 +93,45 @@ export async function getBoundUser() {
 }
 
 export async function removeBoundUser() {
-  const SecureStore = await getSecureStore();
-  if (SecureStore) {
-    await SecureStore.deleteItemAsync(BOUND_USER_KEY);
-    return;
-  }
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-    window.localStorage.removeItem(BOUND_USER_KEY);
-  } else {
-    delete memoryStorage[BOUND_USER_KEY];
-  }
+  await removeValue(BOUND_USER_KEY);
 }
 
 export async function setAppLocked(isLocked) {
-  const value = isLocked ? 'true' : 'false';
-  const SecureStore = await getSecureStore();
-  if (SecureStore) {
-    await SecureStore.setItemAsync(APP_LOCKED_KEY, value);
-    return;
-  }
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-    window.localStorage.setItem(APP_LOCKED_KEY, value);
-  } else {
-    memoryStorage[APP_LOCKED_KEY] = value;
-  }
+  await saveValue(APP_LOCKED_KEY, isLocked ? 'true' : 'false');
 }
 
 export async function isAppLocked() {
-  let val = null;
-  const SecureStore = await getSecureStore();
-  if (SecureStore) {
-    val = await SecureStore.getItemAsync(APP_LOCKED_KEY);
-  } else if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-    val = window.localStorage.getItem(APP_LOCKED_KEY);
-  } else {
-    val = memoryStorage[APP_LOCKED_KEY] || null;
-  }
+  const val = await getValue(APP_LOCKED_KEY);
   return val === 'true';
+}
+
+export async function saveDeviceCredentials(deviceId, deviceToken) {
+  if (!deviceId || !deviceToken) {
+    throw new Error('Device credentials are required');
+  }
+
+  await Promise.all([
+    saveValue(DEVICE_ID_KEY, deviceId),
+    saveValue(DEVICE_TOKEN_KEY, deviceToken),
+  ]);
+}
+
+export async function getDeviceCredentials() {
+  const [deviceId, deviceToken] = await Promise.all([
+    getValue(DEVICE_ID_KEY),
+    getValue(DEVICE_TOKEN_KEY),
+  ]);
+
+  if (!deviceId || !deviceToken) {
+    return null;
+  }
+
+  return { deviceId, deviceToken };
+}
+
+export async function removeDeviceCredentials() {
+  await Promise.all([
+    removeValue(DEVICE_ID_KEY),
+    removeValue(DEVICE_TOKEN_KEY),
+  ]);
 }
