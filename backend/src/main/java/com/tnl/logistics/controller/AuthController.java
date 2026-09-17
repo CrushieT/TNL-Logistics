@@ -205,45 +205,37 @@ public class AuthController {
                     ));
         }
 
-        AppUser matchedUser = null;
-        if (request.getUsername() != null && !request.getUsername().isBlank()) {
-            try {
-                String normalized = UsernameNormalizer.normalize(request.getUsername());
-                AppUser target = appUserRepository.findByUsername(normalized).orElse(null);
-                if (target != null && Boolean.TRUE.equals(target.getActive())) {
-                    if (target.getRole() == UserRole.ADMIN) {
-                        return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                                .body(Map.of("message", "Administrator accounts are restricted to the Web Portal."));
-                    }
-                    if (target.getPinHash() == null || target.getPinHash().isBlank()) {
-                        return ResponseEntity.status(HttpStatus.CONFLICT)
-                                .body(Map.of(
-                                        "code", "PIN_NOT_SET",
-                                        "message", "Your PIN has been cleared by an administrator. Please sign in with your password to set up a new PIN.",
-                                        "hasPinSet", false
-                                ));
-                    }
-                    if (passwordEncoder.matches(request.getPin(), target.getPinHash())) {
-                        matchedUser = target;
-                    } else {
-                        rateLimiterService.recordFailure(clientIp);
-                        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                                .body(Map.of("message", "Invalid PIN"));
-                    }
-                }
-            } catch (IllegalArgumentException ignored) {}
+        String normalized;
+        try {
+            normalized = UsernameNormalizer.normalize(request.getUsername());
+        } catch (IllegalArgumentException e) {
+            rateLimiterService.recordFailure(clientIp);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Invalid PIN"));
         }
 
-        if (matchedUser == null) {
-            List<AppUser> activeUsersWithPin = appUserRepository.findByActiveTrueAndPinHashIsNotNull();
-            matchedUser = activeUsersWithPin.stream()
-                    .filter(user -> user.getRole() != UserRole.ADMIN)
-                    .filter(user -> passwordEncoder.matches(request.getPin(), user.getPinHash()))
-                    .findFirst()
-                    .orElse(null);
+        AppUser target = appUserRepository.findByUsername(normalized).orElse(null);
+        if (target == null || !Boolean.TRUE.equals(target.getActive())) {
+            rateLimiterService.recordFailure(clientIp);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Invalid PIN"));
         }
 
-        if (matchedUser == null) {
+        if (target.getRole() == UserRole.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Administrator accounts are restricted to the Web Portal."));
+        }
+
+        if (target.getPinHash() == null || target.getPinHash().isBlank()) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of(
+                            "code", "PIN_NOT_SET",
+                            "message", "Your PIN has been cleared by an administrator. Please sign in with your password to set up a new PIN.",
+                            "hasPinSet", false
+                    ));
+        }
+
+        if (!passwordEncoder.matches(request.getPin(), target.getPinHash())) {
             rateLimiterService.recordFailure(clientIp);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("message", "Invalid PIN"));
@@ -251,15 +243,15 @@ public class AuthController {
 
         rateLimiterService.recordSuccess(clientIp);
 
-        String token = JwtTokenProvider.generateToken(matchedUser.getUserId(), matchedUser.getRole().name(), matchedUser.getTokenVersion());
+        String token = JwtTokenProvider.generateToken(target.getUserId(), target.getRole().name(), target.getTokenVersion());
 
         LoginResponse response = new LoginResponse(
                 token,
-                matchedUser.getUserId(),
-                matchedUser.getUsername(),
-                matchedUser.getFullName(),
-                matchedUser.getRole().name(),
-                matchedUser.getMustChangePassword(),
+                target.getUserId(),
+                target.getUsername(),
+                target.getFullName(),
+                target.getRole().name(),
+                target.getMustChangePassword(),
                 true
         );
 
@@ -267,7 +259,19 @@ public class AuthController {
     }
 
     @GetMapping("/mobile-pin-status")
-    public ResponseEntity<?> getMobilePinStatus(@RequestParam(value = "username", required = false) String username) {
+    public ResponseEntity<?> getMobilePinStatus(@RequestParam(value = "username", required = false) String username, HttpServletRequest servletRequest) {
+        String clientIp = extractClientIp(servletRequest);
+
+        if (rateLimiterService.isBlocked(clientIp)) {
+            long retryAfter = rateLimiterService.getRemainingBlockSeconds(clientIp);
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header("Retry-After", String.valueOf(retryAfter))
+                    .body(Map.of(
+                            "message", "Too many requests. Please try again in " + retryAfter + " seconds.",
+                            "retryAfterSeconds", retryAfter
+                    ));
+        }
+
         if (username == null || username.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Username is required"));
         }
@@ -279,18 +283,18 @@ public class AuthController {
         }
         AppUser user = appUserRepository.findByUsername(normalized).orElse(null);
         if (user == null || !Boolean.TRUE.equals(user.getActive())) {
+            rateLimiterService.recordFailure(clientIp);
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(Map.of("message", "User not found or inactive"));
         }
         if (user.getRole() == UserRole.ADMIN) {
+            rateLimiterService.recordFailure(clientIp);
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(Map.of("message", "Administrator accounts are restricted to the Web Portal."));
         }
         boolean hasPin = user.getPinHash() != null && !user.getPinHash().isBlank();
         return ResponseEntity.ok(Map.of(
                 "username", user.getUsername(),
-                "fullName", user.getFullName(),
-                "role", user.getRole().name(),
                 "hasPinSet", hasPin
         ));
     }

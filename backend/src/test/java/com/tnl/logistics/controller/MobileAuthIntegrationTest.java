@@ -168,7 +168,7 @@ public class MobileAuthIntegrationTest {
 
     @Test
     void testMobilePinLoginOfficeStaffSuccess() throws Exception {
-        MobilePinLoginRequest request = new MobilePinLoginRequest("2222");
+        MobilePinLoginRequest request = new MobilePinLoginRequest("2222", "office");
 
         mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -183,7 +183,7 @@ public class MobileAuthIntegrationTest {
 
     @Test
     void testMobilePinLoginFieldStaffSuccess() throws Exception {
-        MobilePinLoginRequest request = new MobilePinLoginRequest("0001");
+        MobilePinLoginRequest request = new MobilePinLoginRequest("0001", "field");
 
         mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -220,7 +220,7 @@ public class MobileAuthIntegrationTest {
 
     @Test
     void testMobilePinLoginInvalidPinReturnsUnauthorized() throws Exception {
-        MobilePinLoginRequest request = new MobilePinLoginRequest("9999");
+        MobilePinLoginRequest request = new MobilePinLoginRequest("9999", "office");
 
         mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -231,7 +231,7 @@ public class MobileAuthIntegrationTest {
 
     @Test
     void testMobilePinLoginInvalidFormatReturnsBadRequest() throws Exception {
-        MobilePinLoginRequest request = new MobilePinLoginRequest("12"); // less than 4 digits
+        MobilePinLoginRequest request = new MobilePinLoginRequest("12", "office"); // less than 4 digits
 
         mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -241,7 +241,7 @@ public class MobileAuthIntegrationTest {
 
     @Test
     void testMobilePinLoginRateLimiterLockout() throws Exception {
-        MobilePinLoginRequest badRequest = new MobilePinLoginRequest("9999");
+        MobilePinLoginRequest badRequest = new MobilePinLoginRequest("9999", "office");
 
         for (int i = 0; i < 5; i++) {
             mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
@@ -294,15 +294,14 @@ public class MobileAuthIntegrationTest {
     }
 
     @Test
-    void testMobilePinLoginStreamIgnoresAdminPin() throws Exception {
-        // Broadcast PIN 1111 belongs to admin, but mobile stream must ignore admin and return 401
+    void testMobilePinLoginMissingUsernameReturnsBadRequest() throws Exception {
+        // Missing username in MobilePinLoginRequest must be rejected with 400 Bad Request
         MobilePinLoginRequest request = new MobilePinLoginRequest("1111");
 
         mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.message").value("Invalid PIN"));
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -355,7 +354,8 @@ public class MobileAuthIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("hauler1"))
                 .andExpect(jsonPath("$.hasPinSet").value(false))
-                .andExpect(jsonPath("$.role").value("FIELD_STAFF"));
+                .andExpect(jsonPath("$.role").doesNotExist())
+                .andExpect(jsonPath("$.fullName").doesNotExist());
     }
 
     @Test
@@ -365,7 +365,8 @@ public class MobileAuthIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("office"))
                 .andExpect(jsonPath("$.hasPinSet").value(true))
-                .andExpect(jsonPath("$.role").value("OFFICE_STAFF"));
+                .andExpect(jsonPath("$.role").doesNotExist())
+                .andExpect(jsonPath("$.fullName").doesNotExist());
     }
 
     @Test
@@ -374,5 +375,22 @@ public class MobileAuthIntegrationTest {
                         .param("username", "admin"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.message").value("Administrator accounts are restricted to the Web Portal."));
+    }
+
+    @Test
+    void testMobilePinStatusRateLimiterLockout() throws Exception {
+        rateLimiterService.reset();
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(get("/api/v1/auth/mobile-pin-status")
+                            .param("username", "nonexistentuser" + i))
+                    .andExpect(status().isNotFound());
+        }
+
+        // 6th attempt should be blocked with 429
+        mockMvc.perform(get("/api/v1/auth/mobile-pin-status")
+                        .param("username", "office"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.retryAfterSeconds").isNumber());
     }
 }

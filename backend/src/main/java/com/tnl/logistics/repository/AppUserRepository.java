@@ -24,7 +24,6 @@ public interface AppUserRepository extends JpaRepository<AppUser, String> {
 
     List<AppUser> findByRoleAndActiveTrue(UserRole role);
 
-    List<AppUser> findByActiveTrueAndPinHashIsNotNull();
 
     boolean existsByRole(UserRole role);
 

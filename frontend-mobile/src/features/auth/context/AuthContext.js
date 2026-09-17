@@ -264,7 +264,10 @@ export function AuthProvider({ children }) {
     setIsLoading(true);
     try {
       const targetUsername = boundUser?.username || user?.username;
-      const payload = targetUsername ? { username: targetUsername, pin } : { pin };
+      if (!targetUsername) {
+        throw new Error('No bound staff account found on terminal. Please sign in with your password.');
+      }
+      const payload = { username: targetUsername, pin };
       const data = await authService.loginWithPin(payload);
       const { token: receivedToken, ...userData } = data;
 

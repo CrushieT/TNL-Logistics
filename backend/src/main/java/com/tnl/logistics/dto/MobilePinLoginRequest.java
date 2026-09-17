@@ -12,6 +12,7 @@ public class MobilePinLoginRequest {
     @Pattern(regexp = "^[0-9]{4,6}$", message = "PIN must be between 4 and 6 digits")
     private String pin;
 
+    @NotBlank(message = "Username is required")
     private String username;
 
     public MobilePinLoginRequest() {}
