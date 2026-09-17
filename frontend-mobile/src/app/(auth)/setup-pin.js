@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -19,7 +19,7 @@ import { StatusModal } from '../../components/common/StatusModal';
 
 export default function SetupPinScreen() {
   const router = useRouter();
-  const { user, setupUserPin, fullLogout } = useAuth();
+  const { user, mustChangePassword, setupUserPin, fullLogout } = useAuth();
 
   const [step, setStep] = useState(1); // 1: enter new pin, 2: confirm pin
   const [pin, setPin] = useState('');
@@ -27,6 +27,12 @@ export default function SetupPinScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
+
+  useEffect(() => {
+    if (mustChangePassword) {
+      router.replace('/(auth)/change-password');
+    }
+  }, [mustChangePassword, router]);
 
   const activeValue = step === 1 ? pin : confirmPin;
 

@@ -44,6 +44,17 @@ export const authService = {
   },
 
   /**
+   * Completes a mandatory password rotation for the current authenticated user.
+   * @param {string} oldPassword
+   * @param {string} newPassword
+   * @returns {Promise<{ token: string, userId: string, username: string, role: string, mustChangePassword: boolean }>}
+   */
+  async changePassword(oldPassword, newPassword) {
+    const response = await apiClient.post('/auth/password-change', { oldPassword, newPassword });
+    return response.data;
+  },
+
+  /**
    * Fetches the current authenticated user's profile.
    */
   async fetchCurrentUser() {

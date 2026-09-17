@@ -271,23 +271,37 @@
 *Field staff courier app and authorized mobile office workflows.*
 
 **6.1 — Mobile Credential & PIN Workflow & Role-Aware Shell (Screens 29, 30, 31, 32, 33)** — **[COMPLETED]**
-- Stage 1 (Initial Login / Device Binding): Full Username & Password login (`POST /api/v1/auth/mobile-login`) allowing both `OFFICE_STAFF` and `FIELD_STAFF` (with Admin web-provisioned credentials), issuing a 10-day staff JWT token (`jwt.expiration.staff-days`), binding device identity to local hardware storage, returning `hasPinSet`.
-- Stage 2 (PIN Setup & Confirmation): Dedicated PIN Setup screen (`src/app/(auth)/setup-pin.js`) for accounts with `hasPinSet == false` (Option A "Require PIN setup on first mobile login" or "Clear PIN & Require Setup"), calling `POST /api/v1/auth/mobile-setup-pin` with 4-digit PIN confirmation, BCrypt hashing, and error handling.
-- Stage 3 (Shift Unlock): Quick PIN unlock screen (`src/app/(auth)/pin.js`) matching `prototype pin page.png`, displaying bound staff member's full name, role badge, 4-dot indicator, and 3x4 keypad calling `POST /api/v1/auth/mobile-pin-login` with targeted `{ username, pin }` matching, plus "Sign in with another account" unbind action.
+- Stage 1 (Initial Login / Device Binding): Full Username & Password login (`POST /api/v1/auth/mobile-login`) allowing both `OFFICE_STAFF` and `FIELD_STAFF` (with Admin web-provisioned credentials), issuing a 10-day staff JWT token (`jwt.expiration.staff-days`), generating high-entropy CSPRNG device credentials (`deviceId`, 256-bit `deviceToken`), binding device identity to local hardware storage, returning `hasPinSet`.
+- Stage 2 (PIN Setup & Confirmation): Dedicated PIN Setup screen (`src/app/(auth)/setup-pin.js`) for accounts with `hasPinSet == false` (Option A "Require PIN setup on first mobile login" or "Clear PIN & Require Setup"), calling `POST /api/v1/auth/mobile-setup-pin` with 4-digit PIN confirmation, BCrypt hashing, incrementing `tokenVersion` to invalidate stale tokens, and returning a replacement JWT adopted seamlessly by the client.
+- Stage 3 (Shift Unlock): Quick PIN unlock screen (`src/app/(auth)/pin.js`) matching `prototype pin page.png`, displaying bound staff member's full name, role badge, 4-dot indicator, and 3x4 keypad calling `POST /api/v1/auth/mobile-pin-login` with targeted `{ username, pin }` and required device headers (`X-Device-Id`, `X-Device-Token`), plus "Sign in with another account" unbind action.
 - Stage 4 (Header Actions & Lifecycles): `MobileHeader` supporting quick "LOCK" (locks session back to PIN screen) and "LOGOUT" (custom minimalist `StatusModal` confirmation unbinding device and clearing stored auth).
+- Cryptographic Server-Enforced Device Binding (Flyway `V27`):
+  - Database schema: `V27__create_mobile_device_bindings.sql` creating `mobile_device_bindings` table with composite indexes on `(user_id, device_id)`.
+  - Model & Data Access: `MobileDeviceBinding` JPA entity and `MobileDeviceBindingRepository` supporting atomic token updates, queries by user and device, and cascading device revocation.
+  - Server-Side Token Hashing: Generates 256-bit device tokens via `SecureRandom`, storing only SHA-256 hashes (`device_token_hash`) in the database and returning plaintext credentials to the client once on initial login.
+  - Constant-Time Possession Verification: `POST /api/v1/auth/mobile-pin-login` strictly requires device credentials (`X-Device-Id` and `X-Device-Token`), validates that the binding exists and belongs to the user, and compares hashes using `MessageDigest.isEqual` to prevent timing attacks. Missing, unknown, mismatched, or cross-account device credentials are rejected with HTTP 401 before evaluating the PIN.
+- Mandatory Password Rotation & First-Boot Sequence:
+  - Sequence Enforcement: Strictly enforces `Password Login -> Password Change -> Device Binding -> PIN Setup -> Shift Unlock`.
+  - Scoped Provisional JWT: When `user.mustChangePassword == true`, `POST /api/v1/auth/mobile-login` returns `mustChangePassword: true` and issues a temporary token strictly for password updates without issuing or recording device bindings.
+  - PIN Unlock Prohibition: `POST /api/v1/auth/mobile-pin-login` rejects attempts by users with `mustChangePassword == true` with HTTP 403 Forbidden and code `PASSWORD_CHANGE_REQUIRED`.
+  - Dedicated Mobile Password Change Screen (`src/app/(auth)/change-password.js`): Screen 30b providing current password, new password, and confirm password fields with strength meters, visibility toggles, and instant validation.
+  - Navigation Guard Coordination: Auth guards in `login.js`, `pin.js`, and `setup-pin.js` intercept flagged users and route directly to `change-password.js`. Upon successful rotation, the provisional session clears and directs staff to log in with their permanent password to initiate device binding.
+- Seeder Isolation & Production Guardrails:
+  - Added `app.seed.mobile-pins: false` toggle in `DataSeeder.java`. Mobile demo PINs (`1111`, `2222`, `0001`) are only seeded in development/test environments.
+  - Startup Validation: Throws `IllegalStateException` if `app.seed.mobile-pins=true` under the `prod` profile, preventing preconfigured test PINs from ever existing in production databases.
 - Strict Role Segregation: Administrator accounts (`ADMIN`) are barred from logging into the mobile portal (`/mobile-login`, `/mobile-pin-login`, `/mobile-setup-pin`) with HTTP 403 Forbidden (`"Administrator accounts are restricted to the Web Portal."`), preserving operational boundaries.
 - High-Performance Tactile Micro-Animations: Reusable `PressableScale` atom using `Animated.spring` with `useNativeDriver: Platform.OS !== 'web'` providing 60fps mechanical press feedback across numeric keypad, action cards, primary action buttons, and header buttons with zero JavaScript thread latency or layout thrashing.
-- Integrated with `LoginRateLimiterService` enforcing progressive lockout (5 failed attempts trigger HTTP 429 Too Many Requests with `Retry-After` header and seconds countdown).
-- Seeding & credential hardening in `DataSeeder.java` for demo accounts matching prototype specifications: `2222` (Office Staff `office`), and `0001` (Carlos Mendoza `field`).
+- Route-Isolated Rate Limiting: Integrated with `LoginRateLimiterService` enforcing progressive lockout partitioned by endpoint, account, and device (5 failed attempts trigger HTTP 429 Too Many Requests with `Retry-After` header and countdown).
 - Modular `frontend-mobile/src/` architecture strictly matching `frontend-web` design patterns:
   - `src/theme/`: TNL design tokens (`canvas #F3F2ED`, `ink #1A1A1A`, `accent #C6491F`, `border #E1DFD5`, `keypadBg #EFECE6`).
-  - `src/services/storage/`: Hardware-backed `expo-secure-store` wrapper with web/memory fallback supporting `saveBoundUser`, `getBoundUser`, `removeBoundUser`, `setAppLocked`, `isAppLocked`.
-  - `src/services/api/`: Centralized Axios client injecting Bearer tokens and intercepting 401/403 session revocation.
-  - `src/features/auth/`: Encapsulated auth service and `AuthContext` provider handling credential login, PIN setup, PIN unlock, session lock, and full unbind logout.
+  - `src/services/storage/`: Hardware-backed `expo-secure-store` wrapper enforcing fail-closed security on native iOS/Android (unencrypted fallbacks rejected), with memory-only store for web previews.
+  - `src/services/api/`: Centralized Axios client injecting Bearer tokens, enforcing HTTPS in production, and intercepting 401/403 session revocation.
+  - `src/features/auth/`: Encapsulated auth service and `AuthContext` provider handling credential login, password rotation, PIN setup, PIN unlock, session lock, and full unbind logout.
   - `src/components/common/`: Shared UI components (`Keypad`, `PinIndicator`, `PressableScale`, `ActionCard`, `MetricCard`, `NoticeBanner`, `StatusModal`).
   - `src/components/layout/`: `MobileHeader` with role eyebrow, staff name, `LOCK`, and `LOGOUT` triggers.
 - Screens & Navigation Flow:
   - Credential Login (`src/app/(auth)/login.js`): Username and password entry with TNL tracking logo, `MOBILE PORTAL` badge, and quick shortcut to PIN unlock if device is already bound.
+  - Password Change (`src/app/(auth)/change-password.js`): Mandatory first-boot password change workflow.
   - PIN Setup (`src/app/(auth)/setup-pin.js`): 2-step PIN creation & confirmation flow with 4-dot indicator and 3x4 keypad.
   - Shift Unlock (`src/app/(auth)/pin.js`): Bound staff member card, 4-dot indicator, 3x4 numeric keypad, and "Sign in with another account" link.
   - Role-Aware Shell (`src/app/(main)/index.js`): Authenticated root switching between `OfficeDashboard` (`OFFICE_STAFF`) and `FieldDashboard` (`FIELD_STAFF`).
@@ -296,14 +310,14 @@
   - QR Scanner (`src/app/(main)/scan.js`): Viewfinder overlay with camera permissions and status postback.
 - Cleared PIN & Re-Authentication Synchronization:
   - Backend `POST /api/v1/auth/mobile-pin-login` explicitly checks if `target.getPinHash() == null`, returning HTTP 409 Conflict with `code: "PIN_NOT_SET"`, without incrementing brute-force rate limiter counters.
-  - Added public `GET /api/v1/auth/mobile-pin-status?username={username}` endpoint allowing mobile devices to proactively verify whether the bound user's PIN is currently configured.
+  - Added public `GET /api/v1/auth/mobile-pin-status?username={username}` endpoint returning uniform JSON responses with isolated rate limiting to verify PIN configuration without leaking user enumeration signals.
   - Mobile PIN unlock screen (`src/app/(auth)/pin.js`) dynamically verifies bound account PIN status on mount/resume, proactively notifying staff if their PIN was cleared by an administrator.
   - Themed In-App Modals (`StatusModal.js`):
     - Minimalist design with fluid cubic-bezier animations, replacing OS system alerts.
     - Notice Mode: Displays an in-app modal ("PIN Reset by Administrator") explaining that the PIN was reset before redirecting to `(auth)/login` with pre-filled username and `NoticeBanner`.
     - Confirmation Mode: Dual-action confirmation dialogs preventing accidental sign-outs and terminal unbinding ("Cancel PIN Setup?" on `setup-pin.js`, "Switch Account?" on `pin.js`, and "Log Out & Unbind Device?" on `MobileHeader.js`).
   - Session revocation coordination in `apiClient` and `AuthContext` handling HTTP 401 caused by Admin PIN resets (`tokenVersion++`), presenting a revocation notice modal and cleanly routing through password re-authentication and PIN setup.
-- Verified via `MobileAuthIntegrationTest.java` (23 integration test scenarios) and full suite regression test (191 tests).
+- Verified via `MobileAuthIntegrationTest.java` (36 integration test scenarios), `ProductionDataSourcePropertiesTest.java` (5 tests), full suite regression test (204 tests passing, 0 failures, 0 errors), and clean Expo Android export.
 
 **6.2 — Office Staff: Shipment Generation & Past Shipments Directory (Screens 34–40)**
 - **Shipment Generation (`Register`):** Mobile shipment creation matching core business rules:

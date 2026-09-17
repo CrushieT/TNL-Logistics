@@ -22,8 +22,8 @@ tnl-logistics/
 │   │   │   │   ├── config/              # SecurityConfig, CorsConfig, JwtTokenProvider, DataSeeder
 │   │   │   │   ├── controller/          # REST endpoints (Shipment, Vehicle, Client, Waybill, Payment, Collections, SOA)
 │   │   │   │   ├── dto/                 # Request & Response DTOs
-│   │   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, Vehicle, Waybill, Payment, Soa, etc.)
-│   │   │   │   ├── repository/          # Spring Data Repositories & Batch Group By Queries
+│   │   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, Vehicle, Waybill, Payment, Soa, MobileDeviceBinding, etc.)
+│   │   │   │   ├── repository/          # Spring Data Repositories & Batch Group By Queries (including MobileDeviceBindingRepository)
 │   │   │   │   └── service/             # Business Logic & Service Interfaces (impl/)
 │   │   │   └── resources/
 │   │   │       ├── application.properties
@@ -75,6 +75,7 @@ tnl-logistics/
 │   │   │   ├── _layout.js            # Root Stack navigator & AuthProvider
 │   │   │   ├── (auth)/
 │   │   │   │   ├── login.js          # Username & password device binding
+│   │   │   │   ├── change-password.js# Screen 30b Mandatory Password Change
 │   │   │   │   ├── setup-pin.js      # Mobile PIN creation & confirmation
 │   │   │   │   └── pin.js            # Screen 29 PIN quick shift unlock
 │   │   │   └── (main)/

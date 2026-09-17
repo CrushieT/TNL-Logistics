@@ -25,6 +25,7 @@ export default function PinUnlockScreen() {
     unlockWithPin,
     isAuthenticated,
     isLocked,
+    mustChangePassword,
     mustSetupPin,
     fullLogout,
     updateBoundUserPinStatus,
@@ -47,6 +48,11 @@ export default function PinUnlockScreen() {
       return;
     }
 
+    if (mustChangePassword) {
+      router.replace('/(auth)/change-password');
+      return;
+    }
+
     if (mustSetupPin) {
       router.replace('/(auth)/setup-pin');
       return;
@@ -56,7 +62,7 @@ export default function PinUnlockScreen() {
     if (!boundUser) {
       router.replace('/(auth)/login');
     }
-  }, [isAuthenticated, isLocked, mustSetupPin, boundUser, authLoading, router]);
+  }, [isAuthenticated, isLocked, mustChangePassword, mustSetupPin, boundUser, authLoading, router]);
 
   // Proactively check if bound user's PIN was cleared by Admin in background
   useEffect(() => {
@@ -122,6 +128,16 @@ export default function PinUnlockScreen() {
     } catch (error) {
       setPin('');
       const responseData = error.response?.data;
+      if (responseData?.code === 'PASSWORD_CHANGE_REQUIRED') {
+        const targetUsername = boundUser?.username;
+        await fullLogout();
+        router.replace({
+          pathname: '/(auth)/login',
+          params: { username: targetUsername || '', reason: 'password_change_required' },
+        });
+        return;
+      }
+
       if (error.response?.status === 409) {
         const targetUsername = boundUser?.username;
         showSessionNotice({

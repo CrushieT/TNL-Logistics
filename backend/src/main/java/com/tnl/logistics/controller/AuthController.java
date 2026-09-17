@@ -231,6 +231,23 @@ public class AuthController {
 
         recordRateLimitSuccess(endpointIpKey);
 
+        boolean hasPin = user.getPinHash() != null && !user.getPinHash().isBlank();
+        if (Boolean.TRUE.equals(user.getMustChangePassword())) {
+            securityAuditLog.info("AUTH_LOGIN_PASSWORD_CHANGE_REQUIRED: userId={} username={} role={} ip={}",
+                    user.getUserId(), user.getUsername(), user.getRole(), clientIp);
+
+            String token = JwtTokenProvider.generateToken(user.getUserId(), user.getRole().name(), user.getTokenVersion());
+            return ResponseEntity.ok(new LoginResponse(
+                    token,
+                    user.getUserId(),
+                    user.getUsername(),
+                    user.getFullName(),
+                    user.getRole().name(),
+                    true,
+                    hasPin
+            ));
+        }
+
         String deviceId = servletRequest.getHeader("X-Device-Id");
         if (deviceId == null || deviceId.isBlank()) {
             deviceId = UUID.randomUUID().toString();
@@ -255,7 +272,6 @@ public class AuthController {
 
         String token = JwtTokenProvider.generateToken(user.getUserId(), user.getRole().name(), user.getTokenVersion());
 
-        boolean hasPin = user.getPinHash() != null && !user.getPinHash().isBlank();
         LoginResponse response = new LoginResponse(
                 token,
                 user.getUserId(),
@@ -352,6 +368,16 @@ public class AuthController {
                     normalized, request.getDeviceId(), clientIp);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("message", "Invalid device credentials"));
+        }
+
+        if (Boolean.TRUE.equals(target.getMustChangePassword())) {
+            securityAuditLog.info("PIN_LOGIN_PASSWORD_CHANGE_REQUIRED: userId={} username={} deviceId={} ip={}",
+                    target.getUserId(), target.getUsername(), request.getDeviceId(), clientIp);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of(
+                            "code", "PASSWORD_CHANGE_REQUIRED",
+                            "message", "Password change required before unlocking with PIN"
+                    ));
         }
 
         String accountKey = "user:" + normalized;

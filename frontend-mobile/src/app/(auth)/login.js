@@ -26,12 +26,14 @@ export default function LoginScreen() {
     isAuthenticated,
     boundUser,
     isLocked,
+    mustChangePassword,
     mustSetupPin,
     isLoading: authLoading,
   } = useAuth();
 
   const isPinClearedNotice = params?.reason === 'pin_cleared';
   const isSessionExpiredNotice = params?.reason === 'session_expired';
+  const isPasswordChangeNotice = params?.reason === 'password_change_required' || params?.reason === 'password_changed';
 
   const [username, setUsername] = useState(params?.username || '');
   const [password, setPassword] = useState('');
@@ -58,6 +60,11 @@ export default function LoginScreen() {
       return;
     }
 
+    if (mustChangePassword) {
+      router.replace('/(auth)/change-password');
+      return;
+    }
+
     if (mustSetupPin) {
       router.replace('/(auth)/setup-pin');
       return;
@@ -67,7 +74,7 @@ export default function LoginScreen() {
     if (boundUser && isLocked && boundUser.hasPinSet !== false && !params?.username && !isPinClearedNotice) {
       router.replace('/(auth)/pin');
     }
-  }, [isAuthenticated, authLoading, boundUser, isLocked, mustSetupPin, params?.username, isPinClearedNotice, router]);
+  }, [isAuthenticated, authLoading, boundUser, isLocked, mustChangePassword, mustSetupPin, params?.username, isPinClearedNotice, router]);
 
   // Lockout countdown timer
   useEffect(() => {
@@ -87,7 +94,9 @@ export default function LoginScreen() {
 
     try {
       const userData = await loginWithPassword(trimmedUsername, password);
-      if (userData.hasPinSet === false) {
+      if (userData.mustChangePassword) {
+        router.replace('/(auth)/change-password');
+      } else if (userData.hasPinSet === false) {
         router.replace('/(auth)/setup-pin');
       } else {
         router.replace('/(main)');
@@ -153,6 +162,13 @@ export default function LoginScreen() {
             <NoticeBanner
               title="SESSION EXPIRED"
               subtitle="Your session was revoked or expired. Please sign in with your password."
+            />
+          )}
+
+          {isPasswordChangeNotice && (
+            <NoticeBanner
+              title="PASSWORD CHANGE REQUIRED"
+              subtitle="Sign in with your password to update it before using this device."
             />
           )}
 

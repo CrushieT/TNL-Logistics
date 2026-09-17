@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tnl.logistics.dto.LoginRequest;
 import com.tnl.logistics.dto.MobilePinLoginRequest;
 import com.tnl.logistics.dto.MobilePinSetupRequest;
+import com.tnl.logistics.dto.PasswordChangeRequest;
 import com.tnl.logistics.model.AppUser;
 import com.tnl.logistics.model.MobileDeviceBinding;
 import com.tnl.logistics.repository.AppUserRepository;
@@ -160,6 +161,76 @@ public class MobileAuthIntegrationTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.message").value("Invalid username or password"));
+    }
+
+    @Test
+    void testMobileLoginPasswordChangeRequiredDoesNotCreateDeviceBinding() throws Exception {
+        AppUser fieldUser = appUserRepository.findByUsername("field").orElseThrow();
+        fieldUser.setMustChangePassword(true);
+        appUserRepository.saveAndFlush(fieldUser);
+
+        LoginRequest request = new LoginRequest("field", "field123");
+
+        mockMvc.perform(post("/api/v1/auth/mobile-login")
+                        .header("X-Device-Id", "rotation-pending-device")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mustChangePassword").value(true))
+                .andExpect(jsonPath("$.token").isString());
+
+        org.junit.jupiter.api.Assertions.assertTrue(
+                mobileDeviceBindingRepository.findByDeviceId("rotation-pending-device").isEmpty(),
+                "A password-rotation session must not bind a device"
+        );
+    }
+
+    @Test
+    void testMobilePinLoginPasswordChangeRequiredReturnsForbidden() throws Exception {
+        AppUser fieldUser = appUserRepository.findByUsername("field").orElseThrow();
+        fieldUser.setMustChangePassword(true);
+        appUserRepository.saveAndFlush(fieldUser);
+
+        MobilePinLoginRequest request = new MobilePinLoginRequest("0001", "field", "dev-field-device", "field-token-123");
+
+        mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PASSWORD_CHANGE_REQUIRED"));
+    }
+
+    @Test
+    void testPasswordChangeThenFreshMobileLoginReturnsDeviceCredentials() throws Exception {
+        AppUser fieldUser = appUserRepository.findByUsername("field").orElseThrow();
+        fieldUser.setMustChangePassword(true);
+        appUserRepository.saveAndFlush(fieldUser);
+
+        LoginRequest loginRequest = new LoginRequest("field", "field123");
+        String provisionalToken = objectMapper.readTree(mockMvc.perform(post("/api/v1/auth/mobile-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mustChangePassword").value(true))
+                .andReturn().getResponse().getContentAsString()).get("token").asText();
+
+        PasswordChangeRequest passwordChangeRequest = new PasswordChangeRequest("field123", "newField123");
+        mockMvc.perform(post("/api/v1/auth/password-change")
+                        .header("Authorization", "Bearer " + provisionalToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(passwordChangeRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mustChangePassword").value(false));
+
+        LoginRequest freshLoginRequest = new LoginRequest("field", "newField123");
+        mockMvc.perform(post("/api/v1/auth/mobile-login")
+                        .header("X-Device-Id", "rotation-complete-device")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(freshLoginRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mustChangePassword").value(false))
+                .andExpect(jsonPath("$.deviceId").value("rotation-complete-device"))
+                .andExpect(jsonPath("$.deviceToken").isString());
     }
 
     @Test

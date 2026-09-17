@@ -24,6 +24,7 @@ export default function RootLayout() {
             }}
           >
             <Stack.Screen name="(auth)/login" />
+            <Stack.Screen name="(auth)/change-password" />
             <Stack.Screen name="(auth)/setup-pin" />
             <Stack.Screen name="(auth)/pin" />
             <Stack.Screen name="(main)" />

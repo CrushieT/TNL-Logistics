@@ -27,8 +27,10 @@ const AuthContext = createContext({
   isAuthenticated: false,
   isLoading: true,
   isLocked: false,
+  mustChangePassword: false,
   mustSetupPin: false,
   loginWithPassword: async () => {},
+  changePassword: async () => {},
   setupUserPin: async () => {},
   unlockWithPin: async () => {},
   loginWithPin: async () => {},
@@ -134,8 +136,10 @@ export function AuthProvider({ children }) {
           setBoundUser(storedBoundUser);
         }
 
+        const isPasswordChangeSession = Boolean(storedToken && storedUser?.mustChangePassword);
+
         if ((storedToken && storedUser) || storedBoundUser) {
-          if (!storedDeviceCredentials) {
+          if (!storedDeviceCredentials && !isPasswordChangeSession) {
             const username = storedUser?.username || storedBoundUser?.username;
             await clearSession();
             showSessionNotice({
@@ -152,13 +156,23 @@ export function AuthProvider({ children }) {
           if (storedToken && storedUser) {
             setToken(storedToken);
             setUser(storedUser);
-            setIsLocked(lockedStatus || false);
+            setIsLocked(isPasswordChangeSession ? false : lockedStatus || false);
 
             // Verify session freshness with server in background
             try {
               const freshUser = await authService.fetchCurrentUser();
               if (freshUser) {
-                if (freshUser.hasPinSet === false) {
+                if (isPasswordChangeSession && freshUser.mustChangePassword === false) {
+                  await clearSession();
+                  showSessionNotice({
+                    title: 'Sign In Required',
+                    eyebrow: 'DEVICE SECURITY',
+                    message: 'Please sign in with your new password to bind this device.',
+                    confirmText: 'PROCEED TO SIGN IN',
+                    username: freshUser.username,
+                    reason: 'password_changed',
+                  });
+                } else if (freshUser.hasPinSet === false && freshUser.mustChangePassword === false) {
                   // PIN cleared by admin -> log out account completely and display notice
                   await clearSession();
 
@@ -229,6 +243,20 @@ export function AuthProvider({ children }) {
         ...userData
       } = data;
 
+      if (userData.mustChangePassword) {
+        await clearSession();
+        await Promise.all([
+          saveToken(receivedToken),
+          saveUser(userData),
+          setAppLocked(false),
+        ]);
+
+        setToken(receivedToken);
+        setUser(userData);
+        setIsLocked(false);
+        return userData;
+      }
+
       await saveDeviceCredentials(deviceId, deviceToken);
       await saveToken(receivedToken);
       await saveUser(userData);
@@ -256,7 +284,19 @@ export function AuthProvider({ children }) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [clearSession]);
+
+  const changePassword = useCallback(async (oldPassword, newPassword) => {
+    setIsLoading(true);
+    try {
+      const result = await authService.changePassword(oldPassword, newPassword);
+      const username = result.username || user?.username;
+      await clearSession();
+      return { ...result, username };
+    } finally {
+      setIsLoading(false);
+    }
+  }, [clearSession, user?.username]);
 
   const setupUserPin = useCallback(async (pin) => {
     setIsLoading(true);
@@ -349,8 +389,9 @@ export function AuthProvider({ children }) {
     }
   }, [boundUser, user]);
 
-  const mustSetupPin = Boolean(user && user.hasPinSet === false);
-  const isAuthenticated = Boolean(token && user && !isLocked && !mustSetupPin);
+  const mustChangePassword = Boolean(user && user.mustChangePassword);
+  const mustSetupPin = Boolean(user && !mustChangePassword && user.hasPinSet === false);
+  const isAuthenticated = Boolean(token && user && !isLocked && !mustChangePassword && !mustSetupPin);
 
   return (
     <AuthContext.Provider
@@ -361,8 +402,10 @@ export function AuthProvider({ children }) {
         isAuthenticated,
         isLoading,
         isLocked,
+        mustChangePassword,
         mustSetupPin,
         loginWithPassword,
+        changePassword,
         setupUserPin,
         unlockWithPin,
         loginWithPin: unlockWithPin,
