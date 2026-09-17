@@ -12,6 +12,8 @@ public class LoginResponse {
     private String role;
     private boolean mustChangePassword;
     private boolean hasPinSet;
+    private String deviceId;
+    private String deviceToken;
 
     public LoginResponse() {}
 
@@ -24,6 +26,10 @@ public class LoginResponse {
     }
 
     public LoginResponse(String token, String userId, String username, String fullName, String role, boolean mustChangePassword, boolean hasPinSet) {
+        this(token, userId, username, fullName, role, mustChangePassword, hasPinSet, null, null);
+    }
+
+    public LoginResponse(String token, String userId, String username, String fullName, String role, boolean mustChangePassword, boolean hasPinSet, String deviceId, String deviceToken) {
         this.token = token;
         this.userId = userId;
         this.username = username;
@@ -31,6 +37,8 @@ public class LoginResponse {
         this.role = role;
         this.mustChangePassword = mustChangePassword;
         this.hasPinSet = hasPinSet;
+        this.deviceId = deviceId;
+        this.deviceToken = deviceToken;
     }
 
     public String getToken() { return token; }
@@ -53,4 +61,10 @@ public class LoginResponse {
 
     public boolean isHasPinSet() { return hasPinSet; }
     public void setHasPinSet(boolean hasPinSet) { this.hasPinSet = hasPinSet; }
+
+    public String getDeviceId() { return deviceId; }
+    public void setDeviceId(String deviceId) { this.deviceId = deviceId; }
+
+    public String getDeviceToken() { return deviceToken; }
+    public void setDeviceToken(String deviceToken) { this.deviceToken = deviceToken; }
 }

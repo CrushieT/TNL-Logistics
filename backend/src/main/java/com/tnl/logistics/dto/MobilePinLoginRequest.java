@@ -15,15 +15,27 @@ public class MobilePinLoginRequest {
     @NotBlank(message = "Username is required")
     private String username;
 
+    @NotBlank(message = "Device ID is required")
+    private String deviceId;
+
+    @NotBlank(message = "Device token is required")
+    private String deviceToken;
+
     public MobilePinLoginRequest() {}
 
     public MobilePinLoginRequest(String pin) {
-        this(pin, null);
+        this(pin, null, null, null);
     }
 
     public MobilePinLoginRequest(String pin, String username) {
+        this(pin, username, null, null);
+    }
+
+    public MobilePinLoginRequest(String pin, String username, String deviceId, String deviceToken) {
         this.pin = pin;
         this.username = username;
+        this.deviceId = deviceId;
+        this.deviceToken = deviceToken;
     }
 
     public String getPin() {
@@ -40,5 +52,21 @@ public class MobilePinLoginRequest {
 
     public void setUsername(String username) {
         this.username = username;
+    }
+
+    public String getDeviceId() {
+        return deviceId;
+    }
+
+    public void setDeviceId(String deviceId) {
+        this.deviceId = deviceId;
+    }
+
+    public String getDeviceToken() {
+        return deviceToken;
+    }
+
+    public void setDeviceToken(String deviceToken) {
+        this.deviceToken = deviceToken;
     }
 }

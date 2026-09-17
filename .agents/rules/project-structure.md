@@ -28,7 +28,7 @@ tnl-logistics/
 │   │   │   └── resources/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
-│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V26)
+│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V27)
 │   │   └── test/                        # Integration and unit test suites
 │   └── pom.xml
 │
