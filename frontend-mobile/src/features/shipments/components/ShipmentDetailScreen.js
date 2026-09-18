@@ -12,6 +12,12 @@ import { useRouter } from 'expo-router';
 import { colors, spacing, typography } from '../../../theme';
 import { shipmentApi } from '../services/shipmentApi';
 import { StatusModal } from '../../../components/common/StatusModal';
+import { BackButton } from '../../../components/common/BackButton';
+
+function formatRoute(route) {
+  if (!route) return 'TNL Baguio Hub';
+  return route.replace(/\s*(?:->|→)\s*/g, ' to ');
+}
 
 export function ShipmentDetailScreen({ shipmentId }) {
   const router = useRouter();
@@ -69,9 +75,7 @@ export function ShipmentDetailScreen({ shipmentId }) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backArrow}>←</Text>
-          </Pressable>
+          <BackButton />
           <Text style={styles.headerTitle}>SHIPMENT</Text>
         </View>
         <View style={styles.centerBox}>
@@ -85,9 +89,7 @@ export function ShipmentDetailScreen({ shipmentId }) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backArrow}>←</Text>
-          </Pressable>
+          <BackButton />
           <Text style={styles.headerTitle}>SHIPMENT</Text>
         </View>
         <View style={styles.centerBox}>
@@ -102,20 +104,43 @@ export function ShipmentDetailScreen({ shipmentId }) {
 
   const units = shipment.units || [];
   const registeredPlatform = shipment.registeredVia === 'MOBILE_FIELD' ? 'REGISTERED ON MOBILE' : 'REGISTERED ON PC';
-  const contentsDesc = `${shipment.description || 'General Goods'} · ${shipment.quantity} pcs · ${shipment.chargeModel === 'PER_PARCEL' ? 'per unit' : 'flat'}`;
+  const contentsDesc = `${shipment.description || 'General Goods'}, ${shipment.quantity || units.length || 1} pcs, ${shipment.chargeModel === 'PER_PARCEL' ? 'per unit' : 'flat'}`;
+
+  const recipientName = shipment.recipientDetails?.fullName || shipment.recipient || '-';
+  const recipientContact = shipment.recipientDetails?.contactNumber;
+  const recipientAddress = shipment.recipientDetails?.address;
+
+  // Weight & Volume calculations
+  const totalWeightKg = shipment.weightKg != null
+    ? Number(shipment.weightKg)
+    : units.reduce((sum, u) => sum + (Number(u.weightKg) || 0), 0);
+  const totalVolumeCm3 = shipment.volumeCm3 != null
+    ? Number(shipment.volumeCm3)
+    : units.reduce((sum, u) => sum + (Number(u.volumeCm3) || 0), 0);
+  const totalVolumeM3 = totalVolumeCm3 > 0 ? (totalVolumeCm3 / 1000000).toFixed(4) : null;
+  const billableWeightKg = shipment.billableWeightKg != null
+    ? Number(shipment.billableWeightKg)
+    : (totalVolumeCm3 > 0 ? Math.max(totalWeightKg, totalVolumeCm3 / 5000) : totalWeightKg);
+
+  const hasMetrics = totalWeightKg > 0 || totalVolumeCm3 > 0 || billableWeightKg > 0;
+  const metricsDesc = hasMetrics
+    ? `${totalWeightKg.toFixed(2)} kg actual, ${totalVolumeM3 ? `${totalVolumeM3} m³` : '0 m³'} (${billableWeightKg.toFixed(2)} kg billable)`
+    : null;
+
+  // Financial breakdown calculations
+  const totalAmount = Number(shipment.totalAmount || 0);
+  const amountPaid = shipment.amountPaid != null ? Number(shipment.amountPaid) : null;
+  const balance = shipment.balance != null ? Number(shipment.balance) : (amountPaid != null ? Math.max(0, totalAmount - amountPaid) : 0);
+  const paymentStatus = (shipment.payment || 'UNPAID').toUpperCase();
+
+  const formatCurrency = (val) =>
+    `₱${Number(val || 0).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back to find parcel"
-          onPress={() => router.back()}
-          style={styles.backBtn}
-        >
-          <Text style={styles.backArrow}>←</Text>
-        </Pressable>
+        <BackButton accessibilityLabel="Back to find parcel" />
         <Text accessibilityRole="header" style={styles.headerTitle}>SHIPMENT</Text>
       </View>
 
@@ -134,12 +159,26 @@ export function ShipmentDetailScreen({ shipmentId }) {
 
               <View style={styles.metaRow}>
                 <Text style={styles.metaLabel}>Recipient</Text>
-                <Text style={styles.metaValue}>{shipment.recipient || shipment.recipientDetails?.fullName || '—'}</Text>
+                <Text style={styles.metaValue}>{recipientName}</Text>
               </View>
+
+              {recipientContact ? (
+                <View style={styles.metaRow}>
+                  <Text style={styles.metaLabel}>Contact</Text>
+                  <Text style={styles.metaValue}>{recipientContact}</Text>
+                </View>
+              ) : null}
+
+              {recipientAddress ? (
+                <View style={styles.metaRow}>
+                  <Text style={styles.metaLabel}>Address</Text>
+                  <Text style={styles.metaValue}>{recipientAddress}</Text>
+                </View>
+              ) : null}
 
               <View style={styles.metaRow}>
                 <Text style={styles.metaLabel}>Client</Text>
-                <Text style={styles.metaValue}>{shipment.client || shipment.clientId || '—'}</Text>
+                <Text style={styles.metaValue}>{shipment.client || shipment.clientId || '-'}</Text>
               </View>
 
               <View style={styles.metaRow}>
@@ -147,18 +186,41 @@ export function ShipmentDetailScreen({ shipmentId }) {
                 <Text style={styles.metaValue}>{contentsDesc}</Text>
               </View>
 
+              {metricsDesc ? (
+                <View style={styles.metaRow}>
+                  <Text style={styles.metaLabel}>Weight & Vol</Text>
+                  <Text style={styles.metaValue}>{metricsDesc}</Text>
+                </View>
+              ) : null}
+
               <View style={styles.metaRow}>
                 <Text style={styles.metaLabel}>Destination</Text>
-                <Text style={styles.metaValue}>{shipment.destination || shipment.route || 'TNL Baguio Hub'}</Text>
+                <Text style={styles.metaValue}>{formatRoute(shipment.destination || shipment.route)}</Text>
               </View>
 
               <View style={styles.metaRow}>
                 <Text style={styles.metaLabel}>Total</Text>
-                <Text style={styles.metaValueAmount}>
-                  ₱{Number(shipment.totalAmount || 0).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                  {' '}
-                  <Text style={styles.paymentBadge}>({shipment.payment || 'Unpaid'})</Text>
-                </Text>
+                <View style={styles.amountContainer}>
+                  <Text style={styles.metaValueAmount}>
+                    {formatCurrency(totalAmount)}
+                    {' '}
+                    <Text style={[
+                      styles.paymentBadge,
+                      paymentStatus === 'PAID' ? styles.paymentPaid : paymentStatus === 'PARTIALLY_PAID' ? styles.paymentPartial : styles.paymentUnpaid,
+                    ]}>
+                      ({paymentStatus === 'PAID' ? 'Paid' : paymentStatus === 'PARTIALLY_PAID' ? 'Partial' : 'Unpaid'})
+                    </Text>
+                  </Text>
+                  {paymentStatus === 'PARTIALLY_PAID' && amountPaid != null ? (
+                    <Text style={styles.balanceSubtext}>
+                      Paid: {formatCurrency(amountPaid)}, Balance: {formatCurrency(balance)}
+                    </Text>
+                  ) : paymentStatus === 'UNPAID' && totalAmount > 0 ? (
+                    <Text style={styles.balanceSubtext}>
+                      Balance: {formatCurrency(balance || totalAmount)}
+                    </Text>
+                  ) : null}
+                </View>
               </View>
 
               <View style={styles.divider} />
@@ -171,7 +233,7 @@ export function ShipmentDetailScreen({ shipmentId }) {
 
             {/* Section Heading */}
             <Text style={styles.sectionHeader}>
-              PARCEL UNITS ({units.length}) — TAP TO VIEW
+              PARCEL UNITS ({units.length}) - TAP TO VIEW
             </Text>
           </View>
         }
@@ -191,12 +253,12 @@ export function ShipmentDetailScreen({ shipmentId }) {
 
               <View style={styles.unitRight}>
                 <View style={styles.unitBadge}>
-                  <Text style={styles.unitBadgeDot}>●</Text>
+                  <View style={styles.unitBadgeDot} />
                   <Text style={styles.unitBadgeText}>{item.currentStatus || item.status || 'QR Generated'}</Text>
                 </View>
 
                 <View style={[styles.unitBadge, isPrinted ? styles.badgePrinted : styles.badgeNotPrinted]}>
-                  <Text style={[styles.unitBadgeDot, isPrinted ? styles.dotPrinted : styles.dotNotPrinted]}>●</Text>
+                  <View style={[styles.unitBadgeDot, isPrinted ? styles.dotPrinted : styles.dotNotPrinted]} />
                   <Text style={[styles.unitBadgeText, isPrinted ? styles.textPrinted : styles.textNotPrinted]}>
                     Label: {isPrinted ? 'Printed' : 'Not Printed'}
                   </Text>
@@ -246,13 +308,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: colors.border,
   },
-  backBtn: {
-    minWidth: 44,
-    minHeight: 44,
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-  },
-  backArrow: { fontSize: 24, color: colors.ink, fontWeight: '700' },
   headerTitle: { ...typography.eyebrow, fontSize: 13, letterSpacing: 1, color: colors.ink },
   centerBox: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xl },
   errorText: { ...typography.body, color: colors.danger, marginBottom: spacing.md },
@@ -316,13 +371,32 @@ const styles = StyleSheet.create({
     ...typography.body,
     fontWeight: '700',
     color: colors.ink,
+    textAlign: 'right',
+  },
+  amountContainer: {
     width: '68%',
+    alignItems: 'flex-end',
+  },
+  balanceSubtext: {
+    ...typography.mono,
+    fontSize: 11,
+    color: colors.inkFaint,
+    marginTop: 2,
     textAlign: 'right',
   },
   paymentBadge: {
     fontSize: 12,
-    fontWeight: '400',
+    fontWeight: '600',
     color: colors.inkFaint,
+  },
+  paymentPaid: {
+    color: colors.success,
+  },
+  paymentPartial: {
+    color: colors.accent,
+  },
+  paymentUnpaid: {
+    color: colors.danger,
   },
   divider: {
     height: 1,
@@ -385,8 +459,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   unitBadgeDot: {
-    fontSize: 8,
-    color: colors.success,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.success,
   },
   unitBadgeText: {
     ...typography.mono,
@@ -398,7 +474,7 @@ const styles = StyleSheet.create({
     borderColor: colors.success,
   },
   dotPrinted: {
-    color: colors.success,
+    backgroundColor: colors.success,
   },
   textPrinted: {
     color: colors.success,
@@ -407,7 +483,7 @@ const styles = StyleSheet.create({
     borderColor: colors.accent,
   },
   dotNotPrinted: {
-    color: colors.accent,
+    backgroundColor: colors.accent,
   },
   textNotPrinted: {
     color: colors.accent,

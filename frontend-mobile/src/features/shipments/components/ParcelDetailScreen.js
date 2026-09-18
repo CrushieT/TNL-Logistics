@@ -12,6 +12,12 @@ import { useRouter } from 'expo-router';
 import { colors, spacing, typography } from '../../../theme';
 import { shipmentApi } from '../services/shipmentApi';
 import { StatusModal } from '../../../components/common/StatusModal';
+import { BackButton } from '../../../components/common/BackButton';
+
+function formatRoute(route) {
+  if (!route) return 'TNL Baguio Hub';
+  return route.replace(/\s*(?:->|→)\s*/g, ' to ');
+}
 
 export function ParcelDetailScreen({ trackingId }) {
   const router = useRouter();
@@ -69,9 +75,7 @@ export function ParcelDetailScreen({ trackingId }) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backArrow}>←</Text>
-          </Pressable>
+          <BackButton />
           <Text style={styles.headerTitle}>PACKAGE DETAILS</Text>
         </View>
         <View style={styles.centerBox}>
@@ -85,9 +89,7 @@ export function ParcelDetailScreen({ trackingId }) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backArrow}>←</Text>
-          </Pressable>
+          <BackButton />
           <Text style={styles.headerTitle}>PACKAGE DETAILS</Text>
         </View>
         <View style={styles.centerBox}>
@@ -109,14 +111,7 @@ export function ParcelDetailScreen({ trackingId }) {
     <SafeAreaView style={styles.container}>
       {/* Header matching prototype staff find-parcel units selected.png */}
       <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={() => router.back()}
-          style={styles.backBtn}
-        >
-          <Text style={styles.backArrow}>←</Text>
-        </Pressable>
+        <BackButton accessibilityLabel="Back to shipment" />
         <Text accessibilityRole="header" style={styles.headerTitle}>
           PACKAGE {pkgNum} OF {pkgTotal}
         </Text>
@@ -134,12 +129,12 @@ export function ParcelDetailScreen({ trackingId }) {
 
           <View style={styles.metaRow}>
             <Text style={styles.metaLabel}>Recipient</Text>
-            <Text style={styles.metaValue}>{parcel.recipientName || '—'}</Text>
+            <Text style={styles.metaValue}>{parcel.recipientName || '-'}</Text>
           </View>
 
           <View style={styles.metaRow}>
             <Text style={styles.metaLabel}>Client</Text>
-            <Text style={styles.metaValue}>{parcel.client || '—'}</Text>
+            <Text style={styles.metaValue}>{parcel.client || '-'}</Text>
           </View>
 
           <View style={styles.metaRow}>
@@ -148,13 +143,13 @@ export function ParcelDetailScreen({ trackingId }) {
               onPress={() => router.push(`/(main)/shipments/${encodeURIComponent(parcel.shipmentId)}`)}
               style={styles.shipmentLink}
             >
-              <Text style={styles.shipmentLinkText}>{parcel.shipmentId} →</Text>
+              <Text style={styles.shipmentLinkText}>{parcel.shipmentId}</Text>
             </Pressable>
           </View>
 
           <View style={styles.metaRow}>
             <Text style={styles.metaLabel}>Destination</Text>
-            <Text style={styles.metaValue}>{parcel.route || 'TNL Baguio Hub'}</Text>
+            <Text style={styles.metaValue}>{formatRoute(parcel.route)}</Text>
           </View>
 
           <View style={styles.divider} />
@@ -162,7 +157,7 @@ export function ParcelDetailScreen({ trackingId }) {
           <View style={styles.badgeRow}>
             <Text style={styles.metaLabel}>Current Status</Text>
             <View style={styles.statusBadge}>
-              <Text style={styles.badgeDot}>●</Text>
+              <View style={styles.badgeDot} />
               <Text style={styles.badgeText}>{parcel.status || 'QR Generated'}</Text>
             </View>
           </View>
@@ -170,7 +165,7 @@ export function ParcelDetailScreen({ trackingId }) {
           <View style={styles.badgeRow}>
             <Text style={styles.metaLabel}>Label Status</Text>
             <View style={[styles.statusBadge, isPrinted ? styles.badgePrinted : styles.badgeNotPrinted]}>
-              <Text style={[styles.badgeDot, isPrinted ? styles.dotPrinted : styles.dotNotPrinted]}>●</Text>
+              <View style={[styles.badgeDot, isPrinted ? styles.dotPrinted : styles.dotNotPrinted]} />
               <Text style={[styles.badgeText, isPrinted ? styles.textPrinted : styles.textNotPrinted]}>
                 Label: {isPrinted ? 'Printed' : 'Not Printed'}
               </Text>
@@ -180,7 +175,7 @@ export function ParcelDetailScreen({ trackingId }) {
           {/* Additional Physical Dimensions Info */}
           <View style={styles.dimensionsBox}>
             <Text style={styles.dimLabel}>
-              {parcel.weight ? `${parcel.weight} kg` : '1.00 kg'} · {parcel.lengthCm}×{parcel.widthCm}×{parcel.heightCm} cm · {Number(parcel.volumeCbm || 0).toFixed(4)} m³
+              {parcel.weight ? `${parcel.weight} kg` : '1.00 kg'}, {parcel.lengthCm}x{parcel.widthCm}x{parcel.heightCm} cm, {Number(parcel.volumeCbm || 0).toFixed(4)} m³
             </Text>
           </View>
         </View>
@@ -220,8 +215,8 @@ export function ParcelDetailScreen({ trackingId }) {
               ) : (
                 history.map((event, idx) => {
                   const staffName = event.by || event.staff || 'Andrea Lim';
-                  const vehiclePart = event.vehiclePlate ? ` · Truck ${event.vehiclePlate}` : '';
-                  const subtitle = `${event.date} · ${event.time} · ${staffName}${vehiclePart}`;
+                  const vehiclePart = event.vehiclePlate ? `, Truck ${event.vehiclePlate}` : '';
+                  const subtitle = `${event.date} ${event.time}, ${staffName}${vehiclePart}`;
                   return (
                     <View key={idx} style={styles.timelineRow}>
                       <View style={styles.timelineLeftColumn}>
@@ -245,7 +240,7 @@ export function ParcelDetailScreen({ trackingId }) {
                 parcel.printEvents.map((pe, idx) => (
                   <View key={idx} style={styles.printEventRow}>
                     <Text style={styles.printEventLeft}>
-                      {pe.kind || 'Print'} · {pe.staff || 'Andrea Lim'}
+                      {pe.kind || 'Print'}, {pe.staff || 'Andrea Lim'}
                     </Text>
                     <Text style={styles.printEventRight}>{pe.date}</Text>
                   </View>
@@ -253,10 +248,10 @@ export function ParcelDetailScreen({ trackingId }) {
               ) : isPrinted ? (
                 <View style={styles.printEventRow}>
                   <Text style={styles.printEventLeft}>
-                    Print · {parcel.printing?.by || 'Andrea Lim'}
+                    Print, {parcel.printing?.by || 'Andrea Lim'}
                   </Text>
                   <Text style={styles.printEventRight}>
-                    {parcel.printing?.date || '—'}
+                    {parcel.printing?.date || '-'}
                   </Text>
                 </View>
               ) : (
@@ -290,13 +285,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: colors.border,
   },
-  backBtn: {
-    minWidth: 44,
-    minHeight: 44,
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-  },
-  backArrow: { fontSize: 24, color: colors.ink, fontWeight: '700' },
   headerTitle: { ...typography.eyebrow, fontSize: 13, letterSpacing: 1, color: colors.ink },
   centerBox: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xl },
   errorText: { ...typography.body, color: colors.danger, marginBottom: spacing.md },
@@ -397,8 +385,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   badgeDot: {
-    fontSize: 8,
-    color: colors.success,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.success,
   },
   badgeText: {
     ...typography.mono,
@@ -410,7 +400,7 @@ const styles = StyleSheet.create({
     borderColor: colors.success,
   },
   dotPrinted: {
-    color: colors.success,
+    backgroundColor: colors.success,
   },
   textPrinted: {
     color: colors.success,
@@ -419,7 +409,7 @@ const styles = StyleSheet.create({
     borderColor: colors.accent,
   },
   dotNotPrinted: {
-    color: colors.accent,
+    backgroundColor: colors.accent,
   },
   textNotPrinted: {
     color: colors.accent,

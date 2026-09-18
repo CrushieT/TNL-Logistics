@@ -6,6 +6,7 @@ import {
 import { useNavigation, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusModal } from '../../../components/common/StatusModal';
+import { BackButton } from '../../../components/common/BackButton';
 import { colors, spacing, typography } from '../../../theme';
 import { ClientPicker } from './ClientPicker';
 import { RegistrationResult } from './RegistrationResult';
@@ -181,9 +182,7 @@ export function RegistrationScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Back to office home" disabled={isSubmitting} onPress={requestBack} style={styles.back}>
-          <Text style={styles.backText}>‹</Text>
-        </Pressable>
+        <BackButton accessibilityLabel="Back to office home" disabled={isSubmitting} onPress={requestBack} />
         <Text accessibilityRole="header" style={styles.headerTitle}>{result ? 'SHIPMENT REGISTERED' : 'REGISTER SHIPMENT'}</Text>
       </View>
       {result ? <RegistrationResult
@@ -324,9 +323,7 @@ export function RegistrationScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.canvas },
   body: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', minHeight: 60, paddingRight: spacing.lg, backgroundColor: colors.surface, borderBottomWidth: 1, borderColor: colors.border },
-  back: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
-  backText: { fontSize: 30, color: colors.ink },
+  header: { flexDirection: 'row', alignItems: 'center', minHeight: 60, paddingHorizontal: spacing.md, backgroundColor: colors.surface, borderBottomWidth: 1, borderColor: colors.border },
   headerTitle: { flex: 1, fontSize: 14, letterSpacing: 1, fontWeight: '700', color: colors.ink },
   scrollContent: { flexGrow: 1 },
   content: { padding: spacing.lg, paddingBottom: spacing.xl, width: '100%', maxWidth: 720, alignSelf: 'center' },

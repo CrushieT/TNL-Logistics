@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { colors, spacing, typography } from '../../../theme';
 import { shipmentApi } from '../services/shipmentApi';
+import { BackButton } from '../../../components/common/BackButton';
 
 export function FindParcelScreen({ initialFilter = 'ALL' }) {
   const router = useRouter();
@@ -107,14 +108,7 @@ export function FindParcelScreen({ initialFilter = 'ALL' }) {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back to office dashboard"
-          onPress={() => router.back()}
-          style={styles.backBtn}
-        >
-          <Text style={styles.backArrow}>←</Text>
-        </Pressable>
+        <BackButton accessibilityLabel="Back to office dashboard" />
         <Text accessibilityRole="header" style={styles.headerTitle}>FIND PARCEL</Text>
       </View>
 
@@ -161,7 +155,7 @@ export function FindParcelScreen({ initialFilter = 'ALL' }) {
       {/* Count Info Subhead */}
       <View style={styles.subhead}>
         <Text style={styles.subheadText}>
-          {totalElements} {totalElements === 1 ? 'shipment' : 'shipments'} · includes parcels registered on the office PC
+          {totalElements} {totalElements === 1 ? 'shipment' : 'shipments'} (includes office PC records)
         </Text>
       </View>
 
@@ -220,7 +214,7 @@ export function FindParcelScreen({ initialFilter = 'ALL' }) {
               <Text style={styles.recipientName}>{item.recipientName}</Text>
 
               <Text style={styles.cardSub}>
-                {item.quantity} {item.quantity === 1 ? 'unit' : 'units'} · {item.recipientContact || 'No contact'}
+                {item.quantity} {item.quantity === 1 ? 'unit' : 'units'}, {item.recipientContact || 'No contact'}
               </Text>
 
               <View style={styles.cardFooter}>
@@ -250,13 +244,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: colors.border,
   },
-  backBtn: {
-    minWidth: 44,
-    minHeight: 44,
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-  },
-  backArrow: { fontSize: 24, color: colors.ink, fontWeight: '700' },
   headerTitle: { ...typography.eyebrow, fontSize: 13, letterSpacing: 1, color: colors.ink },
   searchContainer: {
     paddingHorizontal: spacing.lg,

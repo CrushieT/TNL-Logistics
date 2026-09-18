@@ -4,19 +4,36 @@ import { Icon } from 'react-native-paper';
 import { colors } from '../../theme';
 import { PressableScale } from './PressableScale';
 
-export function ActionCard({ iconName, title, subtitle, onPress }) {
+export function ActionCard({
+  iconName,
+  title,
+  subtitle,
+  onPress,
+  badge,
+  style,
+  contentStyle,
+}) {
   return (
     <PressableScale
-      style={styles.cardWrapper}
-      contentStyle={styles.card}
+      style={[styles.cardWrapper, style]}
+      contentStyle={[styles.card, contentStyle]}
       onPress={onPress}
-      activeScale={0.96}
+      activeScale={0.97}
     >
-      <View style={styles.iconWrapper}>
-        <Icon source={iconName} size={24} color={colors.ink} />
+      <View style={styles.topRow}>
+        <View style={styles.iconWrapper}>
+          <Icon source={iconName} size={24} color={colors.ink} />
+        </View>
+        {badge ? (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{badge}</Text>
+          </View>
+        ) : null}
       </View>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.subtitle}>{subtitle}</Text>
+      <View>
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.subtitle}>{subtitle}</Text>
+      </View>
     </PressableScale>
   );
 }
@@ -41,12 +58,29 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 1,
   },
-  iconWrapper: {
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 8,
   },
-  iconText: {
-    fontSize: 22,
+  iconWrapper: {
+    marginBottom: 0,
+  },
+  badge: {
+    backgroundColor: colors.canvas,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 2,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    fontFamily: 'monospace',
     color: colors.ink,
+    letterSpacing: 0.5,
   },
   title: {
     fontSize: 14,
@@ -61,3 +95,4 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
 });
+

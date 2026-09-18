@@ -88,7 +88,7 @@ tnl-logistics/
 │   │   │       │   └── parcel/
 │   │   │       │       └── [trackingId].js # Screen 40 Single Parcel Details & Scan Audit Timeline
 │   │   │       └── scan.js           # Screen 45 Camera QR scanner
-│   │   ├── components/               # Shared UI atoms (Keypad, PinIndicator, PressableScale, ActionCard, MetricCard, NoticeBanner, StatusModal)
+│   │   ├── components/               # Shared UI atoms (BackButton, Keypad, PinIndicator, PressableScale, ActionCard, MetricCard, NoticeBanner, StatusModal)
 │   │   │   ├── common/
 │   │   │   └── layout/               # MobileHeader
 │   │   ├── features/                 # Domain feature slices (auth, office, field, shipments)
