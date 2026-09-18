@@ -2,7 +2,8 @@
 - [ ] Backend
 - [ ] Web
 - [ ] Mobile
-- [ ] Fullstack
+- [ ] Web / Backend
+- [ ] Mobile / Backend
 
 ## Build-Plan Phase
 Phase number (e.g. `5.2`) or `N/A`.
