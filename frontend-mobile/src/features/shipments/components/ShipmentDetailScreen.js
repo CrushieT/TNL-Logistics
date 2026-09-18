@@ -44,13 +44,13 @@ export function ShipmentDetailScreen({ shipmentId }) {
     return () => controller.abort();
   }, [shipmentId]);
 
-  const handlePrintAll = async (isReprint = false) => {
+  const handlePrintAll = async () => {
     if (isPrinting || !shipment) return;
     setIsPrinting(true);
     try {
       await shipmentApi.printLabels(shipment.shipmentId);
       setStatusDialog({
-        title: isReprint ? 'Labels Reprinted' : 'Labels Printed',
+        title: 'Labels Printed',
         message: `Label print audit recorded for all ${shipment.units?.length || shipment.quantity} parcel units.`,
       });
       // Refresh details to update label badges
@@ -210,7 +210,7 @@ export function ShipmentDetailScreen({ shipmentId }) {
             <Pressable
               accessibilityRole="button"
               disabled={isPrinting}
-              onPress={() => handlePrintAll(false)}
+              onPress={handlePrintAll}
               style={[styles.primaryBtn, isPrinting && styles.disabled]}
             >
               {isPrinting ? (
@@ -218,15 +218,6 @@ export function ShipmentDetailScreen({ shipmentId }) {
               ) : (
                 <Text style={styles.primaryBtnText}>PRINT ALL LABELS ({units.length})</Text>
               )}
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              disabled={isPrinting}
-              onPress={() => handlePrintAll(true)}
-              style={styles.secondaryBtn}
-            >
-              <Text style={styles.secondaryBtnText}>REPRINT ALL LABELS</Text>
             </Pressable>
           </View>
         }
@@ -434,21 +425,6 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: {
     color: colors.surface,
-    fontWeight: '700',
-    fontSize: 14,
-    letterSpacing: 0.5,
-  },
-  secondaryBtn: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    minHeight: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.md,
-  },
-  secondaryBtnText: {
-    color: colors.ink,
     fontWeight: '700',
     fontSize: 14,
     letterSpacing: 0.5,

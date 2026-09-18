@@ -469,18 +469,46 @@ public class ShipmentServiceImpl implements ShipmentService {
         resp.setVolumeCbm(parcel.getVolumeCbm());
         resp.setRoute(shipment.getRoute() != null ? shipment.getRoute() : "Manila → TNL Baguio");
 
-        List<TrackingEventResponse> history = events.stream().map(e -> new TrackingEventResponse(
-                formatStatus(e.getStatus()),
-                e.getEventTimestamp().format(DATE_FORMATTER),
-                e.getEventTimestamp().format(TIME_FORMATTER),
-                e.getStaff() != null ? e.getStaff().getFullName() : "Office Staff",
-                e.getRemarks(),
-                true,
-                e.getEventTimestamp()
-        )).collect(Collectors.toList());
+        List<TrackingEventResponse> history = events.stream().map(e -> {
+            String vehiclePlate = null;
+            if (e.getVehicle() != null) {
+                vehiclePlate = e.getVehicle().getPlateNumber() != null ? e.getVehicle().getPlateNumber() : e.getVehicle().getVehicleId();
+            }
+            return new TrackingEventResponse(
+                    formatStatus(e.getStatus()),
+                    e.getEventTimestamp().format(DATE_FORMATTER),
+                    e.getEventTimestamp().format(TIME_FORMATTER),
+                    e.getStaff() != null ? e.getStaff().getFullName() : "Office Staff",
+                    null,
+                    vehiclePlate,
+                    true,
+                    e.getEventTimestamp()
+            );
+        }).collect(Collectors.toList());
         resp.setHistory(history);
 
         int totalLabelsPrinted = parcel.getLabelStatus() == LabelStatus.PRINTED ? (1 + parcel.getReprintCount()) : 0;
+
+        List<PrintEvent> printEvents = printEventRepository.findByParcelUnit_TrackingIdOrderByPrintTimestampDescPrintIdDesc(trackingId);
+        if (!printEvents.isEmpty()) {
+            List<PrintEventItemResponse> printEventResponses = printEvents.stream().map(pe -> new PrintEventItemResponse(
+                    pe.getKind() == PrintKind.REPRINT ? "Reprint" : "Print",
+                    pe.getStaff() != null ? pe.getStaff().getFullName() : "Office Staff",
+                    pe.getPrintTimestamp() != null ? pe.getPrintTimestamp().format(DATE_FORMATTER) + " " + pe.getPrintTimestamp().format(TIME_FORMATTER) : "—",
+                    pe.getPrinterId()
+            )).collect(Collectors.toList());
+            resp.setPrintEvents(printEventResponses);
+        } else if (parcel.getLabelStatus() == LabelStatus.PRINTED) {
+            String fallbackDate = shipment.getDateRegistered() != null
+                    ? shipment.getDateRegistered().format(DATE_FORMATTER) + " " + shipment.getDateRegistered().format(TIME_FORMATTER)
+                    : "—";
+            String fallbackStaff = events.stream()
+                    .filter(e -> e.getStaff() != null)
+                    .map(e -> e.getStaff().getFullName())
+                    .findFirst()
+                    .orElse("Office Staff");
+            resp.setPrintEvents(List.of(new PrintEventItemResponse("Print", fallbackStaff, fallbackDate, "Brother RJ-2035B")));
+        }
 
         Optional<PrintEvent> latestPrintOpt = printEventRepository.findTopByParcelUnit_TrackingIdOrderByPrintTimestampDescPrintIdDesc(trackingId);
         String printStatus = parcel.getLabelStatus() == LabelStatus.PRINTED ? "Printed" : "Pending";

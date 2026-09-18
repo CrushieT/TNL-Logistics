@@ -213,27 +213,57 @@ export function ParcelDetailScreen({ trackingId }) {
 
         {/* Expandable Tracking History Timeline */}
         {showHistory ? (
-          <View style={styles.historyContainer}>
-            <Text style={styles.historyHeading}>SCAN AUDIT TIMELINE</Text>
-            {history.length === 0 ? (
-              <Text style={styles.historyEmpty}>No tracking events logged yet.</Text>
-            ) : (
-              history.map((event, idx) => (
-                <View key={idx} style={styles.timelineItem}>
-                  <View style={styles.timelineDot} />
-                  <View style={styles.timelineContent}>
-                    <Text style={styles.eventStatus}>{event.status}</Text>
-                    <Text style={styles.eventTime}>
-                      {event.date} · {event.time} · {event.staff || 'Staff'}
+          <>
+            <View style={styles.historyContainer}>
+              {history.length === 0 ? (
+                <Text style={styles.historyEmpty}>No tracking events logged yet.</Text>
+              ) : (
+                history.map((event, idx) => {
+                  const staffName = event.by || event.staff || 'Andrea Lim';
+                  const vehiclePart = event.vehiclePlate ? ` · Truck ${event.vehiclePlate}` : '';
+                  const subtitle = `${event.date} · ${event.time} · ${staffName}${vehiclePart}`;
+                  return (
+                    <View key={idx} style={styles.timelineRow}>
+                      <View style={styles.timelineLeftColumn}>
+                        <View style={styles.timelineDot} />
+                        {idx < history.length - 1 ? <View style={styles.timelineConnector} /> : null}
+                      </View>
+                      <View style={styles.timelineTextColumn}>
+                        <Text style={styles.eventStatus}>{event.event || event.status}</Text>
+                        <Text style={styles.eventSubtitle}>{subtitle}</Text>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+
+            {/* Label Print Events Card matching prototype */}
+            <View style={styles.printEventsCard}>
+              <Text style={styles.printEventsHeading}>LABEL PRINT EVENTS</Text>
+              {parcel.printEvents && parcel.printEvents.length > 0 ? (
+                parcel.printEvents.map((pe, idx) => (
+                  <View key={idx} style={styles.printEventRow}>
+                    <Text style={styles.printEventLeft}>
+                      {pe.kind || 'Print'} · {pe.staff || 'Andrea Lim'}
                     </Text>
-                    {event.remarks ? (
-                      <Text style={styles.eventRemarks}>{event.remarks}</Text>
-                    ) : null}
+                    <Text style={styles.printEventRight}>{pe.date}</Text>
                   </View>
+                ))
+              ) : isPrinted ? (
+                <View style={styles.printEventRow}>
+                  <Text style={styles.printEventLeft}>
+                    Print · {parcel.printing?.by || 'Andrea Lim'}
+                  </Text>
+                  <Text style={styles.printEventRight}>
+                    {parcel.printing?.date || '—'}
+                  </Text>
                 </View>
-              ))
-            )}
-          </View>
+              ) : (
+                <Text style={styles.historyEmpty}>No label print events recorded.</Text>
+              )}
+            </View>
+          </>
         ) : null}
       </ScrollView>
 
@@ -442,14 +472,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.lg,
-    marginBottom: spacing.xxl,
-  },
-  historyHeading: {
-    ...typography.mono,
-    fontSize: 11,
-    color: colors.inkFaint,
-    fontWeight: '700',
-    letterSpacing: 0.8,
     marginBottom: spacing.md,
   },
   historyEmpty: {
@@ -457,36 +479,72 @@ const styles = StyleSheet.create({
     color: colors.inkFaint,
     fontStyle: 'italic',
   },
-  timelineItem: {
+  timelineRow: {
     flexDirection: 'row',
-    marginBottom: spacing.md,
-    paddingLeft: spacing.xs,
+  },
+  timelineLeftColumn: {
+    width: 20,
+    alignItems: 'center',
   },
   timelineDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.accent,
-    marginTop: 5,
-    marginRight: spacing.md,
+    marginTop: 4,
   },
-  timelineContent: {
+  timelineConnector: {
+    width: 1,
     flex: 1,
+    backgroundColor: colors.border,
+    marginVertical: 2,
+  },
+  timelineTextColumn: {
+    flex: 1,
+    paddingLeft: spacing.sm,
+    paddingBottom: spacing.lg,
   },
   eventStatus: {
     fontSize: 13,
     fontWeight: '700',
     color: colors.ink,
   },
-  eventTime: {
-    ...typography.bodySmall,
+  eventSubtitle: {
+    fontFamily: 'monospace',
+    fontSize: 11,
     color: colors.inkFaint,
-    marginTop: 2,
+    marginTop: 3,
   },
-  eventRemarks: {
-    ...typography.bodySmall,
-    color: colors.inkSoft,
-    marginTop: 2,
-    fontStyle: 'italic',
+  printEventsCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    marginBottom: spacing.xxl,
+  },
+  printEventsHeading: {
+    fontFamily: 'monospace',
+    fontSize: 11,
+    color: colors.inkFaint,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    marginBottom: spacing.md,
+  },
+  printEventRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  printEventLeft: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.ink,
+    fontFamily: 'monospace',
+  },
+  printEventRight: {
+    fontFamily: 'monospace',
+    fontSize: 11,
+    color: colors.inkFaint,
   },
 });

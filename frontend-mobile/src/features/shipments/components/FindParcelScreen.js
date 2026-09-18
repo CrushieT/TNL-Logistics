@@ -13,7 +13,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { colors, spacing, typography } from '../../../theme';
 import { shipmentApi } from '../services/shipmentApi';
-import { BarcodeScannerModal } from './BarcodeScannerModal';
 
 export function FindParcelScreen({ initialFilter = 'ALL' }) {
   const router = useRouter();
@@ -28,7 +27,6 @@ export function FindParcelScreen({ initialFilter = 'ALL' }) {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
-  const [isScannerOpen, setIsScannerOpen] = useState(false);
   const abortControllerRef = useRef(null);
 
   const fetchShipments = useCallback(async (targetPage, isAppend = false) => {
@@ -105,18 +103,6 @@ export function FindParcelScreen({ initialFilter = 'ALL' }) {
     }
   };
 
-  const handleBarcodeScanned = (scannedCode) => {
-    setIsScannerOpen(false);
-    const code = scannedCode.trim();
-    if (code.startsWith('TRK-')) {
-      router.push(`/(main)/shipments/parcel/${encodeURIComponent(code)}`);
-    } else if (code.startsWith('SHP-')) {
-      router.push(`/(main)/shipments/${encodeURIComponent(code)}`);
-    } else {
-      setSearch(code);
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -149,7 +135,7 @@ export function FindParcelScreen({ initialFilter = 'ALL' }) {
         />
       </View>
 
-      {/* Filter Tabs matching prototype: RECENT / ALL | NEEDS LABEL | SCAN QR */}
+      {/* Filter Tabs matching prototype: RECENT / ALL | NEEDS LABEL */}
       <View style={styles.filterBar}>
         <Pressable
           accessibilityRole="button"
@@ -169,14 +155,6 @@ export function FindParcelScreen({ initialFilter = 'ALL' }) {
           <Text style={[styles.filterTabText, activeFilter === 'NEEDS_LABEL' && styles.filterTabTextActive]}>
             NEEDS LABEL
           </Text>
-        </Pressable>
-
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setIsScannerOpen(true)}
-          style={styles.scanQrTab}
-        >
-          <Text style={styles.scanQrText}>⛶ SCAN QR</Text>
         </Pressable>
       </View>
 
@@ -257,12 +235,6 @@ export function FindParcelScreen({ initialFilter = 'ALL' }) {
           );
         }}
       />
-
-      <BarcodeScannerModal
-        visible={isScannerOpen}
-        onClose={() => setIsScannerOpen(false)}
-        onScan={handleBarcodeScanned}
-      />
     </SafeAreaView>
   );
 }
@@ -328,21 +300,6 @@ const styles = StyleSheet.create({
   },
   filterTabTextActive: {
     color: colors.surface,
-  },
-  scanQrTab: {
-    flex: 1,
-    minHeight: 40,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scanQrText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.ink,
-    letterSpacing: 0.5,
   },
   subhead: {
     paddingHorizontal: spacing.lg,
