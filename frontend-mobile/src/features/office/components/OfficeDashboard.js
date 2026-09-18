@@ -1,4 +1,5 @@
 import React from 'react';
+import { useRouter } from 'expo-router';
 import { StyleSheet, View, Text, ScrollView, Alert } from 'react-native';
 import { colors } from '../../../theme';
 import { MobileHeader } from '../../../components/layout/MobileHeader';
@@ -7,12 +8,13 @@ import { MetricCard } from '../../../components/common/MetricCard';
 import { PressableScale } from '../../../components/common/PressableScale';
 
 export function OfficeDashboard({ user, onLogout, onLock }) {
+  const router = useRouter();
   const handleFindParcel = () => {
     Alert.alert('Find Parcel', 'Past shipment directory & parcel lookup (Phase 6.2).');
   };
 
   const handleRegister = () => {
-    Alert.alert('Register Shipment', 'Mobile shipment generation with dimensional calculations (Phase 6.2).');
+    router.push('/(main)/register');
   };
 
   const handleScanQR = () => {
@@ -66,7 +68,7 @@ export function OfficeDashboard({ user, onLogout, onLock }) {
         <ActionCard
           iconName="pencil-outline"
           title="REGISTER"
-          subtitle="New shipment + labels"
+          subtitle="New shipment + tracking"
           onPress={handleRegister}
         />
       </View>

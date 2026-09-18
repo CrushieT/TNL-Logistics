@@ -133,6 +133,92 @@ public class ShipmentIntegrationTest {
     }
 
     @Test
+    public void testOfficeStaffMobileRegistrationContractAndPaymentStates() throws Exception {
+        for (boolean isPaid : List.of(false, true)) {
+            ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+            request.setPaidAtRegistration(isPaid);
+            request.setChargeModel(isPaid ? ChargeModel.PER_PARCEL : ChargeModel.FLAT);
+            MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                            .header("Authorization", officeToken).contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isCreated()).andReturn();
+            JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+            java.util.Set<String> fields = new java.util.HashSet<>();
+            body.fieldNames().forEachRemaining(fields::add);
+            assertEquals(java.util.Set.of("shipmentId", "clientId", "recipientName", "totalAmount", "paidAtRegistration", "trackingIds"), fields);
+            ShipmentResponse response = objectMapper.treeToValue(body, ShipmentResponse.class);
+            assertEquals(0, new BigDecimal(isPaid ? "220.20" : "120.10").compareTo(response.getTotalAmount()));
+            assertEquals(isPaid, response.getPaidAtRegistration());
+            assertEquals(2, response.getTrackingIds().size());
+            assertEquals(RegisteredVia.MOBILE_FIELD, shipmentRepository.findById(response.getShipmentId()).orElseThrow().getRegisteredVia());
+            for (String trackingId : response.getTrackingIds()) {
+                ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+                assertEquals(ParcelStatus.QR_GENERATED, parcel.getCurrentStatus());
+                assertEquals(LabelStatus.NOT_PRINTED, parcel.getLabelStatus());
+                assertEquals(new BigDecimal("0.0300"), parcel.getVolumeCbm());
+                List<TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(trackingId);
+                assertEquals(2, events.size());
+                assertTrue(events.stream().allMatch(event -> "USR-OFFICE".equals(event.getStaff().getUserId())));
+                assertEquals(java.util.Set.of(ParcelStatus.REGISTERED, ParcelStatus.QR_GENERATED),
+                        events.stream().map(TrackingEvent::getStatus).collect(java.util.stream.Collectors.toSet()));
+            }
+            assertEquals(isPaid ? 1 : 0, paymentRepository.count());
+            if (isPaid) {
+                Payment payment = paymentRepository.findAll().getFirst();
+                assertEquals(PaymentMethod.CASH, payment.getMethod());
+                assertEquals(0, response.getTotalAmount().compareTo(payment.getAmountPaid()));
+            }
+        }
+    }
+
+    @Test
+    public void testMobileRegistrationRejectsInvalidTokenAndFieldStaffWithoutWrites() throws Exception {
+        String payload = objectMapper.writeValueAsString(createMobileRegistrationRequest());
+        mockMvc.perform(post("/api/v1/shipments").header("Authorization", "Bearer invalid-token")
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/shipments").header("Authorization", fieldToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isForbidden());
+        assertEquals(0, shipmentRepository.count());
+        assertEquals(0, paymentRepository.count());
+    }
+
+    @Test
+    public void testMobileRegistrationRejectsInvalidMeasurementsAndFeesWithoutWrites() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setShippingFee(new BigDecimal("-1"));
+        request.getParcels().getFirst().setWeightKg(new BigDecimal("0"));
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments").header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest()).andReturn();
+        JsonNode errors = objectMapper.readTree(result.getResponse().getContentAsString()).get("fieldErrors");
+        assertTrue(errors.has("shippingFee"));
+        assertTrue(errors.has("parcels[0].weightKg"));
+        assertEquals(0, shipmentRepository.count());
+        assertEquals(0, parcelUnitRepository.count());
+        assertEquals(0, paymentRepository.count());
+    }
+
+    private ShipmentRegistrationRequest createMobileRegistrationRequest() {
+        ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
+        request.setClientId("CL-001");
+        request.setRecipientName("Mobile registration recipient");
+        request.setRecipientAddress("Test street, Baguio");
+        request.setRecipientContact("09170000000");
+        request.setQuantity(2);
+        request.setChargeModel(ChargeModel.FLAT);
+        request.setShippingFee(new BigDecimal("100.10"));
+        request.setOtherCharges(new BigDecimal("20.00"));
+        request.setRegisteredVia(RegisteredVia.MOBILE_FIELD);
+        request.setRoute("Manila to TNL Baguio");
+        request.setParcels(List.of(
+                new ParcelUnitRequest(1, new BigDecimal("1.25"), new BigDecimal("40"), new BigDecimal("25"), new BigDecimal("30")),
+                new ParcelUnitRequest(2, new BigDecimal("1.25"), new BigDecimal("40"), new BigDecimal("25"), new BigDecimal("30"))));
+        return request;
+    }
+
+    @Test
     public void testRegistrationUsesNumericCountersPastIdentifierWidthBoundaries() throws Exception {
         Client client = clientRepository.findById("CL-001").orElseThrow();
         Shipment shipment999 = new Shipment(
