@@ -338,7 +338,7 @@
 - **Verification & Testing:**
   - Automated integration tests in `ShipmentIntegrationTest.java` verifying search by parcel tracking ID, label status filters (`NEEDS_LABEL`, `PRINTED`), role-gating (`FIELD_STAFF` blocked with HTTP 403, `OFFICE_STAFF` permitted), and summary DTO mapping (`registeredVia`, `allLabelsPrinted`).
   - Automated label print audit tests in `ParcelPrintIntegrationTest.java` (8/8 passing).
-  - Frontend Node unit test suites (`tests/registration.test.mjs`, `tests/shipments.test.mjs` - 27/27 passing).
+  - Frontend Node unit test suites (`tests/registration.test.mjs`, `tests/shipments.test.mjs` - 31/31 passing).
   - Verified clean compilation and bundling across Web, iOS, and Android via `npx expo export`.
 
 **6.3 — Office Staff: Bluetooth Thermal Label & QR Printing (Screens 41–44)**
