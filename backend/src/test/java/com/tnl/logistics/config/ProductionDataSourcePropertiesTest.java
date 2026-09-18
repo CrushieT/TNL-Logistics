@@ -43,6 +43,8 @@ public class ProductionDataSourcePropertiesTest {
                 "Production must explicitly disable admin seeding");
         org.junit.jupiter.api.Assertions.assertEquals("false", properties.getProperty("app.seed.sample-data"),
                 "Production must explicitly disable sample data seeding");
+        org.junit.jupiter.api.Assertions.assertEquals("false", properties.getProperty("app.seed.mobile-pins"),
+                "Production must explicitly disable mobile PIN seeding");
     }
 
     @Test

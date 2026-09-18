@@ -9,17 +9,23 @@ public class TrackingEventResponse {
     private String time;
     private String by;
     private String remarks;
+    private String vehiclePlate;
     private Boolean done;
     private LocalDateTime timestamp;
 
     public TrackingEventResponse() {}
 
     public TrackingEventResponse(String event, String date, String time, String by, String remarks, Boolean done, LocalDateTime timestamp) {
+        this(event, date, time, by, remarks, null, done, timestamp);
+    }
+
+    public TrackingEventResponse(String event, String date, String time, String by, String remarks, String vehiclePlate, Boolean done, LocalDateTime timestamp) {
         this.event = event;
         this.date = date;
         this.time = time;
         this.by = by;
         this.remarks = remarks;
+        this.vehiclePlate = vehiclePlate;
         this.done = done;
         this.timestamp = timestamp;
     }
@@ -38,6 +44,9 @@ public class TrackingEventResponse {
 
     public String getRemarks() { return remarks; }
     public void setRemarks(String remarks) { this.remarks = remarks; }
+
+    public String getVehiclePlate() { return vehiclePlate; }
+    public void setVehiclePlate(String vehiclePlate) { this.vehiclePlate = vehiclePlate; }
 
     public Boolean getDone() { return done; }
     public void setDone(Boolean done) { this.done = done; }

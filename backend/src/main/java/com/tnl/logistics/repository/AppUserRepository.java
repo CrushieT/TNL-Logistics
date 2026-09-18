@@ -24,6 +24,7 @@ public interface AppUserRepository extends JpaRepository<AppUser, String> {
 
     List<AppUser> findByRoleAndActiveTrue(UserRole role);
 
+
     boolean existsByRole(UserRole role);
 
     // Paginated list — all statuses, filtered by role membership

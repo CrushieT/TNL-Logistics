@@ -21,6 +21,7 @@ public class ParcelUnitDetailResponse {
     private String route;
     private List<TrackingEventResponse> history;
     private PrintInfoDto printing;
+    private List<PrintEventItemResponse> printEvents;
 
     public ParcelUnitDetailResponse() {}
 
@@ -71,4 +72,7 @@ public class ParcelUnitDetailResponse {
 
     public PrintInfoDto getPrinting() { return printing; }
     public void setPrinting(PrintInfoDto printing) { this.printing = printing; }
+
+    public List<PrintEventItemResponse> getPrintEvents() { return printEvents; }
+    public void setPrintEvents(List<PrintEventItemResponse> printEvents) { this.printEvents = printEvents; }
 }

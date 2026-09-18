@@ -22,13 +22,13 @@ tnl-logistics/
 │   │   │   │   ├── config/              # SecurityConfig, CorsConfig, JwtTokenProvider, DataSeeder
 │   │   │   │   ├── controller/          # REST endpoints (Shipment, Vehicle, Client, Waybill, Payment, Collections, SOA)
 │   │   │   │   ├── dto/                 # Request & Response DTOs
-│   │   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, Vehicle, Waybill, Payment, Soa, etc.)
-│   │   │   │   ├── repository/          # Spring Data Repositories & Batch Group By Queries
+│   │   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, Vehicle, Waybill, Payment, Soa, MobileDeviceBinding, etc.)
+│   │   │   │   ├── repository/          # Spring Data Repositories & Batch Group By Queries (including MobileDeviceBindingRepository)
 │   │   │   │   └── service/             # Business Logic & Service Interfaces (impl/)
 │   │   │   └── resources/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
-│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V26)
+│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V27)
 │   │   └── test/                        # Integration and unit test suites
 │   └── pom.xml
 │
@@ -70,16 +70,34 @@ tnl-logistics/
 │   └── README.md
 │
 ├── frontend-mobile/                  # React Native (Expo) Field Operations (JavaScript)
-│   ├── app/
-│   │   ├── (auth)/
-│   │   │   └── login.js
-│   │   ├── (main)/
-│   │   │   ├── _layout.js
-│   │   │   ├── home.js
-│   │   │   └── scan.js
-│   │   └── _layout.js
-│   ├── api/
-│   │   └── client.js
+│   ├── src/
+│   │   ├── app/                      # File-based routes
+│   │   │   ├── _layout.js            # Root Stack navigator & AuthProvider
+│   │   │   ├── (auth)/
+│   │   │   │   ├── login.js          # Username & password device binding
+│   │   │   │   ├── change-password.js# Screen 30b Mandatory Password Change
+│   │   │   │   ├── setup-pin.js      # Mobile PIN creation & confirmation
+│   │   │   │   └── pin.js            # Screen 29 PIN quick shift unlock
+│   │   │   └── (main)/
+│   │   │       ├── _layout.js        # Authenticated route guard
+│   │   │       ├── index.js          # Role-aware home (Office vs Field Dashboard)
+│   │   │       ├── register.js       # Screen 34 Mobile Shipment Registration
+│   │   │       ├── shipments/        # Past Shipments Explorer
+│   │   │       │   ├── index.js      # Screen 38 Find Parcel & Shipments Directory
+│   │   │       │   ├── [id].js       # Screen 39 Shipment Parcel Units Breakdown
+│   │   │       │   └── parcel/
+│   │   │       │       └── [trackingId].js # Screen 40 Single Parcel Details & Scan Audit Timeline
+│   │   │       └── scan.js           # Screen 45 Camera QR scanner
+│   │   ├── components/               # Shared UI atoms (BackButton, Keypad, PinIndicator, PressableScale, ActionCard, MetricCard, NoticeBanner, StatusModal)
+│   │   │   ├── common/
+│   │   │   └── layout/               # MobileHeader
+│   │   ├── features/                 # Domain feature slices (auth, office, field, shipments)
+│   │   │   └── shipments/            # Shipment registration, explorer, detail screens, and barcode scanner modal
+│   │   ├── services/
+│   │   │   ├── api/client.js         # Axios API client with Bearer auth
+│   │   │   └── storage/secureStore.js# Hardware-backed SecureStore adapter
+│   │   └── theme/index.js            # TNL design tokens (canvas, ink, accent, keypad)
+│   ├── tests/                        # Mobile unit test suites
 │   ├── app.json                      # Expo configuration
 │   ├── eas.json                      # EAS Build configuration
 │   ├── package.json
