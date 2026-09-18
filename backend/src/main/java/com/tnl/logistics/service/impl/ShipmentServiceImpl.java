@@ -224,14 +224,13 @@ public class ShipmentServiceImpl implements ShipmentService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<ShipmentSummaryResponse> getShipments(String search, String status, String paymentStatus, String vehicleId, String labelStatus, Pageable pageable) {
+    public Page<ShipmentSummaryResponse> getShipments(String search, String status, String paymentStatus, String vehicleId, Pageable pageable) {
         String cleanSearch = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
         String cleanStatus = normalizeStatus(status);
         String cleanPayment = normalizePayment(paymentStatus);
         String cleanVehicle = normalizeVehicle(vehicleId);
-        String cleanLabel = normalizeLabel(labelStatus);
 
-        Page<Shipment> shipmentsPage = shipmentRepository.searchShipmentsWithFilters(cleanSearch, cleanStatus, cleanPayment, cleanVehicle, cleanLabel, pageable);
+        Page<Shipment> shipmentsPage = shipmentRepository.searchShipmentsWithFilters(cleanSearch, cleanStatus, cleanPayment, cleanVehicle, pageable);
         List<Shipment> shipments = shipmentsPage.getContent();
         if (shipments.isEmpty()) {
             return new PageImpl<>(Collections.emptyList(), pageable, shipmentsPage.getTotalElements());
@@ -299,13 +298,6 @@ public class ShipmentServiceImpl implements ShipmentService {
             return null;
         }
         return paymentStatus.trim().toUpperCase();
-    }
-
-    private String normalizeLabel(String labelStatus) {
-        if (labelStatus == null || labelStatus.trim().isEmpty() || labelStatus.equalsIgnoreCase("ALL")) {
-            return null;
-        }
-        return labelStatus.trim().toUpperCase().replace(" ", "_");
     }
 
     @Override
@@ -469,46 +461,18 @@ public class ShipmentServiceImpl implements ShipmentService {
         resp.setVolumeCbm(parcel.getVolumeCbm());
         resp.setRoute(shipment.getRoute() != null ? shipment.getRoute() : "Manila → TNL Baguio");
 
-        List<TrackingEventResponse> history = events.stream().map(e -> {
-            String vehiclePlate = null;
-            if (e.getVehicle() != null) {
-                vehiclePlate = e.getVehicle().getPlateNumber() != null ? e.getVehicle().getPlateNumber() : e.getVehicle().getVehicleId();
-            }
-            return new TrackingEventResponse(
-                    formatStatus(e.getStatus()),
-                    e.getEventTimestamp().format(DATE_FORMATTER),
-                    e.getEventTimestamp().format(TIME_FORMATTER),
-                    e.getStaff() != null ? e.getStaff().getFullName() : "Office Staff",
-                    null,
-                    vehiclePlate,
-                    true,
-                    e.getEventTimestamp()
-            );
-        }).collect(Collectors.toList());
+        List<TrackingEventResponse> history = events.stream().map(e -> new TrackingEventResponse(
+                formatStatus(e.getStatus()),
+                e.getEventTimestamp().format(DATE_FORMATTER),
+                e.getEventTimestamp().format(TIME_FORMATTER),
+                e.getStaff() != null ? e.getStaff().getFullName() : "Office Staff",
+                e.getRemarks(),
+                true,
+                e.getEventTimestamp()
+        )).collect(Collectors.toList());
         resp.setHistory(history);
 
         int totalLabelsPrinted = parcel.getLabelStatus() == LabelStatus.PRINTED ? (1 + parcel.getReprintCount()) : 0;
-
-        List<PrintEvent> printEvents = printEventRepository.findByParcelUnit_TrackingIdOrderByPrintTimestampDescPrintIdDesc(trackingId);
-        if (!printEvents.isEmpty()) {
-            List<PrintEventItemResponse> printEventResponses = printEvents.stream().map(pe -> new PrintEventItemResponse(
-                    pe.getKind() == PrintKind.REPRINT ? "Reprint" : "Print",
-                    pe.getStaff() != null ? pe.getStaff().getFullName() : "Office Staff",
-                    pe.getPrintTimestamp() != null ? pe.getPrintTimestamp().format(DATE_FORMATTER) + " " + pe.getPrintTimestamp().format(TIME_FORMATTER) : "—",
-                    pe.getPrinterId()
-            )).collect(Collectors.toList());
-            resp.setPrintEvents(printEventResponses);
-        } else if (parcel.getLabelStatus() == LabelStatus.PRINTED) {
-            String fallbackDate = shipment.getDateRegistered() != null
-                    ? shipment.getDateRegistered().format(DATE_FORMATTER) + " " + shipment.getDateRegistered().format(TIME_FORMATTER)
-                    : "—";
-            String fallbackStaff = events.stream()
-                    .filter(e -> e.getStaff() != null)
-                    .map(e -> e.getStaff().getFullName())
-                    .findFirst()
-                    .orElse("Office Staff");
-            resp.setPrintEvents(List.of(new PrintEventItemResponse("Print", fallbackStaff, fallbackDate, "Brother RJ-2035B")));
-        }
 
         Optional<PrintEvent> latestPrintOpt = printEventRepository.findTopByParcelUnit_TrackingIdOrderByPrintTimestampDescPrintIdDesc(trackingId);
         String printStatus = parcel.getLabelStatus() == LabelStatus.PRINTED ? "Printed" : "Pending";
@@ -648,9 +612,6 @@ public class ShipmentServiceImpl implements ShipmentService {
         String clientId = s.getClient() != null ? s.getClient().getClientId() : null;
         String clientName = s.getClient() != null ? s.getClient().getName() : "—";
 
-        boolean allLabelsPrinted = !parcels.isEmpty() && parcels.stream().allMatch(p -> p.getLabelStatus() == LabelStatus.PRINTED);
-        String registeredVia = s.getRegisteredVia() != null ? s.getRegisteredVia().name() : null;
-
         return new ShipmentSummaryResponse(
                 s.getShipmentId(),
                 clientId,
@@ -668,9 +629,7 @@ public class ShipmentServiceImpl implements ShipmentService {
                 s.getDateRegistered(),
                 dateLabel,
                 vehicleId,
-                vehiclePlate,
-                registeredVia,
-                allLabelsPrinted
+                vehiclePlate
         );
     }
 

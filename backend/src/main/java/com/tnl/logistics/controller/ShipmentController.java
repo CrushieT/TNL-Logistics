@@ -50,11 +50,10 @@ public class ShipmentController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String paymentStatus,
-            @RequestParam(required = false) String vehicleId,
-            @RequestParam(required = false) String labelStatus
+            @RequestParam(required = false) String vehicleId
     ) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "dateRegistered"));
-        Page<ShipmentSummaryResponse> shipments = shipmentService.getShipments(search, status, paymentStatus, vehicleId, labelStatus, pageable);
+        Page<ShipmentSummaryResponse> shipments = shipmentService.getShipments(search, status, paymentStatus, vehicleId, pageable);
         return ResponseEntity.ok(shipments);
     }
 

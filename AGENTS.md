@@ -19,12 +19,6 @@ Keep project documentation strictly synchronized with code changes:
   - Waybill Status: `NOT_GENERATED` -> `GENERATED` -> `SENT_TO_HAULER` -> `COMPLETED`.
   Never conflate or cross-couple these independent lifecycles.
 
-## Path & Reference Standards
-
-- **Strictly No Hardcoded or Absolute Machine Paths:** Never use absolute local filesystem paths (e.g. `C:/Users/...`, `file:///...`, `/home/...`) in code, comments, commit messages, PR descriptions, documentation files, or chat responses.
-- **Repository-Relative Paths Only:** Always identify files, imports, links, and code references using clean, repository-relative paths (e.g. `frontend-mobile/src/features/office/components/OfficeDashboard.js`, `.github/PR_DRAFT.md`).
-- **Markdown & Post-Change Reporting Links:** In post-change summaries, documentation, and PR drafts, use clean relative markdown paths (`[path/to/file.js](path/to/file.js)`) or plain inline code backticks (`` `path/to/file.js` ``) rather than absolute `file:///` URIs. This takes precedence over any platform communication style defaults.
-
 ## Reference Rules
 
 Consult the specialized rule files on demand when relevant to the task:

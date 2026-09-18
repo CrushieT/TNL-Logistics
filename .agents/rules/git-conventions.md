@@ -12,8 +12,9 @@ Branches should be named using the nested layout: `<scope>/<type>/<description>`
 * `backend/` — Changes affecting the Spring Boot service.
 * `web/` — Changes affecting the Expo/React Native Web admin portal.
 * `mobile/` — Changes affecting the Expo/React Native mobile courier portal.
+* `fullstack/` — Changes that genuinely span backend and web/mobile scopes together (e.g. a full feature slice touching both the Spring Boot API and its frontend consumer in the same branch).
 
-**Scope Selection Rule:** Never use generic `fullstack`. Always identify the explicit frontend target (`mobile` or `web`). If backend changes are made alongside frontend changes, append `backend` (e.g. `[mobile/backend]` or `[web/backend]`).
+**Scope Selection Rule:** If a change spans scopes, use `fullstack/` for the branch and commit prefix; if the change is primarily in one scope with a minor secondary touch, use the primary scope and note the secondary scope in the commit body.
 
 ### Valid Types
 * `feature/` — New feature implementations.
@@ -35,12 +36,13 @@ Branches should be named using the nested layout: `<scope>/<type>/<description>`
 * `mobile/feature/qr-scanner-integration`
 * `mobile/feature/label-printer-setup`
 * `mobile/bugfix/offline-mode`
+* `fullstack/feature/dashboard-live-metrics`
 
 ---
 
 ## 2. Commit Message Conventions
 
-Commit messages must be prefixed with their respective scope: `[backend]`, `[web]`, `[mobile]`, or joint prefixes `[mobile/backend]` / `[web/backend]` when backend changes accompany frontend work. Do NOT use generic `[fullstack]`.
+Commit messages must be prefixed with their respective scope: `[backend]`, `[web]`, `[mobile]`, or `[fullstack]`.
 
 ### Build-Plan Phase Tagging
 When a commit corresponds to a specific phase in `build-plan.md`, include the phase number in parentheses after the scope prefix, e.g. `[web] (5.2) Add live SSE dashboard binding`. This is optional for changes that don't map to a specific build-plan phase (e.g. chore/docs commits), but required for feature/bugfix commits tied to an active phase.
@@ -75,7 +77,7 @@ git commit -m "[backend] (Hardening) Enforce strict waybill state transitions" \
            -m "- Reject invalid state mutations with HTTP 400 Bad Request" \
            -m "- Add regression integration tests in WaybillIntegrationTest"
 
-git commit -m "[mobile/backend] Concurrency and label printing UX" \
+git commit -m "[fullstack] (Hardening) Concurrency and label printing UX" \
            -m "Apply pessimistic row locking on QR status scans to prevent race conditions." \
            -m "Bind label printing status mutation to the print dialog confirmation callback."
 ```
@@ -133,6 +135,4 @@ PR titles must adopt the scope prefix combined with standard semantic labels:
 * `[backend] feat: Register shipment with QR generation`
 * `[web] feat: Create admin dashboard layout`
 * `[mobile] feat: Integrate QR scanner`
-* `[mobile/backend] feat: Implement mobile PIN authentication and hardening`
-* `[web/backend] feat: Live metrics dashboard integration`
 * `[backend] fix: Handle duplicate tracking IDs`

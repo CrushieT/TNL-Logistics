@@ -30,7 +30,7 @@ Commercial freight forwarding requires strict chain-of-custody tracking, legal p
 ```text
                                   ┌────────────────────────────────┐
                                   │       MySQL 8.0 Database       │
-                                  │   (Flyway Migrations V1-V27)   │
+                                  │   (Flyway Migrations V1-V19)   │
                                   └───────────────┬────────────────┘
                                                   │
                                                   ▼
@@ -38,7 +38,6 @@ Commercial freight forwarding requires strict chain-of-custody tracking, legal p
                         │          Spring Boot 3.4 Backend Service         │
                         │    • REST API (Port 8080)   • SSE Event Stream   │
                         │    • JWT Stateless Auth     • Hibernate JPA      │
-                        │    • Cryptographic Device Binding (V27)          │
                         └─────────────┬──────────────────────┬─────────────┘
                                       │                      │
                    HTTP REST / SSE    │                      │  HTTP REST / SSE
@@ -47,7 +46,7 @@ Commercial freight forwarding requires strict chain-of-custody tracking, legal p
 │          Admin Web Portal (Desktop)          │    │         Mobile Courier App (Field)          │
 │   • React Native Web / Expo Router (8081)    │    │   • React Native / Expo Go / Prebuild       │
 │   • In-Memory Vector QR Thermal Printing     │    │   • Camera QR Scanner & Bluetooth Thermal   │
-│   • A4 Manifests & Multi-Page Statement Docs │    │   • Mobile PIN Auth & Hardware SecureStore  │
+│   • A4 Manifests & Multi-Page Statement Docs │    │   • Mobile PIN Auth & Offline SQLite Sync   │
 │   • SSE Real-Time Data Synchronization       │    │   • Role-Branching (Field vs Office Mobile) │
 └──────────────────────────────────────────────┘    └─────────────────────────────────────────────┘
 ```
@@ -78,13 +77,13 @@ Unlike simplistic CRUD apps that conflate tracking and accounting into a single 
 
 | Phase | Milestone Description | Status | Key Deliverables |
 | :--- | :--- | :---: | :--- |
-| **Phase 0** | **Foundation & Security** | `[COMPLETED]` | Spring Boot 3.4, Flyway migrations `V1`–`V27`, MySQL 8, JPA models, stateless JWT auth with 3 roles (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`). |
+| **Phase 0** | **Foundation & Security** | `[COMPLETED]` | Spring Boot 3.4, Flyway migrations `V1`–`V19`, MySQL 8, JPA models, stateless JWT auth with 3 roles (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`). |
 | **Phase 1** | **Shipment Registration & QR Labels** | `[COMPLETED]` | Sequential IDs (`SHP-YYYY-XXX`, `TRK-YYYY-XXXXXX`), volumetric weight ($\div 5000$) & $m^3$ calculations, vector thermal QR labels, paginated table, tracking inspection. |
 | **Phase 2** | **Status Flow, Real-Time SSE, Fleet & Client Management** | `[COMPLETED]` | Sequential 5-state transition engine, live SSE stream, vehicle fleet CRUD (`VH-XXX`), client directory & profile view (`CL-XXX`), smart deletion, composite indexing, and batch aggregation. |
 | **Phase 3** | **Waybills & Freight Manifest Handover** | `[COMPLETED]` | `WYB-YYYY-XXXX` auto-numbering, 4-state lifecycle (`Generated` → `Sent to Hauler` → `Signed/Completed`), and print-ready A4 3rd-party hauler manifest. |
 | **Phase 4** | **Billing, Collections & Statement of Account** | `[COMPLETED]` | Payment ledger (`/payments`), Thursday weekly collections consolidation (`/weekly-collections`), `SOA-YYYY-XXX-WXX` multi-page statement preview (`/statements`), isolated print architecture (`/statements/print`), deduction management, and dynamic active cycle filtering. |
 | **Phase 5** | **Web Console Administration & Reports** | `[COMPLETED]` | Desktop login with branded artwork, route guarding, and rate limiting (`[COMPLETED]`); live operational dashboard metrics (`[COMPLETED]`); tracking logs audit feed (`[COMPLETED]`); operational & financial reports screen (`[COMPLETED]`); user & staff management (`[COMPLETED]`); system settings with dynamic collection day, volumetric divisor calculation, branding propagation, and real-time SSE updates (`[COMPLETED]`); first-boot admin registration, 2-step setup wizard, self-service credential management, and rate-limited password authorization modals (`[COMPLETED]`). |
-| **Phase 6** | **Role-Aware Mobile Courier Portal** | `[IN PROGRESS]` | Phase 6.1 (`[COMPLETED]`): Cryptographic server-enforced device binding (`V27`), mobile PIN auth, mandatory first-boot password change, role branching (`OFFICE_STAFF` vs `FIELD_STAFF`), and cleared-PIN detection. Phase 6.2–6.6 (`[UPCOMING]`): Mobile shipment encoding, Bluetooth thermal printing, camera QR scanning, personal scan history, and offline SQLite queue. |
+| **Phase 6** | **Role-Aware Mobile Courier Portal** | `[UPCOMING]` | Mobile PIN auth with role branching (scan-only field staff vs authorized office mobile), camera QR scanner, and Bluetooth thermal printer integration. |
 
 ---
 
@@ -97,11 +96,11 @@ logistics/
 │   │   ├── config/                        # SecurityConfig, JWT Provider, WebMvcConfig
 │   │   ├── controller/                    # REST API Controllers (Shipments, Vehicles, Clients, Payments, Collections, SOA, Reports, Tracking Events, Users, Settings)
 │   │   ├── dto/                           # Request & Response Data Transfer Objects
-│   │   ├── model/                         # JPA Entities (Shipment, ParcelUnit, Vehicle, Client, Payment, Soa, WeeklyCollection, AppUser, SystemSetting, MobileDeviceBinding)
-│   │   ├── repository/                    # Spring Data Repositories, Group By Aggregations & MobileDeviceBindingRepository
+│   │   ├── model/                         # JPA Entities (Shipment, ParcelUnit, Vehicle, Client, Payment, Soa, WeeklyCollection, AppUser, SystemSetting)
+│   │   ├── repository/                    # Spring Data Repositories & Group By Aggregations
 │   │   └── service/                       # Business Service Contracts & Implementations (impl/)
 │   └── src/main/resources/
-│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V27)
+│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V19)
 │       └── application-dev.properties     # Environment Configuration
 │
 ├── frontend-web/                          # Expo / React Native Web Admin Portal
@@ -113,15 +112,8 @@ logistics/
 │   │   └── theme/                         # Design System Tokens (Colors, Typography, Spacing)
 │   └── package.json
 │
-├── frontend-mobile/                       # Expo / React Native Mobile Courier Portal
-│   ├── src/
-│   │   ├── app/                           # Expo Router Screens ((auth)/login, change-password, setup-pin, pin; (main)/index, scan)
-│   │   ├── components/                    # Common Atoms (Keypad, PinIndicator, PressableScale, MobileHeader, StatusModal)
-│   │   ├── features/                      # Domain Slices (auth, office, field)
-│   │   ├── services/                      # Axios Client (client.js) & Hardware-backed SecureStore (secureStore.js)
-│   │   └── theme/                         # Design Tokens (canvas, ink, accent, keypad)
-│   ├── app.json                           # Expo Configuration
-│   └── package.json
+├── frontend-mobile/                       # Expo / React Native Field Courier Portal
+│   └── src/                               # Camera QR Scanner, Field Actions & Thermal Printer
 │
 ├── .docs/                                 # Logistics Blueprint & Schema Specifications
 │   └── prototype/                         # Desktop & Mobile Screen Prototypes
@@ -158,10 +150,6 @@ When field staff scan a parcel with their phone, an append-only event is committ
 | Endpoint | Method | Role | Description |
 | :--- | :---: | :---: | :--- |
 | `/api/v1/auth/login` | `POST` | Public | Authenticate user with in-memory rate limiting (5 attempts/60s) and receive JWT |
-| `/api/v1/auth/mobile-login` | `POST` | Public / Staff | Mobile credential login issuing 10-day JWT and 256-bit device binding credentials |
-| `/api/v1/auth/mobile-pin-login` | `POST` | Public / Staff | Fast shift PIN unlock requiring device credentials (`X-Device-Id`, `X-Device-Token`) |
-| `/api/v1/auth/mobile-setup-pin` | `POST` | Authenticated | 4-digit PIN setup/confirmation with session tokenVersion rotation |
-| `/api/v1/auth/mobile-pin-status` | `GET` | Public | Proactive uniform check of bound account PIN configuration |
 | `/api/v1/auth/first-boot-status` | `GET` | Public | Proactively check if primary administrator has been registered |
 | `/api/v1/auth/first-boot-admin` | `POST` | Public | One-time bootstrap registration of primary administrator with company branding |
 | `/api/v1/auth/verify-password` | `POST` | Authenticated | Verify administrator password with rate limiting (5 attempts/60s) |
@@ -225,7 +213,7 @@ docker-compose up -d mysql
 cd backend
 mvn spring-boot:run
 ```
-*API will run at `http://localhost:8080` (Flyway auto-runs all migrations `V1` to `V27` on startup).*
+*API will run at `http://localhost:8080` (Flyway auto-runs all migrations `V1` to `V19` on startup).*
 
 ### 2. Start the Admin Web Dashboard
 ```bash

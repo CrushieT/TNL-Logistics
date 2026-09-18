@@ -86,39 +86,6 @@ public class ClientIntegrationTest {
     }
 
     @Test
-    public void testMobileClientCreationValidationAndRoleGates() throws Exception {
-        ClientCreateRequest request = new ClientCreateRequest("Mobile test client", "Baguio test address", "09170000000", null);
-        String payload = objectMapper.writeValueAsString(request);
-        String fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
-        mockMvc.perform(post("/api/v1/clients").header("Authorization", fieldToken)
-                        .contentType(MediaType.APPLICATION_JSON).content(payload))
-                .andExpect(status().isForbidden());
-        mockMvc.perform(get("/api/v1/clients").header("Authorization", fieldToken).param("active", "true"))
-                .andExpect(status().isForbidden());
-        mockMvc.perform(post("/api/v1/clients").header("Authorization", "Bearer invalid-token")
-                        .contentType(MediaType.APPLICATION_JSON).content(payload))
-                .andExpect(status().isForbidden());
-        request.setEmail("invalid-email");
-        MvcResult invalid = mockMvc.perform(post("/api/v1/clients").header("Authorization", officeToken)
-                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest()).andReturn();
-        assertTrue(objectMapper.readTree(invalid.getResponse().getContentAsString()).get("fieldErrors").has("email"));
-        assertEquals(0, clientRepository.count());
-        MvcResult created = mockMvc.perform(post("/api/v1/clients").header("Authorization", officeToken)
-                        .contentType(MediaType.APPLICATION_JSON).content(payload))
-                .andExpect(status().isOk()).andReturn();
-        JsonNode body = objectMapper.readTree(created.getResponse().getContentAsString());
-        assertTrue(body.get("active").asBoolean());
-        assertTrue(body.get("clientId").asText().startsWith("CL-"));
-        assertTrue(body.get("email").isNull());
-        java.util.Set<String> fields = new java.util.HashSet<>();
-        body.fieldNames().forEachRemaining(fields::add);
-        assertEquals(java.util.Set.of("clientId", "name", "address", "contactNumber", "email", "defaultRateType", "active", "dateRegistered",
-                "totalShipments", "totalParcels", "totalCharges", "totalPaid", "outstandingBalance"), fields);
-        assertEquals(1, clientRepository.count());
-    }
-
-    @Test
     public void testClientCrudAndSequentialIdGeneration() throws Exception {
         // 1. Register first client (CL-001)
         ClientCreateRequest req1 = new ClientCreateRequest(

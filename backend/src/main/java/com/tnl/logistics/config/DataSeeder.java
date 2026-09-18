@@ -6,8 +6,6 @@ import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.repository.ClientRepository;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.core.env.Environment;
-import org.springframework.core.env.Profiles;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -25,7 +23,6 @@ public class DataSeeder implements CommandLineRunner {
     private final ClientRepository clientRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JdbcTemplate jdbcTemplate;
-    private final Environment environment;
 
     @org.springframework.beans.factory.annotation.Value("${app.seed.admin:false}")
     private boolean seedAdmin;
@@ -33,36 +30,27 @@ public class DataSeeder implements CommandLineRunner {
     @org.springframework.beans.factory.annotation.Value("${app.seed.sample-data:false}")
     private boolean seedSampleData;
 
-    @org.springframework.beans.factory.annotation.Value("${app.seed.mobile-pins:false}")
-    private boolean seedMobilePins;
-
     public DataSeeder(AppUserRepository appUserRepository,
                       ClientRepository clientRepository,
                       BCryptPasswordEncoder passwordEncoder,
-                      JdbcTemplate jdbcTemplate,
-                      Environment environment) {
+                      JdbcTemplate jdbcTemplate) {
         this.appUserRepository = appUserRepository;
         this.clientRepository = clientRepository;
         this.passwordEncoder = passwordEncoder;
         this.jdbcTemplate = jdbcTemplate;
-        this.environment = environment;
     }
 
     @Override
     public void run(String... args) throws Exception {
-        if (seedMobilePins && environment.acceptsProfiles(Profiles.of("prod"))) {
-            throw new IllegalStateException("app.seed.mobile-pins must not be enabled in production");
-        }
-
         if (appUserRepository.count() == 0) {
             if (seedAdmin) {
-                seedUser("USR-ADMIN", "admin", "admin123", "Maria Santos", UserRole.ADMIN, null, null, seedMobilePins ? "1111" : null);
+                seedUser("USR-ADMIN", "admin", "admin123", "Maria Santos", UserRole.ADMIN, null, null);
             }
             if (seedSampleData) {
-                seedUser("USR-OFFICE", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF, null, null, seedMobilePins ? "2222" : null);
-                seedUser("USR-FIELD", "field", "field123", "Carlos Mendoza", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.INTERNAL_TRUCK, null, seedMobilePins ? "0001" : null);
-                seedUser("USR-FIELD-2", "hauler1", "field123", "Rogelio Aquino", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.HAULER_STAFF, null, null);
-                seedUser("USR-FIELD-3", "hauler2", "field123", "Danilo Cruz", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.HAULER_STAFF, null, null);
+                seedUser("USR-OFFICE", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF, null, null);
+                seedUser("USR-FIELD", "field", "field123", "Carlos Mendoza", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.INTERNAL_TRUCK, null);
+                seedUser("USR-FIELD-2", "hauler1", "field123", "Rogelio Aquino", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.HAULER_STAFF, null);
+                seedUser("USR-FIELD-3", "hauler2", "field123", "Danilo Cruz", UserRole.FIELD_STAFF, com.tnl.logistics.model.StaffType.HAULER_STAFF, null);
             }
         }
 
@@ -78,21 +66,6 @@ public class DataSeeder implements CommandLineRunner {
                 if (user.getUserId() != null && user.getUserId().startsWith("USR-")) {
                     user.setMustChangePassword(false);
                     user.setTokenVersion(1);
-                    if (seedMobilePins && "USR-ADMIN".equals(user.getUserId()) && user.getPinHash() == null) {
-                        user.setPinHash(passwordEncoder.encode("1111"));
-                    }
-                    if ("USR-OFFICE".equals(user.getUserId())) {
-                        user.setFullName("Office Staff");
-                        if (seedMobilePins && user.getPinHash() == null) {
-                            user.setPinHash(passwordEncoder.encode("2222"));
-                        }
-                    }
-                    if ("USR-FIELD".equals(user.getUserId())) {
-                        user.setFullName("Carlos Mendoza");
-                        if (seedMobilePins && user.getPinHash() == null) {
-                            user.setPinHash(passwordEncoder.encode("0001"));
-                        }
-                    }
                     appUserRepository.save(user);
                 }
             });
@@ -101,10 +74,6 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void seedUser(String id, String username, String rawPassword, String fullName, UserRole role, com.tnl.logistics.model.StaffType staffType, String haulerCompany) {
-        seedUser(id, username, rawPassword, fullName, role, staffType, haulerCompany, null);
-    }
-
-    private void seedUser(String id, String username, String rawPassword, String fullName, UserRole role, com.tnl.logistics.model.StaffType staffType, String haulerCompany, String pin) {
         if (appUserRepository.findByUsername(username).isEmpty()) {
             AppUser user = new AppUser(
                 id,
@@ -116,9 +85,6 @@ public class DataSeeder implements CommandLineRunner {
                 haulerCompany
             );
             user.setMustChangePassword(false);
-            if (pin != null && !pin.isBlank()) {
-                user.setPinHash(passwordEncoder.encode(pin));
-            }
             appUserRepository.save(user);
         }
     }

@@ -16,7 +16,7 @@ public class LoginRateLimiterService {
     public static final int MAX_FAILED_ATTEMPTS = 5;
     public static final long BLOCK_DURATION_MS = 60_000L;
     public static final long WINDOW_DURATION_MS = 60_000L;
-    private static final int MAX_TRACKED_KEYS = 1000;
+    private static final int MAX_TRACKED_IPS = 100;
 
     private static class IpAttemptState {
         final int failedCount;
@@ -91,7 +91,7 @@ public class LoginRateLimiterService {
             return;
         }
 
-        if (attemptsByIp.size() > MAX_TRACKED_KEYS) {
+        if (attemptsByIp.size() > MAX_TRACKED_IPS) {
             pruneExpiredEntries();
         }
 
