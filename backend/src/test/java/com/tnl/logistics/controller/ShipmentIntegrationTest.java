@@ -219,6 +219,73 @@ public class ShipmentIntegrationTest {
     }
 
     @Test
+    public void testFindParcelSearchFilterAndRoleGates() throws Exception {
+        // 1. Create a mobile shipment with 2 parcels
+        ShipmentRegistrationRequest regReq = createMobileRegistrationRequest();
+        MvcResult regResult = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(regReq)))
+                .andExpect(status().isCreated()).andReturn();
+        ShipmentResponse created = objectMapper.readValue(regResult.getResponse().getContentAsString(), ShipmentResponse.class);
+        String trackingId0 = created.getTrackingIds().getFirst();
+
+        // 2. Role gating: FIELD_STAFF cannot access GET /api/v1/shipments or GET /api/v1/shipments/{id}
+        mockMvc.perform(get("/api/v1/shipments").header("Authorization", fieldToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/shipments/" + created.getShipmentId()).header("Authorization", fieldToken))
+                .andExpect(status().isForbidden());
+
+        // 3. Search by parcel tracking ID finds the parent shipment
+        MvcResult searchResult = mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .param("search", trackingId0))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode searchJson = objectMapper.readTree(searchResult.getResponse().getContentAsString());
+        assertEquals(1, searchJson.get("page").get("totalElements").asInt());
+        JsonNode firstItem = searchJson.get("content").get(0);
+        assertEquals(created.getShipmentId(), firstItem.get("shipmentId").asText());
+        assertEquals("MOBILE_FIELD", firstItem.get("registeredVia").asText());
+        assertEquals(false, firstItem.get("allLabelsPrinted").asBoolean());
+
+        // 4. Label status filter: NEEDS_LABEL returns the shipment
+        MvcResult needsLabelResult = mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .param("labelStatus", "NEEDS_LABEL"))
+                .andExpect(status().isOk()).andReturn();
+        assertEquals(1, objectMapper.readTree(needsLabelResult.getResponse().getContentAsString()).get("page").get("totalElements").asInt());
+
+        // 5. Record label print for all units
+        mockMvc.perform(post("/api/v1/shipments/" + created.getShipmentId() + "/labels/print")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk());
+
+        // 6. After print, NEEDS_LABEL returns 0 and PRINTED returns 1 with allLabelsPrinted: true
+        MvcResult afterPrintNeeds = mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .param("labelStatus", "NEEDS_LABEL"))
+                .andExpect(status().isOk()).andReturn();
+        assertEquals(0, objectMapper.readTree(afterPrintNeeds.getResponse().getContentAsString()).get("page").get("totalElements").asInt());
+
+        MvcResult afterPrintPrinted = mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .param("labelStatus", "PRINTED"))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode printedJson = objectMapper.readTree(afterPrintPrinted.getResponse().getContentAsString());
+        assertEquals(1, printedJson.get("page").get("totalElements").asInt());
+        assertTrue(printedJson.get("content").get(0).get("allLabelsPrinted").asBoolean());
+
+        // 7. Inspect single parcel endpoint returns full details
+        MvcResult parcelResult = mockMvc.perform(get("/api/v1/parcel-units/" + trackingId0)
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode parcelJson = objectMapper.readTree(parcelResult.getResponse().getContentAsString());
+        assertEquals(trackingId0, parcelJson.get("trackingId").asText());
+        assertEquals(created.getShipmentId(), parcelJson.get("shipmentId").asText());
+        assertEquals("Printed", parcelJson.get("labelStatus").asText());
+    }
+
+    @Test
     public void testRegistrationUsesNumericCountersPastIdentifierWidthBoundaries() throws Exception {
         Client client = clientRepository.findById("CL-001").orElseThrow();
         Shipment shipment999 = new Shipment(

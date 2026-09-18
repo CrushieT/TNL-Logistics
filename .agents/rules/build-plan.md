@@ -319,17 +319,27 @@
   - Session revocation coordination in `apiClient` and `AuthContext` handling HTTP 401 caused by Admin PIN resets (`tokenVersion++`), presenting a revocation notice modal and cleanly routing through password re-authentication and PIN setup.
 - Verified via `MobileAuthIntegrationTest.java` (36 integration test scenarios), `ProductionDataSourcePropertiesTest.java` (5 tests), full suite regression test (204 tests passing, 0 failures, 0 errors), and clean Expo Android export.
 
-**6.2 — Office Staff: Shipment Generation & Past Shipments Directory (Screens 34–40)**
+**6.2 — Office Staff: Shipment Generation & Past Shipments Directory (Screens 34–40)** — **[COMPLETED]**
 - **Shipment Generation (`Register`):** Mobile shipment creation matching core business rules:
-  - Client selection with inline quick client creation.
-  - Recipient destination, contact, and address fields.
-  - Parcel unit builder: quantity, physical dimensions ($L \times W \times H\text{ cm}$), auto volume ($m^3$), and billable weight.
+  - Client selection with inline quick client creation modal.
+  - Recipient destination, contact, and address fields with dynamic billing calculations.
+  - Parcel unit builder: quantity, physical dimensions ($L \times W \times H\text{ cm}$), auto volume ($m^3$), and billable weight calculation.
   - Pricing model support: `FLAT` vs `PER_PARCEL` charge calculations and immediate payment status recording (`paidAtRegistration`).
   - Sequential ID generation: `SHP-YYYY-XXX` and `TRK-YYYY-XXXXXX`.
-- **Past Shipments Explorer (`Find`):** Comprehensive shipment lookup and inspection:
-  - Paginated and searchable past shipments list with status pills (`Registered`, `In Transit`, `Completed`).
-  - Search by Shipment ID, Client Name, Recipient, or Tracking Number.
-  - Detailed shipment view: parcel unit breakdown, dimensions, payment status, customer information, and parcel tracking timeline.
+- **Past Shipments Explorer (`Find Parcel`):** Comprehensive shipment lookup and inspection:
+  - FlatList with server-side SQL pagination (`Pageable`, 20 per page) preventing memory leaks and heap exhaustion.
+  - Subheader displaying total shipments count and note that records include shipments registered from the office PC.
+  - Filter tabs matching prototype: `RECENT / ALL`, `NEEDS LABEL`, and `SCAN QR` viewfinder.
+  - Search input with 250ms debouncing querying by Shipment ID, Client Name, Recipient Name, Contact, or Parcel Tracking ID via JPQL subquery.
+  - Shipment summary cards displaying `PC` vs `MOBILE` registration tags, status pill, quantity, contact, and `labels printed` vs `needs label` badges.
+  - Detailed shipment view (`ShipmentDetailScreen`, Screen 39): metadata breakdown, client/recipient details, list of parcel units with dimensions, and `PRINT ALL LABELS` / `REPRINT ALL LABELS` action buttons.
+  - Single parcel detail view (`ParcelDetailScreen`, Screen 40): `PACKAGE X OF Y` badge, recipient, client, parent shipment navigation link, destination hub, status pill, label status, dimensions pill, `REPRINT LABEL` button, and expandable chronological scan audit timeline.
+  - Reusable camera viewfinder scanner modal (`BarcodeScannerModal`) with `expo-camera` supporting QR and Code-128 barcode scanning, camera permission prompts, and manual tracking number entry fallback.
+- **Verification & Testing:**
+  - Automated integration tests in `ShipmentIntegrationTest.java` verifying search by parcel tracking ID, label status filters (`NEEDS_LABEL`, `PRINTED`), role-gating (`FIELD_STAFF` blocked with HTTP 403, `OFFICE_STAFF` permitted), and summary DTO mapping (`registeredVia`, `allLabelsPrinted`).
+  - Automated label print audit tests in `ParcelPrintIntegrationTest.java` (8/8 passing).
+  - Frontend Node unit test suites (`tests/registration.test.mjs`, `tests/shipments.test.mjs` - 27/27 passing).
+  - Verified clean compilation and bundling across Web, iOS, and Android via `npx expo export`.
 
 **6.3 — Office Staff: Bluetooth Thermal Label & QR Printing (Screens 41–44)**
 - Bluetooth ESC/POS printer discovery, pairing, and status monitoring (Brother RJ-2035B / standard 2-inch thermal printer).

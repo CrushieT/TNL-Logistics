@@ -224,13 +224,14 @@ public class ShipmentServiceImpl implements ShipmentService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<ShipmentSummaryResponse> getShipments(String search, String status, String paymentStatus, String vehicleId, Pageable pageable) {
+    public Page<ShipmentSummaryResponse> getShipments(String search, String status, String paymentStatus, String vehicleId, String labelStatus, Pageable pageable) {
         String cleanSearch = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
         String cleanStatus = normalizeStatus(status);
         String cleanPayment = normalizePayment(paymentStatus);
         String cleanVehicle = normalizeVehicle(vehicleId);
+        String cleanLabel = normalizeLabel(labelStatus);
 
-        Page<Shipment> shipmentsPage = shipmentRepository.searchShipmentsWithFilters(cleanSearch, cleanStatus, cleanPayment, cleanVehicle, pageable);
+        Page<Shipment> shipmentsPage = shipmentRepository.searchShipmentsWithFilters(cleanSearch, cleanStatus, cleanPayment, cleanVehicle, cleanLabel, pageable);
         List<Shipment> shipments = shipmentsPage.getContent();
         if (shipments.isEmpty()) {
             return new PageImpl<>(Collections.emptyList(), pageable, shipmentsPage.getTotalElements());
@@ -298,6 +299,13 @@ public class ShipmentServiceImpl implements ShipmentService {
             return null;
         }
         return paymentStatus.trim().toUpperCase();
+    }
+
+    private String normalizeLabel(String labelStatus) {
+        if (labelStatus == null || labelStatus.trim().isEmpty() || labelStatus.equalsIgnoreCase("ALL")) {
+            return null;
+        }
+        return labelStatus.trim().toUpperCase().replace(" ", "_");
     }
 
     @Override
@@ -612,6 +620,9 @@ public class ShipmentServiceImpl implements ShipmentService {
         String clientId = s.getClient() != null ? s.getClient().getClientId() : null;
         String clientName = s.getClient() != null ? s.getClient().getName() : "—";
 
+        boolean allLabelsPrinted = !parcels.isEmpty() && parcels.stream().allMatch(p -> p.getLabelStatus() == LabelStatus.PRINTED);
+        String registeredVia = s.getRegisteredVia() != null ? s.getRegisteredVia().name() : null;
+
         return new ShipmentSummaryResponse(
                 s.getShipmentId(),
                 clientId,
@@ -629,7 +640,9 @@ public class ShipmentServiceImpl implements ShipmentService {
                 s.getDateRegistered(),
                 dateLabel,
                 vehicleId,
-                vehiclePlate
+                vehiclePlate,
+                registeredVia,
+                allLabelsPrinted
         );
     }
 

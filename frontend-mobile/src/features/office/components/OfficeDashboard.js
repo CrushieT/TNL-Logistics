@@ -9,8 +9,9 @@ import { PressableScale } from '../../../components/common/PressableScale';
 
 export function OfficeDashboard({ user, onLogout, onLock }) {
   const router = useRouter();
+
   const handleFindParcel = () => {
-    Alert.alert('Find Parcel', 'Past shipment directory & parcel lookup (Phase 6.2).');
+    router.push('/(main)/shipments');
   };
 
   const handleRegister = () => {
@@ -23,6 +24,10 @@ export function OfficeDashboard({ user, onLogout, onLock }) {
 
   const handlePrinter = () => {
     Alert.alert('Printer Setup', 'Bluetooth thermal printer pairing (Phase 6.3).');
+  };
+
+  const handleNeedsLabel = () => {
+    router.push({ pathname: '/(main)/shipments', params: { filter: 'needs_label' } });
   };
 
   return (
@@ -45,7 +50,7 @@ export function OfficeDashboard({ user, onLogout, onLock }) {
       {/* Urgent Label Print Callout Banner */}
       <PressableScale
         contentStyle={styles.labelCalloutCard}
-        onPress={handlePrinter}
+        onPress={handleNeedsLabel}
         activeScale={0.97}
       >
         <View style={styles.calloutHeader}>
