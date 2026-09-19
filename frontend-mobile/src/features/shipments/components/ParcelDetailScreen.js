@@ -13,6 +13,9 @@ import { colors, spacing, typography } from '../../../theme';
 import { shipmentApi } from '../services/shipmentApi';
 import { StatusModal } from '../../../components/common/StatusModal';
 import { BackButton } from '../../../components/common/BackButton';
+import { usePrinter } from '../../printer/context/PrinterContext';
+import { ThermalLabelPreviewModal } from '../../../components/common/ThermalLabelPreviewModal';
+import { normalizeLabelData } from '../../printer/services/thermalLabelData';
 
 function formatRoute(route) {
   if (!route) return 'TNL Baguio Hub';
@@ -27,21 +30,20 @@ export function ParcelDetailScreen({ trackingId }) {
   const [showHistory, setShowHistory] = useState(false);
   const [isReprinting, setIsReprinting] = useState(false);
   const [statusDialog, setStatusDialog] = useState(null);
+  const [previewVisible, setPreviewVisible] = useState(false);
+
+  const { isConnected, connectedDevice, printParcelLabels } = usePrinter();
 
   const fetchParcel = async (signal) => {
-    setIsLoading(true);
-    setError('');
     try {
+      setError('');
       const data = await shipmentApi.getParcelUnit(trackingId, signal);
       setParcel(data);
     } catch (err) {
-      if (!signal?.aborted) {
-        setError(err.response?.data?.message || 'Unable to load parcel details.');
-      }
+      if (err.name === 'CanceledError' || err.name === 'AbortError') return;
+      setError(err.response?.data?.message || 'Failed to load parcel unit details.');
     } finally {
-      if (!signal?.aborted) {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
     }
   };
 
@@ -53,21 +55,47 @@ export function ParcelDetailScreen({ trackingId }) {
 
   const handleReprint = async () => {
     if (isReprinting || !parcel) return;
-    setIsReprinting(true);
-    try {
-      await shipmentApi.printLabels(parcel.shipmentId, [parcel.trackingId]);
-      setStatusDialog({
-        title: 'Label Reprint Recorded',
-        message: `Reprint audit recorded for ${parcel.trackingId}.`,
-      });
-      fetchParcel();
-    } catch (err) {
-      setStatusDialog({
-        title: 'Reprint Failed',
-        message: err.response?.data?.message || 'Unable to update label status. Check connection and retry.',
-      });
-    } finally {
-      setIsReprinting(false);
+
+    if (isConnected) {
+      setIsReprinting(true);
+      try {
+        const result = await printParcelLabels(
+          {
+            shipmentId: parcel.shipmentId,
+            recipientName: parcel.recipientName,
+            recipientContact: parcel.recipientContact,
+            recipientAddress: parcel.recipientAddress,
+            destinationHub: parcel.destinationHub,
+            clientName: parcel.clientName,
+            contents: parcel.description,
+            origin: parcel.origin || 'Manila',
+            destination: parcel.destinationHub || 'TNL Baguio',
+            totalAmount: parcel.totalAmount || 0,
+          },
+          [
+            {
+              trackingId: parcel.trackingId,
+              packageIndex: parcel.packageIndex || 1,
+              packageCount: parcel.packageCount || 1,
+            },
+          ]
+        );
+        setStatusDialog({
+          title: 'Label Reprint Sent',
+          message: `Reprint sent to ${result.device} for ${parcel.trackingId}.`,
+        });
+        fetchParcel();
+      } catch (err) {
+        setStatusDialog({
+          title: 'Reprint Failed',
+          message: err?.message || 'Unable to reprint label. Check connection and retry.',
+        });
+      } finally {
+        setIsReprinting(false);
+      }
+    } else {
+      // Option A: Seamless fallback to visual preview modal
+      setPreviewVisible(true);
     }
   };
 
@@ -269,6 +297,21 @@ export function ParcelDetailScreen({ trackingId }) {
         message={statusDialog?.message || ''}
         confirmText="OK"
         onConfirm={() => setStatusDialog(null)}
+      />
+
+      <ThermalLabelPreviewModal
+        visible={previewVisible}
+        labelData={normalizeLabelData(
+          parcel,
+          parcel,
+          parcel?.packageIndex ? parcel.packageIndex - 1 : 0,
+          parcel?.packageCount || 1
+        )}
+        onClose={() => setPreviewVisible(false)}
+        onPrintDirect={async () => {
+          setPreviewVisible(false);
+          await handleReprint();
+        }}
       />
     </SafeAreaView>
   );

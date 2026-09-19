@@ -4,6 +4,8 @@ import { Stack, useRouter } from 'expo-router';
 import { useAuth } from '../../features/auth/context/AuthContext';
 import { colors } from '../../theme';
 
+import { PrinterProvider } from '../../features/printer/context/PrinterContext';
+
 export default function MainLayout() {
   const { isAuthenticated, isLoading, isLocked, mustSetupPin, boundUser } = useAuth();
   const router = useRouter();
@@ -43,19 +45,22 @@ export default function MainLayout() {
   }
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: colors.canvas },
-        animation: 'fade',
-      }}
-    >
-      <Stack.Screen name="index" />
-      <Stack.Screen name="register" options={{ gestureEnabled: false }} />
-      <Stack.Screen name="shipments/index" />
-      <Stack.Screen name="shipments/[id]" />
-      <Stack.Screen name="shipments/parcel/[trackingId]" />
-    </Stack>
+    <PrinterProvider>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.canvas },
+          animation: 'fade',
+        }}
+      >
+        <Stack.Screen name="index" />
+        <Stack.Screen name="register" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="printer" />
+        <Stack.Screen name="shipments/index" />
+        <Stack.Screen name="shipments/[id]" />
+        <Stack.Screen name="shipments/parcel/[trackingId]" />
+      </Stack>
+    </PrinterProvider>
   );
 }
 

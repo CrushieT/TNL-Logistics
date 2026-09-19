@@ -7,10 +7,12 @@ import { MobileHeader } from '../../../components/layout/MobileHeader';
 import { ActionCard } from '../../../components/common/ActionCard';
 import { StatusModal } from '../../../components/common/StatusModal';
 import { PressableScale } from '../../../components/common/PressableScale';
+import { usePrinter } from '../../printer/context/PrinterContext';
 
 export function OfficeDashboard({ user, onLogout, onLock }) {
   const router = useRouter();
   const [accountModalVisible, setAccountModalVisible] = useState(false);
+  const { isConnected, connectedDevice } = usePrinter();
 
   const handleFindParcel = () => {
     router.push('/(main)/shipments');
@@ -18,6 +20,10 @@ export function OfficeDashboard({ user, onLogout, onLock }) {
 
   const handleRegister = () => {
     router.push('/(main)/register');
+  };
+
+  const handlePrinter = () => {
+    router.push('/(main)/printer');
   };
 
   const handleAccount = () => {
@@ -47,10 +53,25 @@ export function OfficeDashboard({ user, onLogout, onLock }) {
 
         <View style={styles.brandDivider} />
 
-        <View style={styles.printerStatusRow}>
-          <View style={styles.printerDot} />
-          <Text style={styles.printerStatusText}>Thermal printer not connected</Text>
-        </View>
+        <PressableScale
+          contentStyle={styles.printerStatusRow}
+          onPress={handlePrinter}
+          activeScale={0.98}
+          accessibilityRole="button"
+          accessibilityLabel="Thermal printer setup"
+        >
+          <View
+            style={[
+              styles.printerDot,
+              { backgroundColor: isConnected ? colors.success : colors.danger },
+            ]}
+          />
+          <Text style={styles.printerStatusText}>
+            {isConnected
+              ? `${connectedDevice?.name || 'Brother RJ-2035B'} connected`
+              : 'Thermal printer not connected'}
+          </Text>
+        </PressableScale>
       </View>
 
       {/* Primary Actions Grid */}

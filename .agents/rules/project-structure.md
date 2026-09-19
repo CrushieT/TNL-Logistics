@@ -82,22 +82,25 @@ tnl-logistics/
 │   │   │       ├── _layout.js        # Authenticated route guard
 │   │   │       ├── index.js          # Role-aware home (Office vs Field Dashboard)
 │   │   │       ├── register.js       # Screen 34 Mobile Shipment Registration
+│   │   │       ├── printer.js        # Screens 41–44 Printer Setup & Connection Manager
 │   │   │       ├── shipments/        # Past Shipments Explorer
 │   │   │       │   ├── index.js      # Screen 38 Find Parcel & Shipments Directory
 │   │   │       │   ├── [id].js       # Screen 39 Shipment Parcel Units Breakdown
 │   │   │       │   └── parcel/
 │   │   │       │       └── [trackingId].js # Screen 40 Single Parcel Details & Scan Audit Timeline
 │   │   │       └── scan.js           # Screen 45 Camera QR scanner
-│   │   ├── components/               # Shared UI atoms (BackButton, Keypad, PinIndicator, PressableScale, ActionCard, MetricCard, NoticeBanner, StatusModal)
+│   │   ├── components/               # Shared UI atoms (BackButton, Keypad, PinIndicator, PressableScale, ActionCard, MetricCard, NoticeBanner, StatusModal, QRCodeGenerator, ThermalLabelPreviewModal)
 │   │   │   ├── common/
 │   │   │   └── layout/               # MobileHeader
-│   │   ├── features/                 # Domain feature slices (auth, office, field, shipments)
-│   │   │   └── shipments/            # Shipment registration, explorer, detail screens, and barcode scanner modal
+│   │   ├── features/                 # Domain feature slices (auth, office, field, shipments, printer)
+│   │   │   ├── shipments/            # Shipment registration, explorer, detail screens, and barcode scanner modal
+│   │   │   └── printer/              # Bluetooth printer transport, virtual driver, ESC/POS formatter, and PrinterContext
 │   │   ├── services/
 │   │   │   ├── api/client.js         # Axios API client with Bearer auth
 │   │   │   └── storage/secureStore.js# Hardware-backed SecureStore adapter
-│   │   └── theme/index.js            # TNL design tokens (canvas, ink, accent, keypad)
-│   ├── tests/                        # Mobile unit test suites
+│   │   ├── theme/index.js            # TNL design tokens (canvas, ink, accent, keypad)
+│   │   └── utils/                    # Pure utilities (qr.js in-memory QR matrix and 1-bit BMP generator)
+│   ├── tests/                        # Mobile unit test suites (registration, shipments, printer)
 │   ├── app.json                      # Expo configuration
 │   ├── eas.json                      # EAS Build configuration
 │   ├── package.json

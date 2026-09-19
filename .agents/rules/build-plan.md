@@ -341,10 +341,15 @@
   - Frontend Node unit test suites (`tests/registration.test.mjs`, `tests/shipments.test.mjs` - 31/31 passing).
   - Verified clean compilation and bundling across Web, iOS, and Android via `npx expo export`.
 
-**6.3 — Office Staff: Bluetooth Thermal Label & QR Printing (Screens 41–44)**
-- Bluetooth ESC/POS printer discovery, pairing, and status monitoring (Brother RJ-2035B / standard 2-inch thermal printer).
-- Immediate label printing upon shipment generation and reprint capabilities for individual parcel QR stickers from the past shipments directory.
-- Audit recording via `POST /api/v1/parcel-units/{trackingId}/print-label` (`NOT_PRINTED` → `PRINTED` / `REPRINTED`).
+**6.3 — Office Staff: Bluetooth Thermal Label & QR Printing (Screens 41–44)** — **[COMPLETED]**
+- Pure JavaScript ISO/IEC 18004 QR Code Matrix & SVG / 1-bit BMP generator (`src/utils/qr.js`, `QRCodeGenerator.js`) with zero external native dependencies, functioning 100% offline and cross-platform.
+- Standard ESC/POS binary command builder (`ESC @`, `GS ( k`, `GS V 0`) and responsive 4" x 6" / A6 HTML printable layout matching `prototype qr print.png` (`escposFormatter.js`).
+- Bluetooth transport service (`bluetoothPrinterService.js`) with persistent pairing via `expo-secure-store`, auto-reconnect, and in-app virtual simulated Brother RJ-2035B driver for hardware-free development and offline testing.
+- `PrinterContext` providing global connection state, virtual mode toggling, and multi-parcel batch printing with backend audit synchronization (`POST /api/v1/parcel-units/{trackingId}/print-label`).
+- Screens 41–44 Printer Setup & Connection Manager (`src/app/(main)/printer.js`) with discovery scanning, device connection, and test print actions.
+- Seamless fallback thermal label preview modal (`ThermalLabelPreviewModal.js`) with direct thermal printing, system print / PDF export, and printer setup routing.
+- Wired immediate printing into `RegistrationResult.js` (`PRINT LABELS (N)`), batch printing into `ShipmentDetailScreen.js`, and single-unit reprinting into `ParcelDetailScreen.js`.
+- Automated test coverage in `tests/printer.test.mjs` (38/38 assertions passing) and clean cross-platform bundle verification via `npx expo export`.
 
 **6.4 — Field Staff: Camera QR Scanner & Status Flow Engine (Screens 45–48)**
 - Real-time camera viewfinder QR barcode scanner (`expo-camera`) with torch toggle, haptic feedback, and manual Tracking ID input fallback.

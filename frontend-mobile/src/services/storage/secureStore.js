@@ -46,6 +46,18 @@ async function removeValue(key) {
   delete memoryStorage[key];
 }
 
+export async function setItem(key, value) {
+  await saveValue(key, value);
+}
+
+export async function getItem(key) {
+  return getValue(key);
+}
+
+export async function deleteItem(key) {
+  await removeValue(key);
+}
+
 export async function saveToken(token) {
   await saveValue(TOKEN_KEY, token);
 }
