@@ -51,6 +51,10 @@ export default function MainLayout() {
       }}
     >
       <Stack.Screen name="index" />
+      <Stack.Screen name="register" options={{ gestureEnabled: false }} />
+      <Stack.Screen name="shipments/index" />
+      <Stack.Screen name="shipments/[id]" />
+      <Stack.Screen name="shipments/parcel/[trackingId]" />
     </Stack>
   );
 }
