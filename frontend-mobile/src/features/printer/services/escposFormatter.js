@@ -10,6 +10,21 @@ const ESC = 0x1b;
 const GS = 0x1d;
 const LF = 0x0a;
 
+export function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatFiniteNumber(value, fieldName, options = {}) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) throw new TypeError(`${fieldName} must be a finite number`);
+  return numericValue.toLocaleString('en-PH', options);
+}
+
 export function buildEscPosCommands(labelData) {
   const bytes = [];
 
@@ -83,14 +98,14 @@ export function buildEscPosCommands(labelData) {
   appendLine('--------------------------------');
 
   // 5. Footer Metadata
-  appendLine(`CONTENTS: ${labelData.contents}`);
+  if (labelData.contents) appendLine(`CONTENTS: ${labelData.contents}`);
   appendLine(`SHIPMENT: ${labelData.shipmentId}`);
-  appendLine(`CLIENT:   ${labelData.clientName}`);
-  appendLine(`ROUTE:    ${labelData.route}`);
-  if (labelData.totalAmount) {
+  if (labelData.clientName) appendLine(`CLIENT:   ${labelData.clientName}`);
+  if (labelData.route) appendLine(`ROUTE:    ${labelData.route}`);
+  if (labelData.totalAmount !== null && labelData.totalAmount !== undefined) {
     append(ESC, 0x61, 0x02); // Right align
     append(ESC, 0x45, 0x01); // Bold ON
-    appendLine(`TOTAL: PHP ${Number(labelData.totalAmount).toLocaleString()}`);
+    appendLine(`TOTAL: PHP ${formatFiniteNumber(labelData.totalAmount, 'totalAmount', { maximumFractionDigits: 2 })}`);
     append(ESC, 0x45, 0x00); // Bold OFF
   }
 
@@ -106,21 +121,30 @@ export function buildEscPosCommands(labelData) {
  * shipping labels matching prototype qr print.png. Supports single label or multiple
  * parcel units with CSS page breaks for window.print() or PDF export.
  */
-export function buildLabelHtml(labelOrLabels, qrSvgPath, totalSvgSize = 29) {
+export function buildLabelHtml(labelOrLabels) {
   const labels = Array.isArray(labelOrLabels) ? labelOrLabels : [labelOrLabels];
-  const primaryTitle = labels.length === 1
+  if (labels.length === 0) throw new TypeError('At least one label is required');
+  const primaryTitle = escapeHtml(labels.length === 1
     ? `${labels[0].trackingId} - TNL Shipping Label`
-    : `${labels[0].shipmentId} (${labels.length} Labels) - TNL Shipping Labels`;
+    : `${labels[0].shipmentId} (${labels.length} Labels) - TNL Shipping Labels`);
 
   const cardsHtml = labels.map((label) => {
-    let svgPath = qrSvgPath;
-    let svgSize = totalSvgSize;
-    if (!svgPath || labels.length > 1) {
-      const matrix = generateQRMatrix(label.trackingId);
-      const res = generateQRSvgPath(matrix);
-      svgPath = res.path;
-      svgSize = res.totalSize;
-    }
+    const matrix = generateQRMatrix(label.trackingId);
+    const { path: svgPath, totalSize: svgSize } = generateQRSvgPath(matrix);
+    const packageIndex = formatFiniteNumber(label.packageIndex, 'packageIndex', { maximumFractionDigits: 0 });
+    const packageCount = formatFiniteNumber(label.packageCount, 'packageCount', { maximumFractionDigits: 0 });
+    const trackingId = escapeHtml(label.trackingId);
+    const recipientName = escapeHtml(label.recipientName);
+    const contactNumber = escapeHtml(label.contactNumber);
+    const address = escapeHtml(label.address);
+    const destinationHub = escapeHtml(label.destinationHub);
+    const contents = escapeHtml(label.contents);
+    const shipmentId = escapeHtml(label.shipmentId);
+    const clientName = escapeHtml(label.clientName);
+    const route = escapeHtml(label.route);
+    const formattedTotal = label.totalAmount === null || label.totalAmount === undefined
+      ? null
+      : formatFiniteNumber(label.totalAmount, 'totalAmount', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
     return `  <div class="label-card">
     <div class="header">
@@ -129,7 +153,7 @@ export function buildLabelHtml(labelOrLabels, qrSvgPath, totalSvgSize = 29) {
         <div class="brand-title">TNL LOGISTICS</div>
       </div>
       <div class="header-right">
-        <div class="pkg-pill">PKG ${label.packageIndex} / ${label.packageCount}</div>
+        <div class="pkg-pill">PKG ${packageIndex} / ${packageCount}</div>
         <div class="scan-track">SCAN TO TRACK</div>
       </div>
     </div>
@@ -141,25 +165,23 @@ export function buildLabelHtml(labelOrLabels, qrSvgPath, totalSvgSize = 29) {
         </svg>
       </div>
       <div class="meta">
-        <div class="tracking-id">${label.trackingId}</div>
-        <div class="recipient">${label.recipientName}</div>
-        ${label.contactNumber ? `<div class="contact">${label.contactNumber}</div>` : ''}
-        ${label.address ? `<div class="address">${label.address}</div>` : ''}
-        <div class="hub">to ${label.destinationHub}</div>
+        <div class="tracking-id">${trackingId}</div>
+        <div class="recipient">${recipientName}</div>
+        ${contactNumber ? `<div class="contact">${contactNumber}</div>` : ''}
+        ${address ? `<div class="address">${address}</div>` : ''}
+        <div class="hub">to ${destinationHub}</div>
       </div>
     </div>
     <div class="footer">
       <div class="footer-row">
-        <div><span class="muted">Contents:</span> ${label.contents}</div>
-        <div><span class="muted">Shipment:</span> ${label.shipmentId}</div>
+        ${contents ? `<div><span class="muted">Contents:</span> ${contents}</div>` : '<div></div>'}
+        <div><span class="muted">Shipment:</span> ${shipmentId}</div>
       </div>
       <div class="footer-row">
-        <div><span class="muted">Client:</span> ${label.clientName}</div>
-        <div><span class="muted">Route:</span> ${label.route}</div>
+        ${clientName ? `<div><span class="muted">Client:</span> ${clientName}</div>` : '<div></div>'}
+        ${route ? `<div><span class="muted">Route:</span> ${route}</div>` : '<div></div>'}
       </div>
-      <div class="total-row">
-        <span class="muted">Total:</span> PHP ${Number(label.totalAmount || 0).toLocaleString()}
-      </div>
+      ${formattedTotal !== null ? `<div class="total-row"><span class="muted">Total:</span> PHP ${formattedTotal}</div>` : ''}
     </div>
   </div>`;
   }).join('\n');

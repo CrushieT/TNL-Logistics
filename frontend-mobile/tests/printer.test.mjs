@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import jsQR from 'jsqr';
 
 import { generateQRMatrix, generateQRSvgPath, generateQRBitmapDataUri } from '../src/utils/qr.js';
-import { normalizeLabelData } from '../src/features/printer/services/thermalLabelData.js';
+import { IncompleteLabelDataError, normalizeLabelData } from '../src/features/printer/services/thermalLabelData.js';
 import { buildEscPosCommands, buildLabelHtml } from '../src/features/printer/services/escposFormatter.js';
 
 test('QR Code generator produces valid matrix for tracking ID', () => {
@@ -15,6 +16,47 @@ test('QR Code generator produces valid matrix for tracking ID', () => {
 
   // Top-left finder pattern corner module must be black (true)
   assert.equal(matrix[0][0], true, 'Top-left finder pattern corner must be true');
+});
+
+function decodeMatrix(matrix, damagedModules = []) {
+  const scale = 8;
+  const margin = 4;
+  const size = (matrix.length + margin * 2) * scale;
+  const pixels = new Uint8ClampedArray(size * size * 4).fill(255);
+  const damaged = new Set(damagedModules.map(([row, column]) => `${row}:${column}`));
+  for (let row = 0; row < matrix.length; row += 1) {
+    for (let column = 0; column < matrix.length; column += 1) {
+      const isDark = damaged.has(`${row}:${column}`) ? !matrix[row][column] : matrix[row][column];
+      if (!isDark) continue;
+      for (let y = 0; y < scale; y += 1) {
+        for (let x = 0; x < scale; x += 1) {
+          const offset = (((row + margin) * scale + y) * size + (column + margin) * scale + x) * 4;
+          pixels[offset] = 0;
+          pixels[offset + 1] = 0;
+          pixels[offset + 2] = 0;
+        }
+      }
+    }
+  }
+  return jsQR(pixels, size, size)?.data;
+}
+
+for (const payload of [
+  'TRK-2026-000101',
+  'SHP-2026-088|TRK-2026-000882|PACKAGE-2',
+  'Recipient: José Dela Cruz | 城市配送 | 09181234567',
+  'X'.repeat(180),
+]) {
+  test(`QR round trip: ${payload.slice(0, 24)}`, () => {
+    assert.equal(decodeMatrix(generateQRMatrix(payload)), payload);
+  });
+}
+
+test('QR decoder recovers payload after limited module damage', () => {
+  const payload = 'TRK-2026-000101|SHP-2026-088';
+  const matrix = generateQRMatrix(payload);
+  const lastModule = matrix.length - 1;
+  assert.equal(decodeMatrix(matrix, [[lastModule, lastModule]]), payload);
 });
 
 test('generateQRSvgPath generates valid SVG path commands', () => {
@@ -45,28 +87,22 @@ test('generateQRBitmapDataUri generates valid monochrome BMP data URI', () => {
   assert.equal(bitsPerPixel, 1, 'Should be 1-bit monochrome BMP');
 });
 
-test('normalizeLabelData applies defaults when fields are missing', () => {
-  const emptyResult = normalizeLabelData();
-
-  assert.equal(emptyResult.trackingId, 'TRK-2026-000101');
-  assert.equal(emptyResult.packageIndex, 1);
-  assert.equal(emptyResult.packageCount, 1);
-  assert.equal(emptyResult.recipientName, 'Juan Dela Cruz');
-  assert.equal(emptyResult.destinationHub, 'TNL Baguio Hub');
-  assert.equal(emptyResult.route, 'Manila to TNL Baguio');
-  assert.equal(emptyResult.totalAmount, 0);
+test('normalizeLabelData rejects missing canonical fields', () => {
+  assert.throws(() => normalizeLabelData(), IncompleteLabelDataError);
 });
 
 test('normalizeLabelData maps shipment and unit fields accurately', () => {
   const shipment = {
     shipmentId: 'SHP-2026-088',
-    recipientName: 'Maria Santos',
-    recipientContact: '09181234567',
-    recipientAddress: '123 Session Rd, Baguio City',
-    destinationHub: 'TNL Baguio Central',
-    clientName: 'Mountain Harvest Corp',
+    recipientDetails: {
+      fullName: 'Maria Santos',
+      contactNumber: '09181234567',
+      address: '123 Session Rd, Baguio City',
+    },
+    destination: 'TNL Baguio Central',
+    client: 'Mountain Harvest Corp',
     description: 'Fresh Arabica Beans',
-    origin: 'La Trinidad',
+    route: 'La Trinidad to TNL Baguio Central',
     totalAmount: 1850.5,
     units: [{ trackingId: 'TRK-2026-000881' }, { trackingId: 'TRK-2026-000882' }],
   };
@@ -203,4 +239,26 @@ test('buildLabelHtml generates multi-page HTML with CSS page breaks for multiple
   assert.ok(html.includes('PKG 1 / 2'), 'Should include Unit 1 counter');
   assert.ok(html.includes('PKG 2 / 2'), 'Should include Unit 2 counter');
   assert.ok(html.includes('page-break-after: always'), 'Should include CSS print page break');
+});
+
+test('buildLabelHtml escapes all untrusted label text', () => {
+  const hostile = '<img src=x onerror="alert(1)">\'&';
+  const html = buildLabelHtml({
+    trackingId: hostile,
+    packageIndex: 1,
+    packageCount: 1,
+    recipientName: hostile,
+    contactNumber: hostile,
+    address: hostile,
+    destinationHub: hostile,
+    contents: hostile,
+    clientName: hostile,
+    shipmentId: hostile,
+    route: hostile,
+    totalAmount: 1,
+  });
+  assert.ok(!html.includes('<img'));
+  assert.ok(!html.includes('onerror="'));
+  assert.ok(html.includes('&lt;img'));
+  assert.ok(html.includes('&#39;&amp;'));
 });

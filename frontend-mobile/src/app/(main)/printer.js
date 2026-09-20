@@ -4,10 +4,10 @@ import {
   View,
   Text,
   ScrollView,
-  SafeAreaView,
   Switch,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon } from 'react-native-paper';
 import { colors, typography } from '../../theme';
 import { BackButton } from '../../components/common/BackButton';
@@ -30,6 +30,8 @@ export default function PrinterSetupScreen() {
     disconnectPrinter,
     toggleVirtualMode,
     printParcelLabels,
+    pendingAuditCount,
+    retryPendingAudits,
   } = usePrinter();
 
   const [statusDialog, setStatusDialog] = useState(null);
@@ -39,15 +41,17 @@ export default function PrinterSetupScreen() {
   const sampleLabelData = normalizeLabelData(
     {
       shipmentId: 'SHP-2026-001',
-      recipientName: 'Juan Dela Cruz',
-      recipientContact: '0917-555-0148',
-      recipientAddress: '148 Rizal Ave, Caloocan City',
-      destinationHub: 'TNL Baguio Hub',
-      contents: 'Assorted office supplies',
-      clientName: 'Northbridge Trading',
-      origin: 'Manila',
-      destination: 'TNL Baguio',
+      recipientDetails: {
+        fullName: 'Sample Recipient',
+        contactNumber: '0917-555-0148',
+        address: '148 Rizal Ave, Caloocan City',
+      },
+      destination: 'TNL Baguio Hub',
+      description: 'Sample office supplies',
+      client: 'Sample Client',
+      route: 'Manila to TNL Baguio Hub',
       totalAmount: 500,
+      quantity: 3,
     },
     {
       trackingId: 'TRK-2026-000101',
@@ -90,29 +94,34 @@ export default function PrinterSetupScreen() {
   const handleTestPrint = async () => {
     if (isConnected) {
       try {
-        await printParcelLabels(
+        const result = await printParcelLabels(
           {
             shipmentId: sampleLabelData.shipmentId,
-            recipientName: sampleLabelData.recipientName,
-            recipientContact: sampleLabelData.contactNumber,
-            recipientAddress: sampleLabelData.address,
-            destinationHub: sampleLabelData.destinationHub,
-            contents: sampleLabelData.contents,
-            clientName: sampleLabelData.clientName,
+            recipientDetails: {
+              fullName: sampleLabelData.recipientName,
+              contactNumber: sampleLabelData.contactNumber,
+              address: sampleLabelData.address,
+            },
+            destination: sampleLabelData.destinationHub,
+            description: sampleLabelData.contents,
+            client: sampleLabelData.clientName,
+            route: sampleLabelData.route,
             totalAmount: sampleLabelData.totalAmount,
-            origin: 'Manila',
-            destination: 'TNL Baguio',
+            quantity: 1,
           },
           [
             {
               trackingId: sampleLabelData.trackingId,
               packageIndex: sampleLabelData.packageIndex,
             },
-          ]
+          ],
+          { auditMode: 'NONE' }
         );
         setStatusDialog({
-          title: 'Test Print Sent',
-          message: `Sample label printed to ${connectedDevice?.name || 'thermal printer'}.`,
+          title: result.isVirtual ? 'Simulation Complete' : 'Test Print Sent',
+          message: result.isVirtual
+            ? 'Sample label was simulated. No parcel audit records were changed.'
+            : `Sample label printed to ${connectedDevice?.name || 'thermal printer'}.`,
         });
       } catch (err) {
         setStatusDialog({
@@ -173,6 +182,7 @@ export default function PrinterSetupScreen() {
           <View style={styles.toggleRow}>
             <View style={styles.toggleTextCol}>
               <Text style={styles.toggleTitle}>Virtual Thermal Driver</Text>
+              <Text style={styles.simulationBadge}>SIMULATION / VIRTUAL</Text>
               <Text style={styles.toggleSubtitle}>
                 Simulate Brother RJ-2035B for hardware-free development and offline testing
               </Text>
@@ -202,6 +212,13 @@ export default function PrinterSetupScreen() {
             ) : (
               <Text style={styles.testPrintBtnText}>Test Print Sample Label</Text>
             )}
+          </PressableScale>
+          <Text style={styles.pendingAuditText}>Pending print audits: {pendingAuditCount}</Text>
+          <PressableScale
+            contentStyle={styles.retryAuditBtn}
+            onPress={retryPendingAudits}
+          >
+            <Text style={styles.retryAuditText}>Retry Pending Audits</Text>
           </PressableScale>
         </View>
 
@@ -375,6 +392,17 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.ink,
   },
+  simulationBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: colors.ink,
+    color: colors.surface,
+    fontFamily: 'monospace',
+    fontSize: 9,
+    fontWeight: '800',
+  },
   toggleSubtitle: {
     fontSize: 11,
     color: colors.inkFaint,
@@ -402,6 +430,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.3,
+  },
+  pendingAuditText: {
+    marginTop: 12,
+    fontFamily: 'monospace',
+    fontSize: 11,
+    color: colors.inkFaint,
+  },
+  retryAuditBtn: {
+    marginTop: 8,
+    height: 38,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  retryAuditText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.ink,
   },
   devicesSection: {
     marginTop: 8,

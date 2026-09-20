@@ -1,34 +1,90 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useCallback, useEffect, useState } from 'react';
+import { AppState } from 'react-native';
+import * as Crypto from 'expo-crypto';
 import { bluetoothPrinterService, VIRTUAL_PRINTERS } from '../services/bluetoothPrinterService';
 import { normalizeLabelData } from '../services/thermalLabelData';
 import { buildEscPosCommands } from '../services/escposFormatter';
 import { shipmentApi } from '../../shipments/services/shipmentApi';
+import { useAuth } from '../../auth/context/AuthContext';
+import {
+  classifyAuditError,
+  enqueuePrintAudit,
+  getPendingPrintAudits,
+  removePrintAudit,
+  updatePrintAudit,
+} from '../services/printAuditOutbox';
 
 const PrinterContext = createContext(null);
+let serializedQueue = Promise.resolve();
+const activeJobs = new Map();
+
+function enqueueSerialized(jobId, operation) {
+  if (activeJobs.has(jobId)) return activeJobs.get(jobId);
+  const queuedOperation = serializedQueue.then(operation, operation);
+  serializedQueue = queuedOperation.catch(() => undefined);
+  activeJobs.set(jobId, queuedOperation);
+  queuedOperation.then(
+    () => activeJobs.delete(jobId),
+    () => activeJobs.delete(jobId)
+  );
+  return queuedOperation;
+}
 
 export function PrinterProvider({ children }) {
+  const { user } = useAuth();
+  const ownerUserId = user?.userId;
   const [connectedDevice, setConnectedDevice] = useState(null);
   const [isVirtualMode, setIsVirtualMode] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
   const [availableDevices, setAvailableDevices] = useState(VIRTUAL_PRINTERS);
   const [isPrinting, setIsPrinting] = useState(false);
-  const [previewModalVisible, setPreviewModalVisible] = useState(false);
-  const [previewLabelData, setPreviewLabelData] = useState(null);
+  const [pendingAuditCount, setPendingAuditCount] = useState(0);
 
-  // Initialize saved printer connection
+  const syncAuditEntry = useCallback(async (entry) => {
+    await enqueuePrintAudit(entry);
+    try {
+      await shipmentApi.printLabels(
+        entry.shipmentId,
+        entry.trackingIds,
+        entry.printJobId,
+        entry.printerId
+      );
+      await removePrintAudit(entry.printJobId);
+      return 'SYNCED';
+    } catch (error) {
+      const status = classifyAuditError(error);
+      await updatePrintAudit(entry.printJobId, { status, lastError: error?.message || 'Audit sync failed' });
+      return status === 'PENDING' ? 'PENDING' : 'FAILED';
+    }
+  }, []);
+
+  const retryPendingAudits = useCallback(async () => {
+    if (!ownerUserId) return [];
+    const entries = await getPendingPrintAudits(ownerUserId);
+    const results = [];
+    for (const entry of entries) results.push(await syncAuditEntry(entry));
+    setPendingAuditCount((await getPendingPrintAudits(ownerUserId)).length);
+    return results;
+  }, [ownerUserId, syncAuditEntry]);
+
   useEffect(() => {
     let isMounted = true;
-    (async () => {
-      const saved = await bluetoothPrinterService.initialize();
-      if (isMounted) {
-        setConnectedDevice(saved);
-        setIsVirtualMode(bluetoothPrinterService.isVirtualMode);
-      }
-    })();
-    return () => {
-      isMounted = false;
-    };
+    bluetoothPrinterService.initialize().then((savedDevice) => {
+      if (!isMounted) return;
+      setConnectedDevice(savedDevice);
+      setIsVirtualMode(bluetoothPrinterService.isVirtualMode);
+      setAvailableDevices(bluetoothPrinterService.isVirtualMode ? VIRTUAL_PRINTERS : []);
+    });
+    return () => { isMounted = false; };
   }, []);
+
+  useEffect(() => {
+    retryPendingAudits();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') retryPendingAudits();
+    });
+    return () => subscription.remove();
+  }, [retryPendingAudits]);
 
   const scanDevices = useCallback(async () => {
     setIsScanning(true);
@@ -54,98 +110,108 @@ export function PrinterProvider({ children }) {
 
   const toggleVirtualMode = useCallback(async (enabled) => {
     await bluetoothPrinterService.setVirtualMode(enabled);
-    setIsVirtualMode(enabled);
+    setIsVirtualMode(Boolean(enabled));
     setConnectedDevice(bluetoothPrinterService.getConnectedDevice());
+    setAvailableDevices(enabled ? VIRTUAL_PRINTERS : []);
   }, []);
 
-  /**
-   * High-level print function:
-   * 1. Normalizes parcel unit and shipment data.
-   * 2. Formats ESC/POS binary stream.
-   * 3. Transmits to physical Bluetooth socket or virtual driver.
-   * 4. Synchronizes backend audit record via shipmentApi.printLabels.
-   */
-  const printParcelLabels = useCallback(
-    async (shipment, unitsToPrint = null) => {
-      const units = unitsToPrint || shipment.units || (shipment.trackingIds || []).map((id, idx) => ({ trackingId: id, packageIndex: idx + 1 }));
-      const totalUnits = units.length || 1;
+  const auditTrackingIds = useCallback(async ({ printJobId, shipmentId, trackingIds, printerId }) => {
+    if (!ownerUserId) return 'FAILED';
+    const status = await syncAuditEntry({
+      printJobId,
+      ownerUserId,
+      shipmentId,
+      trackingIds,
+      printerId,
+      status: 'PENDING',
+    });
+    setPendingAuditCount((await getPendingPrintAudits(ownerUserId)).length);
+    return status;
+  }, [ownerUserId, syncAuditEntry]);
+
+  const confirmSystemPrint = useCallback(async ({ printJobId, shipmentId, trackingIds }) =>
+    auditTrackingIds({ printJobId, shipmentId, trackingIds, printerId: 'SYSTEM-PDF' }), [auditTrackingIds]);
+
+  const printParcelLabels = useCallback((shipment, unitsToPrint = null, options = {}) => {
+    const jobId = options.jobId || Crypto.randomUUID();
+    return enqueueSerialized(jobId, async () => {
+      const units = unitsToPrint || shipment.units || [];
+      if (units.length === 0) throw new Error('No parcel units are available for printing.');
 
       setIsPrinting(true);
-      const printResults = [];
-      const printedTrackingIds = [];
+      const transmittedTrackingIds = [];
+      const failedTrackingIds = [];
+      const notAttemptedTrackingIds = [];
+      let failureReason = null;
+      const isVirtual = connectedDevice?.type === 'VIRTUAL' || bluetoothPrinterService.isVirtualMode;
 
       try {
-        for (let i = 0; i < units.length; i++) {
-          const unit = units[i];
-          const labelData = normalizeLabelData(shipment, unit, i, totalUnits);
-          const bytes = buildEscPosCommands(labelData);
-
-          const result = await bluetoothPrinterService.printRaw(bytes, {
-            trackingId: labelData.trackingId,
-            shipmentId: labelData.shipmentId,
-          });
-
-          printResults.push(result);
-          printedTrackingIds.push(labelData.trackingId);
-        }
-
-        // Synchronize backend print audit
-        if (shipment.shipmentId && printedTrackingIds.length > 0) {
+        for (let index = 0; index < units.length; index += 1) {
+          const unit = units[index];
           try {
-            await shipmentApi.printLabels(shipment.shipmentId, printedTrackingIds);
-          } catch (auditErr) {
-            console.warn('Backend print audit sync notice:', auditErr?.message);
+            const labelData = normalizeLabelData(shipment, unit, index, units.length);
+            await bluetoothPrinterService.printRaw(buildEscPosCommands(labelData), {
+              jobId,
+              trackingId: labelData.trackingId,
+              shipmentId: labelData.shipmentId,
+              auditMode: options.auditMode || 'PHYSICAL',
+            });
+            transmittedTrackingIds.push(labelData.trackingId);
+          } catch (error) {
+            failedTrackingIds.push(unit.trackingId);
+            notAttemptedTrackingIds.push(...units.slice(index + 1).map((item) => item.trackingId));
+            failureReason = error?.code || error?.message || 'PRINT_FAILED';
+            break;
           }
         }
 
+        let auditSyncStatus = 'SKIPPED';
+        const shouldAudit = !isVirtual
+          && options.auditMode !== 'NONE'
+          && transmittedTrackingIds.length > 0;
+        if (shouldAudit) {
+          auditSyncStatus = await auditTrackingIds({
+            printJobId: jobId,
+            shipmentId: shipment.shipmentId,
+            trackingIds: transmittedTrackingIds,
+            printerId: (connectedDevice?.address || 'BLUETOOTH').slice(0, 20),
+          });
+        }
+
         return {
-          success: true,
-          count: printResults.length,
-          printedTrackingIds,
-          device: connectedDevice?.name || 'Virtual Thermal Printer',
+          jobId,
+          transport: isVirtual ? 'VIRTUAL' : 'BLUETOOTH',
+          totalRequested: units.length,
+          transmittedTrackingIds,
+          failedTrackingIds,
+          notAttemptedTrackingIds,
+          failureReason,
+          isVirtual,
+          auditSyncStatus,
+          success: failedTrackingIds.length === 0,
+          count: transmittedTrackingIds.length,
+          device: connectedDevice?.name || null,
         };
       } finally {
         setIsPrinting(false);
       }
-    },
-    [connectedDevice]
+    });
+  }, [auditTrackingIds, connectedDevice]);
+
+  return (
+    <PrinterContext.Provider value={{
+      isConnected: Boolean(connectedDevice), connectedDevice, isVirtualMode, isScanning,
+      availableDevices, isPrinting, pendingAuditCount, scanDevices, connectPrinter,
+      disconnectPrinter, toggleVirtualMode, printParcelLabels, confirmSystemPrint,
+      retryPendingAudits,
+    }}>
+      {children}
+    </PrinterContext.Provider>
   );
-
-  const openPreview = useCallback((labelData) => {
-    setPreviewLabelData(labelData);
-    setPreviewModalVisible(true);
-  }, []);
-
-  const closePreview = useCallback(() => {
-    setPreviewModalVisible(false);
-    setPreviewLabelData(null);
-  }, []);
-
-  const value = {
-    isConnected: Boolean(connectedDevice),
-    connectedDevice,
-    isVirtualMode,
-    isScanning,
-    availableDevices,
-    isPrinting,
-    previewModalVisible,
-    previewLabelData,
-    scanDevices,
-    connectPrinter,
-    disconnectPrinter,
-    toggleVirtualMode,
-    printParcelLabels,
-    openPreview,
-    closePreview,
-  };
-
-  return <PrinterContext.Provider value={value}>{children}</PrinterContext.Provider>;
 }
 
 export function usePrinter() {
-  const context = useContext(PrinterContext);
-  if (!context) {
-    throw new Error('usePrinter must be used within a PrinterProvider');
-  }
+  const context = React.useContext(PrinterContext);
+  if (!context) throw new Error('usePrinter must be used within a PrinterProvider');
   return context;
 }

@@ -16,6 +16,7 @@ import { usePrinter } from '../../features/printer/context/PrinterContext';
 import { buildLabelHtml } from '../../features/printer/services/escposFormatter';
 import { generateQRMatrix, generateQRSvgPath } from '../../utils/qr';
 import * as Print from 'expo-print';
+import * as Crypto from 'expo-crypto';
 
 export function ThermalLabelPreviewModal({
   visible,
@@ -25,8 +26,10 @@ export function ThermalLabelPreviewModal({
   onPrintDirect,
 }) {
   const router = useRouter();
-  const { isConnected, connectedDevice } = usePrinter();
+  const { isConnected, connectedDevice, isVirtualMode, confirmSystemPrint } = usePrinter();
   const [currentIndex, setCurrentIndex] = React.useState(0);
+  const [pendingConfirmation, setPendingConfirmation] = React.useState(null);
+  const [confirmationNotice, setConfirmationNotice] = React.useState(null);
 
   const labelsList = labels && labels.length > 0 ? labels : labelData ? [labelData] : [];
   const currentLabel = labelsList[currentIndex] || labelsList[0] || null;
@@ -34,6 +37,8 @@ export function ThermalLabelPreviewModal({
   React.useEffect(() => {
     if (visible) {
       setCurrentIndex(0);
+      setPendingConfirmation(null);
+      setConfirmationNotice(null);
     }
   }, [visible]);
 
@@ -58,9 +63,32 @@ export function ThermalLabelPreviewModal({
         // Native iOS & Android: invoke OS print spooler & Save as PDF
         await Print.printAsync({ html });
       }
+      setPendingConfirmation({
+        printJobId: Crypto.randomUUID(),
+        shipmentId: labelsList[0].shipmentId,
+        trackingIds: labelsList.map((label) => label.trackingId),
+      });
     } catch (err) {
       console.warn('System print failed:', err);
     }
+  };
+
+  const handlePrintedSuccessfully = async () => {
+    const auditStatus = await confirmSystemPrint(pendingConfirmation);
+    setPendingConfirmation(null);
+    setConfirmationNotice(auditStatus === 'SYNCED'
+      ? 'Print audit recorded.'
+      : 'Labels were printed, but the audit is pending. Retry it from Printer Setup without printing again.');
+  };
+
+  const handleSavedAsPdf = () => {
+    setPendingConfirmation(null);
+    setConfirmationNotice('Saved as PDF. Parcel label status remains NOT_PRINTED.');
+  };
+
+  const handleCancelled = () => {
+    setPendingConfirmation(null);
+    setConfirmationNotice('No print audit was recorded.');
   };
 
   const handleConfigurePrinter = () => {
@@ -229,14 +257,34 @@ export function ThermalLabelPreviewModal({
                 ]}
               />
               <Text style={styles.hardwareText}>
-                {isConnected
+                {isVirtualMode
+                  ? 'SIMULATION / VIRTUAL DRIVER - no audit records will be changed'
+                  : isConnected
                   ? `Printer Ready: ${connectedDevice?.name || 'Brother RJ-2035B'}`
                   : 'Thermal printer not connected'}
               </Text>
             </View>
 
+            {confirmationNotice ? <Text style={styles.confirmationNotice}>{confirmationNotice}</Text> : null}
+
+            {pendingConfirmation ? (
+              <View style={styles.confirmationPanel}>
+                <Text style={styles.confirmationTitle}>Confirm Label Printing</Text>
+                <Text style={styles.confirmationText}>Did your labels print successfully on paper?</Text>
+                <PressableScale contentStyle={styles.primaryBtn} onPress={handlePrintedSuccessfully}>
+                  <Text style={styles.primaryBtnText}>Printed Successfully</Text>
+                </PressableScale>
+                <PressableScale contentStyle={styles.secondaryBtn} onPress={handleSavedAsPdf}>
+                  <Text style={styles.secondaryBtnText}>Saved as PDF Only</Text>
+                </PressableScale>
+                <PressableScale contentStyle={styles.secondaryBtn} onPress={handleCancelled}>
+                  <Text style={styles.secondaryBtnText}>Cancelled / Failed</Text>
+                </PressableScale>
+              </View>
+            ) : null}
+
             {/* Action Buttons */}
-            <View style={styles.actionRow}>
+            {!pendingConfirmation ? <View style={styles.actionRow}>
               {isConnected ? (
                 <PressableScale
                   style={styles.actionBtnWrapper}
@@ -244,7 +292,9 @@ export function ThermalLabelPreviewModal({
                   onPress={onPrintDirect}
                 >
                   <Text style={styles.primaryBtnText}>
-                    {labelsList.length > 1
+                    {isVirtualMode
+                      ? `Simulate Print (${labelsList.length})`
+                      : labelsList.length > 1
                       ? `Print All (${labelsList.length}) to Thermal`
                       : 'Print to Thermal'}
                   </Text>
@@ -266,7 +316,7 @@ export function ThermalLabelPreviewModal({
               >
                 <Text style={styles.secondaryBtnText}>Print via System / PDF</Text>
               </PressableScale>
-            </View>
+            </View> : null}
           </View>
         </ScrollView>
       </View>
@@ -541,6 +591,28 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     color: colors.inkSoft,
     fontWeight: '500',
+  },
+  confirmationNotice: {
+    marginTop: 10,
+    fontSize: 11.5,
+    color: colors.inkSoft,
+  },
+  confirmationPanel: {
+    marginTop: 16,
+    gap: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+  },
+  confirmationTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.ink,
+  },
+  confirmationText: {
+    fontSize: 12,
+    color: colors.inkSoft,
+    marginBottom: 4,
   },
   actionRow: {
     flexDirection: 'row',
