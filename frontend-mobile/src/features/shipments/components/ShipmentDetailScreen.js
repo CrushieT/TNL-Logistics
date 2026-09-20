@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -8,14 +8,17 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { colors, spacing, typography } from '../../../theme';
 import { shipmentApi } from '../services/shipmentApi';
 import { StatusModal } from '../../../components/common/StatusModal';
 import { BackButton } from '../../../components/common/BackButton';
+import { usePrinter } from '../../printer/context/PrinterContext';
+import { ThermalLabelPreviewModal } from '../../../components/common/ThermalLabelPreviewModal';
+import { normalizeLabelData } from '../../printer/services/thermalLabelData';
 
 function formatRoute(route) {
-  if (!route) return 'TNL Baguio Hub';
+  if (!route) return 'Destination unavailable';
   return route.replace(/\s*(?:->|→)\s*/g, ' to ');
 }
 
@@ -26,48 +29,57 @@ export function ShipmentDetailScreen({ shipmentId }) {
   const [error, setError] = useState('');
   const [isPrinting, setIsPrinting] = useState(false);
   const [statusDialog, setStatusDialog] = useState(null);
+  const [previewVisible, setPreviewVisible] = useState(false);
 
-  const fetchDetail = async (signal) => {
-    setIsLoading(true);
-    setError('');
+  const { isConnected, connectedDevice, printParcelLabels } = usePrinter();
+
+  const fetchDetail = useCallback(async (signal) => {
     try {
+      setError('');
       const data = await shipmentApi.getShipment(shipmentId, signal);
       setShipment(data);
     } catch (err) {
-      if (!signal?.aborted) {
-        setError(err.response?.data?.message || 'Unable to load shipment details.');
-      }
+      if (err.name === 'CanceledError' || err.name === 'AbortError') return;
+      setError(err.response?.data?.message || 'Failed to load shipment details.');
     } finally {
-      if (!signal?.aborted) {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchDetail(controller.signal);
-    return () => controller.abort();
   }, [shipmentId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const controller = new AbortController();
+      fetchDetail(controller.signal);
+      return () => controller.abort();
+    }, [fetchDetail])
+  );
 
   const handlePrintAll = async () => {
     if (isPrinting || !shipment) return;
-    setIsPrinting(true);
-    try {
-      await shipmentApi.printLabels(shipment.shipmentId);
-      setStatusDialog({
-        title: 'Labels Printed',
-        message: `Label print audit recorded for all ${shipment.units?.length || shipment.quantity} parcel units.`,
-      });
-      // Refresh details to update label badges
-      fetchDetail();
-    } catch (err) {
-      setStatusDialog({
-        title: 'Print Recording Failed',
-        message: err.response?.data?.message || 'Unable to update label status. Check connection and retry.',
-      });
-    } finally {
-      setIsPrinting(false);
+
+    if (isConnected) {
+      setIsPrinting(true);
+      try {
+        const result = await printParcelLabels(shipment);
+        setStatusDialog({
+          title: result.isVirtual ? 'Simulation Complete' : 'Labels Printed',
+          message: result.isVirtual
+            ? `Simulated ${result.count} labels. No parcel audit records were changed.`
+            : `Printed ${result.count} labels. Audit status: ${result.auditSyncStatus}.`,
+        });
+        // Refresh details to update label badges
+        fetchDetail();
+      } catch (err) {
+        setStatusDialog({
+          title: 'Print Failed',
+          message: err?.message || 'Unable to print labels. Check connection and retry.',
+        });
+      } finally {
+        setIsPrinting(false);
+      }
+    } else {
+      // Option A: Seamless fallback to visual preview modal
+      setPreviewVisible(true);
     }
   };
 
@@ -103,6 +115,13 @@ export function ShipmentDetailScreen({ shipmentId }) {
   }
 
   const units = shipment.units || [];
+  let previewLabels = [];
+  let labelDataError = null;
+  try {
+    previewLabels = units.map((unit, index) => normalizeLabelData(shipment, unit, index, units.length));
+  } catch (normalizationError) {
+    labelDataError = normalizationError;
+  }
   const registeredPlatform = shipment.registeredVia === 'MOBILE_FIELD' ? 'REGISTERED ON MOBILE' : 'REGISTERED ON PC';
   const contentsDesc = `${shipment.description || 'General Goods'}, ${shipment.quantity || units.length || 1} pcs, ${shipment.chargeModel === 'PER_PARCEL' ? 'per unit' : 'flat'}`;
 
@@ -271,7 +290,7 @@ export function ShipmentDetailScreen({ shipmentId }) {
           <View style={styles.actionsBox}>
             <Pressable
               accessibilityRole="button"
-              disabled={isPrinting}
+              disabled={isPrinting || Boolean(labelDataError) || units.length === 0}
               onPress={handlePrintAll}
               style={[styles.primaryBtn, isPrinting && styles.disabled]}
             >
@@ -281,6 +300,7 @@ export function ShipmentDetailScreen({ shipmentId }) {
                 <Text style={styles.primaryBtnText}>PRINT ALL LABELS ({units.length})</Text>
               )}
             </Pressable>
+            {labelDataError ? <Text style={styles.errorText}>{labelDataError.message}</Text> : null}
           </View>
         }
       />
@@ -292,6 +312,17 @@ export function ShipmentDetailScreen({ shipmentId }) {
         message={statusDialog?.message || ''}
         confirmText="OK"
         onConfirm={() => setStatusDialog(null)}
+      />
+
+      <ThermalLabelPreviewModal
+        visible={previewVisible}
+        labels={previewLabels}
+        onClose={() => setPreviewVisible(false)}
+        onAuditComplete={() => fetchDetail()}
+        onPrintDirect={async () => {
+          setPreviewVisible(false);
+          await handlePrintAll();
+        }}
       />
     </SafeAreaView>
   );

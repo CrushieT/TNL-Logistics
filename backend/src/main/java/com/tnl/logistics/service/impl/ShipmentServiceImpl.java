@@ -11,9 +11,16 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -38,6 +45,7 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final WaybillRepository waybillRepository;
     private final SseService sseService;
     private final PrintEventRepository printEventRepository;
+    private final PrintAuditJobRepository printAuditJobRepository;
     private final com.tnl.logistics.service.SystemSettingService systemSettingService;
     private final IdentifierCounterService identifierCounterService;
 
@@ -50,6 +58,7 @@ public class ShipmentServiceImpl implements ShipmentService {
                                WaybillRepository waybillRepository,
                                SseService sseService,
                                PrintEventRepository printEventRepository,
+                               PrintAuditJobRepository printAuditJobRepository,
                                com.tnl.logistics.service.SystemSettingService systemSettingService,
                                IdentifierCounterService identifierCounterService) {
         this.shipmentRepository = shipmentRepository;
@@ -61,6 +70,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         this.waybillRepository = waybillRepository;
         this.sseService = sseService;
         this.printEventRepository = printEventRepository;
+        this.printAuditJobRepository = printAuditJobRepository;
         this.systemSettingService = systemSettingService;
         this.identifierCounterService = identifierCounterService;
     }
@@ -308,6 +318,17 @@ public class ShipmentServiceImpl implements ShipmentService {
         return labelStatus.trim().toUpperCase().replace(" ", "_");
     }
 
+    private String extractDestination(String route) {
+        if (route == null || route.isBlank()) {
+            return null;
+        }
+        String[] routeParts = route.trim().split("\\s*(?:→|->|(?i:\\bto\\b))\\s*", 2);
+        if (routeParts.length < 2 || routeParts[1].isBlank()) {
+            return null;
+        }
+        return routeParts[1].trim();
+    }
+
     @Override
     @Transactional(readOnly = true)
     public ShipmentDetailResponse getShipmentById(String shipmentId) {
@@ -333,7 +354,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         resp.setOrigin(shipment.getRegisteredVia() == RegisteredVia.DESKTOP_OFFICE ? "Desktop Office" : "Mobile Field");
         resp.setClientId(shipment.getClient().getClientId());
         resp.setClient(shipment.getClient().getName());
-        resp.setRoute(shipment.getRoute() != null ? shipment.getRoute() : "Manila → TNL Baguio");
+        resp.setRoute(shipment.getRoute());
         resp.setRecipient(shipment.getRecipientName());
         resp.setRecipientDetails(new RecipientDetailsDto(
                 shipment.getRecipientName(),
@@ -356,15 +377,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         resp.setBalance(balance);
         resp.setPaidAtRegistration(shipment.getPaidAtRegistration());
 
-        // Destination derivation
-        String destination = "TNL Baguio Hub";
-        if (shipment.getRoute() != null && shipment.getRoute().contains("→")) {
-            String[] parts = shipment.getRoute().split("→");
-            if (parts.length > 1) {
-                destination = parts[1].trim();
-            }
-        }
-        resp.setDestination(destination);
+        resp.setDestination(extractDestination(shipment.getRoute()));
 
         // Dimensions and Weight calculation
         BigDecimal actualWeight = BigDecimal.ZERO;
@@ -551,53 +564,109 @@ public class ShipmentServiceImpl implements ShipmentService {
     }
 
     @Override
-    public void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUserId, String printerId) {
-        if (!shipmentRepository.existsById(shipmentId)) {
-            throw new IllegalArgumentException("Shipment not found with ID: " + shipmentId);
-        }
+    public void recordLabelPrint(UUID printJobId, String shipmentId, List<String> packageIds,
+                                 String actingStaffUserId, String printerId) {
+        Shipment shipment = shipmentRepository.findByIdForUpdate(shipmentId)
+                .orElseThrow(() -> new IllegalArgumentException("Shipment not found with ID: " + shipmentId));
 
-        List<ParcelUnit> parcels;
-        if (packageIds == null || packageIds.isEmpty()) {
-            parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
-        } else {
-            parcels = parcelUnitRepository.findByShipment_ShipmentIdAndTrackingIdIn(shipmentId, packageIds);
-            if (parcels.size() != packageIds.size()) {
-                throw new IllegalArgumentException("One or more tracking IDs do not belong to shipment: " + shipmentId);
+        AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
+                .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
+
+        String assignedPrinter = normalizePrinterId(printerId);
+        List<ParcelUnit> parcels = resolvePrintBatch(shipmentId, packageIds);
+        List<String> trackingIds = parcels.stream()
+                .map(ParcelUnit::getTrackingId)
+                .sorted()
+                .toList();
+        String requestFingerprint = createPrintFingerprint(shipmentId, trackingIds, actingStaffUserId, assignedPrinter);
+        String jobId = printJobId.toString();
+
+        Optional<PrintAuditJob> existingJob = printAuditJobRepository.findById(jobId);
+        if (existingJob.isPresent()) {
+            if (existingJob.get().getRequestFingerprint().equals(requestFingerprint)) {
+                return;
             }
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Print job ID was already used with different audit details");
         }
 
-        AppUser actingStaff = null;
-        if (actingStaffUserId != null && !actingStaffUserId.isBlank()) {
-            actingStaff = appUserRepository.findById(actingStaffUserId).orElse(null);
-        }
-        if (actingStaff == null) {
-            actingStaff = appUserRepository.findAll().stream().findFirst().orElse(null);
-        }
-
-        String assignedPrinter = (printerId != null && !printerId.isBlank()) ? printerId : "Brother RJ-2035B";
+        PrintAuditJob printAuditJob = printAuditJobRepository.saveAndFlush(
+                new PrintAuditJob(jobId, shipment, actingStaff, assignedPrinter, requestFingerprint)
+        );
 
         for (ParcelUnit parcel : parcels) {
             PrintKind printKind;
             if (parcel.getLabelStatus() == LabelStatus.NOT_PRINTED) {
-                // First print: marks as Printed, keeping reprintCount at 0
                 parcel.setLabelStatus(LabelStatus.PRINTED);
                 printKind = PrintKind.PRINT;
             } else {
-                // Subsequent prints: increment reprintCount (1, 2, 3...)
                 parcel.setReprintCount(parcel.getReprintCount() + 1);
                 printKind = PrintKind.REPRINT;
             }
-            parcelUnitRepository.saveAndFlush(parcel);
- 
-            if (actingStaff != null) {
-                PrintEvent printEvent = new PrintEvent(parcel, printKind, 1, actingStaff, assignedPrinter);
-                printEventRepository.saveAndFlush(printEvent);
-            }
+            parcelUnitRepository.save(parcel);
+            printEventRepository.save(new PrintEvent(
+                    parcel, printKind, 1, actingStaff, assignedPrinter, printAuditJob
+            ));
         }
 
+        registerPrintBroadcastAfterCommit(shipmentId, trackingIds);
+    }
+
+    private List<ParcelUnit> resolvePrintBatch(String shipmentId, List<String> packageIds) {
+        if (packageIds == null || packageIds.isEmpty()) {
+            List<ParcelUnit> allParcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
+            if (allParcels.isEmpty()) {
+                throw new IllegalArgumentException("Shipment has no parcel units: " + shipmentId);
+            }
+            return allParcels;
+        }
+
+        List<String> normalizedIds = packageIds.stream().map(String::trim).toList();
+        if (new HashSet<>(normalizedIds).size() != normalizedIds.size()) {
+            throw new IllegalArgumentException("Tracking IDs must not contain duplicates");
+        }
+
+        List<ParcelUnit> parcels = parcelUnitRepository
+                .findByShipment_ShipmentIdAndTrackingIdIn(shipmentId, normalizedIds);
+        if (parcels.size() != normalizedIds.size()) {
+            throw new IllegalArgumentException("One or more tracking IDs do not belong to shipment: " + shipmentId);
+        }
+        parcels.sort(Comparator.comparing(ParcelUnit::getSeq));
+        return parcels;
+    }
+
+    private String normalizePrinterId(String printerId) {
+        if (printerId == null || printerId.isBlank()) {
+            return null;
+        }
+        return printerId.trim();
+    }
+
+    private String createPrintFingerprint(String shipmentId, List<String> trackingIds,
+                                          String staffUserId, String printerId) {
+        String canonicalRequest = String.join("\n",
+                shipmentId,
+                String.join(",", trackingIds),
+                staffUserId,
+                printerId != null ? printerId : ""
+        );
         try {
-            sseService.broadcastLabelPrint(shipmentId, packageIds);
-        } catch (Exception ignored) {}
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(canonicalRequest.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
+    }
+
+    private void registerPrintBroadcastAfterCommit(String shipmentId, List<String> trackingIds) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    sseService.broadcastLabelPrint(shipmentId, trackingIds);
+                } catch (Exception ignored) {}
+            }
+        });
     }
 
     private ShipmentSummaryResponse mapToSummaryResponse(

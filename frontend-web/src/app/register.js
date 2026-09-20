@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import AppShell from '../components/layout/AppShell';
 import PageHeader from '../components/layout/PageHeader';
 import Toast from '../components/common/Toast';
-import { ShipmentForm, ShipmentResultView, PrintLabelsModal, registerShipment, printLabels } from '../features/shipments';
+import { ShipmentForm, ShipmentResultView, PrintLabelsModal, getShipment, registerShipment } from '../features/shipments';
 import { listClients, createClient } from '../features/clients';
 import { colors, fonts, spacing, radius } from '../theme';
 
@@ -16,6 +16,19 @@ export default function RegisterShipmentScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [detailLoadError, setDetailLoadError] = useState(null);
+
+  const loadCanonicalResult = useCallback(async (shipmentId) => {
+    setDetailLoadError(null);
+    try {
+      const canonicalShipment = await getShipment(shipmentId);
+      setResult(canonicalShipment);
+      return canonicalShipment;
+    } catch (error) {
+      setDetailLoadError(error?.message || 'Unable to load complete shipment details.');
+      return null;
+    }
+  }, []);
 
   // Load active clients from backend GET /api/v1/clients?active=true
   useEffect(() => {
@@ -72,6 +85,7 @@ export default function RegisterShipmentScreen() {
 
       // Successful backend registration
       setResult(response);
+      await loadCanonicalResult(response.shipmentId);
       setToastVisible(true);
     } catch (err) {
       console.error('Shipment registration failed:', err);
@@ -95,11 +109,22 @@ export default function RegisterShipmentScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [clients]);
+  }, [clients, loadCanonicalResult]);
 
   if (result) {
     return (
       <AppShell>
+        {detailLoadError ? (
+          <View style={styles.errorBanner}>
+            <View style={styles.errorTextCol}>
+              <Text style={styles.errorTitle}>Label details unavailable</Text>
+              <Text style={styles.errorBody}>{detailLoadError}</Text>
+            </View>
+            <TouchableOpacity onPress={() => loadCanonicalResult(result.shipmentId)}>
+              <Text style={styles.retryText}>Retry details</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         <ShipmentResultView
           shipment={result}
           onRegisterAnother={() => {
@@ -107,20 +132,16 @@ export default function RegisterShipmentScreen() {
             setErrorMessage(null);
           }}
           onViewShipment={() => router.push(`/shipments/${result.shipmentId}`)}
-          onPreviewLabels={() => setModalVisible(true)}
+          onPreviewLabels={() => {
+            if (!detailLoadError) setModalVisible(true);
+          }}
         />
         <PrintLabelsModal
           visible={modalVisible}
           shipment={result}
           onClose={() => setModalVisible(false)}
-          onPrint={async () => {
-            try {
-              await printLabels(result.shipmentId);
-            } catch (err) {
-              console.warn('Failed to record print labels:', err?.message);
-            } finally {
-              setModalVisible(false);
-            }
+          onAuditComplete={() => {
+            loadCanonicalResult(result.shipmentId);
           }}
         />
         <Toast
@@ -194,5 +215,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#991B1B',
     fontWeight: '700',
+  },
+  retryText: {
+    fontFamily: fonts.mono,
+    fontSize: 12,
+    color: '#991B1B',
+    textDecorationLine: 'underline',
   },
 });

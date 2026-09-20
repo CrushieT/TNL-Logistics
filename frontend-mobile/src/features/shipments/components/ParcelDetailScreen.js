@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -8,66 +8,83 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { colors, spacing, typography } from '../../../theme';
 import { shipmentApi } from '../services/shipmentApi';
 import { StatusModal } from '../../../components/common/StatusModal';
 import { BackButton } from '../../../components/common/BackButton';
+import { usePrinter } from '../../printer/context/PrinterContext';
+import { ThermalLabelPreviewModal } from '../../../components/common/ThermalLabelPreviewModal';
+import { normalizeLabelData } from '../../printer/services/thermalLabelData';
 
 function formatRoute(route) {
-  if (!route) return 'TNL Baguio Hub';
+  if (!route) return 'Destination unavailable';
   return route.replace(/\s*(?:->|→)\s*/g, ' to ');
 }
 
 export function ParcelDetailScreen({ trackingId }) {
   const router = useRouter();
   const [parcel, setParcel] = useState(null);
+  const [shipment, setShipment] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [isReprinting, setIsReprinting] = useState(false);
   const [statusDialog, setStatusDialog] = useState(null);
+  const [previewVisible, setPreviewVisible] = useState(false);
 
-  const fetchParcel = async (signal) => {
-    setIsLoading(true);
-    setError('');
+  const { isConnected, connectedDevice, printParcelLabels } = usePrinter();
+
+  const fetchParcel = useCallback(async (signal) => {
     try {
+      setError('');
       const data = await shipmentApi.getParcelUnit(trackingId, signal);
       setParcel(data);
+      const shipmentData = await shipmentApi.getShipment(data.shipmentId, signal);
+      setShipment(shipmentData);
     } catch (err) {
-      if (!signal?.aborted) {
-        setError(err.response?.data?.message || 'Unable to load parcel details.');
-      }
+      if (err.name === 'CanceledError' || err.name === 'AbortError') return;
+      setError(err.response?.data?.message || 'Failed to load parcel unit details.');
     } finally {
-      if (!signal?.aborted) {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchParcel(controller.signal);
-    return () => controller.abort();
   }, [trackingId]);
 
+  useFocusEffect(
+    useCallback(() => {
+      const controller = new AbortController();
+      fetchParcel(controller.signal);
+      return () => controller.abort();
+    }, [fetchParcel])
+  );
+
   const handleReprint = async () => {
-    if (isReprinting || !parcel) return;
-    setIsReprinting(true);
-    try {
-      await shipmentApi.printLabels(parcel.shipmentId, [parcel.trackingId]);
-      setStatusDialog({
-        title: 'Label Reprint Recorded',
-        message: `Reprint audit recorded for ${parcel.trackingId}.`,
-      });
-      fetchParcel();
-    } catch (err) {
-      setStatusDialog({
-        title: 'Reprint Failed',
-        message: err.response?.data?.message || 'Unable to update label status. Check connection and retry.',
-      });
-    } finally {
-      setIsReprinting(false);
+    if (isReprinting || !parcel || !shipment) return;
+
+    if (isConnected) {
+      setIsReprinting(true);
+      try {
+        const canonicalUnit = shipment.units?.find((unit) => unit.trackingId === parcel.trackingId);
+        if (!canonicalUnit) throw new Error('Parcel is missing from the canonical shipment details.');
+        const result = await printParcelLabels(shipment, [canonicalUnit]);
+        setStatusDialog({
+          title: result.isVirtual ? 'Simulation Complete' : 'Label Reprint Sent',
+          message: result.isVirtual
+            ? `Simulated ${parcel.trackingId}. No parcel audit records were changed.`
+            : `Reprint sent for ${parcel.trackingId}. Audit status: ${result.auditSyncStatus}.`,
+        });
+        fetchParcel();
+      } catch (err) {
+        setStatusDialog({
+          title: 'Reprint Failed',
+          message: err?.message || 'Unable to reprint label. Check connection and retry.',
+        });
+      } finally {
+        setIsReprinting(false);
+      }
+    } else {
+      // Option A: Seamless fallback to visual preview modal
+      setPreviewVisible(true);
     }
   };
 
@@ -106,6 +123,21 @@ export function ParcelDetailScreen({ trackingId }) {
   const pkgTotal = parcel.packageCount || 1;
   const isPrinted = parcel.labelStatus === 'Printed' || parcel.labelStatus === 'PRINTED';
   const history = parcel.history || [];
+  const canonicalUnit = shipment?.units?.find((unit) => unit.trackingId === parcel.trackingId);
+  let previewLabel = null;
+  let labelDataError = null;
+  try {
+    if (shipment && canonicalUnit) {
+      previewLabel = normalizeLabelData(
+        shipment,
+        canonicalUnit,
+        canonicalUnit.packageIndex ? canonicalUnit.packageIndex - 1 : 0,
+        shipment.units.length
+      );
+    }
+  } catch (normalizationError) {
+    labelDataError = normalizationError;
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -184,7 +216,7 @@ export function ParcelDetailScreen({ trackingId }) {
         <View style={styles.actionsRow}>
           <Pressable
             accessibilityRole="button"
-            disabled={isReprinting}
+            disabled={isReprinting || !previewLabel}
             onPress={handleReprint}
             style={[styles.actionBtn, isReprinting && styles.btnDisabled]}
           >
@@ -194,6 +226,7 @@ export function ParcelDetailScreen({ trackingId }) {
               <Text style={styles.actionBtnText}>REPRINT LABEL</Text>
             )}
           </Pressable>
+          {labelDataError ? <Text style={styles.errorText}>{labelDataError.message}</Text> : null}
 
           <Pressable
             accessibilityRole="button"
@@ -269,6 +302,17 @@ export function ParcelDetailScreen({ trackingId }) {
         message={statusDialog?.message || ''}
         confirmText="OK"
         onConfirm={() => setStatusDialog(null)}
+      />
+
+      <ThermalLabelPreviewModal
+        visible={previewVisible}
+        labelData={previewLabel}
+        onClose={() => setPreviewVisible(false)}
+        onAuditComplete={() => fetchParcel()}
+        onPrintDirect={async () => {
+          setPreviewVisible(false);
+          await handleReprint();
+        }}
       />
     </SafeAreaView>
   );

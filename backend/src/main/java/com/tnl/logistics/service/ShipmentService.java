@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Service interface for shipment processing, tracking, and retrieval.
@@ -27,9 +28,5 @@ public interface ShipmentService {
 
     ParcelUnitDetailResponse getParcelUnitByTrackingId(String trackingId);
 
-    void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUserId, String printerId);
-
-    default void recordLabelPrint(String shipmentId, List<String> packageIds, String actingStaffUserId) {
-        recordLabelPrint(shipmentId, packageIds, actingStaffUserId, null);
-    }
+    void recordLabelPrint(UUID printJobId, String shipmentId, List<String> packageIds, String actingStaffUserId, String printerId);
 }

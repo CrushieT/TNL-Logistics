@@ -69,16 +69,20 @@ public class ShipmentController {
     @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
     public ResponseEntity<Void> recordLabelPrint(
             @PathVariable String shipmentId,
-            @RequestBody(required = false) PrintLabelRequest request
+            @Valid @RequestBody PrintLabelRequest request
     ) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
             throw new AccessDeniedException("Authenticated user context is required");
         }
         String actingStaffUserId = auth.getName();
-        List<String> packageIds = request != null ? request.getPackageIds() : null;
-        String printerId = request != null ? request.getPrinterId() : null;
-        shipmentService.recordLabelPrint(shipmentId, packageIds, actingStaffUserId, printerId);
+        shipmentService.recordLabelPrint(
+                request.getPrintJobId(),
+                shipmentId,
+                request.getPackageIds(),
+                actingStaffUserId,
+                request.getPrinterId()
+        );
         return ResponseEntity.ok().build();
     }
 }

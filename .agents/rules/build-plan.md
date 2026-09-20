@@ -267,7 +267,7 @@
 
 ---
 
-## Phase 6 — Role-Aware Mobile Courier Portal (Mobile Screens 29–53)
+## Phase 6 — Role-Aware Mobile Courier Portal (Mobile Screens 29–53) — **[IN PROGRESS]**
 *Field staff courier app and authorized mobile office workflows.*
 
 **6.1 — Mobile Credential & PIN Workflow & Role-Aware Shell (Screens 29, 30, 31, 32, 33)** — **[COMPLETED]**
@@ -341,10 +341,22 @@
   - Frontend Node unit test suites (`tests/registration.test.mjs`, `tests/shipments.test.mjs` - 31/31 passing).
   - Verified clean compilation and bundling across Web, iOS, and Android via `npx expo export`.
 
-**6.3 — Office Staff: Bluetooth Thermal Label & QR Printing (Screens 41–44)**
-- Bluetooth ESC/POS printer discovery, pairing, and status monitoring (Brother RJ-2035B / standard 2-inch thermal printer).
-- Immediate label printing upon shipment generation and reprint capabilities for individual parcel QR stickers from the past shipments directory.
-- Audit recording via `POST /api/v1/parcel-units/{trackingId}/print-label` (`NOT_PRINTED` → `PRINTED` / `REPRINTED`).
+**6.3a — Software Label Printing, Virtual Driver Isolation & Audit Hardening (Screens 41–44)** — **[IN PROGRESS]**
+- Vendored Project Nayuki QR Code Generator v1.8.0 under its MIT license, preserving the shared matrix, SVG path, and monochrome BMP interfaces while supporting versions 1–40 and UTF-8 payloads.
+- Independent `jsqr` round-trip coverage across short, long, alphanumeric, and Unicode payloads, including limited module damage recovery.
+- Strict canonical label normalization using shipment detail fields. Missing tracking, shipment, recipient, address, or destination values stop the print job before transport.
+- Printable HTML encodes every dynamic value and validates numeric fields before formatting.
+- Explicit virtual and Bluetooth drivers. Virtual/test jobs are visibly marked as simulation and never write backend audit state. The Bluetooth driver reports `TRANSPORT_UNAVAILABLE` for physical transmission until hardware validation is complete.
+- Globally serialized mobile print jobs return explicit per-item transmission and audit results. Partial physical success audits only transmitted tracking IDs without retransmitting labels.
+- Durable per-user print-audit outboxes use AsyncStorage on mobile and localStorage on web. Audit retries are independent of printer transport and survive application restarts.
+- System/PDF printing uses a three-way confirmation: printed successfully records the exact job, saved as PDF preserves `NOT_PRINTED`, and cancelled makes no state change.
+- Backend print auditing requires a stable UUID, locks the shipment, validates the complete batch before mutation, and treats exact retries as no-ops while rejecting altered UUID reuse.
+- Canonical shipment detail is loaded before registration-result, shipment, or parcel print actions are enabled.
+
+**6.3b — Physical Bluetooth Integration & Brother RJ-2035B On-Device Validation** — **[UPCOMING]**
+- Validate the Expo development build and native Bluetooth bridge on the on-site Brother RJ-2035B.
+- Select and verify the printer command language supported by the deployed hardware, including QR/raster output, paper width, feed, tear position, reconnect behavior, and partial transmission reporting.
+- Add device-backed acceptance evidence before enabling production Bluetooth label transmission.
 
 **6.4 — Field Staff: Camera QR Scanner & Status Flow Engine (Screens 45–48)**
 - Real-time camera viewfinder QR barcode scanner (`expo-camera`) with torch toggle, haptic feedback, and manual Tracking ID input fallback.

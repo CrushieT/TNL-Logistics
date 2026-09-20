@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -57,6 +58,12 @@ public class ShipmentIntegrationTest {
     private TrackingEventRepository trackingEventRepository;
 
     @Autowired
+    private PrintEventRepository printEventRepository;
+
+    @Autowired
+    private PrintAuditJobRepository printAuditJobRepository;
+
+    @Autowired
     private com.tnl.logistics.repository.WaybillRepository waybillRepository;
 
     @Autowired
@@ -75,6 +82,8 @@ public class ShipmentIntegrationTest {
     @BeforeEach
     public void setup() {
         waybillRepository.deleteAll();
+        printEventRepository.deleteAll();
+        printAuditJobRepository.deleteAll();
         trackingEventRepository.deleteAll();
         paymentRepository.deleteAll();
         parcelUnitRepository.deleteAll();
@@ -257,7 +266,10 @@ public class ShipmentIntegrationTest {
 
         // 5. Record label print for all units
         mockMvc.perform(post("/api/v1/shipments/" + created.getShipmentId() + "/labels/print")
-                        .header("Authorization", officeToken))
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PrintLabelRequest(
+                                UUID.randomUUID(), null, "SYSTEM-PDF"))))
                 .andExpect(status().isOk());
 
         // 6. After print, NEEDS_LABEL returns 0 and PRINTED returns 1 with allLabelsPrinted: true
@@ -479,7 +491,7 @@ public class ShipmentIntegrationTest {
         mockMvc.perform(post("/api/v1/shipments/" + shipmentId + "/labels/print")
                         .header("Authorization", officeToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new PrintLabelRequest(List.of(trackingId)))))
+                        .content(objectMapper.writeValueAsString(new PrintLabelRequest(UUID.randomUUID(), List.of(trackingId)))))
                 .andExpect(status().isOk());
 
         ParcelUnit updatedUnit = parcelUnitRepository.findById(trackingId).orElseThrow();
@@ -490,7 +502,7 @@ public class ShipmentIntegrationTest {
         mockMvc.perform(post("/api/v1/shipments/" + shipmentId + "/labels/print")
                         .header("Authorization", officeToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new PrintLabelRequest(List.of(trackingId)))))
+                        .content(objectMapper.writeValueAsString(new PrintLabelRequest(UUID.randomUUID(), List.of(trackingId)))))
                 .andExpect(status().isOk());
 
         ParcelUnit reprintedUnit = parcelUnitRepository.findById(trackingId).orElseThrow();

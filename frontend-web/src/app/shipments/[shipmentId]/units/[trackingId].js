@@ -5,7 +5,7 @@ import AppShell from '../../../../components/layout/AppShell';
 import Card from '../../../../components/common/Card';
 import StatusBadge from '../../../../components/common/StatusBadge';
 import QRCodeGenerator from '../../../../components/common/QRCodeGenerator';
-import { getParcelUnit, printLabels, subscribeRealtimeEvents } from '../../../../features/shipments';
+import { getParcelUnit, getShipment, PrintLabelsModal, subscribeRealtimeEvents } from '../../../../features/shipments';
 import { colors, fonts, spacing, radius, type } from '../../../../theme';
 
 const STATUS_FLOW = ['Registered', 'QR Generated', 'Loaded on Truck', 'Arrived at TNL', 'Loaded to Hauler'];
@@ -14,22 +14,28 @@ export default function ParcelUnitDetailScreen() {
   const router = useRouter();
   const { shipmentId, trackingId } = useLocalSearchParams();
   const [unit, setUnit] = useState(null);
+  const [shipment, setShipment] = useState(null);
+  const [printModalVisible, setPrintModalVisible] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async (showSpinner = true) => {
     if (!trackingId) return;
     try {
       if (showSpinner) setLoading(true);
-      const data = await getParcelUnit(trackingId);
+      const [data, shipmentData] = await Promise.all([
+        getParcelUnit(trackingId),
+        getShipment(shipmentId),
+      ]);
       if (data) {
         setUnit(data);
       }
+      setShipment(shipmentData);
     } catch (err) {
       console.warn('Parcel unit fetch failed:', err?.message);
     } finally {
       if (showSpinner) setLoading(false);
     }
-  }, [trackingId]);
+  }, [shipmentId, trackingId]);
 
   useEffect(() => {
     load(true);
@@ -94,20 +100,7 @@ export default function ParcelUnitDetailScreen() {
   const completedEventNames = new Set(completedEvents.map((e) => e.event));
   const nextPendingStatus = STATUS_FLOW.find((s) => !completedEventNames.has(s));
 
-  const handleReprint = async () => {
-    try {
-      if (typeof window !== 'undefined' && window.print) {
-        window.print();
-      }
-      if (shipmentId && trackingId) {
-        await printLabels(shipmentId, [trackingId]);
-      }
-    } catch (err) {
-      console.warn('Failed to record label reprint:', err?.message);
-    } finally {
-      load(false);
-    }
-  };
+  const handleReprint = () => setPrintModalVisible(true);
 
   return (
     <AppShell>
@@ -230,6 +223,7 @@ export default function ParcelUnitDetailScreen() {
           <Pressable
             style={styles.reprintBtn}
             onPress={handleReprint}
+            disabled={!shipment}
           >
             <Text style={styles.reprintBtnText}>Reprint Label</Text>
           </Pressable>
@@ -252,6 +246,15 @@ export default function ParcelUnitDetailScreen() {
           </Card>
         </View>
       </View>
+      <PrintLabelsModal
+        visible={printModalVisible}
+        shipment={shipment ? {
+          ...shipment,
+          units: shipment.units?.filter((parcelUnit) => parcelUnit.trackingId === trackingId) || [],
+        } : null}
+        onClose={() => setPrintModalVisible(false)}
+        onAuditComplete={() => load(false)}
+      />
     </AppShell>
   );
 }
