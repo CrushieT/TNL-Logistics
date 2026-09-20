@@ -390,6 +390,13 @@ export default function ScanScreen() {
               ? 'Each package has its own QR — scan identifies the exact unit'
               : `Batch Mode: ${state.batchQueue.length} / ${MAX_BATCH_SIZE} items scanned`
           }
+          pausedText={
+            state.mode === SCANNER_MODES.BATCH &&
+            state.batchOperation === 'LOADED_ON_TRUCK' &&
+            !state.batchVehicleId
+              ? 'Please select an active vehicle below to start scanning'
+              : 'Camera preview paused'
+          }
         />
 
         {/* Error Notification Banner (non-lookup errors) */}

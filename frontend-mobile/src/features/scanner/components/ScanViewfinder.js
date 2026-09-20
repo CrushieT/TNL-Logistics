@@ -15,7 +15,8 @@ export default function ScanViewfinder({
   cameraError,
   onCameraMountError,
   onRetryCamera,
-  cameraMountKey
+  cameraMountKey,
+  pausedText
 }) {
   const hasCameraError = Boolean(cameraError);
 
@@ -56,7 +57,7 @@ export default function ScanViewfinder({
               </TouchableOpacity>
             </>
           ) : (
-            <Text style={styles.fallbackText}>Camera preview paused</Text>
+            <Text style={styles.fallbackText}>{pausedText || 'Camera preview paused'}</Text>
           )}
         </View>
       )}
