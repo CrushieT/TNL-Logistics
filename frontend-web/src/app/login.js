@@ -15,6 +15,7 @@ import {
 import { useRouter, useLocalSearchParams, useRootNavigationState } from 'expo-router';
 import { colors, fonts, spacing, radius } from '../theme';
 import { login, isAuthenticated, getCurrentUser } from '../services/api/client';
+import { retryPendingPrintAudits } from '../features/shipments/services/printAuditOutbox';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -79,6 +80,7 @@ export default function LoginScreen() {
 
     try {
       const authData = await login(trimmedUsername, password);
+      retryPendingPrintAudits().catch(() => undefined);
       if (authData?.mustChangePassword) {
         router.replace('/change-password');
       } else {
