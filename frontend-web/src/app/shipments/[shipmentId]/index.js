@@ -10,7 +10,6 @@ import {
   PrintLabelsModal,
   SingleUnitQRModal,
   getShipment,
-  printLabels,
   subscribeRealtimeEvents,
 } from '../../../features/shipments';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
@@ -68,17 +67,6 @@ export default function ShipmentDetailScreen() {
 
   const handlePrintAll = () => {
     setPrintModalVisible(true);
-  };
-
-  const handleConfirmPrintAll = async () => {
-    try {
-      await printLabels(shipmentId);
-      loadShipment(false);
-    } catch (err) {
-      console.warn('Failed to record print labels:', err?.message);
-    } finally {
-      setPrintModalVisible(false);
-    }
   };
 
   if (loading) {
@@ -351,7 +339,7 @@ export default function ShipmentDetailScreen() {
         visible={printModalVisible}
         shipment={shipment}
         onClose={() => setPrintModalVisible(false)}
-        onPrint={handleConfirmPrintAll}
+        onAuditComplete={() => loadShipment(false)}
       />
 
       {/* Interactive Single-Unit QR Code Modal */}

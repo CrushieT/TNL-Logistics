@@ -1,10 +1,32 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Modal, ScrollView, TouchableOpacity } from 'react-native';
 import QRCodeGenerator from '../../../components/common/QRCodeGenerator';
 import Button from '../../../components/common/Button';
 import { colors, fonts, spacing, radius } from '../../../theme';
+import { retryPendingPrintAudits, submitPrintAudit } from '../services/printAuditOutbox';
 
-export default function PrintLabelsModal({ visible, shipment, onClose, onPrint }) {
+function createPrintJobId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+export default function PrintLabelsModal({ visible, shipment, onClose, onAuditComplete }) {
+  const [pendingConfirmation, setPendingConfirmation] = useState(null);
+  const [notice, setNotice] = useState(null);
+
+  useEffect(() => {
+    if (visible) {
+      setPendingConfirmation(null);
+      setNotice(null);
+      retryPendingPrintAudits();
+    }
+  }, [visible]);
+
   if (!visible || !shipment) return null;
 
   const units = shipment.units || [];
@@ -14,7 +36,20 @@ export default function PrintLabelsModal({ visible, shipment, onClose, onPrint }
     if (typeof window !== 'undefined' && window.print) {
       window.print();
     }
-    onPrint?.();
+    setPendingConfirmation({
+      printJobId: createPrintJobId(),
+      shipmentId: shipment.shipmentId,
+      trackingIds: units.map((unit) => unit.trackingId),
+    });
+  };
+
+  const handlePrintedSuccessfully = async () => {
+    const status = await submitPrintAudit(pendingConfirmation);
+    setPendingConfirmation(null);
+    setNotice(status === 'SYNCED'
+      ? 'Print audit recorded.'
+      : 'The print audit was not synchronized. Retry the audit without printing again.');
+    onAuditComplete?.(status);
   };
 
   return (
@@ -83,7 +118,7 @@ export default function PrintLabelsModal({ visible, shipment, onClose, onPrint }
                     <View style={styles.footerRow}>
                       <Text style={styles.footerItem}>
                         <Text style={styles.footerMuted}>Contents: </Text>
-                        {shipment.description || 'General Goods'}
+                        {shipment.description || ''}
                       </Text>
                       <Text style={styles.footerItem}>
                         <Text style={styles.footerMuted}>Shipment: </Text>
@@ -97,7 +132,7 @@ export default function PrintLabelsModal({ visible, shipment, onClose, onPrint }
                       </Text>
                       <Text style={styles.footerItem}>
                         <Text style={styles.footerMuted}>Route: </Text>
-                        {shipment.route || 'Manila to TNL Baguio'}
+                        {shipment.route || ''}
                       </Text>
                     </View>
                     <View style={styles.totalRow}>
@@ -112,11 +147,26 @@ export default function PrintLabelsModal({ visible, shipment, onClose, onPrint }
             </View>
           </ScrollView>
 
-          {/* Action Buttons */}
-          <View style={styles.dialogActions}>
+          {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+
+          {pendingConfirmation ? (
+            <View style={styles.confirmationPanel}>
+              <Text style={styles.confirmationTitle}>Confirm Label Printing</Text>
+              <Text style={styles.dialogSubtitle}>Did your labels print successfully on paper?</Text>
+              <Button label="Printed Successfully" variant="primary" onPress={handlePrintedSuccessfully} />
+              <Button label="Saved as PDF Only" variant="secondary" onPress={() => {
+                setPendingConfirmation(null);
+                setNotice('Saved as PDF. Parcel label status remains NOT_PRINTED.');
+              }} />
+              <Button label="Cancelled / Failed" variant="secondary" onPress={() => {
+                setPendingConfirmation(null);
+                setNotice('No print audit was recorded.');
+              }} />
+            </View>
+          ) : <View style={styles.dialogActions}>
             <Button label="Close" variant="secondary" onPress={onClose} />
             <Button label={`Print ${count} Labels`} variant="primary" onPress={handlePrint} />
-          </View>
+          </View>}
         </View>
       </View>
     </Modal>
@@ -328,5 +378,24 @@ const styles = StyleSheet.create({
     borderColor: '#F0F0F0',
     paddingTop: spacing.md,
     marginTop: spacing.md,
+  },
+  confirmationPanel: {
+    gap: spacing.sm,
+    borderTopWidth: 1,
+    borderColor: '#F0F0F0',
+    paddingTop: spacing.md,
+    marginTop: spacing.md,
+  },
+  confirmationTitle: {
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.ink,
+  },
+  notice: {
+    marginTop: spacing.md,
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: colors.inkSoft,
   },
 });

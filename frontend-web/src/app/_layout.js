@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Platform, LogBox } from 'react-native';
 import { Stack, usePathname, useRouter, useRootNavigationState } from 'expo-router';
 import { isAuthenticated, validateSession, getCurrentUser, checkFirstBootStatus } from '../services/api/client';
+import { retryPendingPrintAudits } from '../features/shipments/services/printAuditOutbox';
 
 // Suppress dev LogBox error overlays for expected API response errors
 LogBox.ignoreLogs([
@@ -21,6 +22,14 @@ export default function RootLayout() {
   const pathname = usePathname();
   const router = useRouter();
   const navigationState = useRootNavigationState();
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return undefined;
+    const retryAudits = () => retryPendingPrintAudits();
+    retryAudits();
+    window.addEventListener('focus', retryAudits);
+    return () => window.removeEventListener('focus', retryAudits);
+  }, []);
 
   useEffect(() => {
     // Inject operational scrollbar styling for web consoles
