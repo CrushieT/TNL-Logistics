@@ -46,10 +46,12 @@ export default function PrintLabelsModal({ visible, shipment, onClose, onAuditCo
   const handlePrintedSuccessfully = async () => {
     const status = await submitPrintAudit(pendingConfirmation);
     setPendingConfirmation(null);
-    setNotice(status === 'SYNCED'
-      ? 'Print audit recorded.'
-      : 'The print audit was not synchronized. Retry the audit without printing again.');
     onAuditComplete?.(status);
+    if (status === 'SYNCED') {
+      onClose();
+    } else {
+      setNotice('The print audit was not synchronized. Retry the audit without printing again.');
+    }
   };
 
   return (
