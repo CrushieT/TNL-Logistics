@@ -28,7 +28,7 @@ tnl-logistics/
 │   │   │   └── resources/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
-│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V27)
+│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V28)
 │   │   └── test/                        # Integration and unit test suites
 │   └── pom.xml
 │
@@ -59,11 +59,12 @@ tnl-logistics/
 │   │   │   ├── users.js             # Screen 27 User & Staff Management
 │   │   │   └── settings.js          # Screen 28 System Settings
 │   │   ├── components/              # Shared design system (common/ atoms, layout/ AppShell)
-│   │   ├── features/                # Domain feature modules (shipments, vehicles, clients, waybills, payments, collections, tracking-logs, reports, users, settings)
+│   │   ├── features/                # Domain modules, including the durable shipment print-audit outbox
 │   │   │   └── settings/            # AdminSecurityCard, ConfirmPasswordModal, settings components
 │   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sseClient.js)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
-│   │   └── utils/                   # Pure utilities (qr.js in-memory vector QR encoder)
+│   │   ├── utils/                   # Shared QR facade
+│   │   └── vendor/qrcodegen/        # Vendored Project Nayuki QR generator
 │   ├── assets/                      # favicon.png, tracking-logo.png
 │   ├── app.json                     # Expo web configuration
 │   ├── package.json
@@ -94,12 +95,13 @@ tnl-logistics/
 │   │   │   └── layout/               # MobileHeader
 │   │   ├── features/                 # Domain feature slices (auth, office, field, shipments, printer)
 │   │   │   ├── shipments/            # Shipment registration, explorer, detail screens, and barcode scanner modal
-│   │   │   └── printer/              # Bluetooth printer transport, virtual driver, ESC/POS formatter, and PrinterContext
+│   │   │   └── printer/              # Driver isolation, audit outbox, ESC/POS formatter, and serialized PrinterContext
 │   │   ├── services/
 │   │   │   ├── api/client.js         # Axios API client with Bearer auth
 │   │   │   └── storage/secureStore.js# Hardware-backed SecureStore adapter
 │   │   ├── theme/index.js            # TNL design tokens (canvas, ink, accent, keypad)
-│   │   └── utils/                    # Pure utilities (qr.js in-memory QR matrix and 1-bit BMP generator)
+│   │   ├── utils/                    # QR matrix, SVG path, and BMP facade
+│   │   └── vendor/qrcodegen/         # Vendored Project Nayuki QR generator
 │   ├── tests/                        # Mobile unit test suites (registration, shipments, printer)
 │   ├── app.json                      # Expo configuration
 │   ├── eas.json                      # EAS Build configuration
@@ -108,6 +110,7 @@ tnl-logistics/
 │   └── README.md
 │
 ├── docker-compose.yml                # Local dev: MySQL + Backend
+├── THIRD_PARTY_NOTICES.md            # Vendored dependency attribution and licensing
 ├── .gitignore                        # Root-level git ignore
 └── README.md                          # Project overview & quick start
 ```
