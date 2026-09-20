@@ -5,6 +5,99 @@ import jsQR from 'jsqr';
 import { generateQRMatrix, generateQRSvgPath, generateQRBitmapDataUri } from '../src/utils/qr.js';
 import { IncompleteLabelDataError, normalizeLabelData } from '../src/features/printer/services/thermalLabelData.js';
 import { buildEscPosCommands, buildLabelHtml } from '../src/features/printer/services/escposFormatter.js';
+import {
+  MAX_OUTBOX_ENTRIES,
+  OutboxCapacityError,
+  OutboxStorageError,
+  PRINT_AUDIT_OUTBOX_KEY,
+  createPrintAuditOutbox,
+  syncPrintAuditEntry,
+} from '../src/features/printer/services/printAuditOutbox.js';
+
+function createMemoryStorage(initialValue = null) {
+  let storedValue = initialValue;
+  return {
+    getItem: async () => storedValue,
+    setItem: async (key, value) => {
+      assert.equal(key, PRINT_AUDIT_OUTBOX_KEY);
+      storedValue = value;
+    },
+    getStoredValue: () => storedValue,
+  };
+}
+
+function createAuditEntry(index = 1, overrides = {}) {
+  return {
+    printJobId: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    ownerUserId: 'USR-OFFICE',
+    shipmentId: 'SHP-2026-001',
+    trackingIds: [`TRK-2026-${String(index).padStart(6, '0')}`],
+    printerId: 'TEST-PRINTER',
+    status: 'PENDING',
+    ...overrides,
+  };
+}
+
+test('print audit retries AUTH_PAUSED entries after re-authentication', async () => {
+  const outbox = createPrintAuditOutbox(createMemoryStorage());
+  const entry = createAuditEntry();
+  const unauthorizedError = new Error('Session expired');
+  unauthorizedError.response = { status: 401 };
+
+  const pausedStatus = await syncPrintAuditEntry({
+    entry,
+    outbox,
+    sendAudit: async () => { throw unauthorizedError; },
+  });
+
+  assert.equal(pausedStatus, 'AUTH_PAUSED');
+  assert.equal(await outbox.getPendingCount(entry.ownerUserId), 1);
+  const pausedEntries = await outbox.getPendingPrintAudits(entry.ownerUserId);
+  assert.equal(pausedEntries[0].status, 'AUTH_PAUSED');
+
+  const retryStatus = await syncPrintAuditEntry({
+    entry: pausedEntries[0],
+    outbox,
+    sendAudit: async () => undefined,
+  });
+
+  assert.equal(retryStatus, 'SYNCED');
+  assert.equal(await outbox.getPendingCount(entry.ownerUserId), 0);
+  assert.deepEqual(await outbox.readAll(), []);
+});
+
+test('print audit outbox rejects new jobs at capacity without deleting old entries', async () => {
+  const existingEntries = Array.from(
+    { length: MAX_OUTBOX_ENTRIES },
+    (_, index) => createAuditEntry(index + 1)
+  );
+  const storage = createMemoryStorage(JSON.stringify(existingEntries));
+  const outbox = createPrintAuditOutbox(storage);
+
+  await assert.rejects(() => outbox.assertCapacityAvailable(), OutboxCapacityError);
+  await assert.rejects(() => outbox.enqueuePrintAudit(createAuditEntry(MAX_OUTBOX_ENTRIES + 1)), OutboxCapacityError);
+  assert.deepEqual(JSON.parse(storage.getStoredValue()), existingEntries);
+});
+
+test('print audit storage read failures do not overwrite durable entries', async () => {
+  let writeCount = 0;
+  const outbox = createPrintAuditOutbox({
+    getItem: async () => { throw new Error('Storage unavailable'); },
+    setItem: async () => { writeCount += 1; },
+  });
+
+  await assert.rejects(() => outbox.enqueuePrintAudit(createAuditEntry()), OutboxStorageError);
+  assert.equal(writeCount, 0);
+});
+
+test('print audit preflight blocks printing when storage is not writable', async () => {
+  const outbox = createPrintAuditOutbox({
+    getItem: async () => null,
+    setItem: async () => { throw new Error('Storage is read-only'); },
+  });
+
+  await assert.rejects(() => outbox.assertCapacityAvailable(), OutboxStorageError);
+});
 
 test('QR Code generator produces valid matrix for tracking ID', () => {
   const trackingId = 'TRK-2026-000101';
