@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { colors, spacing, typography } from '../../../theme';
 import { shipmentApi } from '../services/shipmentApi';
 import { BackButton } from '../../../components/common/BackButton';
@@ -85,13 +85,20 @@ export function FindParcelScreen({ initialFilter = 'ALL' }) {
     }
   }, [search, activeFilter]);
 
-  // Debounced search / filter reload
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchShipments(0, false);
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [fetchShipments]);
+  // Reload on screen focus or filter/search change
+  useFocusEffect(
+    useCallback(() => {
+      const timer = setTimeout(() => {
+        fetchShipments(0, false);
+      }, search ? 250 : 0);
+      return () => {
+        clearTimeout(timer);
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+      };
+    }, [fetchShipments, search])
+  );
 
   const handleRefresh = () => {
     setIsRefreshing(true);

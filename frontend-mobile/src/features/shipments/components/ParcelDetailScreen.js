@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { colors, spacing, typography } from '../../../theme';
 import { shipmentApi } from '../services/shipmentApi';
 import { StatusModal } from '../../../components/common/StatusModal';
@@ -35,7 +35,7 @@ export function ParcelDetailScreen({ trackingId }) {
 
   const { isConnected, connectedDevice, printParcelLabels } = usePrinter();
 
-  const fetchParcel = async (signal) => {
+  const fetchParcel = useCallback(async (signal) => {
     try {
       setError('');
       const data = await shipmentApi.getParcelUnit(trackingId, signal);
@@ -48,13 +48,15 @@ export function ParcelDetailScreen({ trackingId }) {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchParcel(controller.signal);
-    return () => controller.abort();
   }, [trackingId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const controller = new AbortController();
+      fetchParcel(controller.signal);
+      return () => controller.abort();
+    }, [fetchParcel])
+  );
 
   const handleReprint = async () => {
     if (isReprinting || !parcel || !shipment) return;
@@ -306,6 +308,7 @@ export function ParcelDetailScreen({ trackingId }) {
         visible={previewVisible}
         labelData={previewLabel}
         onClose={() => setPreviewVisible(false)}
+        onAuditComplete={() => fetchParcel()}
         onPrintDirect={async () => {
           setPreviewVisible(false);
           await handleReprint();

@@ -24,6 +24,7 @@ export function ThermalLabelPreviewModal({
   labels,
   onClose,
   onPrintDirect,
+  onAuditComplete,
 }) {
   const router = useRouter();
   const { isConnected, connectedDevice, isVirtualMode, confirmSystemPrint } = usePrinter();
@@ -76,9 +77,12 @@ export function ThermalLabelPreviewModal({
   const handlePrintedSuccessfully = async () => {
     const auditStatus = await confirmSystemPrint(pendingConfirmation);
     setPendingConfirmation(null);
-    setConfirmationNotice(auditStatus === 'SYNCED'
-      ? 'Print audit recorded.'
-      : 'Labels were printed, but the audit is pending. Retry it from Printer Setup without printing again.');
+    onAuditComplete?.(auditStatus);
+    if (auditStatus === 'SYNCED') {
+      onClose();
+    } else {
+      setConfirmationNotice('Labels were printed, but the audit is pending. Retry it from Printer Setup without printing again.');
+    }
   };
 
   const handleSavedAsPdf = () => {

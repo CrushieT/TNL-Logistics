@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { colors, spacing, typography } from '../../../theme';
 import { shipmentApi } from '../services/shipmentApi';
 import { StatusModal } from '../../../components/common/StatusModal';
@@ -33,7 +33,7 @@ export function ShipmentDetailScreen({ shipmentId }) {
 
   const { isConnected, connectedDevice, printParcelLabels } = usePrinter();
 
-  const fetchDetail = async (signal) => {
+  const fetchDetail = useCallback(async (signal) => {
     try {
       setError('');
       const data = await shipmentApi.getShipment(shipmentId, signal);
@@ -44,13 +44,15 @@ export function ShipmentDetailScreen({ shipmentId }) {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchDetail(controller.signal);
-    return () => controller.abort();
   }, [shipmentId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const controller = new AbortController();
+      fetchDetail(controller.signal);
+      return () => controller.abort();
+    }, [fetchDetail])
+  );
 
   const handlePrintAll = async () => {
     if (isPrinting || !shipment) return;
@@ -316,6 +318,7 @@ export function ShipmentDetailScreen({ shipmentId }) {
         visible={previewVisible}
         labels={previewLabels}
         onClose={() => setPreviewVisible(false)}
+        onAuditComplete={() => fetchDetail()}
         onPrintDirect={async () => {
           setPreviewVisible(false);
           await handlePrintAll();

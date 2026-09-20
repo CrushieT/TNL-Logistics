@@ -42,6 +42,7 @@ export function RegistrationResult({ shipment, onRegisterAnother, onHome }) {
             ? `Simulated ${result.count} labels. No parcel audit records were changed.`
             : `Printed ${result.count} labels to ${result.device}. Audit status: ${result.auditSyncStatus}.`,
         });
+        loadCanonicalShipment();
       } catch (err) {
         setStatusDialog({
           title: 'Print Failed',
@@ -134,6 +135,7 @@ export function RegistrationResult({ shipment, onRegisterAnother, onHome }) {
         visible={previewVisible}
         labels={previewLabels}
         onClose={() => setPreviewVisible(false)}
+        onAuditComplete={() => loadCanonicalShipment()}
         onPrintDirect={async () => {
           setPreviewVisible(false);
           await handlePrintLabels();
