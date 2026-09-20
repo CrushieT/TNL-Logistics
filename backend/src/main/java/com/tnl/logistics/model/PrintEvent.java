@@ -35,18 +35,24 @@ public class PrintEvent {
     @Column(name = "printer_id", length = 20)
     private String printerId;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "print_job_id", columnDefinition = "CHAR(36)")
+    private PrintAuditJob printAuditJob;
+
     @CreationTimestamp
     @Column(name = "print_timestamp", nullable = false, updatable = false)
     private LocalDateTime printTimestamp;
 
     public PrintEvent() {}
 
-    public PrintEvent(ParcelUnit parcelUnit, PrintKind kind, Integer labelsProduced, AppUser staff, String printerId) {
+    public PrintEvent(ParcelUnit parcelUnit, PrintKind kind, Integer labelsProduced, AppUser staff,
+                      String printerId, PrintAuditJob printAuditJob) {
         this.parcelUnit = parcelUnit;
         this.kind = kind;
         this.labelsProduced = labelsProduced != null ? labelsProduced : 1;
         this.staff = staff;
         this.printerId = printerId;
+        this.printAuditJob = printAuditJob;
     }
 
     public Long getPrintId() {
@@ -96,6 +102,9 @@ public class PrintEvent {
     public void setPrinterId(String printerId) {
         this.printerId = printerId;
     }
+
+    public PrintAuditJob getPrintAuditJob() { return printAuditJob; }
+    public void setPrintAuditJob(PrintAuditJob printAuditJob) { this.printAuditJob = printAuditJob; }
 
     public LocalDateTime getPrintTimestamp() {
         return printTimestamp;
