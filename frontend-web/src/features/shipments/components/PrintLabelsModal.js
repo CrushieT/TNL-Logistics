@@ -3,7 +3,11 @@ import { View, Text, StyleSheet, Modal, ScrollView, TouchableOpacity } from 'rea
 import QRCodeGenerator from '../../../components/common/QRCodeGenerator';
 import Button from '../../../components/common/Button';
 import { colors, fonts, spacing, radius } from '../../../theme';
-import { retryPendingPrintAudits, submitPrintAudit } from '../services/printAuditOutbox';
+import {
+  assertPrintAuditCapacityAvailable,
+  retryPendingPrintAudits,
+  submitPrintAudit,
+} from '../services/printAuditOutbox';
 
 function createPrintJobId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -23,7 +27,9 @@ export default function PrintLabelsModal({ visible, shipment, onClose, onAuditCo
     if (visible) {
       setPendingConfirmation(null);
       setNotice(null);
-      retryPendingPrintAudits();
+      retryPendingPrintAudits().catch((error) => {
+        setNotice(error?.message || 'Unable to retry pending print audits.');
+      });
     }
   }, [visible]);
 
@@ -33,24 +39,33 @@ export default function PrintLabelsModal({ visible, shipment, onClose, onAuditCo
   const count = units.length;
 
   const handlePrint = () => {
-    if (typeof window !== 'undefined' && window.print) {
-      window.print();
+    try {
+      assertPrintAuditCapacityAvailable();
+      if (typeof window !== 'undefined' && window.print) {
+        window.print();
+      }
+      setPendingConfirmation({
+        printJobId: createPrintJobId(),
+        shipmentId: shipment.shipmentId,
+        trackingIds: units.map((unit) => unit.trackingId),
+      });
+    } catch (error) {
+      setNotice(error?.message || 'Printing is unavailable because audit storage could not be verified.');
     }
-    setPendingConfirmation({
-      printJobId: createPrintJobId(),
-      shipmentId: shipment.shipmentId,
-      trackingIds: units.map((unit) => unit.trackingId),
-    });
   };
 
   const handlePrintedSuccessfully = async () => {
-    const status = await submitPrintAudit(pendingConfirmation);
-    setPendingConfirmation(null);
-    onAuditComplete?.(status);
-    if (status === 'SYNCED') {
-      onClose();
-    } else {
-      setNotice('The print audit was not synchronized. Retry the audit without printing again.');
+    try {
+      const status = await submitPrintAudit(pendingConfirmation);
+      setPendingConfirmation(null);
+      onAuditComplete?.(status);
+      if (status === 'SYNCED') {
+        onClose();
+      } else {
+        setNotice('The print audit was not synchronized. Retry the audit without printing again.');
+      }
+    } catch (error) {
+      setNotice(error?.message || 'Unable to store the print audit. Do not print the labels again.');
     }
   };
 

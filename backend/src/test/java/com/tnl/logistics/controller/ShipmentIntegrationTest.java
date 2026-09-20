@@ -228,6 +228,53 @@ public class ShipmentIntegrationTest {
     }
 
     @Test
+    public void testShipmentPaginationBoundsInvalidPageAndSizeValues() throws Exception {
+        MvcResult oversizedResult = mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .param("page", "-7")
+                        .param("size", "1000000"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode oversizedPage = objectMapper.readTree(oversizedResult.getResponse().getContentAsString()).get("page");
+        assertEquals(0, oversizedPage.get("number").asInt());
+        assertEquals(100, oversizedPage.get("size").asInt());
+
+        MvcResult undersizedResult = mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .param("size", "0"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode undersizedPage = objectMapper.readTree(undersizedResult.getResponse().getContentAsString()).get("page");
+        assertEquals(0, undersizedPage.get("number").asInt());
+        assertEquals(1, undersizedPage.get("size").asInt());
+
+        mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .param("page", "not-a-number"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testShipmentPaginationBoundsDoNotBypassAuthorization() throws Exception {
+        mockMvc.perform(get("/api/v1/shipments")
+                        .param("page", "-7")
+                        .param("size", "1000000"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", "Bearer invalid-token")
+                        .param("page", "-7")
+                        .param("size", "1000000"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", fieldToken)
+                        .param("page", "-7")
+                        .param("size", "1000000"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     public void testFindParcelSearchFilterAndRoleGates() throws Exception {
         // 1. Create a mobile shipment with 2 parcels
         ShipmentRegistrationRequest regReq = createMobileRegistrationRequest();

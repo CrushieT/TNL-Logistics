@@ -11,9 +11,9 @@ alerts.
 
 ## Stack
 
-- Expo SDK 51 + Expo Router (file-based routes)
-- React Native Web
-- Axios (`api/client.js`) with automatic JWT injection
+- Expo SDK 57 + Expo Router 57 (file-based routes)
+- React Native 0.86 + React Native Web 0.21
+- Axios (`api/client.js`) with one persisted bearer token per session, automatic request injection, and no refresh-token flow
 - Plain JavaScript (no TypeScript), matching the rest of the monorepo
 
 ## Getting started
@@ -79,7 +79,7 @@ frontend-web/
 │   │
 │   ├── services/
 │   │   └── api/
-│   │       ├── client.js             # Axios client with JWT auto-refresh & 401/403 retry
+│   │       ├── client.js             # Single-token Bearer auth, 401 logout, and 403 password-change routing
 │   │       └── sseClient.js          # Server-Sent Events real-time event subscriptions
 │   │
 │   └── theme/                        # Design System Tokens (Colors, Typography, Spacing)

@@ -125,6 +125,7 @@ tnl-logistics/
 **Frontend Web (Feature-Sliced):** Organized into file-based routes (`src/app/`) backed by cohesive domain feature modules (`src/features/`):
 - **Why:** Keeps feature-specific UI, modals, API calls, and utilities colocated (e.g. `src/features/collections/` contains table components, deductions cards, paper cards, and API bindings).
 - **API client:** Centralized in `services/api/client.js` with self-healing token refresh and 401/403 transparent request retries.
+- **Print audit outbox:** Platform-neutral persistence and retry logic lives in `src/features/shipments/services/printAuditOutboxCore.mjs`; the adjacent JavaScript module supplies browser storage and API adapters.
 
 **Frontend Mobile:** Expo Router file-based routing targeting iOS and Android natively.
 

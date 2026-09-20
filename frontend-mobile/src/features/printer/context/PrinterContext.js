@@ -7,11 +7,10 @@ import { buildEscPosCommands } from '../services/escposFormatter';
 import { shipmentApi } from '../../shipments/services/shipmentApi';
 import { useAuth } from '../../auth/context/AuthContext';
 import {
-  classifyAuditError,
-  enqueuePrintAudit,
+  assertPrintAuditCapacityAvailable,
+  getPendingCount,
   getPendingPrintAudits,
-  removePrintAudit,
-  updatePrintAudit,
+  syncPrintAuditEntry,
 } from '../services/printAuditOutbox';
 
 const PrinterContext = createContext(null);
@@ -41,21 +40,15 @@ export function PrinterProvider({ children }) {
   const [pendingAuditCount, setPendingAuditCount] = useState(0);
 
   const syncAuditEntry = useCallback(async (entry) => {
-    await enqueuePrintAudit(entry);
-    try {
-      await shipmentApi.printLabels(
-        entry.shipmentId,
-        entry.trackingIds,
-        entry.printJobId,
-        entry.printerId
-      );
-      await removePrintAudit(entry.printJobId);
-      return 'SYNCED';
-    } catch (error) {
-      const status = classifyAuditError(error);
-      await updatePrintAudit(entry.printJobId, { status, lastError: error?.message || 'Audit sync failed' });
-      return status === 'PENDING' ? 'PENDING' : 'FAILED';
-    }
+    return syncPrintAuditEntry({
+      entry,
+      sendAudit: (auditEntry) => shipmentApi.printLabels(
+        auditEntry.shipmentId,
+        auditEntry.trackingIds,
+        auditEntry.printJobId,
+        auditEntry.printerId
+      ),
+    });
   }, []);
 
   const retryPendingAudits = useCallback(async () => {
@@ -63,7 +56,7 @@ export function PrinterProvider({ children }) {
     const entries = await getPendingPrintAudits(ownerUserId);
     const results = [];
     for (const entry of entries) results.push(await syncAuditEntry(entry));
-    setPendingAuditCount((await getPendingPrintAudits(ownerUserId)).length);
+    setPendingAuditCount(await getPendingCount(ownerUserId));
     return results;
   }, [ownerUserId, syncAuditEntry]);
 
@@ -125,9 +118,14 @@ export function PrinterProvider({ children }) {
       printerId,
       status: 'PENDING',
     });
-    setPendingAuditCount((await getPendingPrintAudits(ownerUserId)).length);
+    setPendingAuditCount(await getPendingCount(ownerUserId));
     return status;
   }, [ownerUserId, syncAuditEntry]);
+
+  const assertCanRecordPrintAudit = useCallback(async () => {
+    if (!ownerUserId) throw new Error('Sign in before printing parcel labels.');
+    return assertPrintAuditCapacityAvailable();
+  }, [ownerUserId]);
 
   const confirmSystemPrint = useCallback(async ({ printJobId, shipmentId, trackingIds }) =>
     auditTrackingIds({ printJobId, shipmentId, trackingIds, printerId: 'SYSTEM-PDF' }), [auditTrackingIds]);
@@ -138,12 +136,15 @@ export function PrinterProvider({ children }) {
       const units = unitsToPrint || shipment.units || [];
       if (units.length === 0) throw new Error('No parcel units are available for printing.');
 
-      setIsPrinting(true);
       const transmittedTrackingIds = [];
       const failedTrackingIds = [];
       const notAttemptedTrackingIds = [];
       let failureReason = null;
       const isVirtual = connectedDevice?.type === 'VIRTUAL' || bluetoothPrinterService.isVirtualMode;
+      const shouldAudit = !isVirtual && options.auditMode !== 'NONE';
+
+      if (shouldAudit) await assertCanRecordPrintAudit();
+      setIsPrinting(true);
 
       try {
         for (let index = 0; index < units.length; index += 1) {
@@ -166,10 +167,7 @@ export function PrinterProvider({ children }) {
         }
 
         let auditSyncStatus = 'SKIPPED';
-        const shouldAudit = !isVirtual
-          && options.auditMode !== 'NONE'
-          && transmittedTrackingIds.length > 0;
-        if (shouldAudit) {
+        if (shouldAudit && transmittedTrackingIds.length > 0) {
           auditSyncStatus = await auditTrackingIds({
             printJobId: jobId,
             shipmentId: shipment.shipmentId,
@@ -196,14 +194,14 @@ export function PrinterProvider({ children }) {
         setIsPrinting(false);
       }
     });
-  }, [auditTrackingIds, connectedDevice]);
+  }, [assertCanRecordPrintAudit, auditTrackingIds, connectedDevice]);
 
   return (
     <PrinterContext.Provider value={{
       isConnected: Boolean(connectedDevice), connectedDevice, isVirtualMode, isScanning,
       availableDevices, isPrinting, pendingAuditCount, scanDevices, connectPrinter,
       disconnectPrinter, toggleVirtualMode, printParcelLabels, confirmSystemPrint,
-      retryPendingAudits,
+      retryPendingAudits, assertCanRecordPrintAudit,
     }}>
       {children}
     </PrinterContext.Provider>

@@ -24,6 +24,8 @@ import java.util.List;
 @RequestMapping("/api/v1/shipments")
 public class ShipmentController {
 
+    private static final int MAX_PAGE_SIZE = 100;
+
     private final ShipmentService shipmentService;
 
     public ShipmentController(ShipmentService shipmentService) {
@@ -53,7 +55,9 @@ public class ShipmentController {
             @RequestParam(required = false) String vehicleId,
             @RequestParam(required = false) String labelStatus
     ) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "dateRegistered"));
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(MAX_PAGE_SIZE, Math.max(1, size));
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "dateRegistered"));
         Page<ShipmentSummaryResponse> shipments = shipmentService.getShipments(search, status, paymentStatus, vehicleId, labelStatus, pageable);
         return ResponseEntity.ok(shipments);
     }

@@ -14,11 +14,13 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
 
+ENV SPRING_PROFILES_ACTIVE=prod
+
 # Copy built artifact from build stage
 COPY --from=build /app/target/logistics-0.0.1-SNAPSHOT.jar app.jar
 
 # Expose backend port
 EXPOSE 8080
 
-# Run JVM with performance configurations
-ENTRYPOINT ["java", "-jar", "-Dspring.profiles.active=prod", "app.jar"]
+# Run the application with the runtime profile supplied by the environment
+ENTRYPOINT ["java", "-jar", "app.jar"]

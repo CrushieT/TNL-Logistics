@@ -2,7 +2,7 @@
 
 [![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.4.2-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![Java](https://img.shields.io/badge/Java-21%20%2F%2023-ED8B00?logo=openjdk&logoColor=white)](https://www.oracle.com/java/)
-[![Expo](https://img.shields.io/badge/Expo-51.0-000020?logo=expo&logoColor=white)](https://expo.dev/)
+[![Expo](https://img.shields.io/badge/Expo-57.0-000020?logo=expo&logoColor=white)](https://expo.dev/)
 [![React Native](https://img.shields.io/badge/React_Native-Web%20%26%20Mobile-61DAFB?logo=react&logoColor=black)](https://reactnative.dev/)
 [![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
 [![Flyway](https://img.shields.io/badge/Flyway-Database_Migrations-CC0200?logo=flyway&logoColor=white)](https://flywaydb.org/)
@@ -30,7 +30,7 @@ Commercial freight forwarding requires strict chain-of-custody tracking, legal p
 ```text
                                   ┌────────────────────────────────┐
                                   │       MySQL 8.0 Database       │
-                                  │   (Flyway Migrations V1-V27)   │
+                                  │   (Flyway Migrations V1-V28)   │
                                   └───────────────┬────────────────┘
                                                   │
                                                   ▼
@@ -78,13 +78,13 @@ Unlike simplistic CRUD apps that conflate tracking and accounting into a single 
 
 | Phase | Milestone Description | Status | Key Deliverables |
 | :--- | :--- | :---: | :--- |
-| **Phase 0** | **Foundation & Security** | `[COMPLETED]` | Spring Boot 3.4, Flyway migrations `V1`–`V27`, MySQL 8, JPA models, stateless JWT auth with 3 roles (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`). |
+| **Phase 0** | **Foundation & Security** | `[COMPLETED]` | Spring Boot 3.4, Flyway migrations `V1`–`V28`, MySQL 8, JPA models, stateless JWT auth with 3 roles (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`). |
 | **Phase 1** | **Shipment Registration & QR Labels** | `[COMPLETED]` | Sequential IDs (`SHP-YYYY-XXX`, `TRK-YYYY-XXXXXX`), volumetric weight ($\div 5000$) & $m^3$ calculations, vector thermal QR labels, paginated table, tracking inspection. |
 | **Phase 2** | **Status Flow, Real-Time SSE, Fleet & Client Management** | `[COMPLETED]` | Sequential 5-state transition engine, live SSE stream, vehicle fleet CRUD (`VH-XXX`), client directory & profile view (`CL-XXX`), smart deletion, composite indexing, and batch aggregation. |
 | **Phase 3** | **Waybills & Freight Manifest Handover** | `[COMPLETED]` | `WYB-YYYY-XXXX` auto-numbering, 4-state lifecycle (`Generated` → `Sent to Hauler` → `Signed/Completed`), and print-ready A4 3rd-party hauler manifest. |
 | **Phase 4** | **Billing, Collections & Statement of Account** | `[COMPLETED]` | Payment ledger (`/payments`), Thursday weekly collections consolidation (`/weekly-collections`), `SOA-YYYY-XXX-WXX` multi-page statement preview (`/statements`), isolated print architecture (`/statements/print`), deduction management, and dynamic active cycle filtering. |
 | **Phase 5** | **Web Console Administration & Reports** | `[COMPLETED]` | Desktop login with branded artwork, route guarding, and rate limiting (`[COMPLETED]`); live operational dashboard metrics (`[COMPLETED]`); tracking logs audit feed (`[COMPLETED]`); operational & financial reports screen (`[COMPLETED]`); user & staff management (`[COMPLETED]`); system settings with dynamic collection day, volumetric divisor calculation, branding propagation, and real-time SSE updates (`[COMPLETED]`); first-boot admin registration, 2-step setup wizard, self-service credential management, and rate-limited password authorization modals (`[COMPLETED]`). |
-| **Phase 6** | **Role-Aware Mobile Courier Portal** | `[IN PROGRESS]` | Phase 6.1 (`[COMPLETED]`): Cryptographic server-enforced device binding (`V27`), mobile PIN auth, mandatory first-boot password change, role branching (`OFFICE_STAFF` vs `FIELD_STAFF`), and cleared-PIN detection. Phase 6.2–6.6 (`[UPCOMING]`): Mobile shipment encoding, Bluetooth thermal printing, camera QR scanning, personal scan history, and offline SQLite queue. |
+| **Phase 6** | **Role-Aware Mobile Courier Portal** | `[IN PROGRESS]` | Phases 6.1, 6.2, and 6.3a (`[COMPLETED]`): secure mobile authentication and device binding, mobile shipment registration and lookup, software/PDF label printing, and durable print-audit recovery. Phases 6.3b–6.6 (`[UPCOMING]`): physical Bluetooth printer validation, field status scanning, personal scan history, and offline SQLite synchronization. |
 
 ---
 
@@ -101,7 +101,7 @@ logistics/
 │   │   ├── repository/                    # Spring Data Repositories, Group By Aggregations & MobileDeviceBindingRepository
 │   │   └── service/                       # Business Service Contracts & Implementations (impl/)
 │   └── src/main/resources/
-│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V27)
+│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V28)
 │       └── application-dev.properties     # Environment Configuration
 │
 ├── frontend-web/                          # Expo / React Native Web Admin Portal
@@ -225,7 +225,7 @@ docker-compose up -d mysql
 cd backend
 mvn spring-boot:run
 ```
-*API will run at `http://localhost:8080` (Flyway auto-runs all migrations `V1` to `V27` on startup).*
+*API will run at `http://localhost:8080` (Flyway auto-runs all migrations `V1` to `V28` on startup).*
 
 ### 2. Start the Admin Web Dashboard
 ```bash

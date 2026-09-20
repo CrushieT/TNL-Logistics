@@ -26,7 +26,14 @@
 | **Phase 4.2** | Backend: Thursday Weekly Collections Consolidation & SOA Generator (3 Deductions, Net Remittance) | [COMPLETED] |
 | **Phase 4.3** | Web: Billing, Collections & Printable SOA (Desktop Screens 18–22) | [COMPLETED] |
 | **Phase 5** | Web Console: Live Dashboard, Tracking Logs Stream, Reports, Users, Settings & First Boot Setup (Screens 01, 02, 17, 26–28) | [COMPLETED] |
-| **Phase 6** | Role-Aware Mobile App: Field Staff Scanner & Personal History vs. Office Staff Generation & Past Shipments (Screens 29–53) | [UPCOMING] |
+| **Phase 6** | Role-Aware Mobile Courier Portal (Screens 29–53) | [IN PROGRESS] |
+| ↳ **Phase 6.1** | Mobile Credential & PIN Workflow & Role-Aware Shell (Screens 29–33) | [COMPLETED] |
+| ↳ **Phase 6.2** | Office Staff: Shipment Generation & Past Shipments Directory (Screens 34–40) | [COMPLETED] |
+| ↳ **Phase 6.3a** | Software Label Printing, Virtual Driver Isolation & Audit Hardening (Screens 41–44) | [COMPLETED] |
+| ↳ **Phase 6.3b** | Physical Bluetooth Integration & Brother RJ-2035B On-Device Validation | [UPCOMING] |
+| ↳ **Phase 6.4** | Field Staff: Camera QR Scanner & Status Flow Engine (Screens 45–48) | [UPCOMING] |
+| ↳ **Phase 6.5** | Field Staff: Personal Scan & Tracking History (Screens 49–52) | [UPCOMING] |
+| ↳ **Phase 6.6** | Offline Resilience & SQLite Scan Queue (Screen 53) | [UPCOMING] |
 
 ---
 
@@ -341,7 +348,7 @@
   - Frontend Node unit test suites (`tests/registration.test.mjs`, `tests/shipments.test.mjs` - 31/31 passing).
   - Verified clean compilation and bundling across Web, iOS, and Android via `npx expo export`.
 
-**6.3a — Software Label Printing, Virtual Driver Isolation & Audit Hardening (Screens 41–44)** — **[IN PROGRESS]**
+**6.3a — Software Label Printing, Virtual Driver Isolation & Audit Hardening (Screens 41–44)** — **[COMPLETED]**
 - Vendored Project Nayuki QR Code Generator v1.8.0 under its MIT license, preserving the shared matrix, SVG path, and monochrome BMP interfaces while supporting versions 1–40 and UTF-8 payloads.
 - Independent `jsqr` round-trip coverage across short, long, alphanumeric, and Unicode payloads, including limited module damage recovery.
 - Strict canonical label normalization using shipment detail fields. Missing tracking, shipment, recipient, address, or destination values stop the print job before transport.
@@ -352,6 +359,9 @@
 - System/PDF printing uses a three-way confirmation: printed successfully records the exact job, saved as PDF preserves `NOT_PRINTED`, and cancelled makes no state change.
 - Backend print auditing requires a stable UUID, locks the shipment, validates the complete batch before mutation, and treats exact retries as no-ops while rejecting altered UUID reuse.
 - Canonical shipment detail is loaded before registration-result, shipment, or parcel print actions are enabled.
+- Fail-closed outbox durability: `AUTH_PAUSED` entries are recovered upon re-authentication; silent 100-entry truncation replaced with a 500-entry capacity limit and `OutboxCapacityError`; storage read failures never overwrite or discard un-synced audit records.
+- Runtime security & profile hardening: Removed default `dev` profile and hardcoded fallback `jwt.secret` from `application.properties`, verified via `ProductionDataSourcePropertiesTest`.
+- Bounded shipment pagination: Query parameters `page` (clamped >= 0) and `size` (bounded [1..100]) enforced in `ShipmentController.java` to prevent memory exhaustion and invalid page errors.
 
 **6.3b — Physical Bluetooth Integration & Brother RJ-2035B On-Device Validation** — **[UPCOMING]**
 - Validate the Expo development build and native Bluetooth bridge on the on-site Brother RJ-2035B.

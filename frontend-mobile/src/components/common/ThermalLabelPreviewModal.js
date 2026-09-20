@@ -27,7 +27,13 @@ export function ThermalLabelPreviewModal({
   onAuditComplete,
 }) {
   const router = useRouter();
-  const { isConnected, connectedDevice, isVirtualMode, confirmSystemPrint } = usePrinter();
+  const {
+    isConnected,
+    connectedDevice,
+    isVirtualMode,
+    confirmSystemPrint,
+    assertCanRecordPrintAudit,
+  } = usePrinter();
   const [currentIndex, setCurrentIndex] = React.useState(0);
   const [pendingConfirmation, setPendingConfirmation] = React.useState(null);
   const [confirmationNotice, setConfirmationNotice] = React.useState(null);
@@ -47,6 +53,7 @@ export function ThermalLabelPreviewModal({
 
   const handleSystemPrint = async () => {
     try {
+      await assertCanRecordPrintAudit();
       const html = buildLabelHtml(labelsList);
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         const printWindow = window.open('', '_blank');
@@ -70,7 +77,7 @@ export function ThermalLabelPreviewModal({
         trackingIds: labelsList.map((label) => label.trackingId),
       });
     } catch (err) {
-      console.warn('System print failed:', err);
+      setConfirmationNotice(err?.message || 'System print failed.');
     }
   };
 

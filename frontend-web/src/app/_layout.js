@@ -25,7 +25,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return undefined;
-    const retryAudits = () => retryPendingPrintAudits();
+    const retryAudits = () => retryPendingPrintAudits().catch(() => undefined);
     retryAudits();
     window.addEventListener('focus', retryAudits);
     return () => window.removeEventListener('focus', retryAudits);
