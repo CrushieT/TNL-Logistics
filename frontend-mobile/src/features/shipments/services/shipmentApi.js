@@ -33,8 +33,12 @@ export const shipmentApi = {
     const { data } = await apiClient.get(`/parcel-units/${encodeURIComponent(trackingId)}`, { signal });
     return data;
   },
-  async printLabels(shipmentId, packageIds) {
-    const { data } = await apiClient.post(`/shipments/${encodeURIComponent(shipmentId)}/labels/print`, { packageIds });
+  async printLabels(shipmentId, packageIds, printJobId, printerId) {
+    const { data } = await apiClient.post(`/shipments/${encodeURIComponent(shipmentId)}/labels/print`, {
+      printJobId,
+      packageIds,
+      printerId,
+    });
     return data;
   },
 };

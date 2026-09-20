@@ -18,7 +18,7 @@ import { ThermalLabelPreviewModal } from '../../../components/common/ThermalLabe
 import { normalizeLabelData } from '../../printer/services/thermalLabelData';
 
 function formatRoute(route) {
-  if (!route) return 'TNL Baguio Hub';
+  if (!route) return 'Destination unavailable';
   return route.replace(/\s*(?:->|→)\s*/g, ' to ');
 }
 
@@ -60,8 +60,10 @@ export function ShipmentDetailScreen({ shipmentId }) {
       try {
         const result = await printParcelLabels(shipment);
         setStatusDialog({
-          title: 'Labels Printed',
-          message: `Successfully printed ${result.count} labels to ${result.device}.`,
+          title: result.isVirtual ? 'Simulation Complete' : 'Labels Printed',
+          message: result.isVirtual
+            ? `Simulated ${result.count} labels. No parcel audit records were changed.`
+            : `Printed ${result.count} labels. Audit status: ${result.auditSyncStatus}.`,
         });
         // Refresh details to update label badges
         fetchDetail();
@@ -111,6 +113,13 @@ export function ShipmentDetailScreen({ shipmentId }) {
   }
 
   const units = shipment.units || [];
+  let previewLabels = [];
+  let labelDataError = null;
+  try {
+    previewLabels = units.map((unit, index) => normalizeLabelData(shipment, unit, index, units.length));
+  } catch (normalizationError) {
+    labelDataError = normalizationError;
+  }
   const registeredPlatform = shipment.registeredVia === 'MOBILE_FIELD' ? 'REGISTERED ON MOBILE' : 'REGISTERED ON PC';
   const contentsDesc = `${shipment.description || 'General Goods'}, ${shipment.quantity || units.length || 1} pcs, ${shipment.chargeModel === 'PER_PARCEL' ? 'per unit' : 'flat'}`;
 
@@ -279,7 +288,7 @@ export function ShipmentDetailScreen({ shipmentId }) {
           <View style={styles.actionsBox}>
             <Pressable
               accessibilityRole="button"
-              disabled={isPrinting}
+              disabled={isPrinting || Boolean(labelDataError) || units.length === 0}
               onPress={handlePrintAll}
               style={[styles.primaryBtn, isPrinting && styles.disabled]}
             >
@@ -289,6 +298,7 @@ export function ShipmentDetailScreen({ shipmentId }) {
                 <Text style={styles.primaryBtnText}>PRINT ALL LABELS ({units.length})</Text>
               )}
             </Pressable>
+            {labelDataError ? <Text style={styles.errorText}>{labelDataError.message}</Text> : null}
           </View>
         }
       />
@@ -304,9 +314,7 @@ export function ShipmentDetailScreen({ shipmentId }) {
 
       <ThermalLabelPreviewModal
         visible={previewVisible}
-        labels={(units.length > 0 ? units : [{ trackingId: shipment?.trackingId, packageIndex: 1 }]).map(
-          (unit, idx) => normalizeLabelData(shipment, unit, idx, units.length || 1)
-        )}
+        labels={previewLabels}
         onClose={() => setPreviewVisible(false)}
         onPrintDirect={async () => {
           setPreviewVisible(false);

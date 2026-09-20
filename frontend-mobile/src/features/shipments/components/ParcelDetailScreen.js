@@ -18,13 +18,14 @@ import { ThermalLabelPreviewModal } from '../../../components/common/ThermalLabe
 import { normalizeLabelData } from '../../printer/services/thermalLabelData';
 
 function formatRoute(route) {
-  if (!route) return 'TNL Baguio Hub';
+  if (!route) return 'Destination unavailable';
   return route.replace(/\s*(?:->|→)\s*/g, ' to ');
 }
 
 export function ParcelDetailScreen({ trackingId }) {
   const router = useRouter();
   const [parcel, setParcel] = useState(null);
+  const [shipment, setShipment] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [showHistory, setShowHistory] = useState(false);
@@ -39,6 +40,8 @@ export function ParcelDetailScreen({ trackingId }) {
       setError('');
       const data = await shipmentApi.getParcelUnit(trackingId, signal);
       setParcel(data);
+      const shipmentData = await shipmentApi.getShipment(data.shipmentId, signal);
+      setShipment(shipmentData);
     } catch (err) {
       if (err.name === 'CanceledError' || err.name === 'AbortError') return;
       setError(err.response?.data?.message || 'Failed to load parcel unit details.');
@@ -54,35 +57,19 @@ export function ParcelDetailScreen({ trackingId }) {
   }, [trackingId]);
 
   const handleReprint = async () => {
-    if (isReprinting || !parcel) return;
+    if (isReprinting || !parcel || !shipment) return;
 
     if (isConnected) {
       setIsReprinting(true);
       try {
-        const result = await printParcelLabels(
-          {
-            shipmentId: parcel.shipmentId,
-            recipientName: parcel.recipientName,
-            recipientContact: parcel.recipientContact,
-            recipientAddress: parcel.recipientAddress,
-            destinationHub: parcel.destinationHub,
-            clientName: parcel.clientName,
-            contents: parcel.description,
-            origin: parcel.origin || 'Manila',
-            destination: parcel.destinationHub || 'TNL Baguio',
-            totalAmount: parcel.totalAmount || 0,
-          },
-          [
-            {
-              trackingId: parcel.trackingId,
-              packageIndex: parcel.packageIndex || 1,
-              packageCount: parcel.packageCount || 1,
-            },
-          ]
-        );
+        const canonicalUnit = shipment.units?.find((unit) => unit.trackingId === parcel.trackingId);
+        if (!canonicalUnit) throw new Error('Parcel is missing from the canonical shipment details.');
+        const result = await printParcelLabels(shipment, [canonicalUnit]);
         setStatusDialog({
-          title: 'Label Reprint Sent',
-          message: `Reprint sent to ${result.device} for ${parcel.trackingId}.`,
+          title: result.isVirtual ? 'Simulation Complete' : 'Label Reprint Sent',
+          message: result.isVirtual
+            ? `Simulated ${parcel.trackingId}. No parcel audit records were changed.`
+            : `Reprint sent for ${parcel.trackingId}. Audit status: ${result.auditSyncStatus}.`,
         });
         fetchParcel();
       } catch (err) {
@@ -134,6 +121,21 @@ export function ParcelDetailScreen({ trackingId }) {
   const pkgTotal = parcel.packageCount || 1;
   const isPrinted = parcel.labelStatus === 'Printed' || parcel.labelStatus === 'PRINTED';
   const history = parcel.history || [];
+  const canonicalUnit = shipment?.units?.find((unit) => unit.trackingId === parcel.trackingId);
+  let previewLabel = null;
+  let labelDataError = null;
+  try {
+    if (shipment && canonicalUnit) {
+      previewLabel = normalizeLabelData(
+        shipment,
+        canonicalUnit,
+        canonicalUnit.packageIndex ? canonicalUnit.packageIndex - 1 : 0,
+        shipment.units.length
+      );
+    }
+  } catch (normalizationError) {
+    labelDataError = normalizationError;
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -212,7 +214,7 @@ export function ParcelDetailScreen({ trackingId }) {
         <View style={styles.actionsRow}>
           <Pressable
             accessibilityRole="button"
-            disabled={isReprinting}
+            disabled={isReprinting || !previewLabel}
             onPress={handleReprint}
             style={[styles.actionBtn, isReprinting && styles.btnDisabled]}
           >
@@ -222,6 +224,7 @@ export function ParcelDetailScreen({ trackingId }) {
               <Text style={styles.actionBtnText}>REPRINT LABEL</Text>
             )}
           </Pressable>
+          {labelDataError ? <Text style={styles.errorText}>{labelDataError.message}</Text> : null}
 
           <Pressable
             accessibilityRole="button"
@@ -301,12 +304,7 @@ export function ParcelDetailScreen({ trackingId }) {
 
       <ThermalLabelPreviewModal
         visible={previewVisible}
-        labelData={normalizeLabelData(
-          parcel,
-          parcel,
-          parcel?.packageIndex ? parcel.packageIndex - 1 : 0,
-          parcel?.packageCount || 1
-        )}
+        labelData={previewLabel}
         onClose={() => setPreviewVisible(false)}
         onPrintDirect={async () => {
           setPreviewVisible(false);
