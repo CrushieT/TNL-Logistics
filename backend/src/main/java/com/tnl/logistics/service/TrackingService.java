@@ -10,6 +10,8 @@ import java.util.List;
 
 public interface TrackingService {
 
+    TrackingScanContextResponse getScanContext(String trackingId);
+
     TrackingScanResponse processStatusScan(TrackingScanRequest request, String actingStaffUserId);
 
     List<TrackingScanResponse> processBatchScan(BatchTrackingScanRequest request, String actingStaffUserId);

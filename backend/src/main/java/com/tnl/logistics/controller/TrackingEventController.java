@@ -28,6 +28,18 @@ public class TrackingEventController {
         this.trackingService = trackingService;
     }
 
+    @GetMapping("/scan-context/{trackingId}")
+    @PreAuthorize("hasRole('FIELD_STAFF')")
+    public ResponseEntity<TrackingScanContextResponse> getScanContext(
+            @PathVariable String trackingId,
+            Authentication authentication) {
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new AccessDeniedException("Authenticated user context is required");
+        }
+        TrackingScanContextResponse response = trackingService.getScanContext(trackingId);
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping("/scan")
     @PreAuthorize("hasAnyRole('OFFICE_STAFF', 'FIELD_STAFF', 'ADMIN')")
     public ResponseEntity<TrackingScanResponse> scanParcelStatus(

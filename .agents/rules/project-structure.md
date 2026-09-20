@@ -21,7 +21,7 @@ tnl-logistics/
 │   │   │   ├── java/com/tnl/logistics/
 │   │   │   │   ├── config/              # SecurityConfig, CorsConfig, JwtTokenProvider, DataSeeder
 │   │   │   │   ├── controller/          # REST endpoints (Shipment, Vehicle, Client, Waybill, Payment, Collections, SOA)
-│   │   │   │   ├── dto/                 # Request & Response DTOs
+│   │   │   │   ├── dto/                 # Request & Response DTOs (including TrackingScanContextResponse.java)
 │   │   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, Vehicle, Waybill, Payment, Soa, MobileDeviceBinding, etc.)
 │   │   │   │   ├── repository/          # Spring Data Repositories & Batch Group By Queries (including MobileDeviceBindingRepository)
 │   │   │   │   └── service/             # Business Logic & Service Interfaces (impl/)
@@ -29,7 +29,7 @@ tnl-logistics/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
 │   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V28)
-│   │   └── test/                        # Integration and unit test suites
+│   │   └── test/                        # Integration and unit test suites (including TrackingScanIntegrationTest.java)
 │   └── pom.xml
 │
 ├── frontend-web/                    # Admin Web Portal (React Native Web / Expo Router)
@@ -93,19 +93,20 @@ tnl-logistics/
 │   │   ├── components/               # Shared UI atoms (BackButton, Keypad, PinIndicator, PressableScale, ActionCard, MetricCard, NoticeBanner, StatusModal, QRCodeGenerator, ThermalLabelPreviewModal)
 │   │   │   ├── common/
 │   │   │   └── layout/               # MobileHeader
-│   │   ├── features/                 # Domain feature slices (auth, office, field, shipments, printer)
+│   │   ├── features/                 # Domain feature slices (auth, office, field, shipments, printer, scanner)
 │   │   │   ├── shipments/            # Shipment registration, explorer, detail screens, and barcode scanner modal
-│   │   │   └── printer/              # Driver isolation, audit outbox, ESC/POS formatter, and serialized PrinterContext
+│   │   │   ├── printer/              # Driver isolation, audit outbox, ESC/POS formatter, and serialized PrinterContext
+│   │   │   └── scanner/              # Field camera scanner (ScanViewfinder, SingleScanReview, BatchScanPanel, ScanResultPanel, scannerFlow.mjs, trackingScanApi.js, haptics.js, hapticsCore.mjs)
 │   │   ├── services/
 │   │   │   ├── api/client.js         # Axios API client with Bearer auth
 │   │   │   └── storage/secureStore.js# Hardware-backed SecureStore adapter
 │   │   ├── theme/index.js            # TNL design tokens (canvas, ink, accent, keypad)
 │   │   ├── utils/                    # QR matrix, SVG path, and BMP facade
 │   │   └── vendor/qrcodegen/         # Vendored Project Nayuki QR generator
-│   ├── tests/                        # Mobile unit test suites (registration, shipments, printer)
+│   ├── tests/                        # Mobile unit test suites (registration, shipments, printer, scanner)
 │   ├── app.json                      # Expo configuration
 │   ├── eas.json                      # EAS Build configuration
-│   ├── package.json
+│   ├── package.json                  # Dependencies (including expo-camera, expo-haptics)
 │   ├── .env.example
 │   └── README.md
 │

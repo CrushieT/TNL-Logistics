@@ -3,16 +3,21 @@ package com.tnl.logistics.dto;
 import com.tnl.logistics.model.ParcelStatus;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 public class TrackingScanRequest {
 
     @NotBlank(message = "Tracking ID is required")
+    @Size(max = 64, message = "Tracking ID exceeds maximum length")
     private String trackingId;
 
     @NotNull(message = "Target status is required")
     private ParcelStatus targetStatus;
 
+    @Size(max = 64, message = "Vehicle ID exceeds maximum length")
     private String vehicleId;
+
+    @Size(max = 255, message = "Remarks exceed maximum length")
     private String remarks;
 
     public TrackingScanRequest() {}

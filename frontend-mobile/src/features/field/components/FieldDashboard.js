@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, View, ScrollView, Alert } from 'react-native';
+import { useRouter } from 'expo-router';
 import { colors } from '../../../theme';
 import { MobileHeader } from '../../../components/layout/MobileHeader';
 import { NoticeBanner } from '../../../components/common/NoticeBanner';
@@ -7,8 +8,10 @@ import { ActionCard } from '../../../components/common/ActionCard';
 import { MetricCard } from '../../../components/common/MetricCard';
 
 export function FieldDashboard({ user, onLogout, onLock }) {
+  const router = useRouter();
+
   const handleScanQR = () => {
-    Alert.alert('Scan QR', 'Camera QR code scanner with truck selector (Phase 6.4).');
+    router.push('/(main)/scan');
   };
 
   const handleTrackingHistory = () => {
