@@ -55,6 +55,7 @@ export default function MainLayout() {
       >
         <Stack.Screen name="index" />
         <Stack.Screen name="register" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="scan" options={{ gestureEnabled: false }} />
         <Stack.Screen name="printer" />
         <Stack.Screen name="shipments/index" />
         <Stack.Screen name="shipments/[id]" />

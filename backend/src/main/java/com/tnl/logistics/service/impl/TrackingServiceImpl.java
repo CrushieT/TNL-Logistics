@@ -8,10 +8,16 @@ import com.tnl.logistics.repository.TrackingEventRepository;
 import com.tnl.logistics.repository.VehicleRepository;
 import com.tnl.logistics.service.SseService;
 import com.tnl.logistics.service.TrackingService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -26,6 +32,8 @@ import java.util.stream.Collectors;
 @Service
 @Transactional
 public class TrackingServiceImpl implements TrackingService {
+
+    private static final Logger log = LoggerFactory.getLogger(TrackingServiceImpl.class);
 
     private final ParcelUnitRepository parcelUnitRepository;
     private final TrackingEventRepository trackingEventRepository;
@@ -46,32 +54,276 @@ public class TrackingServiceImpl implements TrackingService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public TrackingScanContextResponse getScanContext(String trackingId) {
+        if (trackingId == null || trackingId.trim().isEmpty()) {
+            throw new IllegalArgumentException("Tracking ID is required");
+        }
+        ParcelUnit parcel = parcelUnitRepository.findById(trackingId.trim())
+                .orElseThrow(() -> new IllegalArgumentException("Parcel unit not found: " + trackingId));
+
+        ParcelStatus currentStatus = parcel.getCurrentStatus();
+        String nextStatusCode = null;
+        String nextStatusLabel = null;
+        boolean requiresVehicle = false;
+        boolean canScan = false;
+
+        switch (currentStatus) {
+            case REGISTERED:
+                nextStatusCode = ParcelStatus.QR_GENERATED.name();
+                nextStatusLabel = formatStatusDisplay(ParcelStatus.QR_GENERATED);
+                requiresVehicle = false;
+                canScan = true;
+                break;
+            case QR_GENERATED:
+                nextStatusCode = ParcelStatus.LOADED_ON_TRUCK.name();
+                nextStatusLabel = formatStatusDisplay(ParcelStatus.LOADED_ON_TRUCK);
+                requiresVehicle = true;
+                canScan = true;
+                break;
+            case LOADED_ON_TRUCK:
+                nextStatusCode = ParcelStatus.ARRIVED_AT_TNL.name();
+                nextStatusLabel = formatStatusDisplay(ParcelStatus.ARRIVED_AT_TNL);
+                requiresVehicle = false;
+                canScan = true;
+                break;
+            case ARRIVED_AT_TNL:
+                nextStatusCode = ParcelStatus.LOADED_TO_HAULER.name();
+                nextStatusLabel = formatStatusDisplay(ParcelStatus.LOADED_TO_HAULER);
+                requiresVehicle = false;
+                canScan = true;
+                break;
+            case LOADED_TO_HAULER:
+            case COMPLETED:
+            default:
+                nextStatusCode = null;
+                nextStatusLabel = null;
+                requiresVehicle = false;
+                canScan = false;
+                break;
+        }
+
+        Shipment shipment = parcel.getShipment();
+        String shipmentId = shipment != null ? shipment.getShipmentId() : null;
+        Integer packageIndex = parcel.getSeq() != null ? parcel.getSeq() : 1;
+        Integer packageCount = (shipment != null && shipment.getQuantity() != null) ? shipment.getQuantity() : 1;
+        Vehicle currentVehicle = parcel.getCurrentVehicle();
+        String assignedVehicleId = currentVehicle != null ? currentVehicle.getVehicleId() : null;
+        String assignedVehiclePlateNumber = currentVehicle != null ? currentVehicle.getPlateNumber() : null;
+
+        return new TrackingScanContextResponse(
+                parcel.getTrackingId(),
+                shipmentId,
+                packageIndex,
+                packageCount,
+                currentStatus.name(),
+                formatStatusDisplay(currentStatus),
+                nextStatusCode,
+                nextStatusLabel,
+                requiresVehicle,
+                assignedVehicleId,
+                assignedVehiclePlateNumber,
+                canScan
+        );
+    }
+
+    @Override
     public TrackingScanResponse processStatusScan(TrackingScanRequest request, String actingStaffUserId) {
-        ParcelUnit parcel = parcelUnitRepository.findByIdWithPessimisticLock(request.getTrackingId())
-                .orElseThrow(() -> new IllegalArgumentException("Parcel unit not found: " + request.getTrackingId()));
+        if (request == null || request.getTrackingId() == null || request.getTrackingId().trim().isEmpty()) {
+            throw new IllegalArgumentException("Tracking ID is required");
+        }
+        if (request.getTargetStatus() == null) {
+            throw new IllegalArgumentException("Target status is required");
+        }
+
+        String normalizedTrackingId = request.getTrackingId().trim();
+        String normalizedVehicleId = request.getVehicleId() != null ? request.getVehicleId().trim() : null;
+
+        if (request.getTargetStatus() == ParcelStatus.LOADED_ON_TRUCK) {
+            if (normalizedVehicleId == null || normalizedVehicleId.isEmpty()) {
+                throw new IllegalArgumentException("A valid vehicleId is required when transitioning to LOADED_ON_TRUCK");
+            }
+        }
+
+        ParcelUnit parcel = parcelUnitRepository.findByIdWithPessimisticLock(normalizedTrackingId)
+                .orElseThrow(() -> new IllegalArgumentException("Parcel unit not found: " + normalizedTrackingId));
 
         AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
                 .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
 
-        ParcelStatus currentStatus = parcel.getCurrentStatus();
-        ParcelStatus targetStatus = request.getTargetStatus();
+        // Pre-validate transition first
+        if (parcel.getCurrentStatus() != request.getTargetStatus()) {
+            validateStateTransition(parcel.getCurrentStatus(), request.getTargetStatus(), parcel.getTrackingId());
+        }
 
-        // 1. Check if already in target state (Idempotent success)
+        // Pre-validate vehicle entity only if transitioning
+        Vehicle resolvedVehicle = null;
+        if (request.getTargetStatus() == ParcelStatus.LOADED_ON_TRUCK && parcel.getCurrentStatus() != ParcelStatus.LOADED_ON_TRUCK) {
+            resolvedVehicle = vehicleRepository.findById(normalizedVehicleId)
+                    .orElseThrow(() -> new IllegalArgumentException("Vehicle not found: " + normalizedVehicleId));
+            if (Boolean.FALSE.equals(resolvedVehicle.getActive())) {
+                throw new IllegalStateException("Vehicle " + normalizedVehicleId + " is inactive and cannot be assigned to shipments");
+            }
+        }
+
+        ScanTransitionResult result = processStatusScanInternal(
+                parcel,
+                request.getTargetStatus(),
+                normalizedVehicleId,
+                resolvedVehicle,
+                request.getRemarks(),
+                actingStaff
+        );
+
+        if (result.isTransitionApplied()) {
+            registerBroadcastsAfterCommit(Collections.singletonList(result.getResponse()));
+        }
+
+        return result.getResponse();
+    }
+
+    @Override
+    public List<TrackingScanResponse> processBatchScan(BatchTrackingScanRequest request, String actingStaffUserId) {
+        if (request == null || request.getTrackingIds() == null || request.getTrackingIds().isEmpty()) {
+            throw new IllegalArgumentException("At least one tracking ID must be provided");
+        }
+        if (request.getTrackingIds().size() > 100) {
+            throw new IllegalArgumentException("Batch scan cannot exceed 100 tracking IDs");
+        }
+        if (request.getTargetStatus() == null) {
+            throw new IllegalArgumentException("Target status is required");
+        }
+
+        String normalizedVehicleId = request.getVehicleId() != null ? request.getVehicleId().trim() : null;
+        if (request.getTargetStatus() == ParcelStatus.LOADED_ON_TRUCK) {
+            if (normalizedVehicleId == null || normalizedVehicleId.isEmpty()) {
+                throw new IllegalArgumentException("A valid vehicleId is required when transitioning to LOADED_ON_TRUCK");
+            }
+        }
+
+        List<String> rawIds = request.getTrackingIds();
+        List<String> normalizedIds = new ArrayList<>(rawIds.size());
+        Set<String> seen = new HashSet<>();
+        for (String raw : rawIds) {
+            if (raw == null || raw.trim().isEmpty()) {
+                throw new IllegalArgumentException("Tracking ID must not be blank");
+            }
+            String trimmed = raw.trim();
+            if (!seen.add(trimmed)) {
+                throw new IllegalArgumentException("Duplicate tracking ID in batch: " + trimmed);
+            }
+            normalizedIds.add(trimmed);
+        }
+
+        AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
+                .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
+
+        // Acquire parcel locks in sorted Tracking ID order to prevent deadlocks
+        List<String> sortedIds = new ArrayList<>(normalizedIds);
+        Collections.sort(sortedIds);
+        Map<String, ParcelUnit> lockedParcels = new HashMap<>();
+        for (String id : sortedIds) {
+            ParcelUnit p = parcelUnitRepository.findByIdWithPessimisticLock(id)
+                    .orElseThrow(() -> new IllegalArgumentException("Parcel unit not found: " + id));
+            lockedParcels.put(id, p);
+        }
+
+        // Pre-validate all transitions before mutating entities
+        boolean hasNewTransition = false;
+        for (String id : normalizedIds) {
+            ParcelUnit parcel = lockedParcels.get(id);
+            ParcelStatus currentStatus = parcel.getCurrentStatus();
+            if (currentStatus == request.getTargetStatus()) {
+                if (request.getTargetStatus() == ParcelStatus.LOADED_ON_TRUCK) {
+                    Vehicle currentVehicle = parcel.getCurrentVehicle();
+                    String currentVehicleId = currentVehicle != null ? currentVehicle.getVehicleId() : null;
+                    if (currentVehicleId == null || !currentVehicleId.equals(normalizedVehicleId)) {
+                        throw new ResponseStatusException(HttpStatus.CONFLICT,
+                                String.format("Parcel %s is already LOADED_ON_TRUCK with vehicle %s, cannot assign different vehicle %s",
+                                        parcel.getTrackingId(), currentVehicleId, normalizedVehicleId));
+                    }
+                }
+            } else {
+                validateStateTransition(currentStatus, request.getTargetStatus(), parcel.getTrackingId());
+                hasNewTransition = true;
+            }
+        }
+
+        // Resolve vehicle only once if at least one parcel needs a new LOADED_ON_TRUCK transition
+        Vehicle resolvedVehicle = null;
+        if (request.getTargetStatus() == ParcelStatus.LOADED_ON_TRUCK && hasNewTransition) {
+            resolvedVehicle = vehicleRepository.findById(normalizedVehicleId)
+                    .orElseThrow(() -> new IllegalArgumentException("Vehicle not found: " + normalizedVehicleId));
+            if (Boolean.FALSE.equals(resolvedVehicle.getActive())) {
+                throw new IllegalStateException("Vehicle " + normalizedVehicleId + " is inactive and cannot be assigned to shipments");
+            }
+        }
+
+        List<TrackingScanResponse> responses = new ArrayList<>(normalizedIds.size());
+        List<TrackingScanResponse> newlyTransitioned = new ArrayList<>();
+
+        // Process in original request order
+        for (String id : normalizedIds) {
+            ParcelUnit parcel = lockedParcels.get(id);
+            ScanTransitionResult result = processStatusScanInternal(
+                    parcel,
+                    request.getTargetStatus(),
+                    normalizedVehicleId,
+                    resolvedVehicle,
+                    request.getRemarks(),
+                    actingStaff
+            );
+            responses.add(result.getResponse());
+            if (result.isTransitionApplied()) {
+                newlyTransitioned.add(result.getResponse());
+            }
+        }
+
+        if (!newlyTransitioned.isEmpty()) {
+            registerBroadcastsAfterCommit(newlyTransitioned);
+        }
+
+        return responses;
+    }
+
+    private ScanTransitionResult processStatusScanInternal(
+            ParcelUnit parcel,
+            ParcelStatus targetStatus,
+            String requestedVehicleId,
+            Vehicle resolvedVehicle,
+            String remarks,
+            AppUser actingStaff) {
+
+        ParcelStatus currentStatus = parcel.getCurrentStatus();
+
+        // 1. Idempotent check: Parcel is already at target status
         if (currentStatus == targetStatus) {
+            if (targetStatus == ParcelStatus.LOADED_ON_TRUCK) {
+                Vehicle currentVehicle = parcel.getCurrentVehicle();
+                String currentVehicleId = currentVehicle != null ? currentVehicle.getVehicleId() : null;
+                if (currentVehicleId == null || !currentVehicleId.equals(requestedVehicleId)) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            String.format("Parcel %s is already LOADED_ON_TRUCK with vehicle %s, cannot assign different vehicle %s",
+                                    parcel.getTrackingId(), currentVehicleId, requestedVehicleId));
+                }
+            }
             String rollup = computeRollupForShipment(parcel.getShipment());
-            Vehicle vehicle = parcel.getCurrentVehicle();
+            Vehicle v = parcel.getCurrentVehicle();
             TrackingScanResponse resp = new TrackingScanResponse(
                     parcel.getTrackingId(),
                     formatStatus(currentStatus),
                     formatStatus(targetStatus),
-                    vehicle != null ? vehicle.getVehicleId() : null,
-                    vehicle != null ? vehicle.getPlateNumber() : null,
+                    currentStatus.name(),
+                    targetStatus.name(),
+                    false,
+                    v != null ? v.getVehicleId() : null,
+                    v != null ? v.getPlateNumber() : null,
                     LocalDateTime.now(),
                     actingStaff.getFullName(),
                     parcel.getShipment().getShipmentId(),
                     rollup
             );
-            return resp;
+            return new ScanTransitionResult(resp, false);
         }
 
         // 2. Validate Sequential 5-State Transition
@@ -80,18 +332,9 @@ public class TrackingServiceImpl implements TrackingService {
         // 3. Handle Vehicle Association & Validation
         Vehicle assignedVehicle = null;
         if (targetStatus == ParcelStatus.LOADED_ON_TRUCK) {
-            if (request.getVehicleId() == null || request.getVehicleId().trim().isEmpty()) {
-                throw new IllegalArgumentException("A valid active vehicleId is required when transitioning to LOADED_ON_TRUCK");
-            }
-            assignedVehicle = vehicleRepository.findById(request.getVehicleId())
-                    .orElseThrow(() -> new IllegalArgumentException("Vehicle not found: " + request.getVehicleId()));
-
-            if (Boolean.FALSE.equals(assignedVehicle.getActive())) {
-                throw new IllegalStateException("Vehicle " + request.getVehicleId() + " is inactive and cannot be assigned to shipments");
-            }
+            assignedVehicle = resolvedVehicle;
             parcel.setCurrentVehicle(assignedVehicle);
         } else if (targetStatus == ParcelStatus.ARRIVED_AT_TNL || targetStatus == ParcelStatus.LOADED_TO_HAULER) {
-            // Clear truck assignment when arrived at terminal or loaded to 3rd party hauler
             parcel.setCurrentVehicle(null);
         }
 
@@ -100,13 +343,15 @@ public class TrackingServiceImpl implements TrackingService {
         parcelUnitRepository.save(parcel);
 
         // 5. Append-only Tracking Audit Event
-        String remarks = request.getRemarks() != null ? request.getRemarks() : "Status scan updated to " + formatStatus(targetStatus);
+        String finalRemarks = (remarks != null && !remarks.trim().isEmpty())
+                ? remarks.trim()
+                : "Status scan updated to " + formatStatus(targetStatus);
         TrackingEvent event = new TrackingEvent(
                 parcel,
                 targetStatus,
                 assignedVehicle,
                 actingStaff,
-                remarks
+                finalRemarks
         );
         trackingEventRepository.save(event);
 
@@ -117,6 +362,9 @@ public class TrackingServiceImpl implements TrackingService {
                 parcel.getTrackingId(),
                 formatStatus(currentStatus),
                 formatStatus(targetStatus),
+                currentStatus.name(),
+                targetStatus.name(),
+                true,
                 assignedVehicle != null ? assignedVehicle.getVehicleId() : null,
                 assignedVehicle != null ? assignedVehicle.getPlateNumber() : null,
                 event.getEventTimestamp() != null ? event.getEventTimestamp() : LocalDateTime.now(),
@@ -125,40 +373,35 @@ public class TrackingServiceImpl implements TrackingService {
                 rollup
         );
 
-        // 7. Broadcast real-time SSE event to all connected office/field browsers
-        try {
-            sseService.broadcastTrackingScan(response);
-        } catch (Exception ignored) {}
-
-        return response;
+        return new ScanTransitionResult(response, true);
     }
 
-    @Override
-    public List<TrackingScanResponse> processBatchScan(BatchTrackingScanRequest request, String actingStaffUserId) {
-        if (request == null || request.getTrackingIds() == null || request.getTrackingIds().isEmpty()) {
-            return Collections.emptyList();
+    private void registerBroadcastsAfterCommit(List<TrackingScanResponse> responses) {
+        if (responses == null || responses.isEmpty()) {
+            return;
         }
-
-        // Sort and deduplicate IDs to ensure consistent lock acquisition order across concurrent transactions
-        List<String> sortedTrackingIds = request.getTrackingIds().stream()
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(id -> !id.isEmpty())
-                .distinct()
-                .sorted()
-                .toList();
-
-        List<TrackingScanResponse> responses = new ArrayList<>();
-        for (String trackingId : sortedTrackingIds) {
-            TrackingScanRequest singleReq = new TrackingScanRequest(
-                    trackingId,
-                    request.getTargetStatus(),
-                    request.getVehicleId(),
-                    request.getRemarks()
-            );
-            responses.add(processStatusScan(singleReq, actingStaffUserId));
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    for (TrackingScanResponse resp : responses) {
+                        try {
+                            sseService.broadcastTrackingScan(resp);
+                        } catch (Exception ex) {
+                            log.warn("Failed to broadcast tracking scan SSE for {}: {}", resp.getTrackingId(), ex.getMessage());
+                        }
+                    }
+                }
+            });
+        } else {
+            for (TrackingScanResponse resp : responses) {
+                try {
+                    sseService.broadcastTrackingScan(resp);
+                } catch (Exception ex) {
+                    log.warn("Failed to broadcast tracking scan SSE for {}: {}", resp.getTrackingId(), ex.getMessage());
+                }
+            }
         }
-        return responses;
     }
 
     private void validateStateTransition(ParcelStatus current, ParcelStatus target, String trackingId) {
@@ -208,6 +451,7 @@ public class TrackingServiceImpl implements TrackingService {
     }
 
     private String computeRollupForShipment(Shipment shipment) {
+        if (shipment == null) return "0 / 0 Registered";
         List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipment.getShipmentId());
         if (parcels.isEmpty()) return "0 / 0 Registered";
 
@@ -233,19 +477,6 @@ public class TrackingServiceImpl implements TrackingService {
 
         long c = counts.getOrDefault(ParcelStatus.REGISTERED, (long) total);
         return c + " / " + total + " Registered";
-    }
-
-    private String formatStatus(ParcelStatus status) {
-        if (status == null) return "Registered";
-        switch (status) {
-            case QR_GENERATED: return "QR Generated";
-            case LOADED_ON_TRUCK: return "Loaded on Truck";
-            case ARRIVED_AT_TNL: return "Arrived at TNL";
-            case LOADED_TO_HAULER: return "Loaded to Hauler";
-            case COMPLETED: return "Completed";
-            case REGISTERED:
-            default: return "Registered";
-        }
     }
 
     @Override
@@ -314,6 +545,19 @@ public class TrackingServiceImpl implements TrackingService {
         return new TrackingMetricsResponse(totalScans, activeCouriers, loadedOnTruck, handedToHauler);
     }
 
+    private String formatStatus(ParcelStatus status) {
+        if (status == null) return "Registered";
+        switch (status) {
+            case QR_GENERATED: return "QR Generated";
+            case LOADED_ON_TRUCK: return "Loaded on Truck";
+            case ARRIVED_AT_TNL: return "Arrived at TNL";
+            case LOADED_TO_HAULER: return "Loaded to Hauler";
+            case COMPLETED: return "Completed";
+            case REGISTERED:
+            default: return "Registered";
+        }
+    }
+
     private String formatStatusDisplay(ParcelStatus status) {
         if (status == null) return "Registered";
         switch (status) {
@@ -324,6 +568,24 @@ public class TrackingServiceImpl implements TrackingService {
             case COMPLETED: return "Completed";
             case REGISTERED:
             default: return "Registered";
+        }
+    }
+
+    private static class ScanTransitionResult {
+        private final TrackingScanResponse response;
+        private final boolean transitionApplied;
+
+        public ScanTransitionResult(TrackingScanResponse response, boolean transitionApplied) {
+            this.response = response;
+            this.transitionApplied = transitionApplied;
+        }
+
+        public TrackingScanResponse getResponse() {
+            return response;
+        }
+
+        public boolean isTransitionApplied() {
+            return transitionApplied;
         }
     }
 }

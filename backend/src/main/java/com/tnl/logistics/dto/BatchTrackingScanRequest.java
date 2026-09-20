@@ -1,19 +1,24 @@
 package com.tnl.logistics.dto;
 
 import com.tnl.logistics.model.ParcelStatus;
-import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public class BatchTrackingScanRequest {
 
-    @NotEmpty(message = "At least one tracking ID must be provided")
-    private List<String> trackingIds;
+    @NotNull(message = "Tracking IDs list is required")
+    @Size(min = 1, max = 100, message = "Batch scan must contain between 1 and 100 tracking IDs")
+    private List<@NotBlank(message = "Tracking ID must not be blank") @Size(max = 64, message = "Tracking ID exceeds maximum length") String> trackingIds;
 
     @NotNull(message = "Target status is required")
     private ParcelStatus targetStatus;
 
+    @Size(max = 64, message = "Vehicle ID exceeds maximum length")
     private String vehicleId;
+
+    @Size(max = 255, message = "Remarks exceed maximum length")
     private String remarks;
 
     public BatchTrackingScanRequest() {}
