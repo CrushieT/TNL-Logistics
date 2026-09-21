@@ -60,6 +60,8 @@ export default function MainLayout() {
         <Stack.Screen name="shipments/index" />
         <Stack.Screen name="shipments/[id]" />
         <Stack.Screen name="shipments/parcel/[trackingId]" />
+        <Stack.Screen name="tracking-history/index" />
+        <Stack.Screen name="tracking-history/[trackingId]" />
       </Stack>
     </PrinterProvider>
   );

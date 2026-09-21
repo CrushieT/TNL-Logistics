@@ -30,7 +30,7 @@ Commercial freight forwarding requires strict chain-of-custody tracking, legal p
 ```text
                                   ┌────────────────────────────────┐
                                   │       MySQL 8.0 Database       │
-                                  │   (Flyway Migrations V1-V28)   │
+                                  │   (Flyway Migrations V1-V29)   │
                                   └───────────────┬────────────────┘
                                                   │
                                                   ▼
@@ -84,7 +84,7 @@ Unlike simplistic CRUD apps that conflate tracking and accounting into a single 
 | **Phase 3** | **Waybills & Freight Manifest Handover** | `[COMPLETED]` | `WYB-YYYY-XXXX` auto-numbering, 4-state lifecycle (`Generated` → `Sent to Hauler` → `Signed/Completed`), and print-ready A4 3rd-party hauler manifest. |
 | **Phase 4** | **Billing, Collections & Statement of Account** | `[COMPLETED]` | Payment ledger (`/payments`), Thursday weekly collections consolidation (`/weekly-collections`), `SOA-YYYY-XXX-WXX` multi-page statement preview (`/statements`), isolated print architecture (`/statements/print`), deduction management, and dynamic active cycle filtering. |
 | **Phase 5** | **Web Console Administration & Reports** | `[COMPLETED]` | Desktop login with branded artwork, route guarding, and rate limiting (`[COMPLETED]`); live operational dashboard metrics (`[COMPLETED]`); tracking logs audit feed (`[COMPLETED]`); operational & financial reports screen (`[COMPLETED]`); user & staff management (`[COMPLETED]`); system settings with dynamic collection day, volumetric divisor calculation, branding propagation, and real-time SSE updates (`[COMPLETED]`); first-boot admin registration, 2-step setup wizard, self-service credential management, and rate-limited password authorization modals (`[COMPLETED]`). |
-| **Phase 6** | **Role-Aware Mobile Courier Portal** | `[IN PROGRESS]` | Phases 6.1, 6.2, and 6.3a (`[COMPLETED]`): secure mobile authentication and device binding, mobile shipment registration and lookup, software/PDF label printing, and durable print-audit recovery. Phases 6.3b–6.6 (`[UPCOMING]`): physical Bluetooth printer validation, field status scanning, personal scan history, and offline SQLite synchronization. |
+| **Phase 6** | **Role-Aware Mobile Courier Portal** | `[IN PROGRESS]` | Phases 6.1, 6.2, 6.3a, and 6.4 (`[COMPLETED]`): secure mobile authentication and device binding, mobile shipment registration and lookup, software/PDF label printing, durable print-audit recovery, camera QR scanner, and sequential status flow engine. Phase 6.5 (`[IN PROGRESS]`): personal scan history, shift metrics, operational parcel inspection, and request lifecycle coordination. Phase 6.3b and 6.6 (`[UPCOMING]`): physical Bluetooth printer on-device validation and offline SQLite synchronization. |
 
 ---
 
@@ -101,7 +101,7 @@ logistics/
 │   │   ├── repository/                    # Spring Data Repositories, Group By Aggregations & MobileDeviceBindingRepository
 │   │   └── service/                       # Business Service Contracts & Implementations (impl/)
 │   └── src/main/resources/
-│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V28)
+│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V29)
 │       └── application-dev.properties     # Environment Configuration
 │
 ├── frontend-web/                          # Expo / React Native Web Admin Portal
@@ -115,9 +115,9 @@ logistics/
 │
 ├── frontend-mobile/                       # Expo / React Native Mobile Courier Portal
 │   ├── src/
-│   │   ├── app/                           # Expo Router Screens ((auth)/login, change-password, setup-pin, pin; (main)/index, scan)
+│   │   ├── app/                           # Expo Router Screens ((auth)/login, change-password, setup-pin, pin; (main)/index, register, printer, scan, tracking-history)
 │   │   ├── components/                    # Common Atoms (Keypad, PinIndicator, PressableScale, MobileHeader, StatusModal)
-│   │   ├── features/                      # Domain Slices (auth, office, field)
+│   │   ├── features/                      # Domain Slices (auth, office, field, shipments, printer, scanner, tracking-history)
 │   │   ├── services/                      # Axios Client (client.js) & Hardware-backed SecureStore (secureStore.js)
 │   │   └── theme/                         # Design Tokens (canvas, ink, accent, keypad)
 │   ├── app.json                           # Expo Configuration

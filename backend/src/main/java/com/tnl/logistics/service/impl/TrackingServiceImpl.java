@@ -545,6 +545,149 @@ public class TrackingServiceImpl implements TrackingService {
         return new TrackingMetricsResponse(totalScans, activeCouriers, loadedOnTruck, handedToHauler);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Page<PersonalTrackingEventResponse> getPersonalTrackingEvents(
+            String actingStaffUserId,
+            String search,
+            ParcelStatus status,
+            Pageable pageable) {
+        String cleanSearch = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
+        if (cleanSearch != null && cleanSearch.length() > 50) {
+            cleanSearch = cleanSearch.substring(0, 50);
+        }
+
+        Page<TrackingEvent> eventsPage = trackingEventRepository.findPersonalEvents(
+                actingStaffUserId, cleanSearch, status, pageable);
+
+        return eventsPage.map(this::mapToPersonalTrackingEventResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PersonalScanMetricsResponse getPersonalScanMetrics(String actingStaffUserId) {
+        LocalDate today = LocalDate.now();
+        LocalDateTime startOfDay = today.atStartOfDay();
+        LocalDateTime endOfDay = today.atTime(23, 59, 59, 999999999);
+
+        List<Object[]> rows = trackingEventRepository.countPersonalEventsByStatusBetween(
+                actingStaffUserId, startOfDay, endOfDay);
+
+        long totalScans = 0;
+        long loadedOnTruck = 0;
+        long arrivedAtTnl = 0;
+        long handedToHauler = 0;
+
+        for (Object[] row : rows) {
+            ParcelStatus status = (ParcelStatus) row[0];
+            long count = ((Number) row[1]).longValue();
+            totalScans += count;
+            if (status == ParcelStatus.LOADED_ON_TRUCK) {
+                loadedOnTruck = count;
+            } else if (status == ParcelStatus.ARRIVED_AT_TNL) {
+                arrivedAtTnl = count;
+            } else if (status == ParcelStatus.LOADED_TO_HAULER) {
+                handedToHauler = count;
+            }
+        }
+
+        return new PersonalScanMetricsResponse(today, totalScans, loadedOnTruck, arrivedAtTnl, handedToHauler);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PersonalParcelHistoryResponse getPersonalParcelHistory(String actingStaffUserId, String trackingId) {
+        if (trackingId == null || trackingId.trim().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tracking ID is required");
+        }
+        String cleanTrackingId = trackingId.trim();
+
+        if (!trackingEventRepository.hasStaffScannedParcel(cleanTrackingId, actingStaffUserId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Parcel unit not found in personal scan history");
+        }
+
+        ParcelUnit parcel = parcelUnitRepository.findById(cleanTrackingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Parcel unit not found in personal scan history"));
+
+        List<TrackingEvent> events = trackingEventRepository.findPersonalEventsForParcel(
+                cleanTrackingId, actingStaffUserId);
+
+        List<PersonalTrackingEventResponse> eventResponses = events.stream()
+                .map(this::mapToPersonalTrackingEventResponse)
+                .collect(Collectors.toList());
+
+        Shipment shipment = parcel.getShipment();
+        String shipmentId = shipment != null ? shipment.getShipmentId() : null;
+        Integer packageIndex = parcel.getSeq() != null ? parcel.getSeq() : 1;
+        Integer packageCount = (shipment != null && shipment.getQuantity() != null) ? shipment.getQuantity() : 1;
+
+        Vehicle currentVehicle = parcel.getCurrentVehicle();
+        String currentVehicleId = currentVehicle != null ? currentVehicle.getVehicleId() : null;
+        String currentVehiclePlateNumber = currentVehicle != null ? currentVehicle.getPlateNumber() : null;
+
+        String currentStatusCode = parcel.getCurrentStatus() != null ? parcel.getCurrentStatus().name() : null;
+        String currentStatusDisplay = formatStatusDisplay(parcel.getCurrentStatus());
+        String labelStatusCode = parcel.getLabelStatus() != null ? parcel.getLabelStatus().name() : LabelStatus.NOT_PRINTED.name();
+        String labelStatusDisplay = formatLabelStatus(parcel.getLabelStatus());
+
+        return new PersonalParcelHistoryResponse(
+                parcel.getTrackingId(),
+                shipmentId,
+                packageIndex,
+                packageCount,
+                currentStatusCode,
+                currentStatusDisplay,
+                labelStatusCode,
+                labelStatusDisplay,
+                currentVehicleId,
+                currentVehiclePlateNumber,
+                eventResponses
+        );
+    }
+
+    private PersonalTrackingEventResponse mapToPersonalTrackingEventResponse(TrackingEvent event) {
+        ParcelUnit parcel = event.getParcelUnit();
+        Shipment shipment = parcel != null ? parcel.getShipment() : null;
+        Vehicle vehicle = event.getVehicle();
+
+        String trackingId = parcel != null ? parcel.getTrackingId() : null;
+        String shipmentId = shipment != null ? shipment.getShipmentId() : null;
+        Integer packageIndex = parcel != null && parcel.getSeq() != null ? parcel.getSeq() : 1;
+        Integer packageCount = (shipment != null && shipment.getQuantity() != null) ? shipment.getQuantity() : 1;
+        String statusCode = event.getStatus() != null ? event.getStatus().name() : null;
+        String statusDisplay = formatStatusDisplay(event.getStatus());
+        String vehicleId = vehicle != null ? vehicle.getVehicleId() : null;
+        String vehiclePlateNumber = vehicle != null ? vehicle.getPlateNumber() : null;
+        LocalDateTime timestamp = event.getEventTimestamp();
+        String syncStatus = "SYNCED";
+
+        return new PersonalTrackingEventResponse(
+                event.getEventId(),
+                trackingId,
+                shipmentId,
+                packageIndex,
+                packageCount,
+                statusCode,
+                statusDisplay,
+                vehicleId,
+                vehiclePlateNumber,
+                timestamp,
+                syncStatus
+        );
+    }
+
+    private String formatLabelStatus(LabelStatus labelStatus) {
+        if (labelStatus == null) return "Pending";
+        switch (labelStatus) {
+            case PRINTED: return "Printed";
+            case REPRINTED: return "Reprinted";
+            case NOT_PRINTED:
+            default: return "Pending";
+        }
+    }
+
     private String formatStatus(ParcelStatus status) {
         if (status == null) return "Registered";
         switch (status) {

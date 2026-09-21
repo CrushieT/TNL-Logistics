@@ -81,4 +81,46 @@ public interface TrackingEventRepository extends JpaRepository<TrackingEvent, Lo
     long countStatusBetween(@Param("status") ParcelStatus status,
                             @Param("startDateTime") LocalDateTime startDateTime,
                             @Param("endDateTime") LocalDateTime endDateTime);
+
+    @Query(value = "SELECT e FROM TrackingEvent e " +
+           "JOIN FETCH e.parcelUnit pu " +
+           "JOIN FETCH pu.shipment s " +
+           "LEFT JOIN FETCH e.vehicle v " +
+           "WHERE e.staff.userId = :staffId " +
+           "AND (:search IS NULL OR LOWER(pu.trackingId) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "   OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+           "AND (:status IS NULL OR e.status = :status)",
+           countQuery = "SELECT COUNT(e) FROM TrackingEvent e " +
+           "JOIN e.parcelUnit pu " +
+           "JOIN pu.shipment s " +
+           "WHERE e.staff.userId = :staffId " +
+           "AND (:search IS NULL OR LOWER(pu.trackingId) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "   OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+           "AND (:status IS NULL OR e.status = :status)")
+    Page<TrackingEvent> findPersonalEvents(@Param("staffId") String staffId,
+                                          @Param("search") String search,
+                                          @Param("status") ParcelStatus status,
+                                          Pageable pageable);
+
+    @Query("SELECT e.status, COUNT(e) FROM TrackingEvent e " +
+           "WHERE e.staff.userId = :staffId " +
+           "AND e.eventTimestamp >= :startDateTime AND e.eventTimestamp <= :endDateTime " +
+           "GROUP BY e.status")
+    List<Object[]> countPersonalEventsByStatusBetween(@Param("staffId") String staffId,
+                                                     @Param("startDateTime") LocalDateTime startDateTime,
+                                                     @Param("endDateTime") LocalDateTime endDateTime);
+
+    @Query("SELECT CASE WHEN COUNT(e) > 0 THEN true ELSE false END FROM TrackingEvent e " +
+           "WHERE e.parcelUnit.trackingId = :trackingId AND e.staff.userId = :staffId")
+    boolean hasStaffScannedParcel(@Param("trackingId") String trackingId,
+                                  @Param("staffId") String staffId);
+
+    @Query("SELECT e FROM TrackingEvent e " +
+           "JOIN FETCH e.parcelUnit pu " +
+           "JOIN FETCH pu.shipment s " +
+           "LEFT JOIN FETCH e.vehicle v " +
+           "WHERE pu.trackingId = :trackingId AND e.staff.userId = :staffId " +
+           "ORDER BY e.eventTimestamp ASC, e.eventId ASC")
+    List<TrackingEvent> findPersonalEventsForParcel(@Param("trackingId") String trackingId,
+                                                  @Param("staffId") String staffId);
 }
