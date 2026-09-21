@@ -27,7 +27,7 @@ export default function SelectedParcelHistoryScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isNotFound, setIsNotFound] = useState(false);
-  const [showHistory, setShowHistory] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
 
   const activeControllerRef = useRef(null);
   const hasLoadedRef = useRef(false);
