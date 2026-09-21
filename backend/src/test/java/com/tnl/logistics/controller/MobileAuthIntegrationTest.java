@@ -1265,10 +1265,32 @@ public class MobileAuthIntegrationTest {
                 () -> authSecurityService.unbindCurrentDevice(
                         officeUser.getUserId(), 1, "dev-office-device", OFFICE_DEVICE_TOKEN, "10.0.2.2"));
 
-        assertTrue(results.stream().anyMatch(AuthSecurityService.UnbindResult.class::isInstance));
-        assertFalse(Boolean.TRUE.equals(mobileDeviceBindingRepository
-                .findByDeviceId("dev-office-device").orElseThrow().getActive()));
-        assertTrue(appUserRepository.findById(officeUser.getUserId()).orElseThrow().getTokenVersion() >= 2);
+        assertEquals(1, results.stream().filter(
+                result -> result instanceof AuthSecurityService.PinUpdateResult
+                        || result instanceof AuthSecurityService.UnbindResult).count());
+        assertEquals(1, results.stream().filter(Throwable.class::isInstance).count());
+        assertEquals(2, appUserRepository.findById(officeUser.getUserId()).orElseThrow().getTokenVersion());
+
+        boolean unbindWon = results.stream().anyMatch(AuthSecurityService.UnbindResult.class::isInstance);
+        if (unbindWon) {
+            assertFalse(Boolean.TRUE.equals(mobileDeviceBindingRepository
+                    .findByDeviceId("dev-office-device").orElseThrow().getActive()));
+            assertThrows(AuthSecurityService.AuthSecurityException.class, () -> authSecurityService.updatePin(
+                    officeUser.getUserId(), 2, issuedAt, "4444", "office123",
+                    "dev-office-device", OFFICE_DEVICE_TOKEN, "10.0.2.3"));
+            assertFalse(Boolean.TRUE.equals(mobileDeviceBindingRepository
+                    .findByDeviceId("dev-office-device").orElseThrow().getActive()));
+        } else {
+            authSecurityService.unbindCurrentDevice(
+                    officeUser.getUserId(), 2, "dev-office-device", OFFICE_DEVICE_TOKEN, "10.0.2.3");
+            assertFalse(Boolean.TRUE.equals(mobileDeviceBindingRepository
+                    .findByDeviceId("dev-office-device").orElseThrow().getActive()));
+            assertThrows(AuthSecurityService.AuthSecurityException.class, () -> authSecurityService.updatePin(
+                    officeUser.getUserId(), 3, issuedAt, "4444", "office123",
+                    "dev-office-device", OFFICE_DEVICE_TOKEN, "10.0.2.4"));
+            assertFalse(Boolean.TRUE.equals(mobileDeviceBindingRepository
+                    .findByDeviceId("dev-office-device").orElseThrow().getActive()));
+        }
     }
 
     @Test
