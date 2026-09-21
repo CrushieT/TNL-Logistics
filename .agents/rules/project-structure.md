@@ -21,15 +21,15 @@ tnl-logistics/
 │   │   │   ├── java/com/tnl/logistics/
 │   │   │   │   ├── config/              # SecurityConfig, CorsConfig, JwtTokenProvider, DataSeeder
 │   │   │   │   ├── controller/          # REST endpoints (Shipment, Vehicle, Client, Waybill, Payment, Collections, SOA)
-│   │   │   │   ├── dto/                 # Request & Response DTOs (including TrackingScanContextResponse.java)
+│   │   │   │   ├── dto/                 # Request & Response DTOs (including TrackingScanContextResponse, PersonalTrackingEventResponse, PersonalScanMetricsResponse, PersonalParcelHistoryResponse)
 │   │   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, Vehicle, Waybill, Payment, Soa, MobileDeviceBinding, etc.)
-│   │   │   │   ├── repository/          # Spring Data Repositories & Batch Group By Queries (including MobileDeviceBindingRepository)
+│   │   │   │   ├── repository/          # Spring Data Repositories & Batch Group By Queries (including MobileDeviceBindingRepository, TrackingEventRepository)
 │   │   │   │   └── service/             # Business Logic & Service Interfaces (impl/)
 │   │   │   └── resources/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
-│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V28)
-│   │   └── test/                        # Integration and unit test suites (including TrackingScanIntegrationTest.java)
+│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V29)
+│   │   └── test/                        # Integration and unit test suites (including TrackingScanIntegrationTest.java, PersonalTrackingHistoryIntegrationTest.java)
 │   └── pom.xml
 │
 ├── frontend-web/                    # Admin Web Portal (React Native Web / Expo Router)
@@ -89,21 +89,25 @@ tnl-logistics/
 │   │   │       │   ├── [id].js       # Screen 39 Shipment Parcel Units Breakdown
 │   │   │       │   └── parcel/
 │   │   │       │       └── [trackingId].js # Screen 40 Single Parcel Details & Scan Audit Timeline
-│   │   │       └── scan.js           # Screen 45 Camera QR scanner
+│   │   │       ├── scan.js           # Screen 45 Camera QR scanner
+│   │   │       └── tracking-history/ # Screens 49–52 Field Staff Personal Scan History
+│   │   │           ├── index.js      # Screen 49–50 Personal Scan Feed & Shift Metrics
+│   │   │           └── [trackingId].js # Screen 51–52 Operational Parcel Details & Personal Timeline
 │   │   ├── components/               # Shared UI atoms (BackButton, Keypad, PinIndicator, PressableScale, ActionCard, MetricCard, NoticeBanner, StatusModal, QRCodeGenerator, ThermalLabelPreviewModal)
 │   │   │   ├── common/
 │   │   │   └── layout/               # MobileHeader
-│   │   ├── features/                 # Domain feature slices (auth, office, field, shipments, printer, scanner)
+│   │   ├── features/                 # Domain feature slices (auth, office, field, shipments, printer, scanner, tracking-history)
 │   │   │   ├── shipments/            # Shipment registration, explorer, detail screens, and barcode scanner modal
 │   │   │   ├── printer/              # Driver isolation, audit outbox, ESC/POS formatter, and serialized PrinterContext
-│   │   │   └── scanner/              # Field camera scanner (ScanViewfinder, SingleScanReview, BatchScanPanel, ScanResultPanel, scannerFlow.mjs, trackingScanApi.js, haptics.js, hapticsCore.mjs)
+│   │   │   ├── scanner/              # Field camera scanner (ScanViewfinder, SingleScanReview, BatchScanPanel, ScanResultPanel, scannerFlow.mjs, trackingScanApi.js, haptics.js, hapticsCore.mjs)
+│   │   │   └── tracking-history/     # Field personal scan feed, metrics, parcel summary, personal timeline, sync status badge, pure flow logic (trackingHistoryFlow.mjs), request coordinator (trackingHistoryRequestCoordinator.mjs), and API client (trackingHistoryApi.js)
 │   │   ├── services/
 │   │   │   ├── api/client.js         # Axios API client with Bearer auth
 │   │   │   └── storage/secureStore.js# Hardware-backed SecureStore adapter
 │   │   ├── theme/index.js            # TNL design tokens (canvas, ink, accent, keypad)
 │   │   ├── utils/                    # QR matrix, SVG path, and BMP facade
 │   │   └── vendor/qrcodegen/         # Vendored Project Nayuki QR generator
-│   ├── tests/                        # Mobile unit test suites (registration, shipments, printer, scanner)
+│   ├── tests/                        # Mobile unit test suites (registration, shipments, printer, scanner, trackingHistory)
 │   ├── app.json                      # Expo configuration
 │   ├── eas.json                      # EAS Build configuration
 │   ├── package.json                  # Dependencies (including expo-camera, expo-haptics)

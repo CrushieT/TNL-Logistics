@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, Alert } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Icon } from 'react-native-paper';
 import { colors, typography } from '../../../theme';
@@ -17,7 +17,7 @@ export function FieldDashboard({ user, onLogout, onLock }) {
   };
 
   const handleTrackingHistory = () => {
-    Alert.alert('Tracking History', "Courier's personal parcel scan log (Phase 6.5).");
+    router.push('/(main)/tracking-history');
   };
 
   const handleAccount = () => {

@@ -21,4 +21,18 @@ public interface TrackingService {
                                                   Pageable pageable);
 
     TrackingMetricsResponse getTodayTrackingMetrics();
+
+    Page<PersonalTrackingEventResponse> getPersonalTrackingEvents(
+            String actingStaffUserId,
+            String search,
+            ParcelStatus status,
+            Pageable pageable
+    );
+
+    PersonalScanMetricsResponse getPersonalScanMetrics(String actingStaffUserId);
+
+    PersonalParcelHistoryResponse getPersonalParcelHistory(
+            String actingStaffUserId,
+            String trackingId
+    );
 }

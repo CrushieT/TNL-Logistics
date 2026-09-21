@@ -40,6 +40,53 @@ public class TrackingEventController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/mine")
+    @PreAuthorize("hasRole('FIELD_STAFF')")
+    public ResponseEntity<Page<PersonalTrackingEventResponse>> getPersonalTrackingEvents(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) ParcelStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            Authentication authentication) {
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new AccessDeniedException("Authenticated user context is required");
+        }
+        String actingStaffUserId = authentication.getName();
+        int clampedPage = Math.max(0, page);
+        int clampedSize = Math.min(50, Math.max(1, size));
+        Pageable pageable = PageRequest.of(clampedPage, clampedSize,
+                Sort.by(Sort.Order.desc("eventTimestamp"), Sort.Order.desc("eventId")));
+        Page<PersonalTrackingEventResponse> response = trackingService.getPersonalTrackingEvents(
+                actingStaffUserId, search, status, pageable);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/mine/metrics")
+    @PreAuthorize("hasRole('FIELD_STAFF')")
+    public ResponseEntity<PersonalScanMetricsResponse> getPersonalScanMetrics(
+            Authentication authentication) {
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new AccessDeniedException("Authenticated user context is required");
+        }
+        String actingStaffUserId = authentication.getName();
+        PersonalScanMetricsResponse response = trackingService.getPersonalScanMetrics(actingStaffUserId);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/mine/parcels/{trackingId}")
+    @PreAuthorize("hasRole('FIELD_STAFF')")
+    public ResponseEntity<PersonalParcelHistoryResponse> getPersonalParcelHistory(
+            @PathVariable String trackingId,
+            Authentication authentication) {
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new AccessDeniedException("Authenticated user context is required");
+        }
+        String actingStaffUserId = authentication.getName();
+        PersonalParcelHistoryResponse response = trackingService.getPersonalParcelHistory(
+                actingStaffUserId, trackingId);
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping("/scan")
     @PreAuthorize("hasAnyRole('OFFICE_STAFF', 'FIELD_STAFF', 'ADMIN')")
     public ResponseEntity<TrackingScanResponse> scanParcelStatus(

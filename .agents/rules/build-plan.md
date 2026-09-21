@@ -378,11 +378,29 @@
 - Real-time SSE broadcast synchronization: tracking events are published to connected clients strictly after transaction commit via Spring's `TransactionSynchronizationManager.afterCommit()`, preventing phantom broadcasts from rolled-back batches.
 - Verification & Testing: 26 integration tests in `TrackingScanIntegrationTest.java` (244/244 backend tests passing), 33 frontend unit tests in `tests/scanner.test.mjs` (82/82 mobile tests passing), and clean multi-platform production export via `npx expo export` (Web, Android, iOS).
 
-**6.5 — Field Staff: Personal Scan & Tracking History (Screens 49–52)**
-- Dedicated personal activity feed displaying only the scans performed by the authenticated field staff member (`actingStaffUserId == currentUserId`).
-- Daily shift metrics: Total Scans Today, Loaded on Truck count, Arrived at TNL count, and Handed to Hauler count.
-- Chronological scan event list with timestamp, parcel tracking number, transition state, and assigned vehicle.
-- Per-unit timeline inspection and sync status indicator (Synced vs Pending Offline Sync).
+**6.5 — Field Staff: Personal Scan & Tracking History (Screens 49–52)** — **[IN PROGRESS]**
+- Flyway migration `V29__add_personal_tracking_history_indexes.sql`: composite performance indexes on `tracking_event` (`staff_id, event_timestamp, event_id` and `staff_id, tracking_id, event_timestamp, event_id`) optimizing personal feed sorting, shift metric counters, and parcel ownership checks.
+- Dedicated personal activity feed REST endpoints role-gated strictly to `FIELD_STAFF` (`@PreAuthorize("hasRole('FIELD_STAFF')")`):
+  - `GET /api/v1/tracking-events/mine` — Server-side paginated personal scan feed (`page`, `size` [1..50], `status`, `search` filtering).
+  - `GET /api/v1/tracking-events/mine/metrics` — Daily shift metrics (Total Scans Today, Loaded on Truck, Arrived at TNL, Handed to Hauler) evaluated strictly within the server-local calendar day boundary (`LocalDate.now()`).
+  - `GET /api/v1/tracking-events/mine/parcels/{trackingId}` — Operational parcel inspection and chronological personal scan timeline.
+- Strict Privacy & Data Boundary Enforcement:
+  - Zero PII Exposure: `PersonalTrackingEventResponse`, `PersonalScanMetricsResponse`, and `PersonalParcelHistoryResponse` strictly exclude recipient name, client name, addresses, contact numbers, remarks, billing/payment data, and print events.
+  - Personal Scoping: Staff identity is derived solely from the authenticated JWT principal (`authentication.getName()`); no staff ID parameters are accepted from untrusted clients.
+  - Generic Parcel Detail PII Bypass Closed: Updated `GET /api/v1/parcel-units/{trackingId}` in `ParcelUnitController` to `@PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")`, blocking `FIELD_STAFF` from retrieving sensitive customer data.
+  - Parcel Scan Ownership Gating: Field staff can only view operational details for parcels they have personally scanned (`hasStaffScannedParcel`). Unowned parcels return HTTP 404 Not Found (matching nonexistent parcels to prevent tracking ID enumeration).
+- Mobile Implementation & UI (Screens 49–52):
+  - Pure, testable business logic in `src/features/tracking-history/trackingHistoryFlow.mjs` (query normalization, server pagination merging with duplicate suppression, shift metrics mapping, timestamp and package formatters without fabricated fallbacks, sync status metadata, and `replacePageZeroEvents`).
+  - API client `src/features/tracking-history/services/trackingHistoryApi.js` leveraging centralized `apiClient`.
+  - Main history screen (`src/app/(main)/tracking-history/index.js`): 2x2 daily shift metrics grid matching `prototype field tracking page.png`, debounced search input, server pagination (`HISTORY_PAGE_SIZE = 20`) coordinated with pure request coordinator (`trackingHistoryRequestCoordinator.mjs`) managing abort controllers, query generation version tokens, and pagination locks, pull-to-refresh, empty and error states with retry, and role guard.
+  - Selected parcel screen (`src/app/(main)/tracking-history/[trackingId].js`): operational parcel summary card matching `prototype field tracking selected.png`, `SHOW/HIDE MY HISTORY` collapsible toggle, chronological personal scan timeline with orange dots and vertical connector lines, non-looping focus refresh, and 404 handling.
+  - Components: `PersonalScanMetrics`, `PersonalTrackingEventCard`, `PersonalParcelSummary`, `PersonalTrackingTimeline`, `SyncStatusBadge` (with zero fabricated operational defaults).
+  - Wired navigation in `(main)/_layout.js` Stack navigator and hooked `FieldDashboard.js` `handleTrackingHistory` action.
+- Verification & Testing:
+  - Automated integration test suite in `PersonalTrackingHistoryIntegrationTest.java` (18 tests covering all 6 supported statuses, pagination completeness without omissions, equal-timestamp `eventId DESC` sorting, field-owned QR metric increment, role gating, and PII exclusion).
+  - Mobile unit test suite in `tests/trackingHistory.test.mjs` (26 tests covering all pure helpers, non-fabricated package/status fallbacks, page-zero replacement, and request coordinator lifecycle; 108 tests passing total).
+  - Clean Expo production exports across Web, Android, and iOS.
+  - Status remains `[IN PROGRESS]` pending physical device verification on deployed field hardware.
 
 **6.6 — Offline Resilience & SQLite Scan Queue (Screen 53)**
 - Local SQLite database queue for buffering parcel status scans performed without cellular coverage.
