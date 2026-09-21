@@ -274,14 +274,14 @@
 
 ---
 
-## Phase 6 — Role-Aware Mobile Courier Portal (Mobile Screens 29–53) — **[IN PROGRESS]**
+## Phase 6 — Role-Aware Mobile Courier Portal (Mobile Screens 29–56) — **[IN PROGRESS]**
 *Field staff courier app and authorized mobile office workflows.*
 
 **6.1 — Mobile Credential & PIN Workflow & Role-Aware Shell (Screens 29, 30, 31, 32, 33)** — **[COMPLETED]**
 - Stage 1 (Initial Login / Device Binding): Full Username & Password login (`POST /api/v1/auth/mobile-login`) allowing both `OFFICE_STAFF` and `FIELD_STAFF` (with Admin web-provisioned credentials), issuing a 10-day staff JWT token (`jwt.expiration.staff-days`), generating high-entropy CSPRNG device credentials (`deviceId`, 256-bit `deviceToken`), binding device identity to local hardware storage, returning `hasPinSet`.
 - Stage 2 (PIN Setup & Confirmation): Dedicated PIN Setup screen (`src/app/(auth)/setup-pin.js`) for accounts with `hasPinSet == false` (Option A "Require PIN setup on first mobile login" or "Clear PIN & Require Setup"), calling `POST /api/v1/auth/mobile-setup-pin` with 4-digit PIN confirmation, BCrypt hashing, incrementing `tokenVersion` to invalidate stale tokens, and returning a replacement JWT adopted seamlessly by the client.
-- Stage 3 (Shift Unlock): Quick PIN unlock screen (`src/app/(auth)/pin.js`) matching `prototype pin page.png`, displaying bound staff member's full name, role badge, 4-dot indicator, and 3x4 keypad calling `POST /api/v1/auth/mobile-pin-login` with targeted `{ username, pin }` and required device headers (`X-Device-Id`, `X-Device-Token`), plus "Sign in with another account" unbind action.
-- Stage 4 (Header Actions & Lifecycles): `MobileHeader` supporting quick "LOCK" (locks session back to PIN screen) and "LOGOUT" (custom minimalist `StatusModal` confirmation unbinding device and clearing stored auth).
+- Stage 3 (Shift Unlock): Quick PIN unlock screen (`src/app/(auth)/pin.js`) matching `prototype pin page.png`, displaying bound staff member's full name, role badge, 4-dot indicator, and 3x4 keypad calling `POST /api/v1/auth/mobile-pin-login` with targeted `{ username, pin }` and required device headers (`X-Device-Id`, `X-Device-Token`), plus password reauthentication that preserves the current binding.
+- Stage 4 (Header Actions & Lifecycles): `MobileHeader` supports quick `LOCK` (returns to PIN unlock) and `ACCOUNT` (opens the authenticated account and security settings). Destructive current-device unbinding is isolated on Screen 53.
 - Cryptographic Server-Enforced Device Binding (Flyway `V27`):
   - Database schema: `V27__create_mobile_device_bindings.sql` creating `mobile_device_bindings` table with composite indexes on `(user_id, device_id)`.
   - Model & Data Access: `MobileDeviceBinding` JPA entity and `MobileDeviceBindingRepository` supporting atomic token updates, queries by user and device, and cascading device revocation.
@@ -302,10 +302,10 @@
 - Modular `frontend-mobile/src/` architecture strictly matching `frontend-web` design patterns:
   - `src/theme/`: TNL design tokens (`canvas #F3F2ED`, `ink #1A1A1A`, `accent #C6491F`, `border #E1DFD5`, `keypadBg #EFECE6`).
   - `src/services/storage/`: Hardware-backed `expo-secure-store` wrapper enforcing fail-closed security on native iOS/Android (unencrypted fallbacks rejected), with memory-only store for web previews.
-  - `src/services/api/`: Centralized Axios client injecting Bearer tokens, enforcing HTTPS in production, and intercepting 401/403 session revocation.
-  - `src/features/auth/`: Encapsulated auth service and `AuthContext` provider handling credential login, password rotation, PIN setup, PIN unlock, session lock, and full unbind logout.
+  - `src/services/api/`: Centralized Axios client injecting Bearer tokens, enforcing HTTPS in production, distinguishing session renewal from authorization denial, retrying once with a newer replacement token, and redacting sensitive failures.
+  - `src/features/auth/`: Encapsulated auth service and `AuthContext` provider handling credential login, password rotation, PIN setup and rotation, PIN unlock, session lock, password reauthentication, and current-device unbinding.
   - `src/components/common/`: Shared UI components (`Keypad`, `PinIndicator`, `PressableScale`, `ActionCard`, `MetricCard`, `NoticeBanner`, `StatusModal`).
-  - `src/components/layout/`: `MobileHeader` with role eyebrow, staff name, `LOCK`, and `LOGOUT` triggers.
+  - `src/components/layout/`: `MobileHeader` with role eyebrow, staff name, `LOCK`, and `ACCOUNT` triggers.
 - Screens & Navigation Flow:
   - Credential Login (`src/app/(auth)/login.js`): Username and password entry with TNL tracking logo, `MOBILE PORTAL` badge, and quick shortcut to PIN unlock if device is already bound.
   - Password Change (`src/app/(auth)/change-password.js`): Mandatory first-boot password change workflow.
@@ -378,7 +378,7 @@
 - Real-time SSE broadcast synchronization: tracking events are published to connected clients strictly after transaction commit via Spring's `TransactionSynchronizationManager.afterCommit()`, preventing phantom broadcasts from rolled-back batches.
 - Verification & Testing: 26 integration tests in `TrackingScanIntegrationTest.java` (244/244 backend tests passing), 33 frontend unit tests in `tests/scanner.test.mjs` (82/82 mobile tests passing), and clean multi-platform production export via `npx expo export` (Web, Android, iOS).
 
-**6.5 — Field Staff: Personal Scan & Tracking History (Screens 49–52)** — **[IN PROGRESS]**
+**6.5 — Field Staff: Personal Scan & Tracking History (Screens 49–52)** — **[COMPLETED]**
 - Flyway migration `V29__add_personal_tracking_history_indexes.sql`: composite performance indexes on `tracking_event` (`staff_id, event_timestamp, event_id` and `staff_id, tracking_id, event_timestamp, event_id`) optimizing personal feed sorting, shift metric counters, and parcel ownership checks.
 - Dedicated personal activity feed REST endpoints role-gated strictly to `FIELD_STAFF` (`@PreAuthorize("hasRole('FIELD_STAFF')")`):
   - `GET /api/v1/tracking-events/mine` — Server-side paginated personal scan feed (`page`, `size` [1..50], `status`, `search` filtering).
@@ -393,16 +393,50 @@
   - Pure, testable business logic in `src/features/tracking-history/trackingHistoryFlow.mjs` (query normalization, server pagination merging with duplicate suppression, shift metrics mapping, timestamp and package formatters without fabricated fallbacks, sync status metadata, and `replacePageZeroEvents`).
   - API client `src/features/tracking-history/services/trackingHistoryApi.js` leveraging centralized `apiClient`.
   - Main history screen (`src/app/(main)/tracking-history/index.js`): 2x2 daily shift metrics grid matching `prototype field tracking page.png`, debounced search input, server pagination (`HISTORY_PAGE_SIZE = 20`) coordinated with pure request coordinator (`trackingHistoryRequestCoordinator.mjs`) managing abort controllers, query generation version tokens, and pagination locks, pull-to-refresh, empty and error states with retry, and role guard.
-  - Selected parcel screen (`src/app/(main)/tracking-history/[trackingId].js`): operational parcel summary card matching `prototype field tracking selected.png`, `SHOW/HIDE MY HISTORY` collapsible toggle, chronological personal scan timeline with orange dots and vertical connector lines, non-looping focus refresh, and 404 handling.
+  - Selected parcel screen (`src/app/(main)/tracking-history/[trackingId].js`): operational parcel summary card matching `prototype field tracking selected.png`, `SHOW/HIDE MY HISTORY` collapsible toggle (collapsed by default), chronological personal scan timeline with orange dots and vertical connector lines, non-looping focus refresh, and 404 handling.
   - Components: `PersonalScanMetrics`, `PersonalTrackingEventCard`, `PersonalParcelSummary`, `PersonalTrackingTimeline`, `SyncStatusBadge` (with zero fabricated operational defaults).
   - Wired navigation in `(main)/_layout.js` Stack navigator and hooked `FieldDashboard.js` `handleTrackingHistory` action.
 - Verification & Testing:
   - Automated integration test suite in `PersonalTrackingHistoryIntegrationTest.java` (18 tests covering all 6 supported statuses, pagination completeness without omissions, equal-timestamp `eventId DESC` sorting, field-owned QR metric increment, role gating, and PII exclusion).
   - Mobile unit test suite in `tests/trackingHistory.test.mjs` (26 tests covering all pure helpers, non-fabricated package/status fallbacks, page-zero replacement, and request coordinator lifecycle; 108 tests passing total).
   - Clean Expo production exports across Web, Android, and iOS.
-  - Status remains `[IN PROGRESS]` pending physical device verification on deployed field hardware.
+  - Physical on-device acceptance testing on field hardware completed and verified.
 
-**6.6 — Offline Resilience & SQLite Scan Queue (Screen 53)**
+**6.6 — Mobile Staff Account, Security & 4-Digit PIN Settings (Screens 53–55)** — **[COMPLETED]**
+- Authenticated Mobile Screens (Screens 53–55):
+  - Screen 53 (`src/app/(main)/settings/index.js`): Staff account, session, and bound-device overview with compact back header, identity card (initials square, full name, `@username`, immutable user ID, role, and optional staff type), session/device card (shift access status, PIN configuration status, masked device ID `••••••••a12f93bc`, formatted last authenticated timestamp), security action list, and destructive device-unbind section.
+  - Screen 54 (`src/app/(main)/settings/password.js`): Authenticated in-app password rotation with current password, new password (minimum 8, maximum 128 characters), confirmation matching, show/hide visibility toggles, disabled submission until valid, and isolated rate limiting.
+  - Screen 55 (`src/app/(main)/settings/pin.js`): Password-authorized 4-digit PIN rotation governed by explicit state machine (`PASSWORD_CHALLENGE` → `NEW_PIN` → `CONFIRM_PIN` → `SUBMITTING` → `SUCCESS`), requiring `POST /api/v1/auth/verify-password` challenge, 4-dot `PinIndicator`, 3x4 `Keypad`, in-memory password forwarding to final submission, and automatic sensitive state cleanup on app background/unmount.
+- Backend Contracts & Security Hardening:
+  - Typed Current User Response (`GET /api/v1/auth/me`): Returns `CurrentUserResponse` containing `userId`, `username`, `fullName`, `role`, `staffType`, `mustChangePassword`, `hasPinSet`, and masked `deviceBinding` (`maskedDeviceId`, `active`, `lastAuthenticatedAt`). Constant-time device token comparison using required `X-Device-Id` and `X-Device-Token` headers.
+  - In-App Password Rotation (`POST /api/v1/auth/password-change`): Verifies `oldPassword` with BCrypt, rejects reused passwords, increments `tokenVersion` once, issues replacement JWT, and leaves existing device bindings active.
+  - Password Challenge (`POST /api/v1/auth/verify-password`): Replaces administrator-specific error with generic `Incorrect current password.` and applies isolated rate limiting.
+  - 4-Digit PIN Setup & Rotation (`POST /api/v1/auth/mobile-setup-pin`): Hardens regex to strictly 4 digits (`^[0-9]{4}$`), conditionally requires `currentPassword` when `pinHash` already exists (rotation), rejects PIN reuse, increments `tokenVersion`, issues replacement JWT, and leaves device bindings active.
+  - Current-Device Unbinding (`POST /api/v1/auth/mobile-unbind`): Atomically sets caller's specific `MobileDeviceBinding.active = false`, increments `tokenVersion`, preserves binding audit row and other device bindings, and clears local mobile storage only upon server confirmation.
+  - Revocation Differentiation (`JwtAuthenticationFilter`): Protected requests with stale, expired, or version-mismatched JWTs return HTTP 401 with `code: SESSION_REAUTH_REQUIRED`, while insufficient roles return HTTP 403. Public auth endpoints bypass bearer token inspection.
+  - Dedicated Rate-Limiting Namespaces: Independent failure counting via `LoginRateLimiterService` for password change (`ep:password-change`, `password-change:user`), password verification (`ep:verify-password`, `verify-password:user`), and PIN rotation (`ep:pin-rotation`, `pin-rotation:user`) without cross-contaminating login or unlock throttles.
+  - Serialized Security Mutations: Password, PIN, and unbind changes use pessimistic user locking; operations that touch a binding then acquire its lock in the fixed user-then-binding order. Every successful mutation increments `tokenVersion` exactly once without a schema migration.
+  - Initial PIN Recent Authentication: Password-free first PIN setup requires both JWT `iat` and binding `lastAuthenticatedAt` within five minutes, with the specified 60-second clock-skew allowance.
+  - Explicit Mobile Authorization: PIN setup/rotation and current-device unbinding require `FIELD_STAFF` or `OFFICE_STAFF`; Admin receives `403 MOBILE_ROLE_REQUIRED`.
+  - Accepted Cryptography Contract: Passwords and exactly four-digit PINs retain BCrypt cost 10. Existing bindings intentionally remain active after password and PIN rotation.
+- Mobile Architecture & Storage Lifecycles:
+  - Pure Transition Engine (`src/features/auth/services/authStorageTransitions.mjs`): Pure, testable storage transitions (`replaceAuthenticatedSession`, `clearAccessSessionPreservingBinding`, `clearDeviceSession`) with zero storage of passwords, PINs, or PIN hashes.
+  - Pure Security Flow Helpers (`src/features/settings/accountSecurityFlow.mjs`): `deriveInitials`, `formatRole`, `formatStaffType`, `maskDeviceId`, `validatePasswordChange`, `validateFourDigitPin`, and `normalizeSecurityError` with zero fabricated fallbacks.
+  - Stale Response Protection & Single-Retry: Axios response interceptor retries once on `401 SESSION_REAUTH_REQUIRED` if a newer replacement token exists in storage.
+  - Sensitive Error Redaction: Login, profile, password, PIN, device status, and unbind failures expose only safe status/code/message/retry metadata and remove request bodies, bearer tokens, raw device tokens, and Axios configuration.
+  - AuthContext Operations: Handles `rotatePasswordInSession`, `rotateUserPin`, `lockSession`, `startPasswordReauthentication`, `unbindCurrentDevice`, and `clearInvalidDeviceSession`.
+  - Header & Dashboard Navigation: `MobileHeader` receives `onAccount` routing to Screen 53 and keeps quick Lock action; removes header-level destructive logout; updates `FieldDashboard` (Screen 33) and `OfficeDashboard` (Screen 31) `ACCOUNT & SHIFT` cards to navigate to `/(main)/settings`.
+- Verification & Testing:
+  - Targeted backend verification: `MobileAuthIntegrationTest` (53) and `SecurityIntegrationTest` (19), 72/72 passing, including rollback and concurrent credential-mutation coverage.
+  - Full backend regression suite: 280/280 passing.
+  - Mobile verification: `tests/authSecurity.test.mjs` 16/16 passing; full mobile suite 124/124 passing.
+  - Multi-platform production export verification via `npx expo export`: Web, Android, and iOS passed with output outside the repository.
+  - Mobile dependency audit passed the configured high-severity threshold; 13 transitive moderate advisories remain because available fixes require breaking Expo dependency changes. No automated fix was applied.
+  - Backend OWASP dependency analysis migrated to automated GitHub Actions CI/CD workflows (`.github/workflows/owasp-check.yml` and `.github/workflows/dependency-review.yml`) with NVD API key and local cache support.
+  - Physical on-device acceptance testing on mobile hardware completed and verified.
+
+**6.7 — Offline Resilience & SQLite Scan Queue (Screen 56)** — **[UPCOMING]**
 - Local SQLite database queue for buffering parcel status scans performed without cellular coverage.
 - Connectivity listener (`@react-native-community/netinfo`) with automatic background batch sync (`POST /api/v1/tracking-events/batch-scan`) upon network restoration.
 - Visual pending upload badge and sync status banner on the courier's personal scan history.
+- Un-synced scan queue retention safeguards preventing accidental sign-out or device unbinding when pending offline scans exist.

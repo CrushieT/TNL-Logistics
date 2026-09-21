@@ -14,17 +14,22 @@ tnl-logistics/
 │       ├── karpathy-guidelines.md    # LLM coding best practices
 │       └── project-structure.md      # Project directory layout & philosophies
 ├── .github/
-│   └── pull_request_template.md      # GitHub Pull Request template
+│   ├── pull_request_template.md      # GitHub Pull Request template
+│   ├── PR_DRAFT.md                   # Current shipping-task handoff draft
+│   └── workflows/                    # GitHub Actions CI/CD workflows
+│       ├── dependency-review.yml     # Fast PR dependency vulnerability checks
+│       └── owasp-check.yml           # Scheduled and on-demand OWASP backend vulnerability scan
+├── .review/                          # Implementation plans and verification reports
 ├── backend/                          # Spring Boot API (Java 21)
 │   ├── src/
 │   │   ├── main/
 │   │   │   ├── java/com/tnl/logistics/
 │   │   │   │   ├── config/              # SecurityConfig, CorsConfig, JwtTokenProvider, DataSeeder
 │   │   │   │   ├── controller/          # REST endpoints (Shipment, Vehicle, Client, Waybill, Payment, Collections, SOA)
-│   │   │   │   ├── dto/                 # Request & Response DTOs (including TrackingScanContextResponse, PersonalTrackingEventResponse, PersonalScanMetricsResponse, PersonalParcelHistoryResponse)
+│   │   │   │   ├── dto/                 # Request & Response DTOs (including CurrentUserResponse and MobileDeviceBindingSummary)
 │   │   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, Vehicle, Waybill, Payment, Soa, MobileDeviceBinding, etc.)
-│   │   │   │   ├── repository/          # Spring Data Repositories & Batch Group By Queries (including MobileDeviceBindingRepository, TrackingEventRepository)
-│   │   │   │   └── service/             # Business Logic & Service Interfaces (impl/)
+│   │   │   │   ├── repository/          # Spring Data repositories, including pessimistic user and device-binding authentication queries
+│   │   │   │   └── service/             # Business logic, including AuthSecurityService and transactional implementation (impl/)
 │   │   │   └── resources/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
@@ -90,24 +95,30 @@ tnl-logistics/
 │   │   │       │   └── parcel/
 │   │   │       │       └── [trackingId].js # Screen 40 Single Parcel Details & Scan Audit Timeline
 │   │   │       ├── scan.js           # Screen 45 Camera QR scanner
+│   │   │       ├── settings/          # Screens 53–55 Mobile Account & Security
+│   │   │       │   ├── index.js       # Screen 53 account, session, and bound-device overview
+│   │   │       │   ├── password.js    # Screen 54 in-app password rotation
+│   │   │       │   └── pin.js         # Screen 55 password-authorized 4-digit PIN rotation
 │   │   │       └── tracking-history/ # Screens 49–52 Field Staff Personal Scan History
 │   │   │           ├── index.js      # Screen 49–50 Personal Scan Feed & Shift Metrics
 │   │   │           └── [trackingId].js # Screen 51–52 Operational Parcel Details & Personal Timeline
 │   │   ├── components/               # Shared UI atoms (BackButton, Keypad, PinIndicator, PressableScale, ActionCard, MetricCard, NoticeBanner, StatusModal, QRCodeGenerator, ThermalLabelPreviewModal)
 │   │   │   ├── common/
 │   │   │   └── layout/               # MobileHeader
-│   │   ├── features/                 # Domain feature slices (auth, office, field, shipments, printer, scanner, tracking-history)
+│   │   ├── features/                 # Domain feature slices (auth, office, field, shipments, printer, scanner, tracking-history, settings)
+│   │   │   ├── auth/services/        # Auth API and pure authStorageTransitions.mjs lifecycle helpers
+│   │   │   ├── settings/             # Account/security flow helpers and reusable settings components
 │   │   │   ├── shipments/            # Shipment registration, explorer, detail screens, and barcode scanner modal
 │   │   │   ├── printer/              # Driver isolation, audit outbox, ESC/POS formatter, and serialized PrinterContext
 │   │   │   ├── scanner/              # Field camera scanner (ScanViewfinder, SingleScanReview, BatchScanPanel, ScanResultPanel, scannerFlow.mjs, trackingScanApi.js, haptics.js, hapticsCore.mjs)
 │   │   │   └── tracking-history/     # Field personal scan feed, metrics, parcel summary, personal timeline, sync status badge, pure flow logic (trackingHistoryFlow.mjs), request coordinator (trackingHistoryRequestCoordinator.mjs), and API client (trackingHistoryApi.js)
 │   │   ├── services/
-│   │   │   ├── api/client.js         # Axios API client with Bearer auth
+│   │   │   ├── api/                  # Axios client plus sessionHandling.mjs retry and redaction helpers
 │   │   │   └── storage/secureStore.js# Hardware-backed SecureStore adapter
 │   │   ├── theme/index.js            # TNL design tokens (canvas, ink, accent, keypad)
 │   │   ├── utils/                    # QR matrix, SVG path, and BMP facade
 │   │   └── vendor/qrcodegen/         # Vendored Project Nayuki QR generator
-│   ├── tests/                        # Mobile unit test suites (registration, shipments, printer, scanner, trackingHistory)
+│   ├── tests/                        # Mobile unit suites, including authSecurity.test.mjs
 │   ├── app.json                      # Expo configuration
 │   ├── eas.json                      # EAS Build configuration
 │   ├── package.json                  # Dependencies (including expo-camera, expo-haptics)

@@ -252,7 +252,8 @@ public class UserManagementIntegrationTest {
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + oldToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
     }
 
     @Test
@@ -275,7 +276,8 @@ public class UserManagementIntegrationTest {
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + oldToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
     }
 
     @Test
@@ -372,7 +374,8 @@ public class UserManagementIntegrationTest {
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", originalToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
 
         var replacementUser = appUserRepository.findById(replacementUserId).orElseThrow();
         String replacementToken = "Bearer " + com.tnl.logistics.config.JwtTokenProvider.generateToken(
@@ -502,7 +505,8 @@ public class UserManagementIntegrationTest {
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + officeToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
     }
 
     @Test
@@ -528,7 +532,8 @@ public class UserManagementIntegrationTest {
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + officeToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
     }
 
     @Test

@@ -9,16 +9,14 @@ import jakarta.validation.constraints.Pattern;
 public class MobilePinLoginRequest {
 
     @NotBlank(message = "PIN is required")
-    @Pattern(regexp = "^[0-9]{4,6}$", message = "PIN must be between 4 and 6 digits")
+    @Pattern(regexp = "^[0-9]{4}$", message = "PIN must be exactly 4 digits")
     private String pin;
 
     @NotBlank(message = "Username is required")
     private String username;
 
-    @NotBlank(message = "Device ID is required")
     private String deviceId;
 
-    @NotBlank(message = "Device token is required")
     private String deviceToken;
 
     public MobilePinLoginRequest() {}

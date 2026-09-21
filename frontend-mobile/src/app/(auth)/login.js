@@ -34,6 +34,8 @@ export default function LoginScreen() {
   const isPinClearedNotice = params?.reason === 'pin_cleared';
   const isSessionExpiredNotice = params?.reason === 'session_expired';
   const isPasswordChangeNotice = params?.reason === 'password_change_required' || params?.reason === 'password_changed';
+  const isPinSetupReauthNotice = params?.reason === 'pin_setup_reauth_required';
+  const isDeviceCredentialNotice = params?.reason === 'device_credentials_invalid' || params?.reason === 'device_credentials_missing';
 
   const [username, setUsername] = useState(params?.username || '');
   const [password, setPassword] = useState('');
@@ -102,13 +104,12 @@ export default function LoginScreen() {
         router.replace('/(main)');
       }
     } catch (error) {
-      const responseData = error.response?.data;
-      if (error.response?.status === 429) {
-        const retryAfter = responseData?.retryAfterSeconds || 60;
+      if (error.status === 429) {
+        const retryAfter = error.retryAfterSeconds || 60;
         setLockoutSeconds(retryAfter);
         setErrorMessage(`Too many failed attempts. Locked out for ${retryAfter}s.`);
-      } else if (responseData?.message) {
-        setErrorMessage(responseData.message);
+      } else if (error.message) {
+        setErrorMessage(error.message);
       } else {
         setErrorMessage('Unable to sign in. Please verify your credentials and network connection.');
       }
@@ -169,6 +170,20 @@ export default function LoginScreen() {
             <NoticeBanner
               title="PASSWORD CHANGE REQUIRED"
               subtitle="Sign in with your password to update it before using this device."
+            />
+          )}
+
+          {isPinSetupReauthNotice && (
+            <NoticeBanner
+              title="PASSWORD SIGN IN REQUIRED"
+              subtitle="Sign in again to refresh the five-minute PIN setup authorization window."
+            />
+          )}
+
+          {isDeviceCredentialNotice && (
+            <NoticeBanner
+              title="DEVICE BINDING REQUIRED"
+              subtitle="Sign in with your password to bind this device before using PIN unlock."
             />
           )}
 

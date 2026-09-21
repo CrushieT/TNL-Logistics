@@ -3,7 +3,6 @@ import {
   StyleSheet,
   View,
   Text,
-  TouchableOpacity,
   ActivityIndicator,
   ScrollView,
   Image,
@@ -19,7 +18,13 @@ import { StatusModal } from '../../components/common/StatusModal';
 
 export default function SetupPinScreen() {
   const router = useRouter();
-  const { user, mustChangePassword, setupUserPin, fullLogout } = useAuth();
+  const {
+    user,
+    mustChangePassword,
+    setupInitialPin,
+    startPasswordReauthentication,
+    unbindCurrentDevice,
+  } = useAuth();
 
   const [step, setStep] = useState(1); // 1: enter new pin, 2: confirm pin
   const [pin, setPin] = useState('');
@@ -27,6 +32,7 @@ export default function SetupPinScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [cancelModalVisible, setCancelModalVisible] = useState(false);
+  const [cancelError, setCancelError] = useState('');
 
   useEffect(() => {
     if (mustChangePassword) {
@@ -80,12 +86,18 @@ export default function SetupPinScreen() {
     setErrorMessage('');
 
     try {
-      await setupUserPin(pin);
+      await setupInitialPin(pin);
       router.replace('/(main)');
     } catch (error) {
-      const responseData = error.response?.data;
-      if (responseData?.message) {
-        setErrorMessage(responseData.message);
+      if (error.code === 'PASSWORD_REAUTH_REQUIRED') {
+        await startPasswordReauthentication({
+          username: user?.username,
+          reason: 'pin_setup_reauth_required',
+        });
+        return;
+      }
+      if (error.message) {
+        setErrorMessage(error.message);
       } else {
         setErrorMessage('Failed to configure PIN. Please try again.');
       }
@@ -98,17 +110,28 @@ export default function SetupPinScreen() {
   };
 
   const handleCancel = () => {
+    setCancelError('');
     setCancelModalVisible(true);
   };
 
   const handleConfirmCancel = async () => {
-    setCancelModalVisible(false);
-    await fullLogout();
-    router.replace('/(auth)/login');
+    if (submitting) return;
+    setSubmitting(true);
+    setCancelError('');
+    try {
+      await unbindCurrentDevice();
+      setCancelModalVisible(false);
+    } catch (error) {
+      setCancelError(error.message || 'Device unbinding could not be confirmed. Retry or stay signed in.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleDismissCancel = () => {
+    if (submitting) return;
     setCancelModalVisible(false);
+    setCancelError('');
   };
 
   const isContinueEnabled = step === 1 && pin.length === 4;
@@ -224,9 +247,9 @@ export default function SetupPinScreen() {
         visible={cancelModalVisible}
         eyebrow="PIN CONFIGURATION"
         title="Cancel PIN Setup?"
-        message="Are you sure you want to cancel PIN configuration and sign out? You will need to re-enter your password to sign in."
-        cancelText="Keep Setting Up"
-        confirmText="Sign Out"
+        message={cancelError || 'This device will no longer accept PIN unlock. Password sign in will be required to bind it again. Other bound devices remain active.'}
+        cancelText={cancelError ? 'Stay Signed In' : 'Keep Setting Up'}
+        confirmText={cancelError ? 'Retry' : 'Unbind Device'}
         confirmVariant="danger"
         onConfirm={handleConfirmCancel}
         onCancel={handleDismissCancel}

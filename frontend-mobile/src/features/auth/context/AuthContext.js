@@ -1,45 +1,37 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { authService } from '../services/authService';
-import { setSessionRevokedCallback } from '../../../services/api/client';
+import { setSessionEventCallback } from '../../../services/api/client';
 import { StatusModal } from '../../../components/common/StatusModal';
 import {
-  saveToken,
-  getToken,
-  removeToken,
-  saveUser,
-  getUser,
-  removeUser,
-  saveBoundUser,
+  clearAccessSessionPreservingBinding as clearStoredAccessSession,
+  clearDeviceSession as clearStoredDeviceSession,
   getBoundUser,
-  removeBoundUser,
-  saveDeviceCredentials,
   getDeviceCredentials,
-  removeDeviceCredentials,
-  setAppLocked,
+  getToken,
+  getUser,
   isAppLocked,
+  replaceAuthenticatedSession,
+  saveBoundUser,
+  saveDeviceCredentials,
+  saveToken,
+  saveUser,
+  setAppLocked,
 } from '../../../services/storage/secureStore';
 
-const AuthContext = createContext({
-  user: null,
-  boundUser: null,
-  token: null,
-  isAuthenticated: false,
-  isLoading: true,
-  isLocked: false,
-  mustChangePassword: false,
-  mustSetupPin: false,
-  loginWithPassword: async () => {},
-  changePassword: async () => {},
-  setupUserPin: async () => {},
-  unlockWithPin: async () => {},
-  loginWithPin: async () => {},
-  lockSession: async () => {},
-  fullLogout: async () => {},
-  logout: async () => {},
-  updateBoundUserPinStatus: async () => {},
-  showSessionNotice: () => {},
-});
+const AuthContext = createContext(null);
+
+function toBoundUser(user) {
+  if (!user) return null;
+  return {
+    userId: user.userId,
+    username: user.username,
+    fullName: user.fullName,
+    role: user.role,
+    staffType: user.staffType ?? null,
+    hasPinSet: user.hasPinSet,
+  };
+}
 
 export function AuthProvider({ children }) {
   const router = useRouter();
@@ -50,207 +42,155 @@ export function AuthProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true);
   const [popupNotice, setPopupNotice] = useState(null);
 
-  const showSessionNotice = useCallback(({
-    title,
-    eyebrow = 'SECURITY NOTICE',
-    message,
-    confirmText = 'PROCEED TO SIGN IN',
-    username,
-    reason = 'pin_cleared',
-  }) => {
+  const installSession = useCallback(async (replacementToken, nextUser) => {
+    await replaceAuthenticatedSession({ token: replacementToken, user: nextUser });
+    setToken(replacementToken);
+    setUser(nextUser);
+    setIsLocked(false);
+  }, []);
+
+  const clearAccessSessionPreservingBinding = useCallback(async () => {
+    await clearStoredAccessSession();
+    setToken(null);
+    setUser(null);
+    setIsLocked(true);
+  }, []);
+
+  const clearInvalidDeviceSession = useCallback(async () => {
+    await clearStoredDeviceSession();
+    setToken(null);
+    setUser(null);
+    setBoundUser(null);
+    setIsLocked(false);
+  }, []);
+
+  const showSessionNotice = useCallback((notice) => {
     setPopupNotice({
-      title,
-      eyebrow,
-      message,
-      confirmText,
-      username,
-      reason,
+      eyebrow: notice.eyebrow || 'SECURITY NOTICE',
+      title: notice.title || 'Sign In Required',
+      message: notice.message || 'Please sign in with your password to continue.',
+      confirmText: notice.confirmText || 'CONTINUE',
+      action: notice.action || 'password-login',
+      username: notice.username || '',
+      reason: notice.reason || 'session_expired',
     });
   }, []);
 
-  const clearSession = useCallback(async () => {
-    try {
-      await Promise.all([
-        removeToken(),
-        removeUser(),
-        removeBoundUser(),
-        removeDeviceCredentials(),
-        setAppLocked(false),
-      ]);
-    } finally {
-      setToken(null);
-      setUser(null);
-      setBoundUser(null);
-      setIsLocked(false);
-    }
-  }, []);
+  const startPasswordReauthentication = useCallback(async ({
+    username,
+    reason = 'password_reauthentication',
+  } = {}) => {
+    const targetUsername = username || user?.username || boundUser?.username || '';
+    await clearAccessSessionPreservingBinding();
+    router.replace({
+      pathname: '/(auth)/login',
+      params: { username: targetUsername, reason },
+    });
+  }, [boundUser?.username, clearAccessSessionPreservingBinding, router, user?.username]);
 
-  const handleNoticeConfirm = async () => {
-    const currentNotice = popupNotice;
-    setPopupNotice(null);
-    await fullLogout();
-    try {
-      router.replace({
-        pathname: '/(auth)/login',
-        params: {
-          username: currentNotice?.username || '',
-          reason: currentNotice?.reason || 'pin_cleared',
-        },
-      });
-    } catch (error) {
-      // Non-blocking navigation error
-    }
-  };
-
-  // Register session revocation callback for 401s on authenticated requests
   useEffect(() => {
-    setSessionRevokedCallback(async () => {
+    setSessionEventCallback(async (event) => {
       const storedUser = await getUser();
       const storedBoundUser = await getBoundUser();
-      const username = storedUser?.username || storedBoundUser?.username;
+      const username = storedUser?.username || storedBoundUser?.username || '';
 
-      await clearSession();
-
-      showSessionNotice({
-        title: 'Session Ended',
-        eyebrow: 'SESSION REVOKED',
-        message: 'Your session was revoked or expired. Please sign in again with your password.',
-        confirmText: 'PROCEED TO SIGN IN',
-        username,
-        reason: 'session_expired',
-      });
+      if (event.type === 'SESSION_REAUTH_REQUIRED') {
+        await clearAccessSessionPreservingBinding();
+        router.replace('/(auth)/pin');
+        showSessionNotice({
+          eyebrow: 'SESSION RENEWAL',
+          title: 'Unlock Required',
+          message: 'Your account security changed. Unlock this device with your PIN to renew the session.',
+          action: 'dismiss',
+        });
+      } else if (event.type === 'INVALID_DEVICE_CREDENTIALS') {
+        await clearInvalidDeviceSession();
+        router.replace({
+          pathname: '/(auth)/login',
+          params: { username, reason: 'device_credentials_invalid' },
+        });
+        showSessionNotice({
+          eyebrow: 'DEVICE SECURITY',
+          title: 'Password Sign In Required',
+          message: 'This device binding is no longer valid. Sign in with your password to bind it again.',
+          action: 'dismiss',
+        });
+      }
     });
-  }, [clearSession, showSessionNotice]);
+    return () => setSessionEventCallback(null);
+  }, [clearAccessSessionPreservingBinding, clearInvalidDeviceSession, router, showSessionNotice]);
 
-  // Restore stored session and device binding on mount
   useEffect(() => {
+    let isMounted = true;
+
     async function restoreSession() {
       try {
-        const storedBoundUser = await getBoundUser();
-        const storedToken = await getToken();
-        const storedUser = await getUser();
-        const storedDeviceCredentials = await getDeviceCredentials();
-        const lockedStatus = await isAppLocked();
+        const [storedBoundUser, storedToken, storedUser, deviceCredentials, locked] = await Promise.all([
+          getBoundUser(), getToken(), getUser(), getDeviceCredentials(), isAppLocked(),
+        ]);
 
-        if (storedBoundUser && storedDeviceCredentials) {
-          setBoundUser(storedBoundUser);
+        if (!isMounted) return;
+        if ((storedBoundUser || (storedUser && !storedUser.mustChangePassword)) && !deviceCredentials) {
+          await clearInvalidDeviceSession();
+          showSessionNotice({
+            eyebrow: 'DEVICE SECURITY',
+            title: 'Password Sign In Required',
+            message: 'This device must be bound with a password before PIN unlock can be used.',
+            action: 'password-login',
+            username: storedUser?.username || storedBoundUser?.username,
+            reason: 'device_credentials_missing',
+          });
+          return;
         }
 
-        const isPasswordChangeSession = Boolean(storedToken && storedUser?.mustChangePassword);
+        setBoundUser(storedBoundUser || null);
+        if (storedToken && storedUser) {
+          setToken(storedToken);
+          setUser(storedUser);
+          setIsLocked(storedUser.mustChangePassword ? false : locked);
 
-        if ((storedToken && storedUser) || storedBoundUser) {
-          if (!storedDeviceCredentials && !isPasswordChangeSession) {
-            const username = storedUser?.username || storedBoundUser?.username;
-            await clearSession();
-            showSessionNotice({
-              title: 'Sign In Required',
-              eyebrow: 'DEVICE SECURITY',
-              message: 'This device must be signed in with a password before it can be unlocked with a PIN.',
-              confirmText: 'PROCEED TO SIGN IN',
-              username,
-              reason: 'device_credentials_missing',
-            });
-            return;
-          }
-
-          if (storedToken && storedUser) {
-            setToken(storedToken);
-            setUser(storedUser);
-            setIsLocked(isPasswordChangeSession ? false : lockedStatus || false);
-
-            // Verify session freshness with server in background
+          if (!storedUser.mustChangePassword && deviceCredentials) {
             try {
-              const freshUser = await authService.fetchCurrentUser();
-              if (freshUser) {
-                if (isPasswordChangeSession && freshUser.mustChangePassword === false) {
-                  await clearSession();
-                  showSessionNotice({
-                    title: 'Sign In Required',
-                    eyebrow: 'DEVICE SECURITY',
-                    message: 'Please sign in with your new password to bind this device.',
-                    confirmText: 'PROCEED TO SIGN IN',
-                    username: freshUser.username,
-                    reason: 'password_changed',
-                  });
-                } else if (freshUser.hasPinSet === false && freshUser.mustChangePassword === false) {
-                  // PIN cleared by admin -> log out account completely and display notice
-                  await clearSession();
-
-                  showSessionNotice({
-                    title: 'PIN Reset by Administrator',
-                    eyebrow: 'SECURITY NOTICE',
-                    message: 'Your PIN was cleared by an administrator. Please sign in with your password to configure a new PIN.',
-                    confirmText: 'PROCEED TO SIGN IN',
-                    username: freshUser.username,
-                    reason: 'pin_cleared',
-                  });
-                } else {
-                  setUser(freshUser);
-                }
+              const profile = await authService.fetchCurrentUser();
+              if (isMounted) {
+                const refreshedUser = { ...storedUser, ...profile };
+                await saveUser(refreshedUser);
+                setUser(refreshedUser);
               }
-            } catch (verifyError) {
-              if (verifyError.response?.status === 401) {
-                // Token revoked / tokenVersion mismatch on server
-                await clearSession();
-
-                showSessionNotice({
-                  title: 'Session Ended',
-                  eyebrow: 'SESSION REVOKED',
-                  message: 'Your session was revoked or expired. Please sign in again with your password.',
-                  confirmText: 'PROCEED TO SIGN IN',
-                  username: storedUser.username,
-                  reason: 'session_expired',
-                });
-              }
-            }
-          } else if (storedBoundUser) {
-            // If stored bound user has no PIN configured, clear binding and show notice
-            if (storedBoundUser.hasPinSet === false) {
-              await clearSession();
-
-              showSessionNotice({
-                title: 'PIN Reset by Administrator',
-                eyebrow: 'SECURITY NOTICE',
-                message: 'Your PIN was cleared by an administrator. Please sign in with your password to configure a new PIN.',
-                confirmText: 'PROCEED TO SIGN IN',
-                username: storedBoundUser.username,
-                reason: 'pin_cleared',
-              });
-            } else {
-              setIsLocked(true);
+            } catch {
+              // The API interceptor owns session and device credential failures.
             }
           }
+        } else if (storedBoundUser && deviceCredentials) {
+          setIsLocked(true);
         }
-      } catch (e) {
-        // Fallback gracefully on storage read failure
+      } catch {
+        if (isMounted) {
+          setToken(null);
+          setUser(null);
+          setBoundUser(null);
+          setIsLocked(false);
+        }
       } finally {
-        setIsLoading(false);
+        if (isMounted) setIsLoading(false);
       }
     }
 
     restoreSession();
-  }, [clearSession, showSessionNotice]);
+    return () => { isMounted = false; };
+  }, [clearInvalidDeviceSession, showSessionNotice]);
 
   const loginWithPassword = useCallback(async (username, password) => {
     setIsLoading(true);
     try {
       const existingDeviceCredentials = await getDeviceCredentials();
       const data = await authService.loginWithPassword(username, password, existingDeviceCredentials?.deviceId);
-      const {
-        token: receivedToken,
-        deviceId,
-        deviceToken,
-        ...userData
-      } = data;
+      const { token: receivedToken, deviceId, deviceToken, ...userData } = data;
 
       if (userData.mustChangePassword) {
-        await clearSession();
-        await Promise.all([
-          saveToken(receivedToken),
-          saveUser(userData),
-          setAppLocked(false),
-        ]);
-
+        await saveToken(receivedToken);
+        await saveUser(userData);
+        await setAppLocked(false);
         setToken(receivedToken);
         setUser(userData);
         setIsLocked(false);
@@ -258,171 +198,132 @@ export function AuthProvider({ children }) {
       }
 
       await saveDeviceCredentials(deviceId, deviceToken);
-      await saveToken(receivedToken);
-      await saveUser(userData);
-      await saveBoundUser({
-        userId: userData.userId,
-        username: userData.username,
-        fullName: userData.fullName,
-        role: userData.role,
-        hasPinSet: userData.hasPinSet,
-      });
-      await setAppLocked(false);
-
-      setToken(receivedToken);
-      setUser(userData);
-      setBoundUser({
-        userId: userData.userId,
-        username: userData.username,
-        fullName: userData.fullName,
-        role: userData.role,
-        hasPinSet: userData.hasPinSet,
-      });
-      setIsLocked(false);
-
+      const nextBoundUser = toBoundUser(userData);
+      await saveBoundUser(nextBoundUser);
+      await installSession(receivedToken, userData);
+      setBoundUser(nextBoundUser);
       return userData;
     } finally {
       setIsLoading(false);
     }
-  }, [clearSession]);
+  }, [installSession]);
 
-  const changePassword = useCallback(async (oldPassword, newPassword) => {
+  const completeRequiredPasswordChange = useCallback(async (currentPassword, newPassword) => {
     setIsLoading(true);
     try {
-      const result = await authService.changePassword(oldPassword, newPassword);
-      const username = result.username || user?.username;
-      await clearSession();
-      return { ...result, username };
+      const result = await authService.changePassword(currentPassword, newPassword);
+      const existingBinding = await getBoundUser();
+      if (existingBinding) await clearAccessSessionPreservingBinding();
+      else await clearInvalidDeviceSession();
+      return { ...result, username: result.username || user?.username || '' };
     } finally {
       setIsLoading(false);
     }
-  }, [clearSession, user?.username]);
+  }, [clearAccessSessionPreservingBinding, clearInvalidDeviceSession, user?.username]);
 
-  const setupUserPin = useCallback(async (pin) => {
-    setIsLoading(true);
-    try {
-      const result = await authService.setupPin(pin);
-      if (!result.token) {
-        throw new Error('PIN setup did not return a replacement session. Please sign in again.');
-      }
+  const rotatePasswordInSession = useCallback(async (currentPassword, newPassword) => {
+    const result = await authService.changePassword(currentPassword, newPassword);
+    const nextUser = { ...user, ...result };
+    delete nextUser.token;
+    delete nextUser.message;
+    await installSession(result.token, nextUser);
+    const nextBoundUser = toBoundUser(nextUser);
+    await saveBoundUser(nextBoundUser);
+    setBoundUser(nextBoundUser);
+    return result;
+  }, [installSession, user]);
 
-      const updatedUser = user ? { ...user, hasPinSet: true } : null;
-      const updatedBoundUser = boundUser ? { ...boundUser, hasPinSet: true } : null;
+  const setupInitialPin = useCallback(async (pin) => {
+    const result = await authService.setupInitialPin(pin);
+    const nextUser = { ...user, hasPinSet: true };
+    const nextBoundUser = { ...(boundUser || toBoundUser(nextUser)), hasPinSet: true };
+    await installSession(result.token, nextUser);
+    await saveBoundUser(nextBoundUser);
+    setBoundUser(nextBoundUser);
+    return result;
+  }, [boundUser, installSession, user]);
 
-      if (updatedUser) {
-        await saveUser(updatedUser);
-        setUser(updatedUser);
-      }
-      if (updatedBoundUser) {
-        await saveBoundUser(updatedBoundUser);
-        setBoundUser(updatedBoundUser);
-      }
-
-      await saveToken(result.token);
-      setToken(result.token);
-
-      return result;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user, boundUser]);
+  const rotateUserPin = useCallback(async (pin, currentPassword) => {
+    const result = await authService.rotatePin(pin, currentPassword);
+    const nextUser = { ...user, hasPinSet: true };
+    const nextBoundUser = { ...(boundUser || toBoundUser(nextUser)), hasPinSet: true };
+    await installSession(result.token, nextUser);
+    await saveBoundUser(nextBoundUser);
+    setBoundUser(nextBoundUser);
+    return result;
+  }, [boundUser, installSession, user]);
 
   const unlockWithPin = useCallback(async (pin) => {
     setIsLoading(true);
     try {
       const targetUsername = boundUser?.username || user?.username;
-      if (!targetUsername) {
-        throw new Error('No bound staff account found on terminal. Please sign in with your password.');
-      }
       const deviceCredentials = await getDeviceCredentials();
-      if (!deviceCredentials) {
-        await clearSession();
-        throw new Error('This device must be signed in with a password before it can be unlocked with a PIN.');
+      if (!targetUsername || !deviceCredentials) {
+        await clearInvalidDeviceSession();
+        throw { code: 'MISSING_DEVICE_CREDENTIALS', message: 'Password sign in is required.' };
       }
-
       const data = await authService.loginWithPin(targetUsername, pin, deviceCredentials);
-      const {
-        token: receivedToken,
-        deviceId,
-        deviceToken,
-        ...userData
-      } = data;
-
-      await saveToken(receivedToken);
-      await saveUser(userData);
+      const { token: receivedToken, deviceId, deviceToken, ...userData } = data;
       await saveDeviceCredentials(deviceId, deviceToken);
-      await setAppLocked(false);
-
-      setToken(receivedToken);
-      setUser(userData);
-      setIsLocked(false);
-
+      await installSession(receivedToken, userData);
+      const nextBoundUser = toBoundUser(userData);
+      await saveBoundUser(nextBoundUser);
+      setBoundUser(nextBoundUser);
       return userData;
     } finally {
       setIsLoading(false);
     }
-  }, [boundUser, clearSession, user]);
+  }, [boundUser?.username, clearInvalidDeviceSession, installSession, user?.username]);
 
   const lockSession = useCallback(async () => {
     await setAppLocked(true);
     setIsLocked(true);
-  }, []);
+    router.replace('/(auth)/pin');
+  }, [router]);
 
-  const fullLogout = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      await clearSession();
-    } finally {
-      setIsLoading(false);
-    }
-  }, [clearSession]);
+  const unbindCurrentDevice = useCallback(async () => {
+    const result = await authService.unbindCurrentDevice();
+    await clearInvalidDeviceSession();
+    router.replace('/(auth)/login');
+    return result;
+  }, [clearInvalidDeviceSession, router]);
 
   const updateBoundUserPinStatus = useCallback(async (hasPinSet) => {
-    const current = boundUser || await getBoundUser();
-    if (current) {
-      const updated = { ...current, hasPinSet };
-      await saveBoundUser(updated);
-      setBoundUser(updated);
-      if (user) {
-        setUser((prev) => (prev ? { ...prev, hasPinSet } : prev));
-      }
-    }
-  }, [boundUser, user]);
+    const currentBoundUser = boundUser || await getBoundUser();
+    if (!currentBoundUser) return;
+    const nextBoundUser = { ...currentBoundUser, hasPinSet };
+    await saveBoundUser(nextBoundUser);
+    setBoundUser(nextBoundUser);
+    setUser((currentUser) => currentUser ? { ...currentUser, hasPinSet } : currentUser);
+  }, [boundUser]);
 
-  const mustChangePassword = Boolean(user && user.mustChangePassword);
+  const handleNoticeConfirm = async () => {
+    const notice = popupNotice;
+    setPopupNotice(null);
+    if (notice?.action === 'password-login') {
+      await startPasswordReauthentication({ username: notice.username, reason: notice.reason });
+    }
+  };
+
+  const mustChangePassword = Boolean(user?.mustChangePassword);
   const mustSetupPin = Boolean(user && !mustChangePassword && user.hasPinSet === false);
   const isAuthenticated = Boolean(token && user && !isLocked && !mustChangePassword && !mustSetupPin);
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        boundUser,
-        token,
-        isAuthenticated,
-        isLoading,
-        isLocked,
-        mustChangePassword,
-        mustSetupPin,
-        loginWithPassword,
-        changePassword,
-        setupUserPin,
-        unlockWithPin,
-        loginWithPin: unlockWithPin,
-        lockSession,
-        fullLogout,
-        logout: fullLogout,
-        updateBoundUserPinStatus,
-        showSessionNotice,
-      }}
-    >
+    <AuthContext.Provider value={{
+      user, boundUser, token, isAuthenticated, isLoading, isLocked, mustChangePassword, mustSetupPin,
+      loginWithPassword, completeRequiredPasswordChange, rotatePasswordInSession, setupInitialPin,
+      rotateUserPin, unlockWithPin, loginWithPin: unlockWithPin, lockSession,
+      startPasswordReauthentication, unbindCurrentDevice, clearInvalidDeviceSession,
+      updateBoundUserPinStatus, showSessionNotice,
+    }}>
       {children}
       <StatusModal
         visible={Boolean(popupNotice)}
         title={popupNotice?.title}
         eyebrow={popupNotice?.eyebrow}
         message={popupNotice?.message}
-        confirmText={popupNotice?.confirmText || 'PROCEED TO SIGN IN'}
+        confirmText={popupNotice?.confirmText || 'CONTINUE'}
         onConfirm={handleNoticeConfirm}
       />
     </AuthContext.Provider>
@@ -431,8 +332,6 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 }

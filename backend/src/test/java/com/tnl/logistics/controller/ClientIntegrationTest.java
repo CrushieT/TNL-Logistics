@@ -37,6 +37,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -97,7 +98,8 @@ public class ClientIntegrationTest {
                 .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/v1/clients").header("Authorization", "Bearer invalid-token")
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
         request.setEmail("invalid-email");
         MvcResult invalid = mockMvc.perform(post("/api/v1/clients").header("Authorization", officeToken)
                         .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))

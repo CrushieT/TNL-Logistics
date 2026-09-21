@@ -32,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -185,7 +186,8 @@ public class ShipmentIntegrationTest {
         String payload = objectMapper.writeValueAsString(createMobileRegistrationRequest());
         mockMvc.perform(post("/api/v1/shipments").header("Authorization", "Bearer invalid-token")
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
         mockMvc.perform(post("/api/v1/shipments").header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isForbidden());
@@ -265,7 +267,8 @@ public class ShipmentIntegrationTest {
                         .header("Authorization", "Bearer invalid-token")
                         .param("page", "-7")
                         .param("size", "1000000"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
 
         mockMvc.perform(get("/api/v1/shipments")
                         .header("Authorization", fieldToken)

@@ -1,6 +1,22 @@
 import { apiClient } from '../../../services/api/client';
 import { getDeviceCredentials } from '../../../services/storage/secureStore';
 
+async function requireDeviceHeaders() {
+  const deviceCredentials = await getDeviceCredentials();
+  if (!deviceCredentials) {
+    throw {
+      status: null,
+      code: 'MISSING_DEVICE_CREDENTIALS',
+      message: 'This device must be bound with a password before continuing.',
+      retryAfterSeconds: null,
+    };
+  }
+  return {
+    'X-Device-Id': deviceCredentials.deviceId,
+    'X-Device-Token': deviceCredentials.deviceToken,
+  };
+}
+
 export const authService = {
   /**
    * Authenticates staff using username & password (Stage 1 / Device Binding).
@@ -11,7 +27,11 @@ export const authService = {
    */
   async loginWithPassword(username, password, deviceId) {
     const headers = deviceId ? { 'X-Device-Id': deviceId } : undefined;
-    const response = await apiClient.post('/auth/mobile-login', { username, password }, { headers });
+    const response = await apiClient.post('/auth/mobile-login', { username, password }, {
+      headers,
+      skipAuth: true,
+      sensitivePayload: true,
+    });
     return response.data;
   },
 
@@ -28,18 +48,31 @@ export const authService = {
       pin,
       deviceId: deviceCredentials.deviceId,
       deviceToken: deviceCredentials.deviceToken,
-    });
+    }, { skipAuth: true, sensitivePayload: true });
     return response.data;
   },
 
   /**
    * Sets up or updates the staff member's mobile PIN (Stage 2).
    * Requires Bearer token authentication.
-   * @param {string} pin - 4 to 6 digit numeric string
+   * @param {string} pin - Exactly 4 numeric digits
    * @returns {Promise<{ token: string, message: string, hasPinSet: boolean }>}
    */
-  async setupPin(pin) {
-    const response = await apiClient.post('/auth/mobile-setup-pin', { pin });
+  async setupInitialPin(pin) {
+    const headers = await requireDeviceHeaders();
+    const response = await apiClient.post('/auth/mobile-setup-pin', { pin }, {
+      headers,
+      sensitivePayload: true,
+    });
+    return response.data;
+  },
+
+  async rotatePin(pin, currentPassword) {
+    const headers = await requireDeviceHeaders();
+    const response = await apiClient.post('/auth/mobile-setup-pin', { pin, currentPassword }, {
+      headers,
+      sensitivePayload: true,
+    });
     return response.data;
   },
 
@@ -50,7 +83,16 @@ export const authService = {
    * @returns {Promise<{ token: string, userId: string, username: string, role: string, mustChangePassword: boolean }>}
    */
   async changePassword(oldPassword, newPassword) {
-    const response = await apiClient.post('/auth/password-change', { oldPassword, newPassword });
+    const response = await apiClient.post('/auth/password-change', { oldPassword, newPassword }, {
+      sensitivePayload: true,
+    });
+    return response.data;
+  },
+
+  async verifyCurrentPassword(password) {
+    const response = await apiClient.post('/auth/verify-password', { password }, {
+      sensitivePayload: true,
+    });
     return response.data;
   },
 
@@ -58,7 +100,17 @@ export const authService = {
    * Fetches the current authenticated user's profile.
    */
   async fetchCurrentUser() {
-    const response = await apiClient.get('/auth/me');
+    const headers = await requireDeviceHeaders();
+    const response = await apiClient.get('/auth/me', { headers, sensitivePayload: true });
+    return response.data;
+  },
+
+  async unbindCurrentDevice() {
+    const headers = await requireDeviceHeaders();
+    const response = await apiClient.post('/auth/mobile-unbind', null, {
+      headers,
+      sensitivePayload: true,
+    });
     return response.data;
   },
 
@@ -74,6 +126,8 @@ export const authService = {
     }
 
     const response = await apiClient.get(`/auth/mobile-pin-status?username=${encodeURIComponent(username)}`, {
+      skipAuth: true,
+      sensitivePayload: true,
       headers: {
         'X-Device-Id': deviceCredentials.deviceId,
         'X-Device-Token': deviceCredentials.deviceToken,
