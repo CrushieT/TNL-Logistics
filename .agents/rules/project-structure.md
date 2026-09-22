@@ -156,3 +156,8 @@ tnl-logistics/
 **Root:** Configuration files that coordinate all three services (docker-compose, .gitignore, README).
 
 - **Why:** Monorepo makes it easy to `docker-compose up` and have all three apps running locally in one command.
+
+### Workflow Testing
+
+- `backend/src/main/resources/application-workflow.properties` selects the isolated `tnl_workflow` database and enables the production-shaped workflow fixtures.
+- `docker-compose.workflow.yml` overrides the default Compose stack for the same isolated workflow profile.
