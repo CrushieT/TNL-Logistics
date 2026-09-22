@@ -113,6 +113,17 @@ public class TrackingEventController {
         return ResponseEntity.ok(responses);
     }
 
+    @PostMapping(value = "/offline-sync", consumes = "application/json", produces = "application/json")
+    @PreAuthorize("hasRole('FIELD_STAFF')")
+    public ResponseEntity<OfflineTrackingSyncResponse> synchronizeOfflineScans(
+            @Valid @RequestBody OfflineTrackingSyncRequest request,
+            Authentication authentication) {
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new AccessDeniedException("Authenticated user context is required");
+        }
+        return ResponseEntity.ok(trackingService.processOfflineSync(request, authentication.getName()));
+    }
+
     /**
      * Paginated search for company-wide immutable tracking event audit logs.
      */

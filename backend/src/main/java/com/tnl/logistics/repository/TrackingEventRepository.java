@@ -12,12 +12,15 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Spring Data Repository for TrackingEvent entity.
  */
 @Repository
 public interface TrackingEventRepository extends JpaRepository<TrackingEvent, Long> {
+
+    Optional<TrackingEvent> findByClientEventId(String clientEventId);
 
     List<TrackingEvent> findByParcelUnit_TrackingIdOrderByEventTimestampAsc(String trackingId);
 

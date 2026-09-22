@@ -29,6 +29,9 @@ import {
 } from '../../features/scanner/scannerFlow.mjs';
 import { trackingScanApi } from '../../features/scanner/services/trackingScanApi';
 import { safeHaptics } from '../../features/scanner/utils/haptics';
+import { useOfflineSync } from '../../features/offline-sync/context/OfflineSyncContext';
+import { cacheVehicles, getCachedVehicles } from '../../features/offline-sync/services/offlineQueueStore';
+import { isOfflineSingleScanBlocked } from '../../features/offline-sync/offlineQueueFlow.mjs';
 import ScanViewfinder from '../../features/scanner/components/ScanViewfinder';
 import SingleScanReview from '../../features/scanner/components/SingleScanReview';
 import BatchScanPanel from '../../features/scanner/components/BatchScanPanel';
@@ -38,6 +41,7 @@ export default function ScanScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { user, isLoading: authLoading } = useAuth();
+  const { isOnline, enqueue: enqueueOfflineScan, isNativeOfflineSupported } = useOfflineSync();
   const [permission, requestPermission] = useCameraPermissions();
 
   const [state, dispatch] = useReducer(scannerReducer, initialScannerState);
@@ -112,8 +116,9 @@ export default function ScanScreen() {
     try {
       const data = await trackingScanApi.getActiveVehicles();
       setVehicles(Array.isArray(data) ? data : []);
+      if (Array.isArray(data)) await cacheVehicles(data);
     } catch {
-      setVehicles([]);
+      setVehicles(await getCachedVehicles());
     } finally {
       setLoadingVehicles(false);
     }
@@ -135,6 +140,11 @@ export default function ScanScreen() {
 
     if (state.mode === SCANNER_MODES.SINGLE) {
       if (state.phase !== SCANNER_PHASES.SCANNING && state.phase !== SCANNER_PHASES.RESULT) {
+        return;
+      }
+      if (isOfflineSingleScanBlocked(state.mode, isOnline, isNativeOfflineSupported)) {
+        void safeHaptics.warning();
+        dispatch({ type: 'SET_ERROR', payload: 'Single Scan requires a connection. Use Rapid Batch to queue offline scans.' });
         return;
       }
       scanLockRef.current = true;
@@ -205,6 +215,24 @@ export default function ScanScreen() {
         return;
       }
 
+      if (!isOnline && isNativeOfflineSupported) {
+        try {
+          await enqueueOfflineScan({
+            trackingId: normalized.trackingId,
+            targetStatus: state.batchOperation,
+            vehicleId: state.batchOperation === 'LOADED_ON_TRUCK' ? state.batchVehicleId : null,
+          });
+          void safeHaptics.success();
+          dispatch({ type: 'SET_ERROR', payload: `${normalized.trackingId} queued for synchronization.` });
+        } catch (error) {
+          void safeHaptics.error();
+          dispatch({ type: 'SET_ERROR', payload: error?.message || 'Unable to save offline scan.' });
+        } finally {
+          cooldownTimerRef.current = setTimeout(() => { scanLockRef.current = false; }, 750);
+        }
+        return;
+      }
+
       if (state.batchQueue.length >= MAX_BATCH_SIZE) {
         void safeHaptics.error();
         dispatch({ type: 'SET_ERROR', payload: `Batch queue limit reached (${MAX_BATCH_SIZE} parcels).` });
@@ -234,6 +262,11 @@ export default function ScanScreen() {
 
   const handleSingleConfirm = async () => {
     if (submitLockRef.current) return;
+    if (isOfflineSingleScanBlocked(state.mode, isOnline, isNativeOfflineSupported)) {
+      void safeHaptics.warning();
+      dispatch({ type: 'SUBMISSION_FAILED', payload: 'Single Scan requires a connection. Use Rapid Batch to queue offline scans.' });
+      return;
+    }
     submitLockRef.current = true;
     dispatch({ type: 'SET_SUBMITTING', payload: true });
     try {
@@ -364,7 +397,9 @@ export default function ScanScreen() {
             <Icon source="arrow-left" size={24} color={colors.ink} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>SCAN QR</Text>
-          <View style={{ width: 40 }} />
+          <TouchableOpacity onPress={() => router.push('/(main)/offline-queue')} style={styles.queueButton} accessibilityRole="button" accessibilityLabel="Open offline scan queue">
+            <Icon source="cloud-sync-outline" size={22} color={colors.accent} />
+          </TouchableOpacity>
         </View>
 
         {/* 2. Dark Camera Region */}
@@ -615,6 +650,12 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: spacing.xs
+  },
+  queueButton: {
+    minWidth: 40,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   headerTitle: {
     ...typography.eyebrow,

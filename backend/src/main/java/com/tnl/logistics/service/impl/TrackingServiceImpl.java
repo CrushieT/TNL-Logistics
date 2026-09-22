@@ -23,6 +23,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 /**
@@ -40,17 +42,21 @@ public class TrackingServiceImpl implements TrackingService {
     private final VehicleRepository vehicleRepository;
     private final AppUserRepository appUserRepository;
     private final SseService sseService;
+    private final OfflineTrackingSyncItemService offlineTrackingSyncItemService;
+    private final Map<String, ReentrantLock> offlineEventLocks = new ConcurrentHashMap<>();
 
     public TrackingServiceImpl(ParcelUnitRepository parcelUnitRepository,
                                TrackingEventRepository trackingEventRepository,
                                VehicleRepository vehicleRepository,
                                AppUserRepository appUserRepository,
-                               SseService sseService) {
+                               SseService sseService,
+                               OfflineTrackingSyncItemService offlineTrackingSyncItemService) {
         this.parcelUnitRepository = parcelUnitRepository;
         this.trackingEventRepository = trackingEventRepository;
         this.vehicleRepository = vehicleRepository;
         this.appUserRepository = appUserRepository;
         this.sseService = sseService;
+        this.offlineTrackingSyncItemService = offlineTrackingSyncItemService;
     }
 
     @Override
@@ -284,6 +290,74 @@ public class TrackingServiceImpl implements TrackingService {
         }
 
         return responses;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public OfflineTrackingSyncResponse processOfflineSync(OfflineTrackingSyncRequest request, String actingStaffUserId) {
+        AppUser actor = appUserRepository.findById(actingStaffUserId)
+                .orElseThrow(() -> new IllegalArgumentException("Staff user not found"));
+        if (!Boolean.TRUE.equals(actor.getActive()) || actor.getRole() != UserRole.FIELD_STAFF) {
+            throw new org.springframework.security.access.AccessDeniedException("Field Staff access is required");
+        }
+        Set<String> eventIds = new HashSet<>();
+        for (OfflineTrackingSyncItemRequest item : request.items()) {
+            if (!eventIds.add(java.util.UUID.fromString(item.clientEventId()).toString())) {
+                throw new IllegalArgumentException("Duplicate clientEventId in batch");
+            }
+        }
+        List<OfflineTrackingSyncItemRequest> ordered = new ArrayList<>(request.items());
+        ordered.sort(Comparator.comparing(OfflineTrackingSyncItemRequest::clientSequence));
+        List<OfflineTrackingSyncItemResponse> results = new ArrayList<>(ordered.size());
+        Set<String> failedParcels = new HashSet<>();
+        for (OfflineTrackingSyncItemRequest item : ordered) {
+            String trackingId = item.trackingId().trim().toUpperCase();
+            if (failedParcels.contains(trackingId)) {
+                results.add(new OfflineTrackingSyncItemResponse(item.clientEventId(), trackingId, "BLOCKED_BY_PRIOR_FAILURE",
+                        "PRIOR_ITEM_FAILED", false, false, null, null, null));
+                continue;
+            }
+            try {
+                OfflineTrackingSyncItemResponse result = processOfflineItemWithEventLock(item, actor);
+                results.add(result);
+                if (!"APPLIED".equals(result.outcome()) && !"ALREADY_APPLIED".equals(result.outcome())) {
+                    failedParcels.add(trackingId);
+                }
+            } catch (org.springframework.dao.DataIntegrityViolationException ex) {
+                OfflineTrackingSyncItemResponse recovered = offlineTrackingSyncItemService.recoverDuplicateReservation(item, actor);
+                if (recovered != null) {
+                    results.add(recovered);
+                    if (!"APPLIED".equals(recovered.outcome()) && !"ALREADY_APPLIED".equals(recovered.outcome())) {
+                        failedParcels.add(trackingId);
+                    }
+                    continue;
+                }
+                results.add(new OfflineTrackingSyncItemResponse(item.clientEventId(), trackingId, "RETRYABLE_ERROR",
+                        "TEMPORARY_FAILURE", true, false, null, null, null));
+            } catch (org.springframework.dao.PessimisticLockingFailureException ex) {
+                results.add(new OfflineTrackingSyncItemResponse(item.clientEventId(), trackingId, "RETRYABLE_ERROR",
+                        "TEMPORARY_FAILURE", true, false, null, null, null));
+            }
+        }
+        int applied = (int) results.stream().filter(value -> "APPLIED".equals(value.outcome())).count();
+        int alreadyApplied = (int) results.stream().filter(value -> "ALREADY_APPLIED".equals(value.outcome())).count();
+        int retryable = (int) results.stream().filter(OfflineTrackingSyncItemResponse::retryable).count();
+        return new OfflineTrackingSyncResponse(results.size(), applied, alreadyApplied,
+                results.size() - applied - alreadyApplied - retryable, retryable, results);
+    }
+
+    private OfflineTrackingSyncItemResponse processOfflineItemWithEventLock(OfflineTrackingSyncItemRequest item, AppUser actor) {
+        String eventId = java.util.UUID.fromString(item.clientEventId()).toString();
+        ReentrantLock eventLock = offlineEventLocks.computeIfAbsent(eventId, ignored -> new ReentrantLock());
+        eventLock.lock();
+        try {
+            return offlineTrackingSyncItemService.process(item, actor);
+        } finally {
+            eventLock.unlock();
+            if (!eventLock.hasQueuedThreads()) {
+                offlineEventLocks.remove(eventId, eventLock);
+            }
+        }
     }
 
     private ScanTransitionResult processStatusScanInternal(

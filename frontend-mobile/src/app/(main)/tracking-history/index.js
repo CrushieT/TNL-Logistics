@@ -25,10 +25,12 @@ import {
   replacePageZeroEvents,
 } from '../../../features/tracking-history/trackingHistoryFlow.mjs';
 import { createTrackingHistoryRequestCoordinator } from '../../../features/tracking-history/trackingHistoryRequestCoordinator.mjs';
+import { useOfflineSync } from '../../../features/offline-sync/context/OfflineSyncContext';
 
 export default function TrackingHistoryScreen() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
+  const { rows: offlineRows } = useOfflineSync();
 
   const [metrics, setMetrics] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
@@ -235,6 +237,12 @@ export default function TrackingHistoryScreen() {
 
   const renderHeader = () => (
     <View>
+      {offlineRows.length > 0 && (
+        <TouchableOpacity style={styles.offlineBanner} onPress={() => router.push('/(main)/offline-queue')}>
+          <Text style={styles.offlineBannerText}>{offlineRows.length} OFFLINE SCAN{offlineRows.length === 1 ? '' : 'S'} NEED{offlineRows.length === 1 ? 'S' : ''} ATTENTION</Text>
+          <Text style={styles.offlineBannerAction}>VIEW QUEUE</Text>
+        </TouchableOpacity>
+      )}
       <PersonalScanMetrics
         metrics={metrics}
         isLoading={metricsLoading}
@@ -410,6 +418,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
+  offlineBanner: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 4,
+    backgroundColor: colors.warningSoft,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  offlineBannerText: { color: colors.warning, fontWeight: '800', fontSize: 11 },
+  offlineBannerAction: { color: colors.warning, fontWeight: '800', fontSize: 11 },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
