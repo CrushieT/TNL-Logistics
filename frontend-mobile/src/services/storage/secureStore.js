@@ -1,4 +1,9 @@
 import { Platform } from 'react-native';
+import {
+  replaceAuthenticatedSession as replaceSession,
+  clearAccessSessionPreservingBinding as clearAccessSession,
+  clearDeviceSession as clearSession,
+} from '../../features/auth/services/authStorageTransitions.mjs';
 
 const TOKEN_KEY = 'tnl_mobile_token';
 const USER_KEY = 'tnl_mobile_user';
@@ -146,4 +151,26 @@ export async function removeDeviceCredentials() {
     removeValue(DEVICE_ID_KEY),
     removeValue(DEVICE_TOKEN_KEY),
   ]);
+}
+
+const transitionStorage = {
+  saveToken,
+  saveUser,
+  removeToken,
+  removeUser,
+  removeBoundUser,
+  removeDeviceCredentials,
+  setAppLocked,
+};
+
+export async function replaceAuthenticatedSession(session) {
+  return replaceSession(transitionStorage, session);
+}
+
+export async function clearAccessSessionPreservingBinding() {
+  return clearAccessSession(transitionStorage);
+}
+
+export async function clearDeviceSession() {
+  return clearSession(transitionStorage);
 }

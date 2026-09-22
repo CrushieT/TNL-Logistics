@@ -3,7 +3,6 @@ import {
   StyleSheet,
   View,
   Text,
-  TouchableOpacity,
   ActivityIndicator,
   ScrollView,
   Image,
@@ -27,7 +26,7 @@ export default function PinUnlockScreen() {
     isLocked,
     mustChangePassword,
     mustSetupPin,
-    fullLogout,
+    startPasswordReauthentication,
     updateBoundUserPinStatus,
     showSessionNotice,
     isLoading: authLoading,
@@ -127,18 +126,15 @@ export default function PinUnlockScreen() {
       router.replace('/(main)');
     } catch (error) {
       setPin('');
-      const responseData = error.response?.data;
-      if (responseData?.code === 'PASSWORD_CHANGE_REQUIRED') {
-        const targetUsername = boundUser?.username;
-        await fullLogout();
-        router.replace({
-          pathname: '/(auth)/login',
-          params: { username: targetUsername || '', reason: 'password_change_required' },
+      if (error.code === 'PASSWORD_CHANGE_REQUIRED') {
+        await startPasswordReauthentication({
+          username: boundUser?.username,
+          reason: 'password_change_required',
         });
         return;
       }
 
-      if (error.response?.status === 409) {
+      if (error.status === 409) {
         const targetUsername = boundUser?.username;
         showSessionNotice({
           title: 'PIN Reset by Administrator',
@@ -149,12 +145,12 @@ export default function PinUnlockScreen() {
           reason: 'pin_cleared',
         });
         return;
-      } else if (error.response?.status === 429) {
-        const retryAfter = responseData?.retryAfterSeconds || 60;
+      } else if (error.status === 429) {
+        const retryAfter = error.retryAfterSeconds || 60;
         setLockoutSeconds(retryAfter);
         setErrorMessage(`Too many failed attempts. Locked out for ${retryAfter}s.`);
-      } else if (responseData?.message) {
-        setErrorMessage(responseData.message);
+      } else if (error.message) {
+        setErrorMessage(error.message);
       } else {
         setErrorMessage('Invalid PIN. Please try again.');
       }
@@ -163,14 +159,16 @@ export default function PinUnlockScreen() {
     }
   };
 
-  const handleSwitchAccount = () => {
+  const handlePasswordSignIn = () => {
     setSwitchAccountModalVisible(true);
   };
 
   const handleConfirmSwitchAccount = async () => {
     setSwitchAccountModalVisible(false);
-    await fullLogout();
-    router.replace('/(auth)/login');
+    await startPasswordReauthentication({
+      username: boundUser?.username,
+      reason: 'password_reauthentication',
+    });
   };
 
   const handleCancelSwitchAccount = () => {
@@ -247,22 +245,21 @@ export default function PinUnlockScreen() {
         {/* Switch Account Option */}
         <PressableScale
           style={styles.switchAccountButton}
-          onPress={handleSwitchAccount}
+          onPress={handlePasswordSignIn}
           activeScale={0.96}
         >
-          <Text style={styles.switchAccountText}>Sign in with another account</Text>
+          <Text style={styles.switchAccountText}>Use Password Instead</Text>
         </PressableScale>
       </ScrollView>
 
       {/* Switch Account Confirmation Modal */}
       <StatusModal
         visible={switchAccountModalVisible}
-        eyebrow="DEVICE UNBIND"
-        title="Switch Account?"
-        message="Are you sure you want to unbind this terminal and sign in with a different staff account?"
+        eyebrow="PASSWORD SIGN IN"
+        title="Use Password Instead?"
+        message="The device binding will be preserved while you renew access with your password."
         cancelText="Cancel"
-        confirmText="Switch Account"
-        confirmVariant="danger"
+        confirmText="Continue"
         onConfirm={handleConfirmSwitchAccount}
         onCancel={handleCancelSwitchAccount}
       />

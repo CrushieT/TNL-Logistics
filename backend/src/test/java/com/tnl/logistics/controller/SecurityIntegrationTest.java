@@ -176,10 +176,11 @@ public class SecurityIntegrationTest {
 
         String refreshedToken = "Bearer " + objectMapper.readTree(changeResult.getResponse().getContentAsString()).get("token").asText();
 
-        // 7. Old token is revoked (version mismatch returns 403)
+        // 7. Old token is revoked and requires session renewal.
         mockMvc.perform(get("/api/v1/test/admin")
                         .header("Authorization", adminToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
 
         // 8. Refreshed token allows access to Admin Gated Endpoint (200 OK)
         mockMvc.perform(get("/api/v1/test/admin")
@@ -316,7 +317,7 @@ public class SecurityIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new PasswordVerificationRequest("wrongPassword"))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Incorrect administrator password."));
+                .andExpect(jsonPath("$.message").value("Incorrect current password."));
 
         // 3. Blank password returns 400 Bad Request via @NotBlank
         mockMvc.perform(post("/api/v1/auth/verify-password")
@@ -465,10 +466,11 @@ public class SecurityIntegrationTest {
         // Generate a cryptographically valid token for the inactive user
         String token = "Bearer " + com.tnl.logistics.config.JwtTokenProvider.generateToken("USR-INACTIVE", "OFFICE_STAFF");
 
-        // Attempting to access protected office endpoint must be rejected (403 Forbidden)
+        // Attempting to access protected office endpoint must require session renewal.
         mockMvc.perform(get("/api/v1/test/office")
                         .header("Authorization", token))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
     }
 
     @Test
@@ -477,7 +479,8 @@ public class SecurityIntegrationTest {
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + legacyToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
     }
 
     @Test
@@ -488,7 +491,24 @@ public class SecurityIntegrationTest {
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + futureVersionToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
+    }
+
+    @Test
+    public void testMalformedAndForgedTokensRequireSessionRenewal() throws Exception {
+        AppUser adminUser = appUserRepository.findById("USR-ADMIN").orElseThrow();
+        String validToken = JwtTokenProvider.generateToken(
+                adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion());
+        char replacement = validToken.charAt(validToken.length() - 1) == 'a' ? 'b' : 'a';
+        String forgedToken = validToken.substring(0, validToken.length() - 1) + replacement;
+
+        for (String invalidToken : java.util.List.of("not-a-jwt", forgedToken)) {
+            mockMvc.perform(get("/api/v1/auth/me")
+                            .header("Authorization", "Bearer " + invalidToken))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
+        }
     }
 
     @Test
@@ -585,10 +605,11 @@ public class SecurityIntegrationTest {
         // Validate token method rejects it
         assertFalse(JwtTokenProvider.validateToken(expiredToken));
 
-        // API endpoint rejects it with 403 Forbidden
+        // API endpoint returns the explicit reauthentication contract.
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + expiredToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
     }
 
     @Test
@@ -604,10 +625,11 @@ public class SecurityIntegrationTest {
         assertFalse(JwtTokenProvider.validateToken(legacyAdminToken),
                 "Legacy admin token exceeding configured admin window must be rejected");
 
-        // Protected endpoint rejects legacy admin token with 403 Forbidden
+        // Protected endpoint returns the explicit reauthentication contract.
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + legacyAdminToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
     }
 
     @Test
@@ -622,10 +644,11 @@ public class SecurityIntegrationTest {
         assertFalse(JwtTokenProvider.validateToken(staleAdminToken),
                 "Admin token older than configured admin lifetime from issuance must be rejected");
 
-        // Protected endpoint rejects stale admin token with 403 Forbidden
+        // Protected endpoint returns the explicit reauthentication contract.
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + staleAdminToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
     }
 
     @Test

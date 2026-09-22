@@ -1,4 +1,5 @@
 import React from 'react';
+import { useRouter } from 'expo-router';
 import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../features/auth/context/AuthContext';
@@ -7,16 +8,17 @@ import { FieldDashboard } from '../../features/field/components/FieldDashboard';
 import { colors } from '../../theme';
 
 export default function MainHomeScreen() {
-  const { user, fullLogout, lockSession } = useAuth();
+  const router = useRouter();
+  const { user, lockSession } = useAuth();
 
   const isOfficeStaff = user?.role === 'OFFICE_STAFF';
 
   return (
     <SafeAreaView style={styles.safeArea}>
       {isOfficeStaff ? (
-        <OfficeDashboard user={user} onLogout={fullLogout} onLock={lockSession} />
+        <OfficeDashboard user={user} onAccount={() => router.push('/(main)/settings')} onLock={lockSession} />
       ) : (
-        <FieldDashboard user={user} onLogout={fullLogout} onLock={lockSession} />
+        <FieldDashboard user={user} onAccount={() => router.push('/(main)/settings')} onLock={lockSession} />
       )}
     </SafeAreaView>
   );

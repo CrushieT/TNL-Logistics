@@ -5,9 +5,12 @@ import com.tnl.logistics.model.UserRole;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+
+import jakarta.persistence.LockModeType;
 
 import java.util.List;
 import java.util.Optional;
@@ -19,6 +22,10 @@ import java.util.Optional;
 public interface AppUserRepository extends JpaRepository<AppUser, String> {
 
     Optional<AppUser> findByUsername(String username);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select user from AppUser user where user.userId = :userId")
+    Optional<AppUser> findByIdForUpdate(@Param("userId") String userId);
 
     List<AppUser> findByStaffTypeAndActiveTrue(com.tnl.logistics.model.StaffType staffType);
 

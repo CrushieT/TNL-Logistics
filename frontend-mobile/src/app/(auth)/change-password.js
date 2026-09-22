@@ -17,7 +17,7 @@ import { colors } from '../../theme';
 
 export default function ChangePasswordScreen() {
   const router = useRouter();
-  const { user, token, mustChangePassword, changePassword, isLoading: authLoading } = useAuth();
+  const { user, token, mustChangePassword, completeRequiredPasswordChange, isLoading: authLoading } = useAuth();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -40,13 +40,13 @@ export default function ChangePasswordScreen() {
     setSubmitting(true);
     setErrorMessage('');
     try {
-      const result = await changePassword(currentPassword, newPassword);
+      const result = await completeRequiredPasswordChange(currentPassword, newPassword);
       router.replace({
         pathname: '/(auth)/login',
         params: { username: result.username || '', reason: 'password_changed' },
       });
     } catch (error) {
-      setErrorMessage(error.response?.data?.message || 'Unable to update your password. Please try again.');
+      setErrorMessage(error.message || 'Unable to update your password. Please try again.');
     } finally {
       setSubmitting(false);
     }

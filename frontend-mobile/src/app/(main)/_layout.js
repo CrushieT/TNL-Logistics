@@ -62,6 +62,9 @@ export default function MainLayout() {
         <Stack.Screen name="shipments/parcel/[trackingId]" />
         <Stack.Screen name="tracking-history/index" />
         <Stack.Screen name="tracking-history/[trackingId]" />
+        <Stack.Screen name="settings/index" />
+        <Stack.Screen name="settings/password" />
+        <Stack.Screen name="settings/pin" />
       </Stack>
     </PrinterProvider>
   );

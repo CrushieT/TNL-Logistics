@@ -1,114 +1,46 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { Icon } from 'react-native-paper';
 import { colors } from '../../theme';
 import { PressableScale } from '../common/PressableScale';
-import { StatusModal } from '../common/StatusModal';
 
-export function MobileHeader({ role, name, onLogout, onLock }) {
-  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
-  const roleDisplay = role ? role.replace('_', ' ') : 'STAFF';
-
-  const handleLogoutPress = () => {
-    setLogoutModalVisible(true);
-  };
-
-  const handleConfirmLogout = () => {
-    setLogoutModalVisible(false);
-    if (typeof onLogout === 'function') {
-      onLogout();
-    }
-  };
-
-  const handleCancelLogout = () => {
-    setLogoutModalVisible(false);
-  };
+export function MobileHeader({ role, name, onAccount, onLock }) {
+  const roleDisplay = role ? role.replace(/_/g, ' ') : 'ROLE UNAVAILABLE';
 
   return (
     <View style={styles.header}>
-      <View style={styles.userInfo}>
-        <Text style={styles.eyebrow}>{roleDisplay}</Text>
-        <Text style={styles.name}>{name || 'Staff User'}</Text>
-      </View>
-      <View style={styles.actions}>
-        {Boolean(onLock) && (
-          <PressableScale onPress={onLock} activeScale={0.93} contentStyle={styles.lockButton}>
-            <Text style={styles.lockText}>LOCK</Text>
-          </PressableScale>
-        )}
-        <PressableScale onPress={handleLogoutPress} activeScale={0.93} contentStyle={styles.logoutButton}>
-          <Text style={styles.logoutText}>LOGOUT</Text>
+      <PressableScale
+        style={styles.userPressable}
+        contentStyle={styles.userInfo}
+        onPress={onAccount}
+        activeScale={0.98}
+        accessibilityRole="button"
+        accessibilityLabel="Open account settings"
+      >
+        <View style={styles.accountIcon}><Icon source="account-outline" size={20} color={colors.ink} /></View>
+        <View style={styles.identity}>
+          <Text style={styles.eyebrow}>{roleDisplay}</Text>
+          <Text style={styles.name}>{name || '—'}</Text>
+        </View>
+      </PressableScale>
+      {Boolean(onLock) && (
+        <PressableScale onPress={onLock} activeScale={0.93} contentStyle={styles.lockButton} accessibilityRole="button" accessibilityLabel="Lock app">
+          <Icon source="lock-outline" size={16} color={colors.inkSoft} />
+          <Text style={styles.lockText}>LOCK</Text>
         </PressableScale>
-      </View>
-
-      <StatusModal
-        visible={logoutModalVisible}
-        eyebrow="SESSION"
-        title="Log Out & Unbind Device?"
-        message="This will remove account credentials from this device. You will need your username and password to sign in again."
-        cancelText="Cancel"
-        confirmText="Log Out"
-        confirmVariant="danger"
-        onConfirm={handleConfirmLogout}
-        onCancel={handleCancelLogout}
-      />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingVertical: 16,
-    paddingHorizontal: 6,
-    marginBottom: 8,
-  },
-  userInfo: {
-    flex: 1,
-  },
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  eyebrow: {
-    fontSize: 11,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    color: colors.inkFaint,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    marginBottom: 2,
-  },
-  name: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.ink,
-    letterSpacing: -0.3,
-  },
-  lockButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 3,
-    backgroundColor: '#EBE9E0',
-  },
-  lockText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.inkSoft,
-    letterSpacing: 0.8,
-    fontFamily: 'monospace',
-  },
-  logoutButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-  },
-  logoutText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.danger,
-    letterSpacing: 0.8,
-    fontFamily: 'monospace',
-  },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 6, marginBottom: 8 },
+  userPressable: { flex: 1, marginRight: 10 },
+  userInfo: { minHeight: 48, flexDirection: 'row', alignItems: 'center' },
+  accountIcon: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 4, marginRight: 10 },
+  identity: { flex: 1 },
+  eyebrow: { fontSize: 10, letterSpacing: 1.1, color: colors.inkFaint, fontWeight: '700', fontFamily: 'monospace', marginBottom: 2 },
+  name: { fontSize: 18, fontWeight: '800', color: colors.ink, letterSpacing: -0.3 },
+  lockButton: { minWidth: 64, minHeight: 44, flexDirection: 'row', gap: 5, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, borderRadius: 3, backgroundColor: '#EBE9E0' },
+  lockText: { fontSize: 10.5, fontWeight: '700', color: colors.inkSoft, letterSpacing: 0.7, fontFamily: 'monospace' },
 });

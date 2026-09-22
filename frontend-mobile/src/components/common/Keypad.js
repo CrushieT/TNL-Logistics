@@ -65,15 +65,17 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    height: 64,
     marginBottom: 12,
   },
   keyWrapper: {
     flex: 1,
-  },
-  key: {
-    flex: 1,
     height: 64,
     marginHorizontal: 5,
+  },
+  key: {
+    width: '100%',
+    height: '100%',
     backgroundColor: colors.keypadBg,
     borderRadius: 4,
     borderWidth: 1,

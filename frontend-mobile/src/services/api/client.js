@@ -1,6 +1,11 @@
 import axios from 'axios';
 import Constants from 'expo-constants';
-import { getToken, removeToken, removeUser } from '../storage/secureStore';
+import { getToken } from '../storage/secureStore';
+import {
+  buildSessionRetryConfig,
+  classifySessionFailure,
+  sanitizeSensitiveError,
+} from './sessionHandling.mjs';
 
 function resolveBaseUrl() {
   if (process.env.EXPO_PUBLIC_API_URL) {
@@ -33,9 +38,12 @@ export const apiClient = axios.create({
   timeout: 10000,
 });
 
-// Request interceptor injecting Bearer token
 apiClient.interceptors.request.use(
   async (config) => {
+    if (config.skipAuth === true) {
+      if (config.headers) delete config.headers.Authorization;
+      return config;
+    }
     try {
       const token = await getToken();
       if (token) {
@@ -49,28 +57,45 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-let onSessionRevokedCallback = null;
+let onSessionEventCallback = null;
 
-export function setSessionRevokedCallback(callback) {
-  onSessionRevokedCallback = callback;
+export function setSessionEventCallback(callback) {
+  onSessionEventCallback = callback;
 }
 
-// Response interceptor handling session revocation
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const url = error.config?.url || '';
-    const isPublicAuthRoute = url.includes('/auth/mobile-login') ||
-                              url.includes('/auth/mobile-pin-login') ||
-                              url.includes('/auth/mobile-pin-status') ||
-                              url.includes('/auth/login');
-
-    if (error.response?.status === 401 && !isPublicAuthRoute) {
-      await removeToken();
-      if (typeof onSessionRevokedCallback === 'function') {
-        onSessionRevokedCallback();
-      }
+    let currentToken = null;
+    try {
+      currentToken = await getToken();
+    } catch {
+      currentToken = null;
     }
+    const sessionFailure = classifySessionFailure(error, currentToken);
+
+    if (sessionFailure.action === 'retry') {
+      return apiClient.request(buildSessionRetryConfig(error.config, currentToken));
+    }
+
+    if (sessionFailure.action === 'reauthenticate' && typeof onSessionEventCallback === 'function') {
+      await onSessionEventCallback({ type: 'SESSION_REAUTH_REQUIRED' });
+    } else if (sessionFailure.action === 'clear-device' && typeof onSessionEventCallback === 'function') {
+      await onSessionEventCallback({ type: 'INVALID_DEVICE_CREDENTIALS' });
+    }
+
+    if (error.config?.sensitivePayload === true) {
+      return Promise.reject(sanitizeSensitiveError(error));
+    }
+
     return Promise.reject(error);
   }
 );
+
+export function setSessionRevokedCallback(callback) {
+  setSessionEventCallback(async (event) => {
+    if (event.type === 'SESSION_REAUTH_REQUIRED') {
+      await callback(event);
+    }
+  });
+}
