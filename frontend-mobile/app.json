@@ -12,6 +12,7 @@
       "supportsTablet": true
     },
     "android": {
+      "versionCode": 2,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
