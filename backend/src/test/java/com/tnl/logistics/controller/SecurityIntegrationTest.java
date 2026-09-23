@@ -680,4 +680,155 @@ public class SecurityIntegrationTest {
                 .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:3000"))
                 .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
     }
+
+    @Test
+    public void testAdminLoginGenerates30MinuteExpirationWithAuthTime() throws Exception {
+        LoginRequest adminLogin = new LoginRequest("admin", "admin123");
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(adminLogin)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        LoginResponse responseDto = objectMapper.readValue(result.getResponse().getContentAsString(), LoginResponse.class);
+        String token = responseDto.getToken();
+        assertNotNull(token);
+
+        Long exp = JwtTokenProvider.getExpirationFromToken(token);
+        Long iat = JwtTokenProvider.getIssuedAtFromToken(token);
+        Long authTime = JwtTokenProvider.getAuthTimeFromToken(token);
+
+        assertNotNull(exp);
+        assertNotNull(iat);
+        assertNotNull(authTime);
+        assertEquals(iat, authTime, "Initial login auth_time must equal iat");
+        long ttlSeconds = exp - iat;
+        assertEquals(1800L, ttlSeconds, "Admin token lifetime must be exactly 1800 seconds (30 minutes)");
+    }
+
+    @Test
+    public void testAdminSlidingSessionRenewsTokenOn2xxResponse() throws Exception {
+        LoginRequest adminLogin = new LoginRequest("admin", "admin123");
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(adminLogin)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String token = objectMapper.readValue(loginResult.getResponse().getContentAsString(), LoginResponse.class).getToken();
+
+        MvcResult authMeResult = mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(header().exists("X-Renewed-Token"))
+                .andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")))
+                .andReturn();
+
+        String renewedToken = authMeResult.getResponse().getHeader("X-Renewed-Token");
+        assertNotNull(renewedToken);
+        assertFalse(renewedToken.isBlank());
+
+        assertTrue(JwtTokenProvider.validateToken(renewedToken));
+
+        Long origAuthTime = JwtTokenProvider.getAuthTimeFromToken(token);
+        Long renewedAuthTime = JwtTokenProvider.getAuthTimeFromToken(renewedToken);
+        assertEquals(origAuthTime, renewedAuthTime, "Renewed token must preserve original auth_time");
+
+        assertNull(authMeResult.getResponse().getHeader("Authorization"));
+    }
+
+    @Test
+    public void testErrorResponseDoesNotEmitRenewalToken() throws Exception {
+        LoginRequest adminLogin = new LoginRequest("admin", "admin123");
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(adminLogin)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String token = objectMapper.readValue(loginResult.getResponse().getContentAsString(), LoginResponse.class).getToken();
+
+        mockMvc.perform(get("/api/v1/test/field")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist("X-Renewed-Token"));
+    }
+
+    @Test
+    public void testNonAdminRequestDoesNotEmitRenewalHeader() throws Exception {
+        AppUser officeUser = appUserRepository.findByUsername("office").orElseGet(() -> {
+            AppUser u = new AppUser("USR-OFFICE", "office", passwordEncoder.encode("office123"), "Office Staff", UserRole.OFFICE_STAFF);
+            u.setActive(true);
+            return appUserRepository.saveAndFlush(u);
+        });
+
+        String officeToken = JwtTokenProvider.generateToken(officeUser.getUserId(), "OFFICE_STAFF", officeUser.getTokenVersion());
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + officeToken))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist("X-Renewed-Token"));
+    }
+
+    @Test
+    public void testRoleMismatchBetweenTokenAndDatabaseIsRejected() throws Exception {
+        AppUser admin = appUserRepository.findById("USR-ADMIN").orElseThrow();
+        String mismatchedToken = JwtTokenProvider.generateToken(admin.getUserId(), "OFFICE_STAFF", admin.getTokenVersion());
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + mismatchedToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
+    }
+
+    @Test
+    public void testLegacyAdminTokenWithoutAuthTimeIsRejected() throws Exception {
+        String legacyToken = createLegacyUsernameToken("USR-ADMIN", "ADMIN", 1);
+
+        assertFalse(JwtTokenProvider.validateToken(legacyToken));
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + legacyToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
+    }
+
+    @Test
+    public void testAdminSessionReaching12HourCeilingIsRejected() throws Exception {
+        long nowSeconds = System.currentTimeMillis() / 1000;
+        long maxCeilingSeconds = JwtTokenProvider.getAdminMaxLifetimeMs() / 1000;
+
+        long staleAuthTime = nowSeconds - (maxCeilingSeconds + 100);
+        long recentIat = nowSeconds - 10;
+        long futureExp = nowSeconds + 1790;
+
+        String expiredShiftToken = JwtTokenProvider.generateToken(
+                "USR-ADMIN", "ADMIN", 1, recentIat, futureExp, staleAuthTime);
+
+        assertFalse(JwtTokenProvider.validateToken(expiredShiftToken),
+                "Admin token reaching the 12-hour shift ceiling must be rejected");
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + expiredShiftToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
+    }
+
+    @Test
+    public void testCorsExposesRenewalHeaderOnActualResponse() throws Exception {
+        LoginRequest adminLogin = new LoginRequest("admin", "admin123");
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(adminLogin)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String token = objectMapper.readValue(loginResult.getResponse().getContentAsString(), LoginResponse.class).getToken();
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Origin", "http://localhost:3000")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Expose-Headers", org.hamcrest.Matchers.containsString("X-Renewed-Token")));
+    }
 }

@@ -26,14 +26,15 @@
 | **Phase 4.2** | Backend: Thursday Weekly Collections Consolidation & SOA Generator (3 Deductions, Net Remittance) | [COMPLETED] |
 | **Phase 4.3** | Web: Billing, Collections & Printable SOA (Desktop Screens 18–22) | [COMPLETED] |
 | **Phase 5** | Web Console: Live Dashboard, Tracking Logs Stream, Reports, Users, Settings & First Boot Setup (Screens 01, 02, 17, 26–28) | [COMPLETED] |
-| **Phase 6** | Role-Aware Mobile Courier Portal (Screens 29–53) | [IN PROGRESS] |
+| **Phase 6** | Role-Aware Mobile Courier Portal (Screens 29–56) | [IN PROGRESS] |
 | ↳ **Phase 6.1** | Mobile Credential & PIN Workflow & Role-Aware Shell (Screens 29–33) | [COMPLETED] |
 | ↳ **Phase 6.2** | Office Staff: Shipment Generation & Past Shipments Directory (Screens 34–40) | [COMPLETED] |
 | ↳ **Phase 6.3a** | Software Label Printing, Virtual Driver Isolation & Audit Hardening (Screens 41–44) | [COMPLETED] |
 | ↳ **Phase 6.3b** | Physical Bluetooth Integration & Brother RJ-2035B On-Device Validation | [UPCOMING] |
-| ↳ **Phase 6.4** | Field Staff: Camera QR Scanner & Status Flow Engine (Screens 45–48) | [UPCOMING] |
-| ↳ **Phase 6.5** | Field Staff: Personal Scan & Tracking History (Screens 49–52) | [UPCOMING] |
-| ↳ **Phase 6.6** | Offline Resilience & SQLite Scan Queue (Screen 53) | [UPCOMING] |
+| ↳ **Phase 6.4** | Field Staff: Camera QR Scanner & Status Flow Engine (Screens 45–48) | [COMPLETED] |
+| ↳ **Phase 6.5** | Field Staff: Personal Scan & Tracking History (Screens 49–52) | [COMPLETED] |
+| ↳ **Phase 6.6** | Mobile Staff Account, Security & 4-Digit PIN Settings (Screens 53–55) | [COMPLETED] |
+| ↳ **Phase 6.7** | Offline Resilience & SQLite Scan Queue (Screen 56) | [COMPLETED] |
 
 ---
 
@@ -51,8 +52,8 @@
 
 **0.3 — Security, JWT & RBAC** — **[COMPLETED]**
 - HMAC-SHA256 stateless JWT token provider with BCrypt password hashing and immutable user ID binding.
-- Differentiated token lifecycle architecture: 12-hour shift TTL for Web Administrator (`ADMIN`) in browser `localStorage`, and 10-day TTL for Mobile Staff (`OFFICE_STAFF`, `FIELD_STAFF`) in hardware `SecureStore` with PIN unlock; configurable via `jwt.expiration.admin-hours` and `jwt.expiration.staff-days`.
-- Dynamic invalidation of legacy overlong administrator sessions in `JwtTokenProvider.validateToken`: enforces issuance-time ceiling (`now - iat <= 12h`) and validity window bounds (`exp - iat <= 12h + 60s`) on all `ADMIN` tokens.
+- Differentiated token lifecycle architecture: 30-minute inactivity sliding renewal window bounded by a 12-hour absolute shift ceiling for Web Administrator (`ADMIN`) in browser `localStorage`, and 10-day TTL for Mobile Staff (`OFFICE_STAFF`, `FIELD_STAFF`) in hardware `SecureStore` with PIN unlock; configurable via `jwt.expiration.admin-minutes` (default 30) and `jwt.expiration.staff-days`.
+- Dynamic renewal and ceiling enforcement in `JwtTokenProvider.validateToken`: enforces inactivity window (`now - iat < 30m`), 12-hour shift ceiling (`now - auth_time < 12h`), monotonic token renewal via `X-Renewed-Token`, and instant invalidation of role mismatches and legacy tokens without `auth_time`.
 - 3 distinct system roles: `ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`.
 - Instant session revocation on credential changes via `tokenVersion` claims.
 - Method security (`@PreAuthorize`) and `SecurityIntegrationTest` suite.

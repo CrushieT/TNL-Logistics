@@ -1,5 +1,6 @@
-import { getToken, isAuthenticated } from './client';
+import { getToken, isAuthenticated, onSessionInvalidated } from './client';
 import { Platform } from 'react-native';
+import { createSseStreamParser } from './sseClientCore.mjs';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
@@ -7,6 +8,12 @@ let activeAbortController = null;
 let isConnecting = false;
 let reconnectTimer = null;
 const listeners = new Set();
+
+if (typeof onSessionInvalidated === 'function') {
+  onSessionInvalidated(() => {
+    closeRealtimeConnection();
+  });
+}
 
 function dispatchEvent(type, data) {
   listeners.forEach((listener) => {
@@ -57,9 +64,9 @@ export async function initRealtimeConnection() {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
-    let buffer = '';
-    let currentEvent = 'message';
-    let currentData = '';
+    const parser = createSseStreamParser((eventName, eventData) => {
+      dispatchEvent(eventName, eventData);
+    });
 
     while (!abortController.signal.aborted) {
       const { done, value } = await reader.read();
@@ -67,38 +74,7 @@ export async function initRealtimeConnection() {
         break;
       }
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split(/\r\n|\r|\n/);
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (line.startsWith(':')) {
-          // Heartbeat or comment line; skip
-          continue;
-        }
-
-        if (line === '') {
-          if (currentData) {
-            let parsedData = currentData;
-            try {
-              parsedData = JSON.parse(currentData);
-            } catch (_) {
-              // Unparsed string payload
-            }
-            dispatchEvent(currentEvent, parsedData);
-          }
-          currentEvent = 'message';
-          currentData = '';
-          continue;
-        }
-
-        if (line.startsWith('event:')) {
-          currentEvent = line.slice(6).trim();
-        } else if (line.startsWith('data:')) {
-          const chunk = line.slice(5).trim();
-          currentData = currentData ? `${currentData}\n${chunk}` : chunk;
-        }
-      }
+      parser.feed(decoder.decode(value, { stream: true }));
     }
   } catch (err) {
     if (abortController.signal.aborted) {

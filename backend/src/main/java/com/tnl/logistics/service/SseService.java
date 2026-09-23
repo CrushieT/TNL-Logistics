@@ -19,4 +19,6 @@ public interface SseService {
     void broadcastLabelPrint(String shipmentId, List<String> trackingIds);
 
     void broadcastPaymentRecorded(Object payment);
+
+    void sendHeartbeat();
 }

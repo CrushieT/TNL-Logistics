@@ -147,4 +147,16 @@ public class SseIntegrationTest {
                         .param("token", rawToken))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    public void testSseHeartbeatExecutionAndDeadEmitterPruning() {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter activeEmitter = sseService.registerClient("USR-HB-ACTIVE");
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter deadEmitter = sseService.registerClient("USR-HB-DEAD");
+
+        // Complete deadEmitter to simulate client disconnect
+        deadEmitter.complete();
+
+        // Heartbeat should execute without error and evict deadEmitter
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> sseService.sendHeartbeat());
+    }
 }

@@ -20,6 +20,8 @@ tnl-logistics/
 │       ├── dependency-review.yml     # Fast PR dependency vulnerability checks
 │       └── owasp-check.yml           # Scheduled and on-demand OWASP backend vulnerability scan
 ├── .review/                          # Implementation plans and verification reports
+│   ├── admin-sliding-session-plan.md # 30-minute admin sliding session and auth hardening plan
+│   ├── operational-fixes-implementation-plan.md # Operational defects & sliding session implementation plan
 │   ├── phase-6.7-offline-resilience-plan.md # Phase 6.7 offline queue implementation plan
 │   ├── phase-6.7-threat-model.md      # Phase 6.7 offline queue security threat model
 │   └── phase-6.7-verification-report.md # Phase 6.7 automated and physical-device verification matrix
@@ -27,7 +29,7 @@ tnl-logistics/
 │   ├── src/
 │   │   ├── main/
 │   │   │   ├── java/com/tnl/logistics/
-│   │   │   │   ├── config/              # SecurityConfig, OfflineSyncRequestGuard, CorsConfig, JwtTokenProvider, DataSeeder
+│   │   │   │   ├── config/              # SecurityConfig, JwtRenewalResponseWrapper, OfflineSyncRequestGuard, CorsConfig, JwtTokenProvider, DataSeeder
 │   │   │   │   ├── controller/          # REST endpoints (Shipment, Vehicle, Client, Waybill, Payment, Collections, SOA)
 │   │   │   │   ├── dto/                 # Request & Response DTOs (including CurrentUserResponse, MobileDeviceBindingSummary, and offline-sync contracts)
 │   │   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, Vehicle, Waybill, Payment, Soa, MobileDeviceBinding, OfflineScanReceipt, etc.)
@@ -67,12 +69,14 @@ tnl-logistics/
 │   │   │   ├── users.js             # Screen 27 User & Staff Management
 │   │   │   └── settings.js          # Screen 28 System Settings
 │   │   ├── components/              # Shared design system (common/ atoms, layout/ AppShell)
-│   │   ├── features/                # Domain modules, including the durable shipment print-audit outbox
+│   │   ├── features/                # Domain modules
+│   │   │   ├── shipments/           # PrintLabelsModal, LabelPreview, durable outbox & isolated thermal print service
 │   │   │   └── settings/            # AdminSecurityCard, ConfirmPasswordModal, settings components
-│   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sseClient.js)
+│   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sessionCore.mjs, sseClient.js, sseClientCore.mjs)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
 │   │   ├── utils/                   # Shared QR facade
 │   │   └── vendor/qrcodegen/        # Vendored Project Nayuki QR generator
+│   ├── tests/                       # Web unit suites (authSlidingSession.test.mjs, labelPrint.test.mjs, qr.test.mjs, sseClient.test.mjs)
 │   ├── assets/                      # favicon.png, tracking-logo.png
 │   ├── app.json                     # Expo web configuration
 │   ├── package.json

@@ -11,8 +11,6 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 
@@ -609,7 +607,9 @@ public class ShipmentServiceImpl implements ShipmentService {
             ));
         }
 
-        registerPrintBroadcastAfterCommit(shipmentId, trackingIds);
+        try {
+            sseService.broadcastLabelPrint(shipmentId, trackingIds);
+        } catch (Exception ignored) {}
     }
 
     private List<ParcelUnit> resolvePrintBatch(String shipmentId, List<String> packageIds) {
@@ -658,16 +658,6 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
     }
 
-    private void registerPrintBroadcastAfterCommit(String shipmentId, List<String> trackingIds) {
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                try {
-                    sseService.broadcastLabelPrint(shipmentId, trackingIds);
-                } catch (Exception ignored) {}
-            }
-        });
-    }
 
     private ShipmentSummaryResponse mapToSummaryResponse(
             Shipment s,

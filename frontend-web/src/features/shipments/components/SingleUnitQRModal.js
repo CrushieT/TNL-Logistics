@@ -16,6 +16,7 @@ export default function SingleUnitQRModal({
   labelStatus = 'Printed',
   onClose,
   onViewFull,
+  onPrint,
 }) {
   if (!visible || !trackingId) return null;
 
@@ -59,6 +60,9 @@ export default function SingleUnitQRModal({
           {/* Actions */}
           <View style={styles.actions}>
             <Button label="Close" variant="secondary" onPress={onClose} />
+            {onPrint ? (
+              <Button label="Print Label" variant="secondary" onPress={onPrint} />
+            ) : null}
             {onViewFull ? (
               <Button label="View Full Details" variant="primary" onPress={onViewFull} />
             ) : null}

@@ -40,6 +40,25 @@ export default function ShipmentsListScreen() {
   const [totalElements, setTotalElements] = useState(0);
 
   const searchTimer = useRef(null);
+  const filtersRef = useRef({
+    page,
+    pageSize,
+    search,
+    statusFilter,
+    paymentFilter,
+    vehicleFilter,
+  });
+
+  useEffect(() => {
+    filtersRef.current = {
+      page,
+      pageSize,
+      search,
+      statusFilter,
+      paymentFilter,
+      vehicleFilter,
+    };
+  }, [page, pageSize, search, statusFilter, paymentFilter, vehicleFilter]);
 
   // Fetch available vehicles for dynamic filter options
   useEffect(() => {
@@ -101,15 +120,28 @@ export default function ShipmentsListScreen() {
     fetchShipments(page, pageSize, search, statusFilter, paymentFilter, vehicleFilter, true);
   }, [fetchShipments, page, pageSize, statusFilter, paymentFilter, vehicleFilter]);
 
-  // Real-time SSE listener + Window focus listener
+  // Real-time SSE listener + Window focus listener + Visible-tab periodic fallback
   useEffect(() => {
     const handleSilentRefresh = () => {
-      fetchShipments(page, pageSize, search, statusFilter, paymentFilter, vehicleFilter, false);
+      const {
+        page: p,
+        pageSize: ps,
+        search: s,
+        statusFilter: sf,
+        paymentFilter: pf,
+        vehicleFilter: vf,
+      } = filtersRef.current;
+      fetchShipments(p, ps, s, sf, pf, vf, false);
     };
 
-    // 1. Subscribe to real-time status updates and shipment creation
+    // 1. Subscribe to real-time status updates, shipment creation, label printing, and payment recording
     const unsubscribe = subscribeRealtimeEvents((event) => {
-      if (event.type === 'STATUS_UPDATE' || event.type === 'SHIPMENT_CREATED' || event.type === 'LABEL_PRINTED') {
+      if (
+        event.type === 'STATUS_UPDATE' ||
+        event.type === 'SHIPMENT_CREATED' ||
+        event.type === 'LABEL_PRINTED' ||
+        event.type === 'PAYMENT_RECORDED'
+      ) {
         handleSilentRefresh();
       }
     });
@@ -119,13 +151,21 @@ export default function ShipmentsListScreen() {
       window.addEventListener('focus', handleSilentRefresh);
     }
 
+    // 3. Fallback background polling (every 30 seconds when visible)
+    const intervalId = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        handleSilentRefresh();
+      }
+    }, 30000);
+
     return () => {
       unsubscribe();
       if (typeof window !== 'undefined') {
         window.removeEventListener('focus', handleSilentRefresh);
       }
+      clearInterval(intervalId);
     };
-  }, [fetchShipments, page, pageSize, search, statusFilter, paymentFilter, vehicleFilter]);
+  }, [fetchShipments]);
 
   // Debounced search
   const handleSearchChange = (val) => {
