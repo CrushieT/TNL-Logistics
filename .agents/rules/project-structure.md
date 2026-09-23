@@ -71,10 +71,11 @@ tnl-logistics/
 │   │   ├── features/                # Domain modules
 │   │   │   ├── shipments/           # PrintLabelsModal, LabelPreview, durable outbox & isolated thermal print service
 │   │   │   └── settings/            # AdminSecurityCard, ConfirmPasswordModal, settings components
-│   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sseClient.js)
+│   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sseClient.js, sseClientCore.mjs)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
 │   │   ├── utils/                   # Shared QR facade
 │   │   └── vendor/qrcodegen/        # Vendored Project Nayuki QR generator
+│   ├── tests/                       # Web unit suites (labelPrint.test.mjs, qr.test.mjs, sseClient.test.mjs)
 │   ├── assets/                      # favicon.png, tracking-logo.png
 │   ├── app.json                     # Expo web configuration
 │   ├── package.json

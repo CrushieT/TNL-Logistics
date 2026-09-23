@@ -5,6 +5,7 @@ import com.tnl.logistics.dto.TrackingScanResponse;
 import com.tnl.logistics.service.SseService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -68,15 +69,19 @@ public class SseServiceImpl implements SseService {
     @Override
     public void broadcastEvent(String eventName, Object data) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    doBroadcast(eventName, data);
-                }
-            });
-        } else {
-            doBroadcast(eventName, data);
+            try {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        doBroadcast(eventName, data);
+                    }
+                });
+                return;
+            } catch (Exception e) {
+                log.warn("Failed to register post-commit synchronization for SSE event {}: {}", eventName, e.getMessage());
+            }
         }
+        doBroadcast(eventName, data);
     }
 
     private void doBroadcast(String eventName, Object data) {
@@ -117,5 +122,28 @@ public class SseServiceImpl implements SseService {
     @Override
     public void broadcastPaymentRecorded(Object payment) {
         broadcastEvent("PAYMENT_RECORDED", payment);
+    }
+
+    @Scheduled(fixedRate = 20000)
+    @Override
+    public void sendHeartbeat() {
+        if (emitters.isEmpty()) {
+            return;
+        }
+        List<SseEmitter> deadEmitters = new CopyOnWriteArrayList<>();
+        for (SseEmitter emitter : emitters) {
+            try {
+                emitter.send(SseEmitter.event().comment("keepalive"));
+            } catch (Exception e) {
+                try {
+                    emitter.complete();
+                } catch (Exception ignored) {}
+                deadEmitters.add(emitter);
+            }
+        }
+        if (!deadEmitters.isEmpty()) {
+            emitters.removeAll(deadEmitters);
+            log.debug("Evicted {} disconnected SSE emitters during heartbeat. Active count: {}", deadEmitters.size(), emitters.size());
+        }
     }
 }

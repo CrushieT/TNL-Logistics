@@ -14,8 +14,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
@@ -409,26 +407,11 @@ public class TrackingServiceImpl implements TrackingService {
         if (responses == null || responses.isEmpty()) {
             return;
         }
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    for (TrackingScanResponse resp : responses) {
-                        try {
-                            sseService.broadcastTrackingScan(resp);
-                        } catch (Exception ex) {
-                            log.warn("Failed to broadcast tracking scan SSE for {}: {}", resp.getTrackingId(), ex.getMessage());
-                        }
-                    }
-                }
-            });
-        } else {
-            for (TrackingScanResponse resp : responses) {
-                try {
-                    sseService.broadcastTrackingScan(resp);
-                } catch (Exception ex) {
-                    log.warn("Failed to broadcast tracking scan SSE for {}: {}", resp.getTrackingId(), ex.getMessage());
-                }
+        for (TrackingScanResponse resp : responses) {
+            try {
+                sseService.broadcastTrackingScan(resp);
+            } catch (Exception ex) {
+                log.warn("Failed to broadcast tracking scan SSE for {}: {}", resp.getTrackingId(), ex.getMessage());
             }
         }
     }

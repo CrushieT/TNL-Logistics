@@ -44,6 +44,21 @@ export default function PaymentsScreen() {
   const [toast, setToast] = useState(null);
 
   const searchDebounceTimer = useRef(null);
+  const filtersRef = useRef({
+    page,
+    pageSize,
+    search,
+    paymentFilter,
+  });
+
+  useEffect(() => {
+    filtersRef.current = {
+      page,
+      pageSize,
+      search,
+      paymentFilter,
+    };
+  }, [page, pageSize, search, paymentFilter]);
 
   // Fetch paginated shipments with financial rollups
   const fetchShipmentsData = useCallback(
@@ -127,23 +142,42 @@ export default function PaymentsScreen() {
     setPage(0);
   };
 
-  // Real-time SSE subscription
+  // Real-time SSE subscription + Window focus listener + Visible-tab periodic fallback
   useEffect(() => {
+    const handleSilentRefresh = () => {
+      const { page: p, pageSize: ps, search: s, paymentFilter: pf } = filtersRef.current;
+      fetchShipmentsData(p, ps, s, pf, false);
+    };
+
     const unsubscribe = subscribeRealtimeEvents((event) => {
       if (
         event.type === 'PAYMENT_RECORDED' ||
         event.type === 'SHIPMENT_CREATED' ||
-        event.type === 'STATUS_UPDATE'
+        event.type === 'STATUS_UPDATE' ||
+        event.type === 'LABEL_PRINTED'
       ) {
-        // Silently refresh without full spinner flicker
-        fetchShipmentsData(page, pageSize, search, paymentFilter, false);
+        handleSilentRefresh();
       }
     });
 
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleSilentRefresh);
+    }
+
+    const intervalId = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        handleSilentRefresh();
+      }
+    }, 30000);
+
     return () => {
       if (unsubscribe) unsubscribe();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', handleSilentRefresh);
+      }
+      clearInterval(intervalId);
     };
-  }, [page, pageSize, search, paymentFilter, fetchShipmentsData]);
+  }, [fetchShipmentsData]);
 
   // Open Record Payment Modal
   const handleOpenRecordModal = (shipment) => {
