@@ -67,3 +67,8 @@ PR_DRAFT.md
 .review/
 .docs-private/
 .docs-private
+frontend-mobile/android/
+frontend-mobile/credentials.json
+frontend-mobile/*.jks
+frontend-mobile/*.keystore
+frontend-mobile/credentials

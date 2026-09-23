@@ -1,0 +1,8 @@
+services:
+  mysql:
+    environment:
+      MYSQL_DATABASE: ${TNL_WORKFLOW_DATABASE:-tnl_workflow}
+  backend:
+    environment:
+      SPRING_PROFILES_ACTIVE: workflow
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${TNL_WORKFLOW_DATABASE:-tnl_workflow}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC

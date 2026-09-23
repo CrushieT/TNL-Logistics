@@ -11,7 +11,14 @@
     "ios": {
       "supportsTablet": true
     },
-    "android": {},
+    "android": {
+      "versionCode": 2,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.aundraysteam.tnlfield"
+    },
     "web": {},
     "plugins": [
       [
@@ -20,8 +27,14 @@
           "cameraPermission": "Allow TNL Logistics to access your camera to scan parcel QR codes."
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-sqlite"
     ],
-    "scheme": "tnl-field"
+    "scheme": "tnl-field",
+    "extra": {
+      "eas": {
+        "projectId": "5a17ef81-dae9-4e7b-9e05-e465db55d1f4"
+      }
+    }
   }
 }

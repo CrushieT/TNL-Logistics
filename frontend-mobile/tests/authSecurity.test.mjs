@@ -22,6 +22,15 @@ import {
   sanitizeSensitiveError,
 } from '../src/services/api/sessionHandling.mjs';
 
+test('AC-23 sensitive errors parse numeric and HTTP-date Retry-After without retaining headers', () => {
+  const numeric = sanitizeSensitiveError({ response: { status: 429, headers: { 'Retry-After': '3600' } } });
+  assert.equal(numeric.retryAfterSeconds, 3600);
+  assert.equal('headers' in numeric, false);
+  const date = new Date(Date.now() + 60_000).toUTCString();
+  const dated = sanitizeSensitiveError({ response: { status: 429, headers: { 'retry-after': date } } });
+  assert.ok(dated.retryAfterSeconds >= 0 && dated.retryAfterSeconds <= 60);
+});
+
 function createStorageState() {
   const state = {
     token: 'old-token',

@@ -137,9 +137,12 @@ public class PersonalTrackingHistoryIntegrationTest {
             clientRepository.save(new Client("CL-001", "Acme Client", "Manila", "09170000000", "client@acme.com", ChargeModel.FLAT, true));
         }
 
-        if (!vehicleRepository.existsById("VH-001")) {
+        vehicleRepository.findById("VH-001").ifPresentOrElse(v -> {
+            v.setPlateNumber("ABC-1234");
+            vehicleRepository.save(v);
+        }, () -> {
             vehicleRepository.save(new Vehicle("VH-001", "ABC-1234", "Truck 1"));
-        }
+        });
     }
 
     private String createTestShipment(int quantity) {

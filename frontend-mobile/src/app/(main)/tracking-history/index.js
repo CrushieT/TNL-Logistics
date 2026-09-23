@@ -25,10 +25,14 @@ import {
   replacePageZeroEvents,
 } from '../../../features/tracking-history/trackingHistoryFlow.mjs';
 import { createTrackingHistoryRequestCoordinator } from '../../../features/tracking-history/trackingHistoryRequestCoordinator.mjs';
+import { useOfflineSync } from '../../../features/offline-sync/context/OfflineSyncContext';
+import { summarizeOfflineQueue } from '../../../features/offline-sync/offlineQueueFlow.mjs';
 
 export default function TrackingHistoryScreen() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
+  const { rows: offlineRows, syncRevision, otherOwnerCount } = useOfflineSync();
+  const offlineCounts = summarizeOfflineQueue(offlineRows);
 
   const [metrics, setMetrics] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
@@ -195,7 +199,7 @@ export default function TrackingHistoryScreen() {
         metricsControllerRef.current = null;
         setLoadingMore(false);
       };
-    }, [fetchMetrics, fetchPageZero, requestCoordinator])
+    }, [fetchMetrics, fetchPageZero, requestCoordinator, syncRevision])
   );
 
   // Debounced search effect
@@ -235,6 +239,16 @@ export default function TrackingHistoryScreen() {
 
   const renderHeader = () => (
     <View>
+      {offlineRows.length > 0 && (
+        <TouchableOpacity style={styles.offlineBanner} onPress={() => router.push('/(main)/offline-queue')}>
+          <Text style={styles.offlineBannerText}>{offlineCounts.pending + offlineCounts.retryable} PENDING | {offlineCounts.terminal} NEED REVIEW</Text>
+          <Text style={styles.offlineBannerAction}>VIEW QUEUE</Text>
+        </TouchableOpacity>
+      )}
+      {otherOwnerCount > 0 && <TouchableOpacity style={styles.offlineBanner} onPress={() => router.push('/(main)/offline-queue')}>
+        <Text style={styles.offlineBannerText}>{otherOwnerCount} SCAN{otherOwnerCount === 1 ? '' : 'S'} FROM ANOTHER ACCOUNT ON THIS DEVICE</Text>
+        <Text style={styles.offlineBannerAction}>VIEW QUEUE</Text>
+      </TouchableOpacity>}
       <PersonalScanMetrics
         metrics={metrics}
         isLoading={metricsLoading}
@@ -410,6 +424,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
+  offlineBanner: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 4,
+    backgroundColor: colors.warningSoft,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  offlineBannerText: { color: colors.warning, fontWeight: '800', fontSize: 11 },
+  offlineBannerAction: { color: colors.warning, fontWeight: '800', fontSize: 11 },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',

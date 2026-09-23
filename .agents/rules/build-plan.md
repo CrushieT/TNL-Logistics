@@ -435,8 +435,20 @@
   - Backend OWASP dependency analysis migrated to automated GitHub Actions CI/CD workflows (`.github/workflows/owasp-check.yml` and `.github/workflows/dependency-review.yml`) with NVD API key and local cache support.
   - Physical on-device acceptance testing on mobile hardware completed and verified.
 
-**6.7 — Offline Resilience & SQLite Scan Queue (Screen 56)** — **[UPCOMING]**
-- Local SQLite database queue for buffering parcel status scans performed without cellular coverage.
-- Connectivity listener (`@react-native-community/netinfo`) with automatic background batch sync (`POST /api/v1/tracking-events/batch-scan`) upon network restoration.
-- Visual pending upload badge and sync status banner on the courier's personal scan history.
-- Un-synced scan queue retention safeguards preventing accidental sign-out or device unbinding when pending offline scans exist.
+**6.7 — Offline Resilience & SQLite Scan Queue (Screen 56)** — **[COMPLETED]**
+- Flyway Migration `V30__add_offline_scan_idempotency.sql`: Added nullable `client_event_id` (with unique index), `client_captured_at`, and `scan_source` to `tracking_event`, plus 90-day retention `offline_scan_receipt` table.
+- Dedicated Replay API Endpoint (`POST /api/v1/tracking-events/offline-sync`):
+  - Role-gated strictly to `FIELD_STAFF` with method authorization and `OfflineSyncRequestGuard` (64 KiB payload limit, rate limits of 20 requests/min per user and 100/min per IP).
+  - Itemized `TransactionTemplate` execution ensuring partial batch success without rolling back valid items when individual conflicts occur.
+  - Item outcomes (`APPLIED`, `ALREADY_APPLIED`, `STALE_STATE`, `CONFLICT`, `REJECTED`, `RETRYABLE_ERROR`) with post-commit SSE event broadcasting.
+  - Periodic background scheduled receipt cleanup (`OfflineReceiptCleanupService`) purging 90-day old sync receipts.
+- Mobile Architecture & SQLite Persistence (Screen 56):
+  - Native SQLite queue store (`offlineQueueStore.native.js`) using `expo-sqlite` with `userId` ownership isolation, sequence tracking, retry due-time calculations, and safe web no-ops (`offlineQueueStore.web.js`).
+  - React Context (`OfflineSyncContext.js`) with `@react-native-community/netinfo` listener managing auto-sync, retries, foreground scheduling, and state badges.
+  - Screen 56 (`src/app/(main)/offline-queue.js`): Queue review, manual sync trigger, and conflict acknowledgement UI.
+  - Rapid Batch scanning (`scan.js`) queues offline scans; Single Scan blocks offline execution to prevent unverified single-item transitions.
+  - Session & Unbind Safeguards (`AuthContext.js`): Blocks device unbinding (`Sign Out and Unbind Device`) while un-synced offline scans remain.
+- Verification & Testing:
+  - 29 Spring Boot integration test classes passing (including `OfflineTrackingSyncIntegrationTest` and `OfflineSyncRequestGuardTest`).
+  - 131 Node unit tests passing (including `tests/offlineQueue.test.mjs` and `tests/offlineQueue.web.test.mjs`).
+  - Production build exports verified cleanly across Web, Android (Hermes), and iOS (Hermes).

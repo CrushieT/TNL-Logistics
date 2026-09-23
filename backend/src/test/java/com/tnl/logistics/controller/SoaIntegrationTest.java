@@ -72,6 +72,10 @@ public class SoaIntegrationTest {
             client2.setActive(true);
             clientRepository.save(client2);
         }
+
+        if (!clientRepository.existsById("CL-SOA-001")) {
+            clientRepository.save(new Client("CL-SOA-001", "SOA Test Client", "Baguio", "09170000099", "soa@test.com", ChargeModel.FLAT, true));
+        }
     }
 
     @Test
@@ -279,7 +283,7 @@ public class SoaIntegrationTest {
     void testSaveStatementDeductionExceedingTotalChargesRejected() throws Exception {
         // Register a shipment with 1200.00 total charges
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
-        shipmentReq.setClientId("CL-001");
+        shipmentReq.setClientId("CL-SOA-001");
         shipmentReq.setRecipientName("Consignee Limit Test");
         shipmentReq.setRecipientContact("0917-111-2233");
         shipmentReq.setRecipientAddress("Baguio City Center");
@@ -302,7 +306,7 @@ public class SoaIntegrationTest {
 
         // Attempt to save deduction of 1500.00 (which exceeds 1200.00 total charges)
         SaveStatementRequest excessiveDeduction = new SaveStatementRequest(
-                "CL-001",
+                "CL-SOA-001",
                 LocalDate.now(),
                 new BigDecimal("1500.00"),
                 "Excessive deduction attempt",
@@ -358,7 +362,7 @@ public class SoaIntegrationTest {
     void testSavedSoaReflectsSubsequentPayments() throws Exception {
         // 1. Register a shipment with 1000.00 fee
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
-        shipmentReq.setClientId("CL-001");
+        shipmentReq.setClientId("CL-SOA-001");
         shipmentReq.setRecipientName("Payment Sync Consignee");
         shipmentReq.setRecipientContact("0917-222-3333");
         shipmentReq.setRecipientAddress("Baguio City Center");
@@ -396,9 +400,9 @@ public class SoaIntegrationTest {
                         .content(objectMapper.writeValueAsString(initialPayment)))
                 .andExpect(status().isCreated());
 
-        // 3. Save SOA for CL-001
+        // 3. Save SOA for CL-SOA-001
         SaveStatementRequest saveReq = new SaveStatementRequest(
-                "CL-001",
+                "CL-SOA-001",
                 LocalDate.now(),
                 BigDecimal.ZERO,
                 null,
@@ -432,9 +436,9 @@ public class SoaIntegrationTest {
 
         // 5. Verify statement preview dynamically reflects live payments (totalPaid = 500.00, amountDue = 500.00)
         mockMvc.perform(get("/api/v1/soa/preview")
-                        .param("clientId", "CL-001"))
+                        .param("clientId", "CL-SOA-001"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.clientId").value("CL-001"))
+                .andExpect(jsonPath("$.clientId").value("CL-SOA-001"))
                 .andExpect(jsonPath("$.isSaved").value(true))
                 .andExpect(jsonPath("$.totalCharges").value(1000.00))
                 .andExpect(jsonPath("$.totalPaid").value(500.00))
