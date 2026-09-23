@@ -93,8 +93,8 @@ public class TrackingScanIntegrationTest {
 
     @BeforeEach
     public void setup() throws Exception {
-        vehicleRepository.deleteById("VH-001");
-        vehicleRepository.deleteById("VH-002");
+        vehicleRepository.deleteById("VH-SCAN-001");
+        vehicleRepository.deleteById("VH-SCAN-002");
         vehicleRepository.deleteById("VH-INACTIVE");
         vehicleRepository.deleteById("VH-NONE");
         vehicleRepository.deleteById("VH-CONCUR");
@@ -299,11 +299,11 @@ public class TrackingScanIntegrationTest {
     // 6. Valid single transitions across every scanner-supported step
     @Test
     public void testValidSingleTransitionsAcrossScannerSteps() throws Exception {
-        Vehicle vehicle = vehicleRepository.saveAndFlush(new Vehicle("VH-001", "XYZ-1234", "Truck 1"));
+        Vehicle vehicle = vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "SCAN-PL-001", "Truck 1"));
         String trackingId = createTestShipment(1);
 
         // QR_GENERATED -> LOADED_ON_TRUCK
-        TrackingScanRequest req1 = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Loaded");
+        TrackingScanRequest req1 = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Loaded");
         MvcResult res1 = mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -312,7 +312,7 @@ public class TrackingScanIntegrationTest {
                 .andExpect(jsonPath("$.transitionApplied").value(true))
                 .andExpect(jsonPath("$.previousStatusCode").value("QR_GENERATED"))
                 .andExpect(jsonPath("$.newStatusCode").value("LOADED_ON_TRUCK"))
-                .andExpect(jsonPath("$.vehicleId").value("VH-001"))
+                .andExpect(jsonPath("$.vehicleId").value("VH-SCAN-001"))
                 .andReturn();
 
         // LOADED_ON_TRUCK -> ARRIVED_AT_TNL
@@ -382,10 +382,10 @@ public class TrackingScanIntegrationTest {
     // 10. Idempotent retry creates no duplicate tracking event
     @Test
     public void testIdempotentRetryReturnsFalseAndCreatesNoEvent() throws Exception {
-        vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "Truck 1"));
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "ABC-1234", "Truck 1"));
         String trackingId = createTestShipment(1);
 
-        TrackingScanRequest req = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "First scan");
+        TrackingScanRequest req = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "First scan");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -412,11 +412,11 @@ public class TrackingScanIntegrationTest {
     // 11. Loaded-on-truck retry with another vehicle returns 409
     @Test
     public void testLoadedOnTruckRetryWithDifferentVehicleReturns409() throws Exception {
-        vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "Truck 1"));
-        vehicleRepository.saveAndFlush(new Vehicle("VH-002", "XYZ-5678", "Truck 2"));
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "ABC-1234", "Truck 1"));
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-002", "XYZ-5678", "Truck 2"));
         String trackingId = createTestShipment(1);
 
-        TrackingScanRequest req1 = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "First scan");
+        TrackingScanRequest req1 = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "First scan");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -425,7 +425,7 @@ public class TrackingScanIntegrationTest {
                 .andExpect(jsonPath("$.transitionApplied").value(true));
 
         // Retry with VH-002 -> 409 Conflict
-        TrackingScanRequest req2 = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-002", "Different truck");
+        TrackingScanRequest req2 = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-002", "Different truck");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -436,10 +436,10 @@ public class TrackingScanIntegrationTest {
     // 12. Valid batch updates all parcels
     @Test
     public void testValidBatchScanUpdatesAllParcels() throws Exception {
-        vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "Truck 1"));
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "ABC-1234", "Truck 1"));
         List<String> ids = createTestShipmentAllIds(3);
 
-        BatchTrackingScanRequest batchReq = new BatchTrackingScanRequest(ids, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Batch load");
+        BatchTrackingScanRequest batchReq = new BatchTrackingScanRequest(ids, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Batch load");
         mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -453,14 +453,14 @@ public class TrackingScanIntegrationTest {
         for (String id : ids) {
             ParcelUnit p = parcelUnitRepository.findById(id).orElseThrow();
             assertEquals(ParcelStatus.LOADED_ON_TRUCK, p.getCurrentStatus());
-            assertEquals("VH-001", p.getCurrentVehicle().getVehicleId());
+            assertEquals("VH-SCAN-001", p.getCurrentVehicle().getVehicleId());
         }
     }
 
     // 13. Mixed valid/invalid batch rolls back every parcel and event
     @Test
     public void testMixedBatchRollsBackEntirely() throws Exception {
-        vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "Truck 1"));
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "ABC-1234", "Truck 1"));
         List<String> ids = createTestShipmentAllIds(2);
 
         // Move second parcel to COMPLETED so it cannot move to LOADED_ON_TRUCK
@@ -470,7 +470,7 @@ public class TrackingScanIntegrationTest {
 
         long eventCountBefore = trackingEventRepository.count();
 
-        BatchTrackingScanRequest batchReq = new BatchTrackingScanRequest(ids, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Batch load");
+        BatchTrackingScanRequest batchReq = new BatchTrackingScanRequest(ids, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Batch load");
         mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -490,7 +490,7 @@ public class TrackingScanIntegrationTest {
         BatchTrackingScanRequest batchReq = new BatchTrackingScanRequest(
                 List.of(trackingId, trackingId),
                 ParcelStatus.LOADED_ON_TRUCK,
-                "VH-001",
+                "VH-SCAN-001",
                 "Duplicates"
         );
         mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
@@ -506,7 +506,7 @@ public class TrackingScanIntegrationTest {
         BatchTrackingScanRequest batchReq = new BatchTrackingScanRequest(
                 List.of("   "),
                 ParcelStatus.LOADED_ON_TRUCK,
-                "VH-001",
+                "VH-SCAN-001",
                 "Blank"
         );
         mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
@@ -539,11 +539,11 @@ public class TrackingScanIntegrationTest {
     // 17. A batch retry can contain both already-applied and pending items without duplicating events
     @Test
     public void testBatchWithAlreadyAppliedAndPendingItems() throws Exception {
-        vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "Truck 1"));
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "ABC-1234", "Truck 1"));
         List<String> ids = createTestShipmentAllIds(2);
 
         // Pre-apply first item
-        TrackingScanRequest req1 = new TrackingScanRequest(ids.get(0), ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Single scan");
+        TrackingScanRequest req1 = new TrackingScanRequest(ids.get(0), ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Single scan");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -554,7 +554,7 @@ public class TrackingScanIntegrationTest {
         long eventCountBefore = trackingEventRepository.count();
 
         // Batch scan with both items
-        BatchTrackingScanRequest batchReq = new BatchTrackingScanRequest(ids, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Batch with retry");
+        BatchTrackingScanRequest batchReq = new BatchTrackingScanRequest(ids, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Batch with retry");
         mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -643,11 +643,11 @@ public class TrackingScanIntegrationTest {
     // 19. Single exact retry succeeds after its assigned vehicle becomes inactive
     @Test
     public void testSingleExactRetrySucceedsWhenVehicleBecomesInactive() throws Exception {
-        Vehicle v = vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "Truck 1"));
+        Vehicle v = vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "ABC-1234", "Truck 1"));
         String trackingId = createTestShipment(1);
 
         // Initial transition -> applied
-        TrackingScanRequest req = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "First scan");
+        TrackingScanRequest req = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "First scan");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -666,17 +666,17 @@ public class TrackingScanIntegrationTest {
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.transitionApplied").value(false))
-                .andExpect(jsonPath("$.vehicleId").value("VH-001"));
+                .andExpect(jsonPath("$.vehicleId").value("VH-SCAN-001"));
     }
 
     // 20. Batch containing only exact retries succeeds after assigned vehicle becomes inactive
     @Test
     public void testBatchOnlyExactRetriesSucceedsWhenVehicleBecomesInactive() throws Exception {
-        Vehicle v = vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "Truck 1"));
+        Vehicle v = vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "ABC-1234", "Truck 1"));
         List<String> ids = createTestShipmentAllIds(2);
 
         // Pre-apply both
-        BatchTrackingScanRequest initialBatch = new BatchTrackingScanRequest(ids, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Initial batch");
+        BatchTrackingScanRequest initialBatch = new BatchTrackingScanRequest(ids, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Initial batch");
         mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -700,11 +700,11 @@ public class TrackingScanIntegrationTest {
     // 21. Mixed idempotent and pending batch fails atomically when vehicle is inactive
     @Test
     public void testMixedBatchFailsAtomicallyWhenVehicleInactive() throws Exception {
-        Vehicle v = vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "Truck 1"));
+        Vehicle v = vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "ABC-1234", "Truck 1"));
         List<String> ids = createTestShipmentAllIds(2);
 
         // Pre-apply first item
-        TrackingScanRequest req1 = new TrackingScanRequest(ids.get(0), ParcelStatus.LOADED_ON_TRUCK, "VH-001", "First parcel");
+        TrackingScanRequest req1 = new TrackingScanRequest(ids.get(0), ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "First parcel");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -716,7 +716,7 @@ public class TrackingScanIntegrationTest {
         vehicleRepository.saveAndFlush(v);
 
         // Mixed batch: item 0 is idempotent retry, item 1 is new transition -> should fail atomically
-        BatchTrackingScanRequest mixedBatch = new BatchTrackingScanRequest(ids, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Mixed batch");
+        BatchTrackingScanRequest mixedBatch = new BatchTrackingScanRequest(ids, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Mixed batch");
         mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -731,7 +731,7 @@ public class TrackingScanIntegrationTest {
     // 22. Same-status LOADED_ON_TRUCK parcel with a null assigned vehicle returns 409
     @Test
     public void testSameStatusLoadedOnTruckWithNullAssignedVehicleReturns409() throws Exception {
-        vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "Truck 1"));
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "ABC-1234", "Truck 1"));
         String trackingId = createTestShipment(1);
 
         // Manually place parcel at LOADED_ON_TRUCK without a vehicle
@@ -740,7 +740,7 @@ public class TrackingScanIntegrationTest {
         p.setCurrentVehicle(null);
         parcelUnitRepository.saveAndFlush(p);
 
-        TrackingScanRequest req = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Conflict test");
+        TrackingScanRequest req = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Conflict test");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -751,12 +751,12 @@ public class TrackingScanIntegrationTest {
     // 23. Same-status retry with a different vehicle returns 409
     @Test
     public void testSameStatusRetryWithDifferentVehicleReturns409() throws Exception {
-        vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "Truck 1"));
-        vehicleRepository.saveAndFlush(new Vehicle("VH-002", "XYZ-5678", "Truck 2"));
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "ABC-1234", "Truck 1"));
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-002", "XYZ-5678", "Truck 2"));
         String trackingId = createTestShipment(1);
 
         // Assign to VH-001
-        TrackingScanRequest req1 = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Initial assign");
+        TrackingScanRequest req1 = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Initial assign");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -764,7 +764,7 @@ public class TrackingScanIntegrationTest {
                 .andExpect(status().isOk());
 
         // Attempt retry with VH-002 -> 409 Conflict
-        TrackingScanRequest req2 = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-002", "Different truck");
+        TrackingScanRequest req2 = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-002", "Different truck");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -775,11 +775,11 @@ public class TrackingScanIntegrationTest {
     // 24. Failed inactive mixed batch creates no event and publishes no SSE event
     @Test
     public void testFailedInactiveMixedBatchCreatesNoEventAndPublishesNoSse() throws Exception {
-        Vehicle v = vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "Truck 1"));
+        Vehicle v = vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "ABC-1234", "Truck 1"));
         List<String> ids = createTestShipmentAllIds(2);
 
         // Pre-apply first item
-        TrackingScanRequest req1 = new TrackingScanRequest(ids.get(0), ParcelStatus.LOADED_ON_TRUCK, "VH-001", "First parcel");
+        TrackingScanRequest req1 = new TrackingScanRequest(ids.get(0), ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "First parcel");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -793,7 +793,7 @@ public class TrackingScanIntegrationTest {
         long eventCountBefore = trackingEventRepository.count();
         Mockito.clearInvocations(sseService);
 
-        BatchTrackingScanRequest mixedBatch = new BatchTrackingScanRequest(ids, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Mixed batch");
+        BatchTrackingScanRequest mixedBatch = new BatchTrackingScanRequest(ids, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Mixed batch");
         mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -807,7 +807,7 @@ public class TrackingScanIntegrationTest {
     // 25. Rolled-back batches publish no SSE events
     @Test
     public void testRolledBackBatchPublishesNoSseEvents() throws Exception {
-        vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "Truck 1"));
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "ABC-1234", "Truck 1"));
         List<String> ids = createTestShipmentAllIds(2);
 
         // Sabotage second parcel
@@ -817,7 +817,7 @@ public class TrackingScanIntegrationTest {
 
         Mockito.clearInvocations(sseService);
 
-        BatchTrackingScanRequest batchReq = new BatchTrackingScanRequest(ids, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Failing batch");
+        BatchTrackingScanRequest batchReq = new BatchTrackingScanRequest(ids, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Failing batch");
         mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -830,12 +830,12 @@ public class TrackingScanIntegrationTest {
     // 26. Successful commits publish SSE
     @Test
     public void testSuccessfulCommitPublishesSse() throws Exception {
-        vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "Truck 1"));
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "ABC-1234", "Truck 1"));
         String trackingId = createTestShipment(1);
 
         Mockito.clearInvocations(sseService);
 
-        TrackingScanRequest req = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "SSE test");
+        TrackingScanRequest req = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "SSE test");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -850,10 +850,10 @@ public class TrackingScanIntegrationTest {
     // 27. Existing authorization for single and batch mutation endpoints remains intact
     @Test
     public void testMutationAuthorizationRemainsIntact() throws Exception {
-        vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "Truck 1"));
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "ABC-1234", "Truck 1"));
         String trackingId = createTestShipment(1);
 
-        TrackingScanRequest req = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Auth test");
+        TrackingScanRequest req = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Auth test");
 
         // FIELD_STAFF -> OK
         mockMvc.perform(post("/api/v1/tracking-events/scan")

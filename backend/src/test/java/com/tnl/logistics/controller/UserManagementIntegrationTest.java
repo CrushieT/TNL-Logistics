@@ -48,6 +48,9 @@ public class UserManagementIntegrationTest {
     @Autowired
     private com.tnl.logistics.repository.WaybillRepository waybillRepository;
 
+    @Autowired
+    private com.tnl.logistics.repository.ClientRepository clientRepository;
+
     @Test
     @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testListUsersAsAdminReturns200WithContent() throws Exception {
@@ -284,7 +287,15 @@ public class UserManagementIntegrationTest {
     @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testDeleteUserWithLinkedRecordsDeactivatesInsteadOfDeletes() throws Exception {
         var staff = appUserRepository.findById("USR-FIELD").orElseThrow();
-        var shipment = shipmentRepository.findAll().get(0);
+        var client = clientRepository.findById("CL-001").orElseGet(() ->
+                clientRepository.save(new com.tnl.logistics.model.Client("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com", com.tnl.logistics.model.ChargeModel.FLAT, true)));
+        var shipment = shipmentRepository.findAll().stream().findFirst().orElseGet(() ->
+                shipmentRepository.save(new com.tnl.logistics.model.Shipment(
+                        "SHP-TEST-LINK", client, "Recipient", "Address", "09170000000", 1,
+                        com.tnl.logistics.model.ChargeModel.FLAT, new java.math.BigDecimal("150.00"),
+                        java.math.BigDecimal.ZERO, new java.math.BigDecimal("150.00"), false,
+                        com.tnl.logistics.model.RegisteredVia.DESKTOP_OFFICE
+                )));
         var payment = new com.tnl.logistics.model.Payment(
                 shipment,
                 new java.math.BigDecimal("150.00"),
@@ -406,7 +417,15 @@ public class UserManagementIntegrationTest {
         String newUserId = objectMapper.readTree(body).get("userId").asText();
         var staff = appUserRepository.findById(newUserId).orElseThrow();
 
-        var shipment = shipmentRepository.findAll().get(0);
+        var client = clientRepository.findById("CL-001").orElseGet(() ->
+                clientRepository.save(new com.tnl.logistics.model.Client("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com", com.tnl.logistics.model.ChargeModel.FLAT, true)));
+        var shipment = shipmentRepository.findAll().stream().findFirst().orElseGet(() ->
+                shipmentRepository.save(new com.tnl.logistics.model.Shipment(
+                        "SHP-TEST-WB", client, "Recipient", "Address", "09170000000", 1,
+                        com.tnl.logistics.model.ChargeModel.FLAT, new java.math.BigDecimal("150.00"),
+                        java.math.BigDecimal.ZERO, new java.math.BigDecimal("150.00"), false,
+                        com.tnl.logistics.model.RegisteredVia.DESKTOP_OFFICE
+                )));
         var waybill = new com.tnl.logistics.model.Waybill(
                 "WB-TEST-999",
                 shipment,

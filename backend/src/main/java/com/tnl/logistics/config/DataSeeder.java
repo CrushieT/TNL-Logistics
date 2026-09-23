@@ -117,9 +117,13 @@ public class DataSeeder implements CommandLineRunner {
         if (!environment.acceptsProfiles(Profiles.of("test")) || !seedSampleData) return;
 
         seedUser("USR-ADMIN", "admin", "admin123", "Admin User", UserRole.ADMIN, null, null, seedMobilePins ? "1111" : null);
-        seedUser("USR-FIELD", "field_staff", "field123", "Field Staff User", UserRole.FIELD_STAFF, StaffType.INTERNAL_TRUCK, null, seedMobilePins ? "0001" : null);
-        seedUser("USR-HAULER", "hauler_staff", "field123", "Hauler Staff User", UserRole.FIELD_STAFF, StaffType.HAULER_STAFF, "Test Hauler", null);
+        seedUser("USR-OFFICE", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF, null, null, seedMobilePins ? "2222" : null);
+        seedUser("USR-FIELD", "field", "field123", "Carlos Mendoza", UserRole.FIELD_STAFF, StaffType.INTERNAL_TRUCK, null, seedMobilePins ? "0001" : null);
+        seedUser("USR-HAULER", "hauler1", "field123", "Rogelio Aquino", UserRole.FIELD_STAFF, StaffType.HAULER_STAFF, "Northbound Hauling", null);
+        seedUser("USR-HAULER2", "hauler2", "field123", "Danilo Cruz", UserRole.FIELD_STAFF, StaffType.HAULER_STAFF, "Cordillera Freight", null);
         seedClient("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com");
+        seedVehicle("VH-001", "NCP-2401", "TNL line-haul vehicle");
+        seedVehicle("VH-002", "NCP-2402", "TNL reserve vehicle");
     }
 
     private AppUser seedUser(String id, String username, String password, String fullName, UserRole role, StaffType type, String haulerCompany, String pin) {

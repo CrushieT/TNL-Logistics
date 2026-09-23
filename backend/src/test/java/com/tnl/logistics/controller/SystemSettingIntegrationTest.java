@@ -190,6 +190,32 @@ public class SystemSettingIntegrationTest {
     void testHistoricalCyclesAndSoaPreservedWhenCollectionDayChanges() throws Exception {
         LocalDate historicalDate = LocalDate.of(2026, 8, 27);
 
+        Client client = clientRepository.findById("CL-001").orElseGet(() ->
+                clientRepository.save(new Client("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com", ChargeModel.FLAT, true)));
+        if (!Boolean.TRUE.equals(client.getActive())) {
+            client.setActive(true);
+            clientRepository.save(client);
+        }
+
+        shipmentRepository.findById("SHP-HIST-001").orElseGet(() -> {
+            Shipment shipment = new Shipment(
+                    "SHP-HIST-001",
+                    client,
+                    "Historical Recipient",
+                    "Baguio City",
+                    "09170000000",
+                    1,
+                    ChargeModel.FLAT,
+                    new BigDecimal("350.00"),
+                    BigDecimal.ZERO,
+                    new BigDecimal("350.00"),
+                    false,
+                    RegisteredVia.DESKTOP_OFFICE
+            );
+            shipment.setDateRegistered(historicalDate.atTime(9, 0));
+            return shipmentRepository.save(shipment);
+        });
+
         // 1. Save an SOA for a historical Thursday cycle that has seeded shipments
         SaveStatementRequest saveReq = new SaveStatementRequest();
         saveReq.setClientId("CL-001");
