@@ -32,6 +32,7 @@ public class CorsConfig {
 						.allowedOriginPatterns(origins)
 						.allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
 						.allowedHeaders("*")
+						.exposedHeaders("X-Renewed-Token")
 						.allowCredentials(true)
 						.maxAge(3600);
 			}

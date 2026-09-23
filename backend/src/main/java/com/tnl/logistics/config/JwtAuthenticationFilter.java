@@ -86,12 +86,39 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     return;
                 }
 
-                String effectiveRole = user.getRole() != null ? user.getRole().name() : role;
+                if (user.getRole() == null || !Objects.equals(role, user.getRole().name())) {
+                    auditSecurityMutationFailure(request, userId, user, "SESSION_REAUTH_REQUIRED");
+                    sendSessionReauthenticationRequiredResponse(response);
+                    return;
+                }
+
+                String effectiveRole = user.getRole().name();
                 SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + effectiveRole);
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                         userId, null, Collections.singletonList(authority));
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
+
+                if (JwtTokenProvider.isAdminRole(effectiveRole)) {
+                    response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+                    response.setHeader("Pragma", "no-cache");
+
+                    if (!isSseStreamRequest(request)) {
+                        Long origAuthTime = JwtTokenProvider.getAuthTimeFromToken(token);
+                        long nowSeconds = System.currentTimeMillis() / 1000;
+                        long maxCeilingSeconds = JwtTokenProvider.getAdminMaxLifetimeMs() / 1000;
+                        long effectiveAuthTime = origAuthTime != null ? origAuthTime : nowSeconds;
+
+                        if (nowSeconds - effectiveAuthTime < maxCeilingSeconds) {
+                            String renewedToken = JwtTokenProvider.generateRenewedToken(
+                                    userId, effectiveRole, user.getTokenVersion(), effectiveAuthTime);
+                            JwtRenewalResponseWrapper responseWrapper = new JwtRenewalResponseWrapper(response, renewedToken);
+                            filterChain.doFilter(request, responseWrapper);
+                            responseWrapper.commitRenewalHeader();
+                            return;
+                        }
+                    }
+                }
             } catch (RuntimeException exception) {
                 auditSecurityMutationFailure(request, null, null, "SESSION_REAUTH_REQUIRED");
                 sendSessionReauthenticationRequiredResponse(response);

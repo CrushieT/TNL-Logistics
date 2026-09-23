@@ -1,4 +1,4 @@
-import { getToken, isAuthenticated } from './client';
+import { getToken, isAuthenticated, onSessionInvalidated } from './client';
 import { Platform } from 'react-native';
 import { createSseStreamParser } from './sseClientCore.mjs';
 
@@ -8,6 +8,12 @@ let activeAbortController = null;
 let isConnecting = false;
 let reconnectTimer = null;
 const listeners = new Set();
+
+if (typeof onSessionInvalidated === 'function') {
+  onSessionInvalidated(() => {
+    closeRealtimeConnection();
+  });
+}
 
 function dispatchEvent(type, data) {
   listeners.forEach((listener) => {
