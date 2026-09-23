@@ -1,9 +1,13 @@
 package com.tnl.logistics.controller;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tnl.logistics.dto.*;
 import com.tnl.logistics.model.ParcelStatus;
 import com.tnl.logistics.service.TrackingService;
 import jakarta.validation.Valid;
+import jakarta.validation.Validator;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -16,6 +20,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.io.IOException;
 import java.util.List;
 
 @RestController
@@ -23,9 +28,13 @@ import java.util.List;
 public class TrackingEventController {
 
     private final TrackingService trackingService;
+    private final ObjectMapper objectMapper;
+    private final Validator validator;
 
-    public TrackingEventController(TrackingService trackingService) {
+    public TrackingEventController(TrackingService trackingService, ObjectMapper objectMapper, Validator validator) {
         this.trackingService = trackingService;
+        this.objectMapper = objectMapper;
+        this.validator = validator;
     }
 
     @GetMapping("/scan-context/{trackingId}")
@@ -116,10 +125,21 @@ public class TrackingEventController {
     @PostMapping(value = "/offline-sync", consumes = "application/json", produces = "application/json")
     @PreAuthorize("hasRole('FIELD_STAFF')")
     public ResponseEntity<OfflineTrackingSyncResponse> synchronizeOfflineScans(
-            @Valid @RequestBody OfflineTrackingSyncRequest request,
+            @RequestBody JsonNode body,
             Authentication authentication) {
         if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
             throw new AccessDeniedException("Authenticated user context is required");
+        }
+        OfflineTrackingSyncRequest request;
+        try {
+            request = objectMapper.readerFor(OfflineTrackingSyncRequest.class)
+                    .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                    .readValue(body.traverse(objectMapper));
+        } catch (IOException ex) {
+            throw new IllegalArgumentException("Invalid offline sync request");
+        }
+        if (request == null || !validator.validate(request).isEmpty()) {
+            throw new IllegalArgumentException("Invalid offline sync request");
         }
         return ResponseEntity.ok(trackingService.processOfflineSync(request, authentication.getName()));
     }

@@ -12,7 +12,6 @@ import com.tnl.logistics.model.Vehicle;
 import com.tnl.logistics.repository.OfflineScanReceiptRepository;
 import com.tnl.logistics.repository.ParcelUnitRepository;
 import com.tnl.logistics.repository.TrackingEventRepository;
-import com.tnl.logistics.repository.VehicleRepository;
 import com.tnl.logistics.service.SseService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -32,18 +31,18 @@ public class OfflineTrackingSyncItemService {
     private final OfflineScanReceiptRepository receiptRepository;
     private final ParcelUnitRepository parcelRepository;
     private final TrackingEventRepository trackingEventRepository;
-    private final VehicleRepository vehicleRepository;
+    private final TrackingTransitionPolicy transitionPolicy;
     private final SseService sseService;
 
     public OfflineTrackingSyncItemService(OfflineScanReceiptRepository receiptRepository,
                                           ParcelUnitRepository parcelRepository,
                                           TrackingEventRepository trackingEventRepository,
-                                          VehicleRepository vehicleRepository,
+                                          TrackingTransitionPolicy transitionPolicy,
                                           SseService sseService) {
         this.receiptRepository = receiptRepository;
         this.parcelRepository = parcelRepository;
         this.trackingEventRepository = trackingEventRepository;
-        this.vehicleRepository = vehicleRepository;
+        this.transitionPolicy = transitionPolicy;
         this.sseService = sseService;
     }
 
@@ -79,24 +78,22 @@ public class OfflineTrackingSyncItemService {
             return finish(receipt, eventId, trackingId, "REJECTED", "PARCEL_NOT_FOUND", null, null, null);
         }
         ParcelStatus current = parcel.getCurrentStatus();
-        if (current == request.targetStatus()) {
-            if (current == ParcelStatus.LOADED_ON_TRUCK && !sameVehicle(parcel.getCurrentVehicle(), vehicleId)) {
-                return finish(receipt, eventId, trackingId, "CONFLICT", "VEHICLE_MISMATCH", current, parcel.getCurrentVehicle(), null);
-            }
-            return finish(receipt, eventId, trackingId, "ALREADY_APPLIED", "STATE_ALREADY_APPLIED", current, parcel.getCurrentVehicle(), null);
-        }
-        if (rank(request.targetStatus()) < rank(current)) {
-            return finish(receipt, eventId, trackingId, "STALE_STATE", "STALE_STATE", current, parcel.getCurrentVehicle(), null);
-        }
-        if (!isNext(current, request.targetStatus())) {
-            return finish(receipt, eventId, trackingId, "REJECTED", "INVALID_TRANSITION", current, parcel.getCurrentVehicle(), null);
+        TrackingTransitionPolicy.Decision decision = transitionPolicy.decide(current, request.targetStatus(),
+                vehicleId(parcel.getCurrentVehicle()), vehicleId);
+        switch (decision.kind()) {
+            case ALREADY_APPLIED -> { return finish(receipt, eventId, trackingId, "ALREADY_APPLIED", "STATE_ALREADY_APPLIED", current, parcel.getCurrentVehicle(), null); }
+            case STALE_STATE -> { return finish(receipt, eventId, trackingId, "STALE_STATE", "STALE_STATE", current, parcel.getCurrentVehicle(), null); }
+            case VEHICLE_MISMATCH -> { return finish(receipt, eventId, trackingId, "CONFLICT", "VEHICLE_MISMATCH", current, parcel.getCurrentVehicle(), null); }
+            case INVALID_TRANSITION -> { return finish(receipt, eventId, trackingId, "REJECTED", "INVALID_TRANSITION", current, parcel.getCurrentVehicle(), null); }
+            case APPLY -> { }
         }
 
         Vehicle vehicle = null;
         if (request.targetStatus() == ParcelStatus.LOADED_ON_TRUCK) {
-            vehicle = vehicleRepository.findById(vehicleId).orElse(null);
-            if (vehicle == null) return finish(receipt, eventId, trackingId, "REJECTED", "VEHICLE_NOT_FOUND", current, null, null);
-            if (Boolean.FALSE.equals(vehicle.getActive())) return finish(receipt, eventId, trackingId, "REJECTED", "VEHICLE_INACTIVE", current, null, null);
+            TrackingTransitionPolicy.VehicleResolution resolution = transitionPolicy.resolveActiveVehicle(vehicleId);
+            if (resolution.kind() == TrackingTransitionPolicy.VehicleKind.NOT_FOUND) return finish(receipt, eventId, trackingId, "REJECTED", "VEHICLE_NOT_FOUND", current, null, null);
+            if (resolution.kind() == TrackingTransitionPolicy.VehicleKind.INACTIVE) return finish(receipt, eventId, trackingId, "REJECTED", "VEHICLE_INACTIVE", current, null, null);
+            vehicle = resolution.vehicle();
             parcel.setCurrentVehicle(vehicle);
         } else {
             parcel.setCurrentVehicle(null);
@@ -182,11 +179,6 @@ public class OfflineTrackingSyncItemService {
         });
     }
 
-    private static boolean isNext(ParcelStatus current, ParcelStatus target) { return rank(target) == rank(current) + 1; }
-    private static int rank(ParcelStatus status) { return switch (status) {
-        case REGISTERED -> 0; case QR_GENERATED -> 1; case LOADED_ON_TRUCK -> 2;
-        case ARRIVED_AT_TNL -> 3; case LOADED_TO_HAULER -> 4; case COMPLETED -> 5; }; }
-    private static boolean sameVehicle(Vehicle vehicle, String id) { return vehicle != null && vehicle.getVehicleId().equals(id); }
     private static String vehicleId(Vehicle vehicle) { return vehicle == null ? null : vehicle.getVehicleId(); }
     private static Instant toInstant(LocalDateTime value) { return value == null ? null : value.toInstant(ZoneOffset.UTC); }
     private static String fingerprint(String owner, String tracking, ParcelStatus status, String vehicle, Instant capturedAt, Long sequence) {

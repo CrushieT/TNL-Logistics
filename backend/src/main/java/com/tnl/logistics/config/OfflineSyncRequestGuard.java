@@ -8,7 +8,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletRequestWrapper;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -34,36 +36,63 @@ public class OfflineSyncRequestGuard extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
+        String ip = request.getRemoteAddr();
+        long ipRetryAfter = consume(ipBuckets, "ip:" + (ip == null ? "unknown" : ip), 100, 100);
+        if (ipRetryAfter > 0) {
+            Authentication currentAuthentication = SecurityContextHolder.getContext().getAuthentication();
+            long userRetryAfter = currentAuthentication != null && currentAuthentication.isAuthenticated()
+                    && currentAuthentication.getName() != null
+                    ? consume(userBuckets, "user:" + currentAuthentication.getName(), 20, 20) : 0;
+            sendRateLimit(response, Math.max(ipRetryAfter, userRetryAfter));
+            return;
+        }
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated() || authentication instanceof AnonymousAuthenticationToken) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json");
+            response.getWriter().write("{\"status\":401,\"code\":\"AUTHENTICATION_REQUIRED\",\"message\":\"Sign in is required.\"}");
+            return;
+        }
         if (request.getContentLengthLong() > MAX_BODY_BYTES) {
             response.sendError(HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE, "Offline sync request exceeds 64 KiB");
             return;
         }
         String contentType = request.getContentType();
-        if (contentType == null || !contentType.toLowerCase().startsWith("application/json")) {
+        if (!isJsonContentType(contentType)) {
             response.sendError(HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE, "Offline sync requires application/json");
             return;
         }
-        String ip = request.getRemoteAddr();
-        long retryAfter = consume(ipBuckets, "ip:" + (ip == null ? "unknown" : ip), 100, 100);
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication != null && authentication.isAuthenticated() && authentication.getName() != null) {
-            retryAfter = Math.max(retryAfter, consume(userBuckets, "user:" + authentication.getName(), 20, 20));
-        }
-        if (retryAfter > 0) {
-            response.setStatus(429);
-            response.setHeader("Retry-After", Long.toString(retryAfter));
-            response.setContentType("application/json");
-            response.getWriter().write("{\"status\":429,\"code\":\"OFFLINE_SYNC_RATE_LIMITED\",\"message\":\"Please retry later.\"}");
-            return;
-        }
-        evictExpired(userBuckets);
-        evictExpired(ipBuckets);
         byte[] body = readBoundedBody(request);
         if (body == null) {
             response.sendError(HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE, "Offline sync request exceeds 64 KiB");
             return;
         }
+        long retryAfter = 0;
+        if (authentication != null && authentication.isAuthenticated() && authentication.getName() != null) {
+            retryAfter = consume(userBuckets, "user:" + authentication.getName(), 20, 20);
+        }
+        if (retryAfter > 0) {
+            sendRateLimit(response, retryAfter);
+            return;
+        }
         chain.doFilter(new CachedBodyRequest(request, body), response);
+    }
+
+    private boolean isJsonContentType(String contentType) {
+        if (contentType == null) return false;
+        try {
+            MediaType mediaType = MediaType.parseMediaType(contentType);
+            return "application".equalsIgnoreCase(mediaType.getType()) && "json".equalsIgnoreCase(mediaType.getSubtype());
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
+    private void sendRateLimit(HttpServletResponse response, long retryAfter) throws IOException {
+        response.setStatus(429);
+        response.setHeader("Retry-After", Long.toString(Math.max(1, retryAfter)));
+        response.setContentType("application/json");
+        response.getWriter().write("{\"status\":429,\"code\":\"OFFLINE_SYNC_RATE_LIMITED\",\"message\":\"Please retry later.\"}");
     }
 
     private byte[] readBoundedBody(HttpServletRequest request) throws IOException {
@@ -80,15 +109,21 @@ public class OfflineSyncRequestGuard extends OncePerRequestFilter {
     }
 
     private long consume(Map<String, Bucket> buckets, String key, int capacity, int refillPerMinute) {
-        Bucket bucket = buckets.computeIfAbsent(key, ignored -> new Bucket(capacity));
-        return bucket.consume(capacity, refillPerMinute);
+        synchronized (buckets) {
+            Bucket bucket = buckets.get(key);
+            if (bucket == null) {
+                evictExpired(buckets);
+                if (buckets.size() >= 2_000) return 60;
+                bucket = new Bucket(capacity);
+                buckets.put(key, bucket);
+            }
+            return bucket.consume(capacity, refillPerMinute);
+        }
     }
 
     private void evictExpired(Map<String, Bucket> buckets) {
-        if (buckets.size() > 2_000) {
-            long cutoff = System.nanoTime() - Duration.ofHours(1).toNanos();
-            buckets.entrySet().removeIf(entry -> entry.getValue().lastAccessNanos < cutoff);
-        }
+        long cutoff = System.nanoTime() - Duration.ofHours(1).toNanos();
+        buckets.entrySet().removeIf(entry -> entry.getValue().lastAccessNanos < cutoff);
     }
 
     private static final class Bucket {

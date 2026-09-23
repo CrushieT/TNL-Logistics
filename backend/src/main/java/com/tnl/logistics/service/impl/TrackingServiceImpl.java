@@ -5,7 +5,6 @@ import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.repository.ParcelUnitRepository;
 import com.tnl.logistics.repository.TrackingEventRepository;
-import com.tnl.logistics.repository.VehicleRepository;
 import com.tnl.logistics.service.SseService;
 import com.tnl.logistics.service.TrackingService;
 import org.slf4j.Logger;
@@ -23,8 +22,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 /**
@@ -39,24 +36,23 @@ public class TrackingServiceImpl implements TrackingService {
 
     private final ParcelUnitRepository parcelUnitRepository;
     private final TrackingEventRepository trackingEventRepository;
-    private final VehicleRepository vehicleRepository;
     private final AppUserRepository appUserRepository;
     private final SseService sseService;
     private final OfflineTrackingSyncItemService offlineTrackingSyncItemService;
-    private final Map<String, ReentrantLock> offlineEventLocks = new ConcurrentHashMap<>();
+    private final TrackingTransitionPolicy transitionPolicy;
 
     public TrackingServiceImpl(ParcelUnitRepository parcelUnitRepository,
                                TrackingEventRepository trackingEventRepository,
-                               VehicleRepository vehicleRepository,
                                AppUserRepository appUserRepository,
                                SseService sseService,
-                               OfflineTrackingSyncItemService offlineTrackingSyncItemService) {
+                               OfflineTrackingSyncItemService offlineTrackingSyncItemService,
+                               TrackingTransitionPolicy transitionPolicy) {
         this.parcelUnitRepository = parcelUnitRepository;
         this.trackingEventRepository = trackingEventRepository;
-        this.vehicleRepository = vehicleRepository;
         this.appUserRepository = appUserRepository;
         this.sseService = sseService;
         this.offlineTrackingSyncItemService = offlineTrackingSyncItemService;
+        this.transitionPolicy = transitionPolicy;
     }
 
     @Override
@@ -157,19 +153,14 @@ public class TrackingServiceImpl implements TrackingService {
         AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
                 .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
 
-        // Pre-validate transition first
-        if (parcel.getCurrentStatus() != request.getTargetStatus()) {
-            validateStateTransition(parcel.getCurrentStatus(), request.getTargetStatus(), parcel.getTrackingId());
-        }
+        TrackingTransitionPolicy.Decision decision = transitionPolicy.decide(parcel.getCurrentStatus(), request.getTargetStatus(),
+                vehicleId(parcel.getCurrentVehicle()), normalizedVehicleId);
+        requireOnlineDecision(decision, parcel, request.getTargetStatus(), normalizedVehicleId);
 
         // Pre-validate vehicle entity only if transitioning
         Vehicle resolvedVehicle = null;
-        if (request.getTargetStatus() == ParcelStatus.LOADED_ON_TRUCK && parcel.getCurrentStatus() != ParcelStatus.LOADED_ON_TRUCK) {
-            resolvedVehicle = vehicleRepository.findById(normalizedVehicleId)
-                    .orElseThrow(() -> new IllegalArgumentException("Vehicle not found: " + normalizedVehicleId));
-            if (Boolean.FALSE.equals(resolvedVehicle.getActive())) {
-                throw new IllegalStateException("Vehicle " + normalizedVehicleId + " is inactive and cannot be assigned to shipments");
-            }
+        if (request.getTargetStatus() == ParcelStatus.LOADED_ON_TRUCK && decision.kind() == TrackingTransitionPolicy.DecisionKind.APPLY) {
+            resolvedVehicle = requireOnlineVehicle(normalizedVehicleId);
         }
 
         ScanTransitionResult result = processStatusScanInternal(
@@ -238,31 +229,16 @@ public class TrackingServiceImpl implements TrackingService {
         boolean hasNewTransition = false;
         for (String id : normalizedIds) {
             ParcelUnit parcel = lockedParcels.get(id);
-            ParcelStatus currentStatus = parcel.getCurrentStatus();
-            if (currentStatus == request.getTargetStatus()) {
-                if (request.getTargetStatus() == ParcelStatus.LOADED_ON_TRUCK) {
-                    Vehicle currentVehicle = parcel.getCurrentVehicle();
-                    String currentVehicleId = currentVehicle != null ? currentVehicle.getVehicleId() : null;
-                    if (currentVehicleId == null || !currentVehicleId.equals(normalizedVehicleId)) {
-                        throw new ResponseStatusException(HttpStatus.CONFLICT,
-                                String.format("Parcel %s is already LOADED_ON_TRUCK with vehicle %s, cannot assign different vehicle %s",
-                                        parcel.getTrackingId(), currentVehicleId, normalizedVehicleId));
-                    }
-                }
-            } else {
-                validateStateTransition(currentStatus, request.getTargetStatus(), parcel.getTrackingId());
-                hasNewTransition = true;
-            }
+            TrackingTransitionPolicy.Decision decision = transitionPolicy.decide(parcel.getCurrentStatus(), request.getTargetStatus(),
+                    vehicleId(parcel.getCurrentVehicle()), normalizedVehicleId);
+            requireOnlineDecision(decision, parcel, request.getTargetStatus(), normalizedVehicleId);
+            hasNewTransition |= decision.kind() == TrackingTransitionPolicy.DecisionKind.APPLY;
         }
 
         // Resolve vehicle only once if at least one parcel needs a new LOADED_ON_TRUCK transition
         Vehicle resolvedVehicle = null;
         if (request.getTargetStatus() == ParcelStatus.LOADED_ON_TRUCK && hasNewTransition) {
-            resolvedVehicle = vehicleRepository.findById(normalizedVehicleId)
-                    .orElseThrow(() -> new IllegalArgumentException("Vehicle not found: " + normalizedVehicleId));
-            if (Boolean.FALSE.equals(resolvedVehicle.getActive())) {
-                throw new IllegalStateException("Vehicle " + normalizedVehicleId + " is inactive and cannot be assigned to shipments");
-            }
+            resolvedVehicle = requireOnlineVehicle(normalizedVehicleId);
         }
 
         List<TrackingScanResponse> responses = new ArrayList<>(normalizedIds.size());
@@ -318,7 +294,7 @@ public class TrackingServiceImpl implements TrackingService {
                 continue;
             }
             try {
-                OfflineTrackingSyncItemResponse result = processOfflineItemWithEventLock(item, actor);
+                OfflineTrackingSyncItemResponse result = offlineTrackingSyncItemService.process(item, actor);
                 results.add(result);
                 if (!"APPLIED".equals(result.outcome()) && !"ALREADY_APPLIED".equals(result.outcome())) {
                     failedParcels.add(trackingId);
@@ -334,9 +310,11 @@ public class TrackingServiceImpl implements TrackingService {
                 }
                 results.add(new OfflineTrackingSyncItemResponse(item.clientEventId(), trackingId, "RETRYABLE_ERROR",
                         "TEMPORARY_FAILURE", true, false, null, null, null));
-            } catch (org.springframework.dao.PessimisticLockingFailureException ex) {
+                failedParcels.add(trackingId);
+            } catch (org.springframework.dao.DataAccessException ex) {
                 results.add(new OfflineTrackingSyncItemResponse(item.clientEventId(), trackingId, "RETRYABLE_ERROR",
                         "TEMPORARY_FAILURE", true, false, null, null, null));
+                failedParcels.add(trackingId);
             }
         }
         int applied = (int) results.stream().filter(value -> "APPLIED".equals(value.outcome())).count();
@@ -344,20 +322,6 @@ public class TrackingServiceImpl implements TrackingService {
         int retryable = (int) results.stream().filter(OfflineTrackingSyncItemResponse::retryable).count();
         return new OfflineTrackingSyncResponse(results.size(), applied, alreadyApplied,
                 results.size() - applied - alreadyApplied - retryable, retryable, results);
-    }
-
-    private OfflineTrackingSyncItemResponse processOfflineItemWithEventLock(OfflineTrackingSyncItemRequest item, AppUser actor) {
-        String eventId = java.util.UUID.fromString(item.clientEventId()).toString();
-        ReentrantLock eventLock = offlineEventLocks.computeIfAbsent(eventId, ignored -> new ReentrantLock());
-        eventLock.lock();
-        try {
-            return offlineTrackingSyncItemService.process(item, actor);
-        } finally {
-            eventLock.unlock();
-            if (!eventLock.hasQueuedThreads()) {
-                offlineEventLocks.remove(eventId, eventLock);
-            }
-        }
     }
 
     private ScanTransitionResult processStatusScanInternal(
@@ -369,18 +333,12 @@ public class TrackingServiceImpl implements TrackingService {
             AppUser actingStaff) {
 
         ParcelStatus currentStatus = parcel.getCurrentStatus();
+        TrackingTransitionPolicy.Decision decision = transitionPolicy.decide(currentStatus, targetStatus,
+                vehicleId(parcel.getCurrentVehicle()), requestedVehicleId);
+        requireOnlineDecision(decision, parcel, targetStatus, requestedVehicleId);
 
         // 1. Idempotent check: Parcel is already at target status
-        if (currentStatus == targetStatus) {
-            if (targetStatus == ParcelStatus.LOADED_ON_TRUCK) {
-                Vehicle currentVehicle = parcel.getCurrentVehicle();
-                String currentVehicleId = currentVehicle != null ? currentVehicle.getVehicleId() : null;
-                if (currentVehicleId == null || !currentVehicleId.equals(requestedVehicleId)) {
-                    throw new ResponseStatusException(HttpStatus.CONFLICT,
-                            String.format("Parcel %s is already LOADED_ON_TRUCK with vehicle %s, cannot assign different vehicle %s",
-                                    parcel.getTrackingId(), currentVehicleId, requestedVehicleId));
-                }
-            }
+        if (decision.kind() == TrackingTransitionPolicy.DecisionKind.ALREADY_APPLIED) {
             String rollup = computeRollupForShipment(parcel.getShipment());
             Vehicle v = parcel.getCurrentVehicle();
             TrackingScanResponse resp = new TrackingScanResponse(
@@ -400,10 +358,7 @@ public class TrackingServiceImpl implements TrackingService {
             return new ScanTransitionResult(resp, false);
         }
 
-        // 2. Validate Sequential 5-State Transition
-        validateStateTransition(currentStatus, targetStatus, parcel.getTrackingId());
-
-        // 3. Handle Vehicle Association & Validation
+        // 2. Handle Vehicle Association & Validation
         Vehicle assignedVehicle = null;
         if (targetStatus == ParcelStatus.LOADED_ON_TRUCK) {
             assignedVehicle = resolvedVehicle;
@@ -412,11 +367,11 @@ public class TrackingServiceImpl implements TrackingService {
             parcel.setCurrentVehicle(null);
         }
 
-        // 4. Update Current Status & Save Entity
+        // 3. Update Current Status & Save Entity
         parcel.setCurrentStatus(targetStatus);
         parcelUnitRepository.save(parcel);
 
-        // 5. Append-only Tracking Audit Event
+        // 4. Append-only Tracking Audit Event
         String finalRemarks = (remarks != null && !remarks.trim().isEmpty())
                 ? remarks.trim()
                 : "Status scan updated to " + formatStatus(targetStatus);
@@ -429,7 +384,7 @@ public class TrackingServiceImpl implements TrackingService {
         );
         trackingEventRepository.save(event);
 
-        // 6. Compute Updated Rollup for Shipment
+        // 5. Compute Updated Rollup for Shipment
         String rollup = computeRollupForShipment(parcel.getShipment());
 
         TrackingScanResponse response = new TrackingScanResponse(
@@ -478,7 +433,35 @@ public class TrackingServiceImpl implements TrackingService {
         }
     }
 
-    private void validateStateTransition(ParcelStatus current, ParcelStatus target, String trackingId) {
+    private Vehicle requireOnlineVehicle(String requestedVehicleId) {
+        TrackingTransitionPolicy.VehicleResolution resolution = transitionPolicy.resolveActiveVehicle(requestedVehicleId);
+        if (resolution.kind() == TrackingTransitionPolicy.VehicleKind.NOT_FOUND) {
+            throw new IllegalArgumentException("Vehicle not found: " + requestedVehicleId);
+        }
+        if (resolution.kind() == TrackingTransitionPolicy.VehicleKind.INACTIVE) {
+            throw new IllegalStateException("Vehicle " + requestedVehicleId + " is inactive and cannot be assigned to shipments");
+        }
+        return resolution.vehicle();
+    }
+
+    private static String vehicleId(Vehicle vehicle) {
+        return vehicle == null ? null : vehicle.getVehicleId();
+    }
+
+    private void requireOnlineDecision(TrackingTransitionPolicy.Decision decision, ParcelUnit parcel,
+                                       ParcelStatus target, String requestedVehicleId) {
+        if (decision.kind() == TrackingTransitionPolicy.DecisionKind.VEHICLE_MISMATCH) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    String.format("Parcel %s is already LOADED_ON_TRUCK with vehicle %s, cannot assign different vehicle %s",
+                            parcel.getTrackingId(), vehicleId(parcel.getCurrentVehicle()), requestedVehicleId));
+        }
+        if (decision.kind() == TrackingTransitionPolicy.DecisionKind.STALE_STATE
+                || decision.kind() == TrackingTransitionPolicy.DecisionKind.INVALID_TRANSITION) {
+            throwInvalidOnlineTransition(parcel.getCurrentStatus(), target, parcel.getTrackingId());
+        }
+    }
+
+    private void throwInvalidOnlineTransition(ParcelStatus current, ParcelStatus target, String trackingId) {
         switch (current) {
             case REGISTERED:
                 if (target != ParcelStatus.QR_GENERATED) {
