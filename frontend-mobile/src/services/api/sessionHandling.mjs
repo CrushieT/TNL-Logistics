@@ -77,12 +77,23 @@ export function sanitizeSensitiveError(error) {
     : 'The request could not be completed.';
   const containsSensitiveValue = sensitiveValues.some((value) => serverMessage.includes(value));
 
+  const retryAfter = readHeader(error?.response?.headers, 'Retry-After');
+  let retryAfterSeconds = null;
+  if (typeof retryAfter === 'string' || typeof retryAfter === 'number') {
+    const text = String(retryAfter).trim();
+    if (/^\d+$/.test(text)) {
+      retryAfterSeconds = Math.max(0, Number(text));
+    } else {
+      const deadline = Date.parse(text);
+      if (Number.isFinite(deadline)) retryAfterSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    }
+  }
+
   return {
     status: error?.response?.status || null,
     code: typeof responseData.code === 'string' ? responseData.code : null,
     message: containsSensitiveValue ? 'The request could not be completed.' : serverMessage,
-    retryAfterSeconds: Number.isFinite(responseData.retryAfterSeconds)
-      ? responseData.retryAfterSeconds
-      : null,
+    retryAfterSeconds: Number.isFinite(retryAfterSeconds) ? retryAfterSeconds
+      : Number.isFinite(responseData.retryAfterSeconds) ? Math.max(0, responseData.retryAfterSeconds) : null,
   };
 }
