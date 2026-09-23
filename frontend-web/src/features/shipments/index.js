@@ -5,4 +5,5 @@ export { default as PrintLabelsModal } from './components/PrintLabelsModal';
 export { default as SingleUnitQRModal } from './components/SingleUnitQRModal';
 export { default as LabelPreview } from './components/LabelPreview';
 export * from './services/shipmentApi';
+export * from './services/labelPrintService';
 export { subscribeRealtimeEvents } from '../../services/api/sseClient';

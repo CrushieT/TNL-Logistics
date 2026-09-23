@@ -21,6 +21,7 @@ export default function ShipmentDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [printModalVisible, setPrintModalVisible] = useState(false);
   const [singleQRModalUnit, setSingleQRModalUnit] = useState(null);
+  const [initialPrintTrackingId, setInitialPrintTrackingId] = useState(null);
 
   const loadShipment = useCallback(async (showSpinner = true) => {
     if (!shipmentId) return;
@@ -66,6 +67,7 @@ export default function ShipmentDetailScreen() {
   }, [loadShipment, shipmentId]);
 
   const handlePrintAll = () => {
+    setInitialPrintTrackingId(null);
     setPrintModalVisible(true);
   };
 
@@ -247,7 +249,12 @@ export default function ShipmentDetailScreen() {
                     <Pressable onPress={() => router.push(`/shipments/${shipmentId}/units/${u.trackingId}`)}>
                       <Text style={styles.unitLinkDark}>View</Text>
                     </Pressable>
-                    <Pressable onPress={() => setSingleQRModalUnit(u)}>
+                    <Pressable
+                      onPress={() => {
+                        setInitialPrintTrackingId(u.trackingId);
+                        setPrintModalVisible(true);
+                      }}
+                    >
                       <Text style={styles.unitLinkOrange}>Reprint</Text>
                     </Pressable>
                   </View>
@@ -270,6 +277,7 @@ export default function ShipmentDetailScreen() {
               recipientName={shipment.recipientDetails?.fullName || shipment.recipient}
               contactNumber={shipment.recipientDetails?.contactNumber}
               address={shipment.recipientDetails?.address}
+              destination={shipment.destination || shipment.destinationHub || 'TNL Baguio Hub'}
               contents={shipment.description}
               shipmentId={shipment.shipmentId}
               client={shipment.client}
@@ -334,11 +342,15 @@ export default function ShipmentDetailScreen() {
         </View>
       </View>
 
-      {/* Batch Print Labels Modal */}
+      {/* Thermal Print Labels Modal */}
       <PrintLabelsModal
         visible={printModalVisible}
         shipment={shipment}
-        onClose={() => setPrintModalVisible(false)}
+        initialTrackingId={initialPrintTrackingId}
+        onClose={() => {
+          setPrintModalVisible(false);
+          setInitialPrintTrackingId(null);
+        }}
         onAuditComplete={() => loadShipment(false)}
       />
 
@@ -354,6 +366,12 @@ export default function ShipmentDetailScreen() {
           status={singleQRModalUnit.status}
           labelStatus={singleQRModalUnit.labelStatus}
           onClose={() => setSingleQRModalUnit(null)}
+          onPrint={() => {
+            const tid = singleQRModalUnit.trackingId;
+            setSingleQRModalUnit(null);
+            setInitialPrintTrackingId(tid);
+            setPrintModalVisible(true);
+          }}
           onViewFull={() => {
             const tid = singleQRModalUnit.trackingId;
             setSingleQRModalUnit(null);

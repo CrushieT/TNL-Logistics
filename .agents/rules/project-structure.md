@@ -20,6 +20,7 @@ tnl-logistics/
 │       ├── dependency-review.yml     # Fast PR dependency vulnerability checks
 │       └── owasp-check.yml           # Scheduled and on-demand OWASP backend vulnerability scan
 ├── .review/                          # Implementation plans and verification reports
+│   ├── operational-fixes-implementation-plan.md # Operational defects & sliding session implementation plan
 │   ├── phase-6.7-offline-resilience-plan.md # Phase 6.7 offline queue implementation plan
 │   ├── phase-6.7-threat-model.md      # Phase 6.7 offline queue security threat model
 │   └── phase-6.7-verification-report.md # Phase 6.7 automated and physical-device verification matrix
@@ -67,7 +68,8 @@ tnl-logistics/
 │   │   │   ├── users.js             # Screen 27 User & Staff Management
 │   │   │   └── settings.js          # Screen 28 System Settings
 │   │   ├── components/              # Shared design system (common/ atoms, layout/ AppShell)
-│   │   ├── features/                # Domain modules, including the durable shipment print-audit outbox
+│   │   ├── features/                # Domain modules
+│   │   │   ├── shipments/           # PrintLabelsModal, LabelPreview, durable outbox & isolated thermal print service
 │   │   │   └── settings/            # AdminSecurityCard, ConfirmPasswordModal, settings components
 │   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sseClient.js)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)

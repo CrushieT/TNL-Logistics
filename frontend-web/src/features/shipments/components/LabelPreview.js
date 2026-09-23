@@ -10,6 +10,7 @@ export default function LabelPreview({
   recipientName = 'Juan Dela Cruz',
   contactNumber = '0917-000-0000',
   address = 'Manila, Philippines',
+  destination = 'TNL Baguio Hub',
   contents = 'General Goods',
   shipmentId = 'SHP-2026-001',
   client = 'Northbridge Trading',
@@ -25,7 +26,14 @@ export default function LabelPreview({
           </View>
           <Text style={styles.brandTitle}>TNL LOGISTICS</Text>
         </View>
-        <Text style={styles.scanText}>SCAN TO TRACK</Text>
+        <View style={styles.headerRight}>
+          <View style={styles.packagePill}>
+            <Text style={styles.packagePillText}>
+              PKG {packageIndex} / {packageCount}
+            </Text>
+          </View>
+          <Text style={styles.scanText}>SCAN TO TRACK</Text>
+        </View>
       </View>
 
       <View style={styles.body}>
@@ -35,17 +43,15 @@ export default function LabelPreview({
 
         <View style={styles.metaCol}>
           <Text style={styles.trackingIdText}>{trackingId}</Text>
-          <View style={styles.packagePill}>
-            <Text style={styles.packagePillText}>
-              PACKAGE {packageIndex} OF {packageCount}
-            </Text>
-          </View>
           <Text style={styles.recipientNameText} numberOfLines={1}>
             {recipientName}
           </Text>
           {contactNumber ? <Text style={styles.recipientSubText}>{contactNumber}</Text> : null}
           <Text style={styles.recipientAddressText} numberOfLines={2}>
             {address}
+          </Text>
+          <Text style={styles.destinationHubText} numberOfLines={1}>
+            to {destination}
           </Text>
         </View>
       </View>
@@ -58,7 +64,7 @@ export default function LabelPreview({
           </Text>
           <Text style={styles.footerItem}>
             <Text style={styles.footerMuted}>Shipment: </Text>
-            {shipmentId}
+            <Text style={styles.footerMono}>{shipmentId}</Text>
           </Text>
         </View>
         <View style={styles.footerRow}>
@@ -73,7 +79,7 @@ export default function LabelPreview({
         </View>
         <View style={styles.totalRow}>
           <Text style={styles.totalText}>
-            <Text style={styles.footerMuted}>Shipment Total: </Text>₱{Number(total || 0).toLocaleString()}
+            <Text style={styles.footerMuted}>Total: </Text>PHP {Number(total || 0).toLocaleString()}
           </Text>
         </View>
       </View>
@@ -84,9 +90,9 @@ export default function LabelPreview({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: '#111111',
-    borderRadius: radius.sm,
+    borderWidth: 2,
+    borderColor: '#000000',
+    borderRadius: 2,
     padding: 14,
     width: '100%',
     maxWidth: 380,
@@ -95,19 +101,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottomWidth: 1,
-    borderColor: '#111111',
-    paddingBottom: 6,
-    marginBottom: 8,
+    borderBottomWidth: 2,
+    borderColor: '#000000',
+    paddingBottom: 8,
+    marginBottom: 10,
   },
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   brandBadge: {
-    width: 18,
-    height: 18,
+    width: 20,
+    height: 20,
     backgroundColor: '#000000',
     justifyContent: 'center',
     alignItems: 'center',
@@ -116,93 +122,115 @@ const styles = StyleSheet.create({
   brandBadgeText: {
     color: '#FFFFFF',
     fontFamily: fonts.sans,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '900',
   },
   brandTitle: {
     fontFamily: fonts.sans,
-    fontSize: 12.5,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-    color: '#111827',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    color: '#000000',
   },
-  scanText: {
-    fontFamily: fonts.mono,
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#6B7280',
-    letterSpacing: 0.6,
-  },
-  body: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 8,
-  },
-  qrBox: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    padding: 3,
-    backgroundColor: '#FFFFFF',
-  },
-  metaCol: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  trackingIdText: {
-    fontFamily: fonts.mono,
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#111827',
-    marginBottom: 4,
+  headerRight: {
+    alignItems: 'flex-end',
   },
   packagePill: {
     backgroundColor: '#000000',
     paddingVertical: 2,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     borderRadius: 2,
-    alignSelf: 'flex-start',
-    marginBottom: 4,
+    alignSelf: 'flex-end',
   },
   packagePillText: {
     fontFamily: fonts.sans,
     color: '#FFFFFF',
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
+  },
+  scanText: {
+    fontFamily: fonts.mono,
+    fontSize: 8.5,
+    fontWeight: '700',
+    color: '#6B7280',
+    letterSpacing: 0.6,
+    marginTop: 2,
+    textAlign: 'right',
+  },
+  body: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  qrBox: {
+    width: 116,
+    height: 116,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: 3,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  metaCol: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 3,
+  },
+  trackingIdText: {
+    fontFamily: fonts.mono,
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#000000',
+    marginBottom: 2,
   },
   recipientNameText: {
     fontFamily: fonts.sans,
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#111827',
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#111111',
   },
   recipientSubText: {
     fontFamily: fonts.sans,
-    fontSize: 10.5,
+    fontSize: 11,
     color: '#4B5563',
   },
   recipientAddressText: {
     fontFamily: fonts.sans,
-    fontSize: 10.5,
+    fontSize: 11,
     color: '#4B5563',
     lineHeight: 14,
+  },
+  destinationHubText: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#111111',
     marginTop: 2,
   },
   footer: {
-    borderTopWidth: 1,
+    borderTopWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: '#9CA3AF',
-    paddingTop: 6,
-    gap: 2,
+    borderColor: '#6B7280',
+    paddingTop: 8,
+    gap: 3,
   },
   footerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
   footerItem: {
     fontFamily: fonts.sans,
-    fontSize: 9.5,
-    color: '#111827',
+    fontSize: 10,
+    color: '#111111',
+  },
+  footerMono: {
+    fontFamily: fonts.mono,
+    fontWeight: '700',
+    color: '#111111',
   },
   footerMuted: {
     color: '#6B7280',
@@ -213,8 +241,8 @@ const styles = StyleSheet.create({
   },
   totalText: {
     fontFamily: fonts.sans,
-    fontSize: 10.5,
-    fontWeight: '800',
-    color: '#111827',
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#111111',
   },
 });

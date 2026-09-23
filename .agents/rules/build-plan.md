@@ -26,14 +26,15 @@
 | **Phase 4.2** | Backend: Thursday Weekly Collections Consolidation & SOA Generator (3 Deductions, Net Remittance) | [COMPLETED] |
 | **Phase 4.3** | Web: Billing, Collections & Printable SOA (Desktop Screens 18–22) | [COMPLETED] |
 | **Phase 5** | Web Console: Live Dashboard, Tracking Logs Stream, Reports, Users, Settings & First Boot Setup (Screens 01, 02, 17, 26–28) | [COMPLETED] |
-| **Phase 6** | Role-Aware Mobile Courier Portal (Screens 29–53) | [IN PROGRESS] |
+| **Phase 6** | Role-Aware Mobile Courier Portal (Screens 29–56) | [IN PROGRESS] |
 | ↳ **Phase 6.1** | Mobile Credential & PIN Workflow & Role-Aware Shell (Screens 29–33) | [COMPLETED] |
 | ↳ **Phase 6.2** | Office Staff: Shipment Generation & Past Shipments Directory (Screens 34–40) | [COMPLETED] |
 | ↳ **Phase 6.3a** | Software Label Printing, Virtual Driver Isolation & Audit Hardening (Screens 41–44) | [COMPLETED] |
 | ↳ **Phase 6.3b** | Physical Bluetooth Integration & Brother RJ-2035B On-Device Validation | [UPCOMING] |
-| ↳ **Phase 6.4** | Field Staff: Camera QR Scanner & Status Flow Engine (Screens 45–48) | [UPCOMING] |
-| ↳ **Phase 6.5** | Field Staff: Personal Scan & Tracking History (Screens 49–52) | [UPCOMING] |
-| ↳ **Phase 6.6** | Offline Resilience & SQLite Scan Queue (Screen 53) | [UPCOMING] |
+| ↳ **Phase 6.4** | Field Staff: Camera QR Scanner & Status Flow Engine (Screens 45–48) | [COMPLETED] |
+| ↳ **Phase 6.5** | Field Staff: Personal Scan & Tracking History (Screens 49–52) | [COMPLETED] |
+| ↳ **Phase 6.6** | Mobile Staff Account, Security & 4-Digit PIN Settings (Screens 53–55) | [COMPLETED] |
+| ↳ **Phase 6.7** | Offline Resilience & SQLite Scan Queue (Screen 56) | [COMPLETED] |
 
 ---
 
