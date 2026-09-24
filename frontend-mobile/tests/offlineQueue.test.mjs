@@ -62,7 +62,7 @@ test('AC-23 preserves a server Retry-After longer than local backoff', () => {
 });
 
 test('AC-17 rejects tampered SQLite command fields before upload', () => {
-  const valid = { ...item, clientEventId: 'ef30a58c-49b2-4d41-9321-f78277b40cdd' };
+  const valid = { ...item, clientEventId: 'ef30a58c-49b2-4d41-9321-f78277b40cdd', capturedAt: '2026-09-23T00:00:00Z' };
   assert.equal(validateStoredQueueRow(valid, 'USR-1', Date.parse('2026-09-23T00:00:00Z')), true);
   for (const changed of [{ ownerUserId: 'USR-2' }, { targetStatus: 'COMPLETED' },
     { vehicleId: 'VH-001' }, { capturedAt: '1900-01-01T00:00:00Z' }, { clientSequence: 0 }]) {

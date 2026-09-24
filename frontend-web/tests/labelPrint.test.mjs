@@ -5,8 +5,32 @@ import {
   escapeHtml,
   formatFiniteNumber,
   normalizeLabelData,
+  resolveCurrentLabelBranding,
   buildLabelHtml,
 } from '../src/features/shipments/services/labelPrintServiceCore.mjs';
+
+test('label branding uses the current response at print time', async () => {
+  const refreshedBranding = { companyName: 'TC & CT Integrated Logistics' };
+  let fetchCount = 0;
+  const branding = await resolveCurrentLabelBranding(async () => {
+    fetchCount += 1;
+    return refreshedBranding;
+  });
+
+  assert.equal(branding, refreshedBranding);
+  assert.equal(fetchCount, 1);
+});
+
+test('label branding rejects failed and invalid refreshes', async () => {
+  await assert.rejects(
+    () => resolveCurrentLabelBranding(async () => { throw new Error('Branding service unavailable'); }),
+    /Branding service unavailable/
+  );
+  await assert.rejects(
+    () => resolveCurrentLabelBranding(async () => ({ companyName: '   ' })),
+    /could not be verified/
+  );
+});
 
 test('normalizeLabelData extracts full shipment and parcel unit metadata', () => {
   const shipment = {
@@ -163,4 +187,38 @@ test('buildLabelHtml escapes untrusted input to prevent XSS in print document', 
   assert.ok(!html.includes('<script>'), 'Must not contain unescaped script tag');
   assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'), 'Must contain escaped script tag');
   assert.ok(html.includes('&quot;quoted&quot; &amp; &lt;special&gt;'), 'Must contain escaped attributes');
+});
+
+test('buildLabelHtml applies dynamic company branding and badge letter', () => {
+  const labelData = {
+    trackingId: 'TRK-2026-000101',
+    packageIndex: 1,
+    packageCount: 1,
+    recipientName: 'Juan Dela Cruz',
+    destinationHub: 'Camarines Hub',
+    shipmentId: 'SHP-2026-001',
+  };
+
+  const html = buildLabelHtml(labelData, { companyName: 'TC & CT Integrated Logistics' });
+
+  assert.ok(html.includes('TC &amp; CT INTEGRATED LOGISTICS'), 'Must include custom uppercase business name with HTML entities escaped');
+  assert.ok(html.includes('<div class="brand-badge">T</div>'), 'Badge letter must be first letter T');
+  assert.ok(html.includes('TRK-2026-000101 - TC &amp; CT Integrated Logistics Shipping Label'), 'Title must reflect company name');
+});
+
+test('buildLabelHtml derives badge initial from custom company name string', () => {
+  const labelData = {
+    trackingId: 'TRK-2026-000202',
+    packageIndex: 1,
+    packageCount: 1,
+    recipientName: 'Maria Santos',
+    destinationHub: 'Baguio Central',
+    shipmentId: 'SHP-2026-002',
+  };
+
+  const html = buildLabelHtml(labelData, 'Acme Cargo');
+
+  assert.ok(html.includes('ACME CARGO'), 'Must include custom string brand title');
+  assert.ok(html.includes('<div class="brand-badge">A</div>'), 'Badge letter must derive initial A');
+  assert.ok(html.includes('TRK-2026-000202 - Acme Cargo Shipping Label'), 'Title must reflect custom brand string');
 });

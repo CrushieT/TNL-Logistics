@@ -3,14 +3,17 @@ import {
   escapeHtml,
   formatFiniteNumber,
   normalizeLabelData,
+  resolveCurrentLabelBranding,
   buildLabelHtml,
 } from './labelPrintServiceCore.mjs';
+import { getCachedCompanyBranding } from '../../settings/services/settingsApi';
 
 export {
   IncompleteLabelDataError,
   escapeHtml,
   formatFiniteNumber,
   normalizeLabelData,
+  resolveCurrentLabelBranding,
   buildLabelHtml,
 };
 
@@ -20,15 +23,18 @@ export {
  * A6 label cards are printed with 100% fidelity, zero host page leakage, and
  * exactly 1 page per parcel sticker.
  */
-export function printThermalLabels(labelOrLabels) {
-  const html = buildLabelHtml(labelOrLabels);
+export function printThermalLabels(labelOrLabels, branding = null, reservedWindow = null) {
+  const resolvedBranding = branding || getCachedCompanyBranding();
+  const html = buildLabelHtml(labelOrLabels, resolvedBranding);
   if (typeof window === 'undefined') return;
 
-  let printWindow = null;
-  try {
-    printWindow = window.open('', '_blank');
-  } catch (err) {
-    console.warn('window.open was blocked or threw an error:', err);
+  let printWindow = reservedWindow;
+  if (!printWindow) {
+    try {
+      printWindow = window.open('', '_blank');
+    } catch (err) {
+      console.warn('window.open was blocked or threw an error:', err);
+    }
   }
 
   if (printWindow) {

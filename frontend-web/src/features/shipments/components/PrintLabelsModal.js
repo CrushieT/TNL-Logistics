@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, Platform } from 'react-native';
 import QRCodeGenerator from '../../../components/common/QRCodeGenerator';
 import Button from '../../../components/common/Button';
@@ -8,7 +8,8 @@ import {
   retryPendingPrintAudits,
   submitPrintAudit,
 } from '../services/printAuditOutbox';
-import { normalizeLabelData, printThermalLabels } from '../services/labelPrintService';
+import { normalizeLabelData, printThermalLabels, resolveCurrentLabelBranding } from '../services/labelPrintService';
+import { getCompanyBranding } from '../../settings/services/settingsApi';
 
 function createPrintJobId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -27,10 +28,62 @@ export default function PrintLabelsModal({
   onAuditComplete,
   initialTrackingId,
 }) {
+  const [branding, setBranding] = useState(null);
+  const [brandingLoading, setBrandingLoading] = useState(true);
+  const [brandingError, setBrandingError] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [printScope, setPrintScope] = useState('ALL');
   const [pendingConfirmation, setPendingConfirmation] = useState(null);
   const [notice, setNotice] = useState(null);
+  const modalGenerationRef = useRef(0);
+  const printAttemptRef = useRef(null);
+
+  useEffect(() => {
+    const generation = ++modalGenerationRef.current;
+    let mounted = true;
+    let requestSequence = 0;
+    const refreshBranding = () => {
+      const requestId = ++requestSequence;
+      setBranding(null);
+      setBrandingLoading(true);
+      setBrandingError(null);
+      resolveCurrentLabelBranding(() => getCompanyBranding(true))
+        .then((data) => {
+          if (mounted && requestId === requestSequence) {
+            setBranding(data);
+            setBrandingLoading(false);
+          }
+        })
+        .catch((error) => {
+          if (mounted && requestId === requestSequence) {
+            setBranding(null);
+            setBrandingLoading(false);
+            setBrandingError(error?.message || 'Unable to load company branding. Printing disabled.');
+          }
+        });
+    };
+    const handleBrandingInvalidation = (event) => {
+      if (event.key !== 'tnl_branding_invalidated_at') return;
+      modalGenerationRef.current += 1;
+      printAttemptRef.current?.printWindow?.close();
+      printAttemptRef.current = null;
+      setNotice('Company branding changed. Review the updated label before printing.');
+      refreshBranding();
+    };
+    if (visible) {
+      refreshBranding();
+      window.addEventListener('storage', handleBrandingInvalidation);
+    }
+    return () => {
+      mounted = false;
+      if (visible) window.removeEventListener('storage', handleBrandingInvalidation);
+      if (modalGenerationRef.current === generation) {
+        modalGenerationRef.current += 1;
+      }
+      printAttemptRef.current?.printWindow?.close();
+      printAttemptRef.current = null;
+    };
+  }, [visible]);
 
   const units = shipment?.units || [];
   const count = units.length;
@@ -56,25 +109,74 @@ export default function PrintLabelsModal({
 
   const currentUnit = units[currentIndex] || units[0];
 
-  const handlePrint = (scope = 'ALL') => {
+  const brandTitle = branding?.companyName
+    ? branding.companyName.toUpperCase()
+    : brandingLoading
+    ? 'LOADING BRANDING...'
+    : 'BRANDING UNAVAILABLE';
+  const brandBadge = branding?.companyName ? brandTitle.trim().charAt(0) || 'T' : '?';
+
+  const handlePrint = async (scope = 'ALL') => {
+    if (!branding?.companyName || brandingLoading || brandingError) {
+      setNotice('Printing is disabled: Company branding could not be resolved.');
+      return;
+    }
+    if (printAttemptRef.current) return;
+
+    let targetUnits;
+    let normalizedLabels;
     try {
       assertPrintAuditCapacityAvailable();
-      setPrintScope(scope);
-      const targetUnits = scope === 'CURRENT' ? [currentUnit] : units;
-
-      const normalizedLabels = targetUnits.map((u, idx) =>
-        normalizeLabelData(shipment, u, scope === 'CURRENT' ? currentIndex : idx, count)
+      targetUnits = scope === 'CURRENT' ? [currentUnit] : units;
+      normalizedLabels = targetUnits.map((unit, index) =>
+        normalizeLabelData(shipment, unit, scope === 'CURRENT' ? currentIndex : index, count)
       );
-
-      printThermalLabels(normalizedLabels);
-
-      setPendingConfirmation({
-        printJobId: createPrintJobId(),
-        shipmentId: shipment.shipmentId,
-        trackingIds: targetUnits.map((u) => u.trackingId),
-      });
     } catch (error) {
       setNotice(error?.message || 'Printing is unavailable because audit storage could not be verified.');
+      return;
+    }
+
+    const printAttempt = { generation: modalGenerationRef.current, printWindow: null };
+    printAttemptRef.current = printAttempt;
+    setBrandingLoading(true);
+    setBrandingError(null);
+    setNotice(null);
+    try {
+      printAttempt.printWindow = window.open('', '_blank');
+    } catch {
+      // The print service will try its iframe fallback.
+    }
+
+    try {
+      const currentBranding = await resolveCurrentLabelBranding(() => getCompanyBranding(true));
+      if (printAttemptRef.current !== printAttempt || modalGenerationRef.current !== printAttempt.generation) {
+        return;
+      }
+      setBranding(currentBranding);
+
+      try {
+        setPrintScope(scope);
+        printThermalLabels(normalizedLabels, currentBranding, printAttempt.printWindow);
+        printAttempt.printWindow = null;
+        setPendingConfirmation({
+          printJobId: createPrintJobId(),
+          shipmentId: shipment.shipmentId,
+          trackingIds: targetUnits.map((unit) => unit.trackingId),
+        });
+      } catch (error) {
+        setNotice(error?.message || 'Printing is unavailable because audit storage could not be verified.');
+      }
+    } catch (error) {
+      if (printAttemptRef.current === printAttempt) {
+        setBranding(null);
+        setBrandingError(error?.message || 'Unable to verify company branding. Printing disabled.');
+      }
+    } finally {
+      printAttempt.printWindow?.close();
+      if (printAttemptRef.current === printAttempt) {
+        printAttemptRef.current = null;
+        setBrandingLoading(false);
+      }
     }
   };
 
@@ -99,13 +201,13 @@ export default function PrintLabelsModal({
       <View style={styles.labelHeader}>
         <View style={styles.brandRow}>
           <View style={styles.brandBadge}>
-            <Text style={styles.brandBadgeText}>T</Text>
+            <Text style={styles.brandBadgeText}>{brandBadge}</Text>
           </View>
-          <Text style={styles.brandTitle}>TNL LOGISTICS</Text>
+          <Text style={styles.brandTitle} numberOfLines={1} ellipsizeMode="tail">{brandTitle}</Text>
         </View>
         <View style={styles.headerRight}>
           <View style={styles.packagePill}>
-            <Text style={styles.packagePillText}>
+            <Text style={styles.packagePillText} numberOfLines={1}>
               PKG {u.packageIndex} / {u.packageCount}
             </Text>
           </View>
@@ -236,6 +338,7 @@ export default function PrintLabelsModal({
           </View>
 
           {notice ? <Text style={styles.noticeText}>{notice}</Text> : null}
+          {brandingError ? <Text style={[styles.noticeText, { color: '#DC2626' }]}>{brandingError}</Text> : null}
 
           {/* Post-Print Confirmation Panel */}
           {pendingConfirmation ? (
@@ -270,12 +373,20 @@ export default function PrintLabelsModal({
                 <Button
                   label={`Print Unit ${currentUnit.packageIndex} Only`}
                   variant="secondary"
+                  disabled={brandingLoading || Boolean(brandingError) || !branding?.companyName}
                   onPress={() => handlePrint('CURRENT')}
                 />
               )}
               <Button
-                label={count > 1 ? `Print All (${count}) Labels` : 'Print Label'}
+                label={
+                  brandingLoading
+                    ? 'Loading...'
+                    : count > 1
+                    ? `Print All (${count}) Labels`
+                    : 'Print Label'
+                }
                 variant="primary"
+                disabled={brandingLoading || Boolean(brandingError) || !branding?.companyName}
                 onPress={() => handlePrint('ALL')}
               />
             </View>
@@ -289,6 +400,8 @@ export default function PrintLabelsModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: 'rgba(0, 0, 0, 0.65)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -299,6 +412,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     width: 440,
     maxWidth: '96vw',
+    alignSelf: 'center',
+    marginHorizontal: 'auto',
     padding: 20,
     borderWidth: 1.5,
     borderColor: '#111111',
@@ -414,9 +529,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   brandRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginRight: 10,
+    minWidth: 0,
   },
   brandBadge: {
     width: 20,
@@ -425,6 +543,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 2,
+    flexShrink: 0,
   },
   brandBadgeText: {
     color: '#FFFFFF',
@@ -433,13 +552,15 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   brandTitle: {
+    flex: 1,
     fontFamily: fonts.sans,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '900',
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
     color: '#000000',
   },
   headerRight: {
+    flexShrink: 0,
     alignItems: 'flex-end',
   },
   packagePill: {
@@ -448,6 +569,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 2,
     alignSelf: 'flex-end',
+    flexShrink: 0,
   },
   packagePillText: {
     fontFamily: fonts.sans,

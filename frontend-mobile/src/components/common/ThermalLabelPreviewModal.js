@@ -13,7 +13,8 @@ import { colors } from '../../theme';
 import { QRCodeGenerator } from './QRCodeGenerator';
 import { PressableScale } from './PressableScale';
 import { usePrinter } from '../../features/printer/context/PrinterContext';
-import { buildLabelHtml } from '../../features/printer/services/escposFormatter';
+import { prepareVerifiedLabelPrint } from '../../features/printer/services/escposFormatter';
+import { resolveCurrentLabelBranding } from '../../features/printer/services/thermalLabelData';
 import { generateQRMatrix, generateQRSvgPath } from '../../utils/qr';
 import * as Print from 'expo-print';
 import * as Crypto from 'expo-crypto';
@@ -33,10 +34,51 @@ export function ThermalLabelPreviewModal({
     isVirtualMode,
     confirmSystemPrint,
     assertCanRecordPrintAudit,
+    fetchBranding,
   } = usePrinter();
+  const [localBranding, setLocalBranding] = React.useState(null);
+  const [brandingLoading, setBrandingLoading] = React.useState(false);
+  const [brandingError, setBrandingError] = React.useState(null);
   const [currentIndex, setCurrentIndex] = React.useState(0);
   const [pendingConfirmation, setPendingConfirmation] = React.useState(null);
   const [confirmationNotice, setConfirmationNotice] = React.useState(null);
+  const activeSystemPrintRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (visible) {
+      let mounted = true;
+      setLocalBranding(null);
+      setBrandingLoading(true);
+      setBrandingError(null);
+      resolveCurrentLabelBranding(fetchBranding)
+        .then((data) => {
+          if (mounted) {
+            setLocalBranding(data);
+            setBrandingLoading(false);
+          }
+        })
+        .catch((err) => {
+          if (mounted) {
+            setLocalBranding(null);
+            setBrandingLoading(false);
+            setBrandingError(err?.message || 'Unable to retrieve company branding for label printing.');
+          }
+        });
+      return () => {
+        mounted = false;
+        activeSystemPrintRef.current = null;
+      };
+    }
+  }, [visible, fetchBranding]);
+
+  const branding = localBranding;
+  const isBrandingReady = Boolean(branding?.companyName) && !brandingLoading && !brandingError;
+  const brandTitle = isBrandingReady
+    ? branding.companyName.toUpperCase()
+    : brandingLoading
+    ? 'LOADING BRANDING...'
+    : 'BRANDING UNAVAILABLE';
+  const brandBadge = isBrandingReady ? brandTitle.trim().charAt(0) || 'T' : '?';
 
   const labelsList = labels && labels.length > 0 ? labels : labelData ? [labelData] : [];
   const currentLabel = labelsList[currentIndex] || labelsList[0] || null;
@@ -52,9 +94,29 @@ export function ThermalLabelPreviewModal({
   if (!visible || !currentLabel) return null;
 
   const handleSystemPrint = async () => {
+    if (!isBrandingReady) {
+      setConfirmationNotice('Cannot print: Company branding could not be verified.');
+      return;
+    }
+    if (activeSystemPrintRef.current) return;
+    const printAttempt = {};
+    activeSystemPrintRef.current = printAttempt;
+    setBrandingLoading(true);
     try {
       await assertCanRecordPrintAudit();
-      const html = buildLabelHtml(labelsList);
+      let verifiedPrint;
+      try {
+        verifiedPrint = await prepareVerifiedLabelPrint(labelsList, fetchBranding);
+      } catch (error) {
+        if (activeSystemPrintRef.current === printAttempt) {
+          setLocalBranding(null);
+          setBrandingError(error?.message || 'Unable to verify company branding.');
+        }
+        throw error;
+      }
+      if (activeSystemPrintRef.current !== printAttempt) return;
+      const { html, branding: currentBranding } = verifiedPrint;
+      setLocalBranding(currentBranding);
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         const printWindow = window.open('', '_blank');
         if (printWindow) {
@@ -71,13 +133,21 @@ export function ThermalLabelPreviewModal({
         // Native iOS & Android: invoke OS print spooler & Save as PDF
         await Print.printAsync({ html });
       }
+      if (activeSystemPrintRef.current !== printAttempt) return;
       setPendingConfirmation({
         printJobId: Crypto.randomUUID(),
         shipmentId: labelsList[0].shipmentId,
         trackingIds: labelsList.map((label) => label.trackingId),
       });
     } catch (err) {
-      setConfirmationNotice(err?.message || 'System print failed.');
+      if (activeSystemPrintRef.current === printAttempt) {
+        setConfirmationNotice(err?.message || 'System print failed.');
+      }
+    } finally {
+      if (activeSystemPrintRef.current === printAttempt) {
+        activeSystemPrintRef.current = null;
+        setBrandingLoading(false);
+      }
     }
   };
 
@@ -110,7 +180,11 @@ export function ThermalLabelPreviewModal({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.dialogContainer}>
             <View style={styles.dialogHeader}>
               <View>
@@ -181,13 +255,15 @@ export function ThermalLabelPreviewModal({
               <View style={styles.labelHeader}>
                 <View style={styles.brandGroup}>
                   <View style={styles.brandBadge}>
-                    <Text style={styles.brandBadgeText}>T</Text>
+                    <Text style={styles.brandBadgeText}>{brandBadge}</Text>
                   </View>
-                  <Text style={styles.brandTitle}>TNL LOGISTICS</Text>
+                  <Text style={styles.brandTitle} numberOfLines={1} ellipsizeMode="tail">
+                    {brandTitle}
+                  </Text>
                 </View>
                 <View style={styles.pkgGroup}>
                   <View style={styles.pkgPill}>
-                    <Text style={styles.pkgPillText}>
+                    <Text style={styles.pkgPillText} numberOfLines={1}>
                       PKG {currentLabel.packageIndex} / {currentLabel.packageCount}
                     </Text>
                   </View>
@@ -276,6 +352,7 @@ export function ThermalLabelPreviewModal({
               </Text>
             </View>
 
+            {brandingError ? <Text style={[styles.confirmationNotice, { color: colors.danger, fontWeight: '700' }]}>{brandingError}</Text> : null}
             {confirmationNotice ? <Text style={styles.confirmationNotice}>{confirmationNotice}</Text> : null}
 
             {pendingConfirmation ? (
@@ -298,12 +375,15 @@ export function ThermalLabelPreviewModal({
             {!pendingConfirmation ? <View style={styles.actionRow}>
               {isConnected ? (
                 <PressableScale
-                  style={styles.actionBtnWrapper}
+                  disabled={!isBrandingReady}
+                  style={[styles.actionBtnWrapper, !isBrandingReady && { opacity: 0.5 }]}
                   contentStyle={styles.primaryBtn}
-                  onPress={onPrintDirect}
+                  onPress={isBrandingReady ? onPrintDirect : undefined}
                 >
                   <Text style={styles.primaryBtnText}>
-                    {isVirtualMode
+                    {brandingLoading
+                      ? 'Loading...'
+                      : isVirtualMode
                       ? `Simulate Print (${labelsList.length})`
                       : labelsList.length > 1
                       ? `Print All (${labelsList.length}) to Thermal`
@@ -321,9 +401,10 @@ export function ThermalLabelPreviewModal({
               )}
 
               <PressableScale
-                style={styles.actionBtnWrapper}
+                disabled={!isBrandingReady}
+                style={[styles.actionBtnWrapper, !isBrandingReady && { opacity: 0.5 }]}
                 contentStyle={styles.secondaryBtn}
-                onPress={handleSystemPrint}
+                onPress={isBrandingReady ? handleSystemPrint : undefined}
               >
                 <Text style={styles.secondaryBtnText}>Print via System / PDF</Text>
               </PressableScale>
@@ -338,19 +419,29 @@ export function ThermalLabelPreviewModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
     justifyContent: 'center',
     alignItems: 'center',
   },
+  scrollView: {
+    width: '100%',
+    flex: 1,
+  },
   scrollContent: {
-    paddingVertical: 24,
-    paddingHorizontal: 16,
+    flexGrow: 1,
+    width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
   },
   dialogContainer: {
     width: '100%',
     maxWidth: 420,
+    alignSelf: 'center',
+    marginHorizontal: 'auto',
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -457,9 +548,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   brandGroup: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginRight: 10,
+    minWidth: 0,
   },
   brandBadge: {
     width: 22,
@@ -468,6 +562,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 2,
+    flexShrink: 0,
   },
   brandBadgeText: {
     color: '#FFFFFF',
@@ -476,13 +571,15 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
   },
   brandTitle: {
-    fontSize: 13,
+    flex: 1,
+    fontSize: 12,
     fontWeight: '900',
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
     color: '#000000',
     fontFamily: 'monospace',
   },
   pkgGroup: {
+    flexShrink: 0,
     alignItems: 'flex-end',
   },
   pkgPill: {
@@ -490,6 +587,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 2,
+    alignSelf: 'flex-end',
+    flexShrink: 0,
   },
   pkgPillText: {
     color: '#FFFFFF',

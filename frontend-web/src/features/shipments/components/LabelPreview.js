@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import QRCodeGenerator from '../../../components/common/QRCodeGenerator';
 import { colors, fonts, spacing, radius } from '../../../theme';
+import { getCompanyBranding } from '../../settings/services/settingsApi';
 
 export default function LabelPreview({
+  companyName: propCompanyName,
   trackingId = 'TRK-2026-000101',
   packageIndex = 1,
   packageCount = 1,
@@ -17,18 +19,37 @@ export default function LabelPreview({
   route = 'Manila to TNL Baguio',
   total = 500,
 }) {
+  const [branding, setBranding] = useState(null);
+
+  useEffect(() => {
+    if (!propCompanyName) {
+      let mounted = true;
+      getCompanyBranding()
+        .then((data) => {
+          if (mounted && data) setBranding(data);
+        })
+        .catch(() => {});
+      return () => {
+        mounted = false;
+      };
+    }
+  }, [propCompanyName]);
+
+  const brandTitle = (propCompanyName || branding?.companyName || 'TNL LOGISTICS').toUpperCase();
+  const brandBadge = brandTitle.trim().charAt(0) || 'T';
+
   return (
     <View style={styles.card}>
       <View style={styles.header}>
         <View style={styles.brandRow}>
           <View style={styles.brandBadge}>
-            <Text style={styles.brandBadgeText}>T</Text>
+            <Text style={styles.brandBadgeText}>{brandBadge}</Text>
           </View>
-          <Text style={styles.brandTitle}>TNL LOGISTICS</Text>
+          <Text style={styles.brandTitle} numberOfLines={1} ellipsizeMode="tail">{brandTitle}</Text>
         </View>
         <View style={styles.headerRight}>
           <View style={styles.packagePill}>
-            <Text style={styles.packagePillText}>
+            <Text style={styles.packagePillText} numberOfLines={1}>
               PKG {packageIndex} / {packageCount}
             </Text>
           </View>
@@ -107,9 +128,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   brandRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginRight: 10,
+    minWidth: 0,
   },
   brandBadge: {
     width: 20,
@@ -118,6 +142,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 2,
+    flexShrink: 0,
   },
   brandBadgeText: {
     color: '#FFFFFF',
@@ -126,13 +151,15 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   brandTitle: {
+    flex: 1,
     fontFamily: fonts.sans,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '900',
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
     color: '#000000',
   },
   headerRight: {
+    flexShrink: 0,
     alignItems: 'flex-end',
   },
   packagePill: {
@@ -141,6 +168,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 2,
     alignSelf: 'flex-end',
+    flexShrink: 0,
   },
   packagePillText: {
     fontFamily: fonts.sans,

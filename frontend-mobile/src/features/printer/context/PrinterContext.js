@@ -2,10 +2,11 @@ import React, { createContext, useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import * as Crypto from 'expo-crypto';
 import { bluetoothPrinterService, VIRTUAL_PRINTERS } from '../services/bluetoothPrinterService';
-import { normalizeLabelData } from '../services/thermalLabelData';
+import { normalizeLabelData, resolveCurrentLabelBranding } from '../services/thermalLabelData';
 import { buildEscPosCommands } from '../services/escposFormatter';
 import { shipmentApi } from '../../shipments/services/shipmentApi';
 import { useAuth } from '../../auth/context/AuthContext';
+import { apiClient } from '../../../services/api/client';
 import {
   assertPrintAuditCapacityAvailable,
   getPendingCount,
@@ -33,11 +34,43 @@ export function PrinterProvider({ children }) {
   const { user } = useAuth();
   const ownerUserId = user?.userId;
   const [connectedDevice, setConnectedDevice] = useState(null);
+  const [branding, setBranding] = useState(null);
+  const [brandingLoading, setBrandingLoading] = useState(false);
+  const [brandingError, setBrandingError] = useState(null);
   const [isVirtualMode, setIsVirtualMode] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
   const [availableDevices, setAvailableDevices] = useState(VIRTUAL_PRINTERS);
   const [isPrinting, setIsPrinting] = useState(false);
   const [pendingAuditCount, setPendingAuditCount] = useState(0);
+
+  const fetchBranding = useCallback(async () => {
+    if (!ownerUserId) {
+      setBranding(null);
+      setBrandingError(null);
+      return null;
+    }
+    setBrandingLoading(true);
+    setBrandingError(null);
+    try {
+      const { data } = await apiClient.get('/settings/branding');
+      if (typeof data?.companyName === 'string' && data.companyName.trim()) {
+        setBranding(data);
+        setBrandingLoading(false);
+        return data;
+      }
+      throw new Error('Company branding payload is invalid.');
+    } catch (err) {
+      const message = err?.response?.data?.message || err?.message || 'Unable to retrieve company branding.';
+      setBranding(null);
+      setBrandingLoading(false);
+      setBrandingError(message);
+      throw new Error(message);
+    }
+  }, [ownerUserId]);
+
+  useEffect(() => {
+    fetchBranding().catch(() => {});
+  }, [fetchBranding]);
 
   const syncAuditEntry = useCallback(async (entry) => {
     return syncPrintAuditEntry({
@@ -147,11 +180,13 @@ export function PrinterProvider({ children }) {
       setIsPrinting(true);
 
       try {
+        const resolvedBranding = await resolveCurrentLabelBranding(fetchBranding);
+
         for (let index = 0; index < units.length; index += 1) {
           const unit = units[index];
           try {
             const labelData = normalizeLabelData(shipment, unit, index, units.length);
-            await bluetoothPrinterService.printRaw(buildEscPosCommands(labelData), {
+            await bluetoothPrinterService.printRaw(buildEscPosCommands(labelData, resolvedBranding), {
               jobId,
               trackingId: labelData.trackingId,
               shipmentId: labelData.shipmentId,
@@ -194,14 +229,15 @@ export function PrinterProvider({ children }) {
         setIsPrinting(false);
       }
     });
-  }, [assertCanRecordPrintAudit, auditTrackingIds, connectedDevice]);
+  }, [assertCanRecordPrintAudit, auditTrackingIds, connectedDevice, fetchBranding]);
 
   return (
     <PrinterContext.Provider value={{
       isConnected: Boolean(connectedDevice), connectedDevice, isVirtualMode, isScanning,
       availableDevices, isPrinting, pendingAuditCount, scanDevices, connectPrinter,
       disconnectPrinter, toggleVirtualMode, printParcelLabels, confirmSystemPrint,
-      retryPendingAudits, assertCanRecordPrintAudit,
+      retryPendingAudits, assertCanRecordPrintAudit, branding, brandingLoading,
+      brandingError, fetchBranding,
     }}>
       {children}
     </PrinterContext.Provider>
