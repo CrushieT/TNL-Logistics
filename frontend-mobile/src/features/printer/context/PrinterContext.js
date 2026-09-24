@@ -6,7 +6,7 @@ import { normalizeLabelData } from '../services/thermalLabelData';
 import { buildEscPosCommands } from '../services/escposFormatter';
 import { shipmentApi } from '../../shipments/services/shipmentApi';
 import { useAuth } from '../../auth/context/AuthContext';
-import apiClient from '../../../services/api/client';
+import { apiClient } from '../../../services/api/client';
 import {
   assertPrintAuditCapacityAvailable,
   getPendingCount,

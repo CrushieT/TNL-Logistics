@@ -15,7 +15,7 @@ import { PressableScale } from './PressableScale';
 import { usePrinter } from '../../features/printer/context/PrinterContext';
 import { buildLabelHtml } from '../../features/printer/services/escposFormatter';
 import { generateQRMatrix, generateQRSvgPath } from '../../utils/qr';
-import apiClient from '../../services/api/client';
+import { apiClient } from '../../services/api/client';
 import * as Print from 'expo-print';
 import * as Crypto from 'expo-crypto';
 
@@ -127,7 +127,11 @@ export function ThermalLabelPreviewModal({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.dialogContainer}>
             <View style={styles.dialogHeader}>
               <View>
@@ -200,11 +204,13 @@ export function ThermalLabelPreviewModal({
                   <View style={styles.brandBadge}>
                     <Text style={styles.brandBadgeText}>{brandBadge}</Text>
                   </View>
-                  <Text style={styles.brandTitle}>{brandTitle}</Text>
+                  <Text style={styles.brandTitle} numberOfLines={1} ellipsizeMode="tail">
+                    {brandTitle}
+                  </Text>
                 </View>
                 <View style={styles.pkgGroup}>
                   <View style={styles.pkgPill}>
-                    <Text style={styles.pkgPillText}>
+                    <Text style={styles.pkgPillText} numberOfLines={1}>
                       PKG {currentLabel.packageIndex} / {currentLabel.packageCount}
                     </Text>
                   </View>
@@ -355,19 +361,29 @@ export function ThermalLabelPreviewModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
     justifyContent: 'center',
     alignItems: 'center',
   },
+  scrollView: {
+    width: '100%',
+    flex: 1,
+  },
   scrollContent: {
-    paddingVertical: 24,
-    paddingHorizontal: 16,
+    flexGrow: 1,
+    width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
   },
   dialogContainer: {
     width: '100%',
     maxWidth: 420,
+    alignSelf: 'center',
+    marginHorizontal: 'auto',
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -474,9 +490,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   brandGroup: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginRight: 10,
+    minWidth: 0,
   },
   brandBadge: {
     width: 22,
@@ -485,6 +504,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 2,
+    flexShrink: 0,
   },
   brandBadgeText: {
     color: '#FFFFFF',
@@ -493,13 +513,15 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
   },
   brandTitle: {
-    fontSize: 13,
+    flex: 1,
+    fontSize: 12,
     fontWeight: '900',
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
     color: '#000000',
     fontFamily: 'monospace',
   },
   pkgGroup: {
+    flexShrink: 0,
     alignItems: 'flex-end',
   },
   pkgPill: {
@@ -507,6 +529,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 2,
+    alignSelf: 'flex-end',
+    flexShrink: 0,
   },
   pkgPillText: {
     color: '#FFFFFF',
