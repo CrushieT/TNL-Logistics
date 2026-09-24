@@ -27,7 +27,7 @@ public class CollectionsController {
     }
 
     @GetMapping("/weekly")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<WeeklyCollectionsResponse> getWeeklyCollections(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate targetDate
     ) {
@@ -36,7 +36,7 @@ public class CollectionsController {
     }
 
     @GetMapping("/cycles")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<LocalDate>> getActiveCycles() {
         return ResponseEntity.ok(collectionsService.getActiveCycleDates());
     }

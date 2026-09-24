@@ -1,17 +1,70 @@
 package com.tnl.logistics.config;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
+import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.support.PropertiesLoaderUtils;
 
 import java.io.IOException;
 import java.util.Properties;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ProductionDataSourcePropertiesTest {
+
+    private ConfigurableApplicationContext applicationContext;
+
+    @AfterEach
+    void closeApplicationContext() {
+        if (applicationContext != null) {
+            applicationContext.close();
+        }
+    }
+
+    @Test
+    void testPackagedDefaultsDoNotActivateDevelopmentOrProvideJwtFallback() throws IOException {
+        Properties properties = PropertiesLoaderUtils.loadProperties(new ClassPathResource("application.properties"));
+
+        assertNull(properties.getProperty("spring.profiles.active"),
+                "Packaged defaults must not activate the development profile");
+        assertEquals("${JWT_SECRET}", properties.getProperty("jwt.secret"),
+                "Packaged defaults must require JWT_SECRET without a fallback value");
+    }
+
+    @Test
+    void testNonDevelopmentStartupFailsWithoutJwtSecret() {
+        SpringApplication application = new SpringApplication(JwtStartupTestApplication.class);
+        application.setWebApplicationType(WebApplicationType.NONE);
+
+        Exception startupFailure = assertThrows(Exception.class, () ->
+                applicationContext = application.run(
+                        "--spring.profiles.active=prod",
+                        "--jwt.secret=",
+                        "--spring.main.banner-mode=off"));
+
+        Throwable rootCause = startupFailure;
+        while (rootCause.getCause() != null) {
+            rootCause = rootCause.getCause();
+        }
+
+        assertTrue(rootCause.getMessage().contains("JWT secret must be configured"),
+                "Startup failure must identify the missing JWT secret");
+    }
 
     @Test
     void testProductionDatabaseConfigurationEnforcesSsl() throws IOException {
@@ -43,6 +96,8 @@ public class ProductionDataSourcePropertiesTest {
                 "Production must explicitly disable admin seeding");
         org.junit.jupiter.api.Assertions.assertEquals("false", properties.getProperty("app.seed.sample-data"),
                 "Production must explicitly disable sample data seeding");
+        org.junit.jupiter.api.Assertions.assertEquals("false", properties.getProperty("app.seed.mobile-pins"),
+                "Production must explicitly disable mobile PIN seeding");
     }
 
     @Test
@@ -61,5 +116,16 @@ public class ProductionDataSourcePropertiesTest {
 
         org.junit.jupiter.api.Assertions.assertEquals("${JWT_SECRET}", jwtSecret,
                 "Production jwt.secret must strictly bind to ${JWT_SECRET} without hardcoded fallback");
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    @EnableAutoConfiguration(exclude = {
+            DataSourceAutoConfiguration.class,
+            HibernateJpaAutoConfiguration.class,
+            FlywayAutoConfiguration.class
+    })
+    @ConfigurationPropertiesScan
+    @Import(JwtTokenProvider.class)
+    static class JwtStartupTestApplication {
     }
 }

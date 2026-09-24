@@ -37,7 +37,7 @@ public class PaymentController {
      * Record a new payment against a shipment.
      */
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<PaymentResponse> recordPayment(
             @Valid @RequestBody PaymentRecordRequest request,
             Authentication authentication) {
@@ -53,7 +53,7 @@ public class PaymentController {
      * Retrieve payment breakdown and financial balance for a specific shipment.
      */
     @GetMapping("/shipment/{shipmentId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF', 'FIELD_STAFF')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FIELD_STAFF')")
     public ResponseEntity<ShipmentPaymentSummaryResponse> getPaymentsByShipmentId(
             @PathVariable String shipmentId) {
         ShipmentPaymentSummaryResponse response = paymentService.getPaymentsByShipmentId(shipmentId);
@@ -64,7 +64,7 @@ public class PaymentController {
      * Paginated search for payments across the company.
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<PaymentResponse>> getPayments(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) PaymentMethod method,

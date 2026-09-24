@@ -1,16 +1,11 @@
 {
   "expo": {
-    "name": "TNL Logistics Field",
+    "name": "TC & CT Staff App",
     "slug": "tnl-field",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
+    "icon": "./assets/icon.png",
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -18,22 +13,33 @@
       "supportsTablet": true
     },
     "android": {
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      }
+        "backgroundColor": "#FFFFFF"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.aundraysteam.tnlfield"
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
+    "web": {},
     "plugins": [
       [
         "expo-camera",
         {
           "cameraPermission": "Allow TNL Logistics to access your camera to scan parcel QR codes."
         }
-      ]
+      ],
+      "expo-font",
+      "expo-sqlite"
     ],
-    "scheme": "tnl-field"
+    "scheme": "tnl-field",
+    "extra": {
+      "eas": {
+        "projectId": "5a17ef81-dae9-4e7b-9e05-e465db55d1f4"
+      }
+    }
   }
 }

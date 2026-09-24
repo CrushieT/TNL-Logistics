@@ -14,22 +14,32 @@ tnl-logistics/
 │       ├── karpathy-guidelines.md    # LLM coding best practices
 │       └── project-structure.md      # Project directory layout & philosophies
 ├── .github/
-│   └── pull_request_template.md      # GitHub Pull Request template
+│   ├── pull_request_template.md      # GitHub Pull Request template
+│   ├── PR_DRAFT.md                   # Current shipping-task handoff draft
+│   └── workflows/                    # GitHub Actions CI/CD workflows
+│       ├── dependency-review.yml     # Fast PR dependency vulnerability checks
+│       └── owasp-check.yml           # Scheduled and on-demand OWASP backend vulnerability scan
+├── .review/                          # Implementation plans and verification reports
+│   ├── admin-sliding-session-plan.md # 30-minute admin sliding session and auth hardening plan
+│   ├── operational-fixes-implementation-plan.md # Operational defects & sliding session implementation plan
+│   ├── phase-6.7-offline-resilience-plan.md # Phase 6.7 offline queue implementation plan
+│   ├── phase-6.7-threat-model.md      # Phase 6.7 offline queue security threat model
+│   └── phase-6.7-verification-report.md # Phase 6.7 automated and physical-device verification matrix
 ├── backend/                          # Spring Boot API (Java 21)
 │   ├── src/
 │   │   ├── main/
 │   │   │   ├── java/com/tnl/logistics/
-│   │   │   │   ├── config/              # SecurityConfig, CorsConfig, JwtTokenProvider, DataSeeder
+│   │   │   │   ├── config/              # SecurityConfig, JwtRenewalResponseWrapper, OfflineSyncRequestGuard, CorsConfig, JwtTokenProvider, DataSeeder
 │   │   │   │   ├── controller/          # REST endpoints (Shipment, Vehicle, Client, Waybill, Payment, Collections, SOA)
-│   │   │   │   ├── dto/                 # Request & Response DTOs
-│   │   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, Vehicle, Waybill, Payment, Soa, etc.)
-│   │   │   │   ├── repository/          # Spring Data Repositories & Batch Group By Queries
-│   │   │   │   └── service/             # Business Logic & Service Interfaces (impl/)
+│   │   │   │   ├── dto/                 # Request & Response DTOs (including CurrentUserResponse, MobileDeviceBindingSummary, and offline-sync contracts)
+│   │   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, Vehicle, Waybill, Payment, Soa, MobileDeviceBinding, OfflineScanReceipt, etc.)
+│   │   │   │   ├── repository/          # Spring Data repositories, including pessimistic user and device-binding authentication queries plus offline receipt recovery
+│   │   │   │   └── service/             # Business logic, including AuthSecurityService, offline receipt cleanup, and transactional implementation (impl/)
 │   │   │   └── resources/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
-│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V26)
-│   │   └── test/                        # Integration and unit test suites
+│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V30), including offline scan idempotency receipts
+│   │   └── test/                        # Integration and unit test suites, including AdminConsoleAuthorizationIntegrationTest and offline sync API coverage
 │   └── pom.xml
 │
 ├── frontend-web/                    # Admin Web Portal (React Native Web / Expo Router)
@@ -59,34 +69,73 @@ tnl-logistics/
 │   │   │   ├── users.js             # Screen 27 User & Staff Management
 │   │   │   └── settings.js          # Screen 28 System Settings
 │   │   ├── components/              # Shared design system (common/ atoms, layout/ AppShell)
-│   │   ├── features/                # Domain feature modules (shipments, vehicles, clients, waybills, payments, collections, tracking-logs, reports, users, settings)
+│   │   ├── features/                # Domain modules
+│   │   │   ├── shipments/           # PrintLabelsModal, LabelPreview, durable outbox & isolated thermal print service
 │   │   │   └── settings/            # AdminSecurityCard, ConfirmPasswordModal, settings components
-│   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sseClient.js)
+│   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sessionCore.mjs, sseClient.js, sseClientCore.mjs)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
-│   │   └── utils/                   # Pure utilities (qr.js in-memory vector QR encoder)
+│   │   ├── utils/                   # Shared QR facade
+│   │   └── vendor/qrcodegen/        # Vendored Project Nayuki QR generator
+│   ├── tests/                       # Web unit suites (authSlidingSession.test.mjs, labelPrint.test.mjs, qr.test.mjs, sseClient.test.mjs)
 │   ├── assets/                      # favicon.png, tracking-logo.png
 │   ├── app.json                     # Expo web configuration
 │   ├── package.json
 │   └── README.md
 │
 ├── frontend-mobile/                  # React Native (Expo) Field Operations (JavaScript)
-│   ├── app/
-│   │   ├── (auth)/
-│   │   │   └── login.js
-│   │   ├── (main)/
-│   │   │   ├── _layout.js
-│   │   │   ├── home.js
-│   │   │   └── scan.js
-│   │   └── _layout.js
-│   ├── api/
-│   │   └── client.js
+│   ├── src/
+│   │   ├── app/                      # File-based routes
+│   │   │   ├── _layout.js            # Root Stack navigator & AuthProvider
+│   │   │   ├── (auth)/
+│   │   │   │   ├── login.js          # Username & password device binding
+│   │   │   │   ├── change-password.js# Screen 30b Mandatory Password Change
+│   │   │   │   ├── setup-pin.js      # Mobile PIN creation & confirmation
+│   │   │   │   └── pin.js            # Screen 29 PIN quick shift unlock
+│   │   │   └── (main)/
+│   │   │       ├── _layout.js        # Authenticated route guard
+│   │   │       ├── index.js          # Role-aware home (Office vs Field Dashboard)
+│   │   │       ├── register.js       # Screen 34 Mobile Shipment Registration
+│   │   │       ├── printer.js        # Screens 41–44 Printer Setup & Connection Manager
+│   │   │       ├── shipments/        # Past Shipments Explorer
+│   │   │       │   ├── index.js      # Screen 38 Find Parcel & Shipments Directory
+│   │   │       │   ├── [id].js       # Screen 39 Shipment Parcel Units Breakdown
+│   │   │       │   └── parcel/
+│   │   │       │       └── [trackingId].js # Screen 40 Single Parcel Details & Scan Audit Timeline
+│   │   │       ├── scan.js           # Screen 45 Camera QR scanner with native offline batch queueing
+│   │   │       ├── offline-queue.js  # Screen 56 Offline Queue, sync receipt, and conflict resolution
+│   │   │       ├── settings/          # Screens 53–55 Mobile Account & Security
+│   │   │       │   ├── index.js       # Screen 53 account, session, and bound-device overview
+│   │   │       │   ├── password.js    # Screen 54 in-app password rotation
+│   │   │       │   └── pin.js         # Screen 55 password-authorized 4-digit PIN rotation
+│   │   │       └── tracking-history/ # Screens 49–52 Field Staff Personal Scan History
+│   │   │           ├── index.js      # Screen 49–50 Personal Scan Feed & Shift Metrics
+│   │   │           └── [trackingId].js # Screen 51–52 Operational Parcel Details & Personal Timeline
+│   │   ├── components/               # Shared UI atoms (BackButton, Keypad, PinIndicator, PressableScale, ActionCard, MetricCard, NoticeBanner, StatusModal, QRCodeGenerator, ThermalLabelPreviewModal)
+│   │   │   ├── common/
+│   │   │   └── layout/               # MobileHeader
+│   │   ├── features/                 # Domain feature slices (auth, office, field, shipments, printer, scanner, tracking-history, settings)
+│   │   │   ├── auth/services/        # Auth API and pure authStorageTransitions.mjs lifecycle helpers
+│   │   │   ├── settings/             # Account/security flow helpers and reusable settings components
+│   │   │   ├── shipments/            # Shipment registration, explorer, detail screens, and barcode scanner modal
+│   │   │   ├── printer/              # Driver isolation, audit outbox, ESC/POS formatter, and serialized PrinterContext
+│   │   │   ├── scanner/              # Field camera scanner (ScanViewfinder, SingleScanReview, BatchScanPanel, ScanResultPanel, scannerFlow.mjs, trackingScanApi.js, haptics.js, hapticsCore.mjs)
+│   │   │   ├── tracking-history/     # Field personal scan feed, metrics, parcel summary, personal timeline, sync status badge, pure flow logic (trackingHistoryFlow.mjs), request coordinator (trackingHistoryRequestCoordinator.mjs), and API client (trackingHistoryApi.js)
+│   │   │   └── offline-sync/         # Platform-specific native SQLite queue and web no-op store, network-aware sync context, response mapping, retry policy, and offline-sync API client
+│   │   ├── services/
+│   │   │   ├── api/                  # Axios client plus sessionHandling.mjs retry and redaction helpers
+│   │   │   └── storage/secureStore.js# Hardware-backed SecureStore adapter
+│   │   ├── theme/index.js            # TNL design tokens (canvas, ink, accent, keypad)
+│   │   ├── utils/                    # QR matrix, SVG path, and BMP facade
+│   │   └── vendor/qrcodegen/         # Vendored Project Nayuki QR generator
+│   ├── tests/                        # Mobile unit suites, including authSecurity.test.mjs, offlineQueue.test.mjs, and offlineQueue.web.test.mjs
 │   ├── app.json                      # Expo configuration
 │   ├── eas.json                      # EAS Build configuration
-│   ├── package.json
+│   ├── package.json                  # Dependencies (including expo-camera, expo-haptics, expo-sqlite, and NetInfo)
 │   ├── .env.example
 │   └── README.md
 │
 ├── docker-compose.yml                # Local dev: MySQL + Backend
+├── THIRD_PARTY_NOTICES.md            # Vendored dependency attribution and licensing
 ├── .gitignore                        # Root-level git ignore
 └── README.md                          # Project overview & quick start
 ```
@@ -101,6 +150,7 @@ tnl-logistics/
 **Frontend Web (Feature-Sliced):** Organized into file-based routes (`src/app/`) backed by cohesive domain feature modules (`src/features/`):
 - **Why:** Keeps feature-specific UI, modals, API calls, and utilities colocated (e.g. `src/features/collections/` contains table components, deductions cards, paper cards, and API bindings).
 - **API client:** Centralized in `services/api/client.js` with self-healing token refresh and 401/403 transparent request retries.
+- **Print audit outbox:** Platform-neutral persistence and retry logic lives in `src/features/shipments/services/printAuditOutboxCore.mjs`; the adjacent JavaScript module supplies browser storage and API adapters.
 
 **Frontend Mobile:** Expo Router file-based routing targeting iOS and Android natively.
 
@@ -110,3 +160,8 @@ tnl-logistics/
 **Root:** Configuration files that coordinate all three services (docker-compose, .gitignore, README).
 
 - **Why:** Monorepo makes it easy to `docker-compose up` and have all three apps running locally in one command.
+
+### Workflow Testing
+
+- `backend/src/main/resources/application-workflow.properties` selects the isolated `tnl_workflow` database and enables the production-shaped workflow fixtures.
+- `docker-compose.workflow.yml` overrides the default Compose stack for the same isolated workflow profile.

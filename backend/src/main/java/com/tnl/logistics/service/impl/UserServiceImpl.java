@@ -28,12 +28,15 @@ public class UserServiceImpl implements UserService {
     private final AppUserRepository appUserRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final IdentifierCounterService identifierCounterService;
+    private final com.tnl.logistics.service.SseService sseService;
 
     public UserServiceImpl(AppUserRepository appUserRepository, BCryptPasswordEncoder passwordEncoder,
-                           IdentifierCounterService identifierCounterService) {
+                           IdentifierCounterService identifierCounterService,
+                           com.tnl.logistics.service.SseService sseService) {
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
         this.identifierCounterService = identifierCounterService;
+        this.sseService = sseService;
     }
 
     @Override
@@ -149,6 +152,9 @@ public class UserServiceImpl implements UserService {
         }
 
         appUserRepository.save(user);
+        if (hasSecurityRelevantChange) {
+            sseService.closeStreamsForUser(userId);
+        }
         return UserResponse.from(user);
     }
 
@@ -176,6 +182,7 @@ public class UserServiceImpl implements UserService {
         } else {
             appUserRepository.delete(user);
         }
+        sseService.closeStreamsForUser(userId);
     }
 
     @Override
@@ -186,6 +193,7 @@ public class UserServiceImpl implements UserService {
         user.setMustChangePassword(true);
         user.incrementTokenVersion();
         appUserRepository.save(user);
+        sseService.closeStreamsForUser(userId);
     }
 
     @Override
@@ -199,6 +207,7 @@ public class UserServiceImpl implements UserService {
         }
         user.incrementTokenVersion();
         appUserRepository.save(user);
+        sseService.closeStreamsForUser(userId);
     }
 
     // Generates the next U-NNN sequential user ID

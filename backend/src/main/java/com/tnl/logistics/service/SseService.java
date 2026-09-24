@@ -8,7 +8,9 @@ import java.util.List;
 
 public interface SseService {
 
-    SseEmitter registerClient(String username);
+    SseEmitter registerClient(String userId, Integer tokenVersion, Long authDeadlineMillis);
+
+    void closeStreamsForUser(String userId);
 
     void broadcastEvent(String eventName, Object data);
 
@@ -19,4 +21,6 @@ public interface SseService {
     void broadcastLabelPrint(String shipmentId, List<String> trackingIds);
 
     void broadcastPaymentRecorded(Object payment);
+
+    void sendHeartbeat();
 }

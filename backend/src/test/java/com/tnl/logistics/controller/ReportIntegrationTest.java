@@ -115,8 +115,8 @@ public class ReportIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
-    void testGetReportSummaryAsOfficeStaffReturns200() throws Exception {
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testGetReportSummaryAsAdminReturns200() throws Exception {
         mockMvc.perform(get("/api/v1/reports/summary")
                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -132,10 +132,10 @@ public class ReportIntegrationTest {
     }
 
     @Test
-    void testGetReportSummaryUnauthenticatedReturnsForbiddenOrUnauthorized() throws Exception {
+    void testGetReportSummaryUnauthenticatedReturnsUnauthorized() throws Exception {
         mockMvc.perform(get("/api/v1/reports/summary")
                 .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

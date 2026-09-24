@@ -2,7 +2,7 @@
 
 [![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.4.2-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![Java](https://img.shields.io/badge/Java-21%20%2F%2023-ED8B00?logo=openjdk&logoColor=white)](https://www.oracle.com/java/)
-[![Expo](https://img.shields.io/badge/Expo-51.0-000020?logo=expo&logoColor=white)](https://expo.dev/)
+[![Expo](https://img.shields.io/badge/Expo-57.0-000020?logo=expo&logoColor=white)](https://expo.dev/)
 [![React Native](https://img.shields.io/badge/React_Native-Web%20%26%20Mobile-61DAFB?logo=react&logoColor=black)](https://reactnative.dev/)
 [![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
 [![Flyway](https://img.shields.io/badge/Flyway-Database_Migrations-CC0200?logo=flyway&logoColor=white)](https://flywaydb.org/)
@@ -30,7 +30,7 @@ Commercial freight forwarding requires strict chain-of-custody tracking, legal p
 ```text
                                   ┌────────────────────────────────┐
                                   │       MySQL 8.0 Database       │
-                                  │   (Flyway Migrations V1-V19)   │
+                                  │   (Flyway Migrations V1-V29)   │
                                   └───────────────┬────────────────┘
                                                   │
                                                   ▼
@@ -38,6 +38,7 @@ Commercial freight forwarding requires strict chain-of-custody tracking, legal p
                         │          Spring Boot 3.4 Backend Service         │
                         │    • REST API (Port 8080)   • SSE Event Stream   │
                         │    • JWT Stateless Auth     • Hibernate JPA      │
+                        │    • Cryptographic Device Binding (V27)          │
                         └─────────────┬──────────────────────┬─────────────┘
                                       │                      │
                    HTTP REST / SSE    │                      │  HTTP REST / SSE
@@ -46,7 +47,7 @@ Commercial freight forwarding requires strict chain-of-custody tracking, legal p
 │          Admin Web Portal (Desktop)          │    │         Mobile Courier App (Field)          │
 │   • React Native Web / Expo Router (8081)    │    │   • React Native / Expo Go / Prebuild       │
 │   • In-Memory Vector QR Thermal Printing     │    │   • Camera QR Scanner & Bluetooth Thermal   │
-│   • A4 Manifests & Multi-Page Statement Docs │    │   • Mobile PIN Auth & Offline SQLite Sync   │
+│   • A4 Manifests & Multi-Page Statement Docs │    │   • Mobile PIN Auth & Hardware SecureStore  │
 │   • SSE Real-Time Data Synchronization       │    │   • Role-Branching (Field vs Office Mobile) │
 └──────────────────────────────────────────────┘    └─────────────────────────────────────────────┘
 ```
@@ -77,13 +78,13 @@ Unlike simplistic CRUD apps that conflate tracking and accounting into a single 
 
 | Phase | Milestone Description | Status | Key Deliverables |
 | :--- | :--- | :---: | :--- |
-| **Phase 0** | **Foundation & Security** | `[COMPLETED]` | Spring Boot 3.4, Flyway migrations `V1`–`V19`, MySQL 8, JPA models, stateless JWT auth with 3 roles (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`). |
+| **Phase 0** | **Foundation & Security** | `[COMPLETED]` | Spring Boot 3.4, Flyway migrations `V1`–`V28`, MySQL 8, JPA models, stateless JWT auth with 3 roles (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`). |
 | **Phase 1** | **Shipment Registration & QR Labels** | `[COMPLETED]` | Sequential IDs (`SHP-YYYY-XXX`, `TRK-YYYY-XXXXXX`), volumetric weight ($\div 5000$) & $m^3$ calculations, vector thermal QR labels, paginated table, tracking inspection. |
 | **Phase 2** | **Status Flow, Real-Time SSE, Fleet & Client Management** | `[COMPLETED]` | Sequential 5-state transition engine, live SSE stream, vehicle fleet CRUD (`VH-XXX`), client directory & profile view (`CL-XXX`), smart deletion, composite indexing, and batch aggregation. |
 | **Phase 3** | **Waybills & Freight Manifest Handover** | `[COMPLETED]` | `WYB-YYYY-XXXX` auto-numbering, 4-state lifecycle (`Generated` → `Sent to Hauler` → `Signed/Completed`), and print-ready A4 3rd-party hauler manifest. |
 | **Phase 4** | **Billing, Collections & Statement of Account** | `[COMPLETED]` | Payment ledger (`/payments`), Thursday weekly collections consolidation (`/weekly-collections`), `SOA-YYYY-XXX-WXX` multi-page statement preview (`/statements`), isolated print architecture (`/statements/print`), deduction management, and dynamic active cycle filtering. |
 | **Phase 5** | **Web Console Administration & Reports** | `[COMPLETED]` | Desktop login with branded artwork, route guarding, and rate limiting (`[COMPLETED]`); live operational dashboard metrics (`[COMPLETED]`); tracking logs audit feed (`[COMPLETED]`); operational & financial reports screen (`[COMPLETED]`); user & staff management (`[COMPLETED]`); system settings with dynamic collection day, volumetric divisor calculation, branding propagation, and real-time SSE updates (`[COMPLETED]`); first-boot admin registration, 2-step setup wizard, self-service credential management, and rate-limited password authorization modals (`[COMPLETED]`). |
-| **Phase 6** | **Role-Aware Mobile Courier Portal** | `[UPCOMING]` | Mobile PIN auth with role branching (scan-only field staff vs authorized office mobile), camera QR scanner, and Bluetooth thermal printer integration. |
+| **Phase 6** | **Role-Aware Mobile Courier Portal** | `[IN PROGRESS]` | Phases 6.1, 6.2, 6.3a, 6.4, and 6.5 (`[COMPLETED]`): secure mobile authentication and device binding, mobile shipment registration and lookup, software/PDF label printing, durable print-audit recovery, camera QR scanner, sequential status flow engine, personal scan history, shift metrics, operational parcel inspection, and request lifecycle coordination. Phase 6.6 (`[IN PROGRESS]`) adds mobile staff account screens, password and exactly four-digit PIN rotation, session renewal, and current-device unbinding. Phases 6.3b and 6.7 remain `[UPCOMING]`. |
 
 ---
 
@@ -96,11 +97,11 @@ logistics/
 │   │   ├── config/                        # SecurityConfig, JWT Provider, WebMvcConfig
 │   │   ├── controller/                    # REST API Controllers (Shipments, Vehicles, Clients, Payments, Collections, SOA, Reports, Tracking Events, Users, Settings)
 │   │   ├── dto/                           # Request & Response Data Transfer Objects
-│   │   ├── model/                         # JPA Entities (Shipment, ParcelUnit, Vehicle, Client, Payment, Soa, WeeklyCollection, AppUser, SystemSetting)
-│   │   ├── repository/                    # Spring Data Repositories & Group By Aggregations
+│   │   ├── model/                         # JPA Entities (Shipment, ParcelUnit, Vehicle, Client, Payment, Soa, WeeklyCollection, AppUser, SystemSetting, MobileDeviceBinding)
+│   │   ├── repository/                    # Spring Data Repositories, Group By Aggregations & MobileDeviceBindingRepository
 │   │   └── service/                       # Business Service Contracts & Implementations (impl/)
 │   └── src/main/resources/
-│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V19)
+│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V29)
 │       └── application-dev.properties     # Environment Configuration
 │
 ├── frontend-web/                          # Expo / React Native Web Admin Portal
@@ -112,8 +113,15 @@ logistics/
 │   │   └── theme/                         # Design System Tokens (Colors, Typography, Spacing)
 │   └── package.json
 │
-├── frontend-mobile/                       # Expo / React Native Field Courier Portal
-│   └── src/                               # Camera QR Scanner, Field Actions & Thermal Printer
+├── frontend-mobile/                       # Expo / React Native Mobile Courier Portal
+│   ├── src/
+│   │   ├── app/                           # Expo Router Screens ((auth)/login, change-password, setup-pin, pin; (main)/index, register, printer, scan, tracking-history)
+│   │   ├── components/                    # Common Atoms (Keypad, PinIndicator, PressableScale, MobileHeader, StatusModal)
+│   │   ├── features/                      # Domain Slices (auth, office, field, shipments, printer, scanner, tracking-history)
+│   │   ├── services/                      # Axios Client (client.js) & Hardware-backed SecureStore (secureStore.js)
+│   │   └── theme/                         # Design Tokens (canvas, ink, accent, keypad)
+│   ├── app.json                           # Expo Configuration
+│   └── package.json
 │
 ├── .docs/                                 # Logistics Blueprint & Schema Specifications
 │   └── prototype/                         # Desktop & Mobile Screen Prototypes
@@ -150,6 +158,10 @@ When field staff scan a parcel with their phone, an append-only event is committ
 | Endpoint | Method | Role | Description |
 | :--- | :---: | :---: | :--- |
 | `/api/v1/auth/login` | `POST` | Public | Authenticate user with in-memory rate limiting (5 attempts/60s) and receive JWT |
+| `/api/v1/auth/mobile-login` | `POST` | Public / Staff | Mobile credential login issuing 10-day JWT and 256-bit device binding credentials |
+| `/api/v1/auth/mobile-pin-login` | `POST` | Public / Staff | Fast shift PIN unlock requiring device credentials (`X-Device-Id`, `X-Device-Token`) |
+| `/api/v1/auth/mobile-setup-pin` | `POST` | Authenticated | 4-digit PIN setup/confirmation with session tokenVersion rotation |
+| `/api/v1/auth/mobile-pin-status` | `GET` | Public | Proactive uniform check of bound account PIN configuration |
 | `/api/v1/auth/first-boot-status` | `GET` | Public | Proactively check if primary administrator has been registered |
 | `/api/v1/auth/first-boot-admin` | `POST` | Public | One-time bootstrap registration of primary administrator with company branding |
 | `/api/v1/auth/verify-password` | `POST` | Authenticated | Verify administrator password with rate limiting (5 attempts/60s) |
@@ -213,7 +225,7 @@ docker-compose up -d mysql
 cd backend
 mvn spring-boot:run
 ```
-*API will run at `http://localhost:8080` (Flyway auto-runs all migrations `V1` to `V19` on startup).*
+*API will run at `http://localhost:8080` (Flyway auto-runs all migrations `V1` to `V28` on startup).*
 
 ### 2. Start the Admin Web Dashboard
 ```bash

@@ -10,13 +10,31 @@ import java.util.List;
 
 public interface TrackingService {
 
+    TrackingScanContextResponse getScanContext(String trackingId);
+
     TrackingScanResponse processStatusScan(TrackingScanRequest request, String actingStaffUserId);
 
     List<TrackingScanResponse> processBatchScan(BatchTrackingScanRequest request, String actingStaffUserId);
+
+    OfflineTrackingSyncResponse processOfflineSync(OfflineTrackingSyncRequest request, String actingStaffUserId);
 
     Page<TrackingLogEntryResponse> getTrackingLogs(String search, ParcelStatus status,
                                                   LocalDate startDate, LocalDate endDate,
                                                   Pageable pageable);
 
     TrackingMetricsResponse getTodayTrackingMetrics();
+
+    Page<PersonalTrackingEventResponse> getPersonalTrackingEvents(
+            String actingStaffUserId,
+            String search,
+            ParcelStatus status,
+            Pageable pageable
+    );
+
+    PersonalScanMetricsResponse getPersonalScanMetrics(String actingStaffUserId);
+
+    PersonalParcelHistoryResponse getPersonalParcelHistory(
+            String actingStaffUserId,
+            String trackingId
+    );
 }

@@ -48,6 +48,9 @@ public class UserManagementIntegrationTest {
     @Autowired
     private com.tnl.logistics.repository.WaybillRepository waybillRepository;
 
+    @Autowired
+    private com.tnl.logistics.repository.ClientRepository clientRepository;
+
     @Test
     @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testListUsersAsAdminReturns200WithContent() throws Exception {
@@ -65,9 +68,9 @@ public class UserManagementIntegrationTest {
     }
 
     @Test
-    void testListUsersUnauthenticatedReturns403() throws Exception {
+    void testListUsersUnauthenticatedReturns401() throws Exception {
         mockMvc.perform(get("/api/v1/users").contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -252,7 +255,8 @@ public class UserManagementIntegrationTest {
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + oldToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
     }
 
     @Test
@@ -275,14 +279,23 @@ public class UserManagementIntegrationTest {
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + oldToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
     }
 
     @Test
     @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testDeleteUserWithLinkedRecordsDeactivatesInsteadOfDeletes() throws Exception {
         var staff = appUserRepository.findById("USR-FIELD").orElseThrow();
-        var shipment = shipmentRepository.findAll().get(0);
+        var client = clientRepository.findById("CL-001").orElseGet(() ->
+                clientRepository.save(new com.tnl.logistics.model.Client("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com", com.tnl.logistics.model.ChargeModel.FLAT, true)));
+        var shipment = shipmentRepository.findAll().stream().findFirst().orElseGet(() ->
+                shipmentRepository.save(new com.tnl.logistics.model.Shipment(
+                        "SHP-TEST-LINK", client, "Recipient", "Address", "09170000000", 1,
+                        com.tnl.logistics.model.ChargeModel.FLAT, new java.math.BigDecimal("150.00"),
+                        java.math.BigDecimal.ZERO, new java.math.BigDecimal("150.00"), false,
+                        com.tnl.logistics.model.RegisteredVia.DESKTOP_OFFICE
+                )));
         var payment = new com.tnl.logistics.model.Payment(
                 shipment,
                 new java.math.BigDecimal("150.00"),
@@ -372,7 +385,8 @@ public class UserManagementIntegrationTest {
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", originalToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
 
         var replacementUser = appUserRepository.findById(replacementUserId).orElseThrow();
         String replacementToken = "Bearer " + com.tnl.logistics.config.JwtTokenProvider.generateToken(
@@ -403,7 +417,15 @@ public class UserManagementIntegrationTest {
         String newUserId = objectMapper.readTree(body).get("userId").asText();
         var staff = appUserRepository.findById(newUserId).orElseThrow();
 
-        var shipment = shipmentRepository.findAll().get(0);
+        var client = clientRepository.findById("CL-001").orElseGet(() ->
+                clientRepository.save(new com.tnl.logistics.model.Client("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com", com.tnl.logistics.model.ChargeModel.FLAT, true)));
+        var shipment = shipmentRepository.findAll().stream().findFirst().orElseGet(() ->
+                shipmentRepository.save(new com.tnl.logistics.model.Shipment(
+                        "SHP-TEST-WB", client, "Recipient", "Address", "09170000000", 1,
+                        com.tnl.logistics.model.ChargeModel.FLAT, new java.math.BigDecimal("150.00"),
+                        java.math.BigDecimal.ZERO, new java.math.BigDecimal("150.00"), false,
+                        com.tnl.logistics.model.RegisteredVia.DESKTOP_OFFICE
+                )));
         var waybill = new com.tnl.logistics.model.Waybill(
                 "WB-TEST-999",
                 shipment,
@@ -502,7 +524,8 @@ public class UserManagementIntegrationTest {
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + officeToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
     }
 
     @Test
@@ -528,7 +551,8 @@ public class UserManagementIntegrationTest {
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + officeToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
     }
 
     @Test

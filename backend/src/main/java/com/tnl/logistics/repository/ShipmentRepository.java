@@ -29,14 +29,16 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
            "(:search IS NULL OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(s.recipientName) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(s.recipientContact) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR LOWER(c.name) LIKE LOWER(CONCAT('%', :search, '%')))")
+           "OR LOWER(c.name) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "OR EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND LOWER(pu.trackingId) LIKE LOWER(CONCAT('%', :search, '%'))))")
     Page<Shipment> searchShipments(@Param("search") String search, Pageable pageable);
 
     @Query(value = "SELECT s FROM Shipment s JOIN FETCH s.client c WHERE " +
            "(:search IS NULL OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(s.recipientName) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(s.recipientContact) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR LOWER(c.name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+           "OR LOWER(c.name) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "OR EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND LOWER(pu.trackingId) LIKE LOWER(CONCAT('%', :search, '%')))) " +
            "AND (:paymentFilter IS NULL " +
            "  OR (:paymentFilter = 'PAID' AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) >= s.totalAmount) " +
            "  OR (:paymentFilter = 'UNPAID' AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) = 0) " +
@@ -48,13 +50,17 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
            "  OR (:statusFilter = 'ARRIVED_AT_TNL' AND EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.currentStatus = com.tnl.logistics.model.ParcelStatus.ARRIVED_AT_TNL) AND NOT EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.currentStatus IN (com.tnl.logistics.model.ParcelStatus.LOADED_TO_HAULER, com.tnl.logistics.model.ParcelStatus.COMPLETED))) " +
            "  OR (:statusFilter = 'LOADED_TO_HAULER' AND EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.currentStatus = com.tnl.logistics.model.ParcelStatus.LOADED_TO_HAULER) AND NOT EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.currentStatus = com.tnl.logistics.model.ParcelStatus.COMPLETED)) " +
            "  OR (:statusFilter = 'COMPLETED' AND EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.currentStatus = com.tnl.logistics.model.ParcelStatus.COMPLETED))) " +
+           "AND (:labelFilter IS NULL " +
+           "  OR (:labelFilter = 'NEEDS_LABEL' AND EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.labelStatus = com.tnl.logistics.model.LabelStatus.NOT_PRINTED)) " +
+           "  OR (:labelFilter = 'PRINTED' AND NOT EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.labelStatus = com.tnl.logistics.model.LabelStatus.NOT_PRINTED))) " +
            "AND (:vehicleFilter IS NULL " +
            "  OR EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND (pu.currentVehicle.vehicleId = :vehicleFilter OR EXISTS (SELECT te FROM TrackingEvent te WHERE te.parcelUnit = pu AND te.vehicle.vehicleId = :vehicleFilter))))",
            countQuery = "SELECT COUNT(s) FROM Shipment s JOIN s.client c WHERE " +
            "(:search IS NULL OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(s.recipientName) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(s.recipientContact) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR LOWER(c.name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+           "OR LOWER(c.name) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "OR EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND LOWER(pu.trackingId) LIKE LOWER(CONCAT('%', :search, '%')))) " +
            "AND (:paymentFilter IS NULL " +
            "  OR (:paymentFilter = 'PAID' AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) >= s.totalAmount) " +
            "  OR (:paymentFilter = 'UNPAID' AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) = 0) " +
@@ -66,6 +72,9 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
            "  OR (:statusFilter = 'ARRIVED_AT_TNL' AND EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.currentStatus = com.tnl.logistics.model.ParcelStatus.ARRIVED_AT_TNL) AND NOT EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.currentStatus IN (com.tnl.logistics.model.ParcelStatus.LOADED_TO_HAULER, com.tnl.logistics.model.ParcelStatus.COMPLETED))) " +
            "  OR (:statusFilter = 'LOADED_TO_HAULER' AND EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.currentStatus = com.tnl.logistics.model.ParcelStatus.LOADED_TO_HAULER) AND NOT EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.currentStatus = com.tnl.logistics.model.ParcelStatus.COMPLETED)) " +
            "  OR (:statusFilter = 'COMPLETED' AND EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.currentStatus = com.tnl.logistics.model.ParcelStatus.COMPLETED))) " +
+           "AND (:labelFilter IS NULL " +
+           "  OR (:labelFilter = 'NEEDS_LABEL' AND EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.labelStatus = com.tnl.logistics.model.LabelStatus.NOT_PRINTED)) " +
+           "  OR (:labelFilter = 'PRINTED' AND NOT EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.labelStatus = com.tnl.logistics.model.LabelStatus.NOT_PRINTED))) " +
            "AND (:vehicleFilter IS NULL " +
            "  OR EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND (pu.currentVehicle.vehicleId = :vehicleFilter OR EXISTS (SELECT te FROM TrackingEvent te WHERE te.parcelUnit = pu AND te.vehicle.vehicleId = :vehicleFilter))))")
     Page<Shipment> searchShipmentsWithFilters(
@@ -73,6 +82,7 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
             @Param("statusFilter") String statusFilter,
             @Param("paymentFilter") String paymentFilter,
             @Param("vehicleFilter") String vehicleFilter,
+            @Param("labelFilter") String labelFilter,
             Pageable pageable);
 
     @Query("SELECT s.client.clientId, COUNT(s), COALESCE(SUM(s.quantity), 0), COALESCE(SUM(s.totalAmount), 0) " +

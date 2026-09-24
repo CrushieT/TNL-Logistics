@@ -65,4 +65,10 @@ frontend-mobile/.expo-shared/
 PR_DRAFT.md
 .review
 .review/
+.docs-private/
 .docs-private
+frontend-mobile/android/
+frontend-mobile/credentials.json
+frontend-mobile/*.jks
+frontend-mobile/*.keystore
+frontend-mobile/credentials

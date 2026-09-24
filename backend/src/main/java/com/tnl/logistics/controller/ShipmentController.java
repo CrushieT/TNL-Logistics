@@ -24,6 +24,8 @@ import java.util.List;
 @RequestMapping("/api/v1/shipments")
 public class ShipmentController {
 
+    private static final int MAX_PAGE_SIZE = 100;
+
     private final ShipmentService shipmentService;
 
     public ShipmentController(ShipmentService shipmentService) {
@@ -50,10 +52,13 @@ public class ShipmentController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String paymentStatus,
-            @RequestParam(required = false) String vehicleId
+            @RequestParam(required = false) String vehicleId,
+            @RequestParam(required = false) String labelStatus
     ) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "dateRegistered"));
-        Page<ShipmentSummaryResponse> shipments = shipmentService.getShipments(search, status, paymentStatus, vehicleId, pageable);
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(MAX_PAGE_SIZE, Math.max(1, size));
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "dateRegistered"));
+        Page<ShipmentSummaryResponse> shipments = shipmentService.getShipments(search, status, paymentStatus, vehicleId, labelStatus, pageable);
         return ResponseEntity.ok(shipments);
     }
 
@@ -68,16 +73,20 @@ public class ShipmentController {
     @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
     public ResponseEntity<Void> recordLabelPrint(
             @PathVariable String shipmentId,
-            @RequestBody(required = false) PrintLabelRequest request
+            @Valid @RequestBody PrintLabelRequest request
     ) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
             throw new AccessDeniedException("Authenticated user context is required");
         }
         String actingStaffUserId = auth.getName();
-        List<String> packageIds = request != null ? request.getPackageIds() : null;
-        String printerId = request != null ? request.getPrinterId() : null;
-        shipmentService.recordLabelPrint(shipmentId, packageIds, actingStaffUserId, printerId);
+        shipmentService.recordLabelPrint(
+                request.getPrintJobId(),
+                shipmentId,
+                request.getPackageIds(),
+                actingStaffUserId,
+                request.getPrinterId()
+        );
         return ResponseEntity.ok().build();
     }
 }

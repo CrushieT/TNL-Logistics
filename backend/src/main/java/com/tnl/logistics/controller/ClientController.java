@@ -42,7 +42,7 @@ public class ClientController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ClientDetailResponse> getClientById(@PathVariable("id") String id) {
         return ResponseEntity.ok(clientService.getClientById(id));
     }
@@ -54,7 +54,7 @@ public class ClientController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ClientSummaryResponse> updateClient(
             @PathVariable("id") String id,
             @Valid @RequestBody ClientCreateRequest request) {
@@ -62,7 +62,7 @@ public class ClientController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteClient(@PathVariable("id") String id) {
         clientService.deleteClient(id);
         return ResponseEntity.noContent().build();

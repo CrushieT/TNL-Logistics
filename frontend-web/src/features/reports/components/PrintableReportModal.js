@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { colors, fonts } from '../../../theme';
 
 export default function PrintableReportModal({ visible, onClose, reportData, startDate, endDate }) {
@@ -20,9 +20,79 @@ export default function PrintableReportModal({ visible, onClose, reportData, sta
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+      <View nativeID="report-print-backdrop" style={styles.backdrop}>
+        {Platform.OS === 'web' && (
+          <style
+            dangerouslySetInnerHTML={{
+              __html: `
+                @page {
+                  size: A4 portrait;
+                  margin: 12mm 14mm 12mm 14mm !important;
+                }
+                @media print {
+                  * {
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                  }
+                  #report-print-toolbar,
+                  div[id="report-print-toolbar"],
+                  button,
+                  div[style*="position: fixed"] {
+                    display: none !important;
+                    visibility: hidden !important;
+                  }
+                  html, body, #root, #__next,
+                  #report-print-scroll,
+                  div[id="report-print-scroll"],
+                  div[style*="overflow"],
+                  div[class*="r-overflow"] {
+                    overflow: visible !important;
+                    height: auto !important;
+                    min-height: 0 !important;
+                    max-height: none !important;
+                    background-color: #FFFFFF !important;
+                    background: #FFFFFF !important;
+                  }
+                  #report-print-backdrop,
+                  div[id="report-print-backdrop"] {
+                    position: static !important;
+                    background: transparent !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                    display: block !important;
+                    width: 100% !important;
+                    height: auto !important;
+                  }
+                  #printable-report-sheet,
+                  div[id="printable-report-sheet"] {
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    min-height: 0 !important;
+                    box-shadow: none !important;
+                    border: none !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                    background: #FFFFFF !important;
+                  }
+                  div[class*="tableRow"],
+                  div[class*="kpiGrid"],
+                  #report-footer-signatures,
+                  div[id="report-footer-signatures"] {
+                    break-inside: avoid !important;
+                    page-break-inside: avoid !important;
+                  }
+                  div[class*="tableHeader"] {
+                    break-after: avoid !important;
+                    page-break-after: avoid !important;
+                  }
+                }
+              `,
+            }}
+          />
+        )}
+
         {/* Floating Action Controls (Hidden during print) */}
-        <View style={styles.actionToolbar}>
+        <View nativeID="report-print-toolbar" style={styles.actionToolbar}>
           <TouchableOpacity style={styles.printActionBtn} onPress={handleBrowserPrint} activeOpacity={0.8}>
             <Text style={styles.printActionText}>Print Document (A4)</Text>
           </TouchableOpacity>
@@ -32,8 +102,8 @@ export default function PrintableReportModal({ visible, onClose, reportData, sta
         </View>
 
         {/* Printable Document Sheet */}
-        <ScrollView contentContainerStyle={styles.scrollWrapper}>
-          <View style={styles.printSheet}>
+        <ScrollView nativeID="report-print-scroll" contentContainerStyle={styles.scrollWrapper}>
+          <View nativeID="printable-report-sheet" style={styles.printSheet}>
             {/* Letterhead */}
             <View style={styles.letterhead}>
               <View>
@@ -79,7 +149,7 @@ export default function PrintableReportModal({ visible, onClose, reportData, sta
 
             {/* Client Breakdown Section */}
             <Text style={styles.sectionTitle}>CLIENT REVENUE & CHARGES STATEMENT</Text>
-            <View style={styles.table}>
+            <View nativeID="report-client-table" style={styles.table}>
               <View style={styles.tableHeader}>
                 <Text style={[styles.th, { flex: 3 }]}>CLIENT</Text>
                 <Text style={[styles.th, { flex: 1.5, textAlign: 'right' }]}>SHIPMENTS</Text>
@@ -87,7 +157,7 @@ export default function PrintableReportModal({ visible, onClose, reportData, sta
                 <Text style={[styles.th, { flex: 2, textAlign: 'right' }]}>PAID</Text>
                 <Text style={[styles.th, { flex: 2, textAlign: 'right' }]}>BALANCE</Text>
               </View>
-              {clientRevenue.slice(0, 15).map((c, i) => (
+              {clientRevenue.map((c, i) => (
                 <View key={c.clientId || i} style={styles.tableRow}>
                   <Text style={[styles.td, { flex: 3, fontWeight: '700' }]}>{c.clientName}</Text>
                   <Text style={[styles.td, { flex: 1.5, textAlign: 'right', fontFamily: fonts.mono }]}>
@@ -110,14 +180,14 @@ export default function PrintableReportModal({ visible, onClose, reportData, sta
             {collectionItems.length > 0 && (
               <>
                 <Text style={styles.sectionTitle}>WEEKLY COLLECTION CYCLE STATUS</Text>
-                <View style={styles.table}>
+                <View nativeID="report-collection-table" style={styles.table}>
                   <View style={styles.tableHeader}>
                     <Text style={[styles.th, { flex: 3 }]}>CLIENT</Text>
                     <Text style={[styles.th, { flex: 1.5, textAlign: 'center' }]}>SHIPMENTS</Text>
                     <Text style={[styles.th, { flex: 2, textAlign: 'right' }]}>CYCLE CHARGES</Text>
                     <Text style={[styles.th, { flex: 2, textAlign: 'right' }]}>CYCLE BALANCE</Text>
                   </View>
-                  {collectionItems.slice(0, 10).map((item, idx) => (
+                  {collectionItems.map((item, idx) => (
                     <View key={item.clientId || idx} style={styles.tableRow}>
                       <Text style={[styles.td, { flex: 3, fontWeight: '600' }]}>{item.clientName}</Text>
                       <Text style={[styles.td, { flex: 1.5, textAlign: 'center', fontFamily: fonts.mono }]}>
@@ -136,7 +206,7 @@ export default function PrintableReportModal({ visible, onClose, reportData, sta
             )}
 
             {/* Official Footer Signature Block */}
-            <View style={styles.footerSignatureBlock}>
+            <View nativeID="report-footer-signatures" style={styles.footerSignatureBlock}>
               <View style={styles.signatureBox}>
                 <View style={styles.signatureLine} />
                 <Text style={styles.signatureRole}>Prepared By (Operations / Billing)</Text>

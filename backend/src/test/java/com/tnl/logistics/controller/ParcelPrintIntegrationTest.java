@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -54,6 +55,9 @@ public class ParcelPrintIntegrationTest {
     private PrintEventRepository printEventRepository;
 
     @Autowired
+    private PrintAuditJobRepository printAuditJobRepository;
+
+    @Autowired
     private WaybillRepository waybillRepository;
 
     @Autowired
@@ -67,6 +71,7 @@ public class ParcelPrintIntegrationTest {
     @BeforeEach
     public void setUp() {
         printEventRepository.deleteAll();
+        printAuditJobRepository.deleteAll();
         waybillRepository.deleteAll();
         trackingEventRepository.deleteAll();
         paymentRepository.deleteAll();
@@ -135,7 +140,7 @@ public class ParcelPrintIntegrationTest {
         String shipmentId = created.getShipmentId();
         String trackingId = created.getTrackingIds().get(0);
 
-        PrintLabelRequest printRequest = new PrintLabelRequest(List.of(trackingId), "ZEBRA-GK420D");
+        PrintLabelRequest printRequest = new PrintLabelRequest(UUID.randomUUID(), List.of(trackingId), "ZEBRA-GK420D");
 
         mockMvc.perform(post("/api/v1/shipments/" + shipmentId + "/labels/print")
                         .header("Authorization", officeToken)
@@ -177,14 +182,14 @@ public class ParcelPrintIntegrationTest {
         String shipmentId = created.getShipmentId();
         String trackingId = created.getTrackingIds().get(0);
 
-        PrintLabelRequest initialRequest = new PrintLabelRequest(List.of(trackingId), "ZEBRA-GK420D");
+        PrintLabelRequest initialRequest = new PrintLabelRequest(UUID.randomUUID(), List.of(trackingId), "ZEBRA-GK420D");
         mockMvc.perform(post("/api/v1/shipments/" + shipmentId + "/labels/print")
                         .header("Authorization", officeToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(initialRequest)))
                 .andExpect(status().isOk());
 
-        PrintLabelRequest reprintRequest = new PrintLabelRequest(List.of(trackingId), "HP-DESKJET-01");
+        PrintLabelRequest reprintRequest = new PrintLabelRequest(UUID.randomUUID(), List.of(trackingId), "HP-DESKJET-01");
         mockMvc.perform(post("/api/v1/shipments/" + shipmentId + "/labels/print")
                         .header("Authorization", officeToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -218,6 +223,84 @@ public class ParcelPrintIntegrationTest {
     }
 
     @Test
+    public void testExactPrintJobReplayIsIdempotent() throws Exception {
+        ShipmentResponse created = createSampleShipment();
+        String trackingId = created.getTrackingIds().get(0);
+        UUID printJobId = UUID.randomUUID();
+        PrintLabelRequest request = new PrintLabelRequest(printJobId, List.of(trackingId), "SYSTEM-PDF");
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mockMvc.perform(post("/api/v1/shipments/" + created.getShipmentId() + "/labels/print")
+                            .header("Authorization", officeToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk());
+        }
+
+        ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+        assertEquals(LabelStatus.PRINTED, parcel.getLabelStatus());
+        assertEquals(0, parcel.getReprintCount());
+        assertEquals(1, printEventRepository
+                .findByParcelUnit_TrackingIdOrderByPrintTimestampDescPrintIdDesc(trackingId).size());
+        assertTrue(printAuditJobRepository.existsById(printJobId.toString()));
+    }
+
+    @Test
+    public void testPrintJobIdReuseWithChangedRequestReturnsConflict() throws Exception {
+        ShipmentResponse created = createSampleShipment();
+        String trackingId = created.getTrackingIds().get(0);
+        UUID printJobId = UUID.randomUUID();
+
+        PrintLabelRequest firstRequest = new PrintLabelRequest(printJobId, List.of(trackingId), "SYSTEM-PDF");
+        mockMvc.perform(post("/api/v1/shipments/" + created.getShipmentId() + "/labels/print")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(firstRequest)))
+                .andExpect(status().isOk());
+
+        PrintLabelRequest alteredRequest = new PrintLabelRequest(printJobId, List.of(trackingId), "OTHER-PRINTER");
+        mockMvc.perform(post("/api/v1/shipments/" + created.getShipmentId() + "/labels/print")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(alteredRequest)))
+                .andExpect(status().isConflict());
+
+        ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+        assertEquals(0, parcel.getReprintCount());
+        assertEquals(1, printEventRepository
+                .findByParcelUnit_TrackingIdOrderByPrintTimestampDescPrintIdDesc(trackingId).size());
+    }
+
+    @Test
+    public void testPrintAuditRequiresJobId() throws Exception {
+        ShipmentResponse created = createSampleShipment();
+
+        mockMvc.perform(post("/api/v1/shipments/" + created.getShipmentId() + "/labels/print")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"packageIds\":[\"" + created.getTrackingIds().get(0) + "\"]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testFieldStaffCannotRecordPrintAudit() throws Exception {
+        ShipmentResponse created = createSampleShipment();
+        String fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
+        PrintLabelRequest request = new PrintLabelRequest(
+                UUID.randomUUID(), created.getTrackingIds(), "SYSTEM-PDF"
+        );
+
+        mockMvc.perform(post("/api/v1/shipments/" + created.getShipmentId() + "/labels/print")
+                        .header("Authorization", fieldToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden());
+
+        assertTrue(printEventRepository.findAll().isEmpty());
+        assertTrue(printAuditJobRepository.findAll().isEmpty());
+    }
+
+    @Test
     public void testLegacyPrintedParcelFallbackResolvesStaff() throws Exception {
         ShipmentResponse created = createSampleShipment();
         String trackingId = created.getTrackingIds().get(0);
@@ -247,9 +330,12 @@ public class ParcelPrintIntegrationTest {
         ShipmentResponse shipment2 = createSampleShipment();
 
         String shipment1Id = shipment1.getShipmentId();
+        String shipment1TrackingId = shipment1.getTrackingIds().get(0);
         String shipment2TrackingId = shipment2.getTrackingIds().get(0);
 
-        PrintLabelRequest crossPrintRequest = new PrintLabelRequest(List.of(shipment2TrackingId), "ZEBRA-GK420D");
+        PrintLabelRequest crossPrintRequest = new PrintLabelRequest(
+                UUID.randomUUID(), List.of(shipment1TrackingId, shipment2TrackingId), "ZEBRA-GK420D"
+        );
 
         MvcResult result = mockMvc.perform(post("/api/v1/shipments/" + shipment1Id + "/labels/print")
                         .header("Authorization", officeToken)
@@ -266,6 +352,10 @@ public class ParcelPrintIntegrationTest {
         assertEquals(LabelStatus.NOT_PRINTED, shipment2Parcel.getLabelStatus());
         assertEquals(0, shipment2Parcel.getReprintCount());
         assertEquals(0, printEventRepository.findByParcelUnit_TrackingIdOrderByPrintTimestampDescPrintIdDesc(shipment2TrackingId).size());
+        ParcelUnit shipment1Parcel = parcelUnitRepository.findById(shipment1TrackingId).orElseThrow();
+        assertEquals(LabelStatus.NOT_PRINTED, shipment1Parcel.getLabelStatus());
+        assertEquals(0, printEventRepository.findByParcelUnit_TrackingIdOrderByPrintTimestampDescPrintIdDesc(shipment1TrackingId).size());
+        assertEquals(0, printAuditJobRepository.count());
     }
 
     @Test
@@ -273,7 +363,7 @@ public class ParcelPrintIntegrationTest {
         ShipmentResponse shipment = createSampleShipment();
         String shipmentId = shipment.getShipmentId();
 
-        PrintLabelRequest nonExistentRequest = new PrintLabelRequest(List.of("TRK-9999-999999"), "ZEBRA-GK420D");
+        PrintLabelRequest nonExistentRequest = new PrintLabelRequest(UUID.randomUUID(), List.of("TRK-9999-999999"), "ZEBRA-GK420D");
 
         MvcResult result = mockMvc.perform(post("/api/v1/shipments/" + shipmentId + "/labels/print")
                         .header("Authorization", officeToken)
@@ -288,7 +378,7 @@ public class ParcelPrintIntegrationTest {
 
     @Test
     public void testRecordLabelPrintRejectsNonExistentShipmentId() throws Exception {
-        PrintLabelRequest printRequest = new PrintLabelRequest(List.of("TRK-0000-000001"), "ZEBRA-GK420D");
+        PrintLabelRequest printRequest = new PrintLabelRequest(UUID.randomUUID(), List.of("TRK-0000-000001"), "ZEBRA-GK420D");
 
         MvcResult result = mockMvc.perform(post("/api/v1/shipments/SHP-9999-999/labels/print")
                         .header("Authorization", officeToken)
@@ -330,7 +420,7 @@ public class ParcelPrintIntegrationTest {
         String trackingId2 = created.getTrackingIds().get(1);
 
         // Selectively print only parcel 1
-        PrintLabelRequest selectiveRequest = new PrintLabelRequest(List.of(trackingId1), "ZEBRA-GK420D");
+        PrintLabelRequest selectiveRequest = new PrintLabelRequest(UUID.randomUUID(), List.of(trackingId1), "ZEBRA-GK420D");
         mockMvc.perform(post("/api/v1/shipments/" + shipmentId + "/labels/print")
                         .header("Authorization", officeToken)
                         .contentType(MediaType.APPLICATION_JSON)

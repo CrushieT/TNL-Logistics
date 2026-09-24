@@ -1,35 +1,138 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
+import { evaluateSessionValidationOutcome, isEligibleAdminToken } from './sessionCore.mjs';
 
 const TOKEN_KEY = 'tnl_admin_token';
 const USER_KEY = 'tnl_user_info';
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
+let memoryToken = null;
+let memoryUser = null;
+let sessionGeneration = 0;
+const sessionInvalidationListeners = new Set();
+const sessionChangeListeners = new Set();
+let isAdminSessionVerified = false;
+
+export function getSessionGeneration() {
+  return sessionGeneration;
+}
+
+export function incrementSessionGeneration() {
+  sessionGeneration += 1;
+  return sessionGeneration;
+}
+
+export function onSessionInvalidated(callback) {
+  sessionInvalidationListeners.add(callback);
+  return () => sessionInvalidationListeners.delete(callback);
+}
+
+export function onSessionChanged(callback) {
+  sessionChangeListeners.add(callback);
+  return () => sessionChangeListeners.delete(callback);
+}
+
+function notifySessionInvalidated() {
+  sessionInvalidationListeners.forEach((callback) => {
+    try {
+      callback();
+    } catch (err) {
+      // Ignore subscriber execution error
+    }
+  });
+}
+
+function notifySessionChanged() {
+  sessionChangeListeners.forEach((callback) => {
+    try {
+      callback();
+    } catch (err) {
+      // Ignore subscriber execution error
+    }
+  });
+}
+
+function clearIneligibleSession() {
+  isAdminSessionVerified = false;
+  clearToken();
+  clearCurrentUser();
+  notifySessionChanged();
+}
+
+export function decodeJwtPayload(token) {
+  if (!token || typeof token !== 'string') return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (err) {
+    return null;
+  }
+}
+
+export function isTokenExpired(token) {
+  const parsed = decodeJwtPayload(token);
+  if (!parsed || !parsed.exp) return true;
+  return Date.now() >= (parsed.exp * 1000 - 30000);
+}
+
 export function getToken() {
+  if (memoryToken) {
+    if (isEligibleAdminToken(memoryToken)) {
+      return memoryToken;
+    }
+    clearIneligibleSession();
+    return null;
+  }
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-    return window.localStorage.getItem(TOKEN_KEY);
+    const stored = window.localStorage.getItem(TOKEN_KEY);
+    if (stored) {
+      if (isEligibleAdminToken(stored)) {
+        memoryToken = stored;
+        return stored;
+      }
+      clearIneligibleSession();
+      return null;
+    }
   }
   return null;
 }
 
 export function setToken(token) {
+  memoryToken = token;
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-    window.localStorage.setItem(TOKEN_KEY, token);
+    if (token) {
+      window.localStorage.setItem(TOKEN_KEY, token);
+    } else {
+      window.localStorage.removeItem(TOKEN_KEY);
+    }
   }
 }
 
 export function clearToken() {
+  memoryToken = null;
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
     window.localStorage.removeItem(TOKEN_KEY);
   }
 }
 
 export function getCurrentUser() {
+  if (memoryUser) {
+    return memoryUser;
+  }
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
     const raw = window.localStorage.getItem(USER_KEY);
     if (!raw) return null;
     try {
-      return JSON.parse(raw);
+      memoryUser = JSON.parse(raw);
+      return memoryUser;
     } catch {
       return null;
     }
@@ -38,48 +141,90 @@ export function getCurrentUser() {
 }
 
 export function setCurrentUser(user) {
+  memoryUser = user;
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-    window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+    if (user) {
+      window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+    } else {
+      window.localStorage.removeItem(USER_KEY);
+    }
   }
 }
 
 export function clearCurrentUser() {
+  memoryUser = null;
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
     window.localStorage.removeItem(USER_KEY);
   }
 }
 
-export function isTokenExpired(token) {
-  if (!token || typeof token !== 'string') return true;
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return true;
-    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
-    );
-    const parsed = JSON.parse(jsonPayload);
-    if (!parsed.exp) return false;
-    return Date.now() >= (parsed.exp * 1000 - 30000);
-  } catch (err) {
-    return true;
-  }
-}
-
 export function isAuthenticated() {
   const token = getToken();
-  return Boolean(token && !isTokenExpired(token));
+  return Boolean(token && isEligibleAdminToken(token));
 }
 
 export async function ensureAuthenticated() {
   const token = getToken();
-  if (!token || isTokenExpired(token)) {
+  if (!token || !isEligibleAdminToken(token)) {
     return null;
   }
   return token;
+}
+
+export function hasVerifiedAdminSession() {
+  return isAdminSessionVerified && isAuthenticated();
+}
+
+export function invalidateSession() {
+  incrementSessionGeneration();
+  isAdminSessionVerified = false;
+  clearToken();
+  clearCurrentUser();
+  notifySessionInvalidated();
+  notifySessionChanged();
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+    if (!window.location.pathname.startsWith('/login')) {
+      const redirectPath = encodeURIComponent(window.location.pathname + window.location.search);
+      window.location.href = `/login?redirect=${redirectPath}`;
+    }
+  }
+}
+
+export function logout() {
+  invalidateSession();
+}
+
+export function handleSlidingTokenRenewal(renewedToken, requestToken, requestGeneration) {
+  if (!renewedToken || requestGeneration !== sessionGeneration) {
+    return;
+  }
+  const activeToken = getToken();
+  if (!activeToken) {
+    return;
+  }
+  const activePayload = decodeJwtPayload(activeToken);
+  const renewedPayload = decodeJwtPayload(renewedToken);
+  const requestPayload = decodeJwtPayload(requestToken);
+
+  if (!activePayload || !renewedPayload || !renewedPayload.exp) {
+    return;
+  }
+
+  // Ensure renewed token matches identity, version, and original auth_time of active session
+  if (
+    renewedPayload.sub !== activePayload.sub ||
+    renewedPayload.uid !== activePayload.uid ||
+    renewedPayload.role !== activePayload.role ||
+    renewedPayload.ver !== activePayload.ver ||
+    (requestPayload && renewedPayload.auth_time !== requestPayload.auth_time)
+  ) {
+    return;
+  }
+
+  // Monotonic expiration advance
+  if (renewedPayload.exp > activePayload.exp) {
+    setToken(renewedToken);
+  }
 }
 
 export async function login(username, password) {
@@ -90,10 +235,11 @@ export async function login(username, password) {
 
   const { token, userId, role, mustChangePassword } = response.data;
 
-  if (role === 'FIELD_STAFF') {
-    throw new Error('Field staff accounts must use the mobile application.');
+  if (role !== 'ADMIN' || !isEligibleAdminToken(token)) {
+    throw new Error('Staff accounts must use the mobile application.');
   }
 
+  incrementSessionGeneration();
   setToken(token);
   setCurrentUser({
     userId,
@@ -101,6 +247,8 @@ export async function login(username, password) {
     role,
     mustChangePassword,
   });
+  isAdminSessionVerified = true;
+  notifySessionChanged();
 
   return response.data;
 }
@@ -110,7 +258,7 @@ export async function checkFirstBootStatus() {
     const response = await axios.get(`${BASE_URL}/auth/first-boot-status`);
     return Boolean(response.data?.isFirstBoot);
   } catch (error) {
-    return false;
+    return null;
   }
 }
 
@@ -137,6 +285,11 @@ export async function registerFirstBootAdmin({
 
   const { token, userId, role, mustChangePassword } = response.data;
 
+  if (role !== 'ADMIN' || !isEligibleAdminToken(token)) {
+    throw new Error('First-boot setup did not return an administrator session.');
+  }
+
+  incrementSessionGeneration();
   setToken(token);
   setCurrentUser({
     userId,
@@ -145,16 +298,10 @@ export async function registerFirstBootAdmin({
     fullName,
     mustChangePassword,
   });
+  isAdminSessionVerified = true;
+  notifySessionChanged();
 
   return response.data;
-}
-
-export function logout() {
-  clearToken();
-  clearCurrentUser();
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
-    window.location.href = '/login';
-  }
 }
 
 const apiClient = axios.create({
@@ -165,33 +312,53 @@ const apiClient = axios.create({
   },
 });
 
-// Attach JWT automatically on every request.
+// Attach JWT and session generation automatically on every request.
 apiClient.interceptors.request.use((config) => {
   const token = getToken();
-  if (token && !isTokenExpired(token)) {
+  if (token && isEligibleAdminToken(token)) {
     config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
+    if (!config.headers.Authorization) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    if (!config.metadata) {
+      config.metadata = {
+        generation: sessionGeneration,
+        token,
+      };
+    }
   }
   return config;
 });
 
-// Central 401 & 403 handling.
+// Central 401 & 403 handling with sliding session renewal and stale 401 suppression.
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const renewedToken = response?.headers?.['x-renewed-token'];
+    const reqGen = response?.config?.metadata?.generation;
+    const reqToken = response?.config?.metadata?.token;
+    if (renewedToken && reqGen !== undefined && reqToken) {
+      handleSlidingTokenRenewal(renewedToken, reqToken, reqGen);
+    }
+    return response;
+  },
   (error) => {
     const status = error?.response?.status;
     const requestUrl = error?.config?.url || '';
 
-    // Ignore 401 from the login endpoint itself so login error messages can render.
     if (status === 401 && !requestUrl.includes('/auth/login')) {
-      clearToken();
-      clearCurrentUser();
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
-        if (!window.location.pathname.startsWith('/login')) {
-          const redirectPath = encodeURIComponent(window.location.pathname + window.location.search);
-          window.location.href = `/login?redirect=${redirectPath}`;
-        }
+      const reqGen = error?.config?.metadata?.generation;
+      const reqToken = error?.config?.metadata?.token;
+      const activeToken = getToken();
+
+      // Suppress stale 401s from older generations or superseded tokens while active token is valid
+      if (
+        (reqGen !== undefined && reqGen !== sessionGeneration) ||
+        (reqToken && activeToken && reqToken !== activeToken && !isTokenExpired(activeToken))
+      ) {
+        return Promise.reject(error);
       }
+
+      invalidateSession();
     }
 
     if (status === 403 && error?.response?.data?.code === 'PASSWORD_CHANGE_REQUIRED') {
@@ -209,16 +376,40 @@ apiClient.interceptors.response.use(
   }
 );
 
-export async function validateSession() {
+export async function validateSession(isRetry = false) {
   const token = getToken();
-  if (!token || isTokenExpired(token)) {
-    clearToken();
-    clearCurrentUser();
-    return false;
+  if (!token || !isEligibleAdminToken(token)) {
+    clearIneligibleSession();
+    return 'INVALID';
   }
+
+  const requestGeneration = sessionGeneration;
+  const requestToken = token;
+
   try {
-    const { data } = await apiClient.get('/auth/me');
-    if (data && data.username) {
+    const { data } = await apiClient.get('/auth/me', {
+      headers: {
+        Authorization: `Bearer ${requestToken}`,
+      },
+      metadata: {
+        generation: requestGeneration,
+        token: requestToken,
+      },
+    });
+
+    const activeToken = getToken();
+    const action = evaluateSessionValidationOutcome({
+      requestGeneration,
+      currentGeneration: sessionGeneration,
+      requestToken,
+      activeToken,
+      isSuccess: Boolean(data && data.username),
+      isAuthorized: data?.role === 'ADMIN',
+      is401: false,
+      isRetry,
+    });
+
+    if (action === 'APPLY') {
       setCurrentUser({
         userId: data.userId,
         username: data.username,
@@ -226,15 +417,46 @@ export async function validateSession() {
         fullName: data.fullName,
         mustChangePassword: data.mustChangePassword,
       });
-      return true;
+      isAdminSessionVerified = true;
+      notifySessionChanged();
+      return 'VALID';
     }
-    clearToken();
-    clearCurrentUser();
-    return false;
+
+    if (action === 'RETRY' && !isRetry) {
+      return await validateSession(true);
+    }
+
+    if (action === 'INVALIDATE') {
+      invalidateSession();
+      return 'INVALID';
+    }
+
+    return 'UNVERIFIED';
   } catch (error) {
-    clearToken();
-    clearCurrentUser();
-    return false;
+    const status = error?.response?.status;
+    const is401 = status === 401;
+    const activeToken = getToken();
+
+    const action = evaluateSessionValidationOutcome({
+      requestGeneration,
+      currentGeneration: sessionGeneration,
+      requestToken,
+      activeToken,
+      isSuccess: false,
+      is401,
+      isRetry,
+    });
+
+    if (action === 'RETRY' && !isRetry) {
+      return await validateSession(true);
+    }
+
+    if (action === 'INVALIDATE') {
+      invalidateSession();
+      return 'INVALID';
+    }
+
+    return 'UNVERIFIED';
   }
 }
 
@@ -245,7 +467,13 @@ export async function changePassword(oldPassword, newPassword) {
   });
 
   if (response.data?.token) {
+    if (response.data?.role !== 'ADMIN' || !isEligibleAdminToken(response.data.token)) {
+      invalidateSession();
+      throw new Error('Password change did not return an administrator session.');
+    }
+    incrementSessionGeneration();
     setToken(response.data.token);
+    isAdminSessionVerified = true;
   }
 
   const currentUser = getCurrentUser();
@@ -258,6 +486,8 @@ export async function changePassword(oldPassword, newPassword) {
       userId: response.data?.userId || currentUser.userId,
     });
   }
+
+  notifySessionChanged();
 
   return response.data;
 }

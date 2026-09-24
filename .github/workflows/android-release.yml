@@ -1,0 +1,133 @@
+name: Android Release APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-release-apk:
+    name: Build Signed Android APK
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend-mobile
+
+    env:
+      EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend-mobile/package-lock.json
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android Build Dependencies
+        run: |
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
+
+      - name: Validate Release Configuration
+        run: |
+          test -n "$EXPO_PUBLIC_API_URL"
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_KEY_ALIAS"
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_PASSWORD"
+
+      - name: Install Dependencies
+        run: npm ci --include=dev
+
+      - name: Generate Android Project
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Verify Expo Autolinking
+        working-directory: frontend-mobile/android
+        run: |
+          expo_android_directory="$PWD/../node_modules/expo/android"
+          node --version
+          node --no-warnings --eval "require('expo/bin/autolinking')" expo-modules-autolinking mirror-kotlin-inline-modules \
+            --kotlin-files-mirror-directory "$expo_android_directory/src/main/java/inline/modules" \
+            --inline-modules-list-directory "$expo_android_directory/build/inline/modules" \
+            --watched-directories-serialized "[]"
+
+      - name: Configure Gradle Memory
+        run: |
+          {
+            echo
+            echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
+            echo "org.gradle.workers.max=2"
+          } >> android/gradle.properties
+
+      - name: Build Release APK
+        working-directory: frontend-mobile/android
+        run: ./gradlew :app:assembleRelease --no-daemon --info --stacktrace --console=plain
+
+      - name: Upload Gradle Failure Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tnl-field-gradle-diagnostics
+          path: frontend-mobile/android/build/reports/problems
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Sign and Verify APK
+        run: |
+          signing_directory="$RUNNER_TEMP/tnl-signing"
+          keystore_file="$signing_directory/tnl-field-release.jks"
+          apk_input="android/app/build/outputs/apk/release/app-release.apk"
+          apk_aligned="artifacts/tnl-field-release-aligned.apk"
+          apk_output="artifacts/tnl-field-release.apk"
+          build_tools_version="$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
+          zipalign="$ANDROID_HOME/build-tools/$build_tools_version/zipalign"
+          apksigner="$ANDROID_HOME/build-tools/$build_tools_version/apksigner"
+
+          mkdir -p "$signing_directory" artifacts
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore_file"
+          chmod 600 "$keystore_file"
+          "$zipalign" -f -p 4 "$apk_input" "$apk_aligned"
+          "$apksigner" sign \
+            --ks "$keystore_file" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEY_PASSWORD \
+            --out "$apk_output" \
+            "$apk_aligned"
+          "$apksigner" verify --verbose --print-certs "$apk_output"
+
+      - name: Upload Signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: tnl-field-android-release-v2
+          path: frontend-mobile/artifacts/tnl-field-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove Signing Files
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/tnl-signing"

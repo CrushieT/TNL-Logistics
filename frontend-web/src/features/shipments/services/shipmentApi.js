@@ -25,9 +25,11 @@ export async function getParcelUnit(trackingId) {
   return data;
 }
 
-export async function printLabels(shipmentId, packageIds) {
+export async function printLabels(shipmentId, packageIds, printJobId, printerId = 'SYSTEM-PDF') {
   const { data } = await apiClient.post(`/shipments/${shipmentId}/labels/print`, {
+    printJobId,
     packageIds,
+    printerId,
   });
   return data;
 }

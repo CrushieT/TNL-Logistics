@@ -26,11 +26,13 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -57,6 +59,12 @@ public class ShipmentIntegrationTest {
     private TrackingEventRepository trackingEventRepository;
 
     @Autowired
+    private PrintEventRepository printEventRepository;
+
+    @Autowired
+    private PrintAuditJobRepository printAuditJobRepository;
+
+    @Autowired
     private com.tnl.logistics.repository.WaybillRepository waybillRepository;
 
     @Autowired
@@ -75,6 +83,8 @@ public class ShipmentIntegrationTest {
     @BeforeEach
     public void setup() {
         waybillRepository.deleteAll();
+        printEventRepository.deleteAll();
+        printAuditJobRepository.deleteAll();
         trackingEventRepository.deleteAll();
         paymentRepository.deleteAll();
         parcelUnitRepository.deleteAll();
@@ -130,6 +140,211 @@ public class ShipmentIntegrationTest {
         assertTrue(response.getTrackingIds().get(0).startsWith("TRK-" + currentYear + "-"));
         assertTrue(response.getTrackingIds().get(1).startsWith("TRK-" + currentYear + "-"));
         assertEquals(new BigDecimal("200.00"), response.getTotalAmount());
+    }
+
+    @Test
+    public void testOfficeStaffMobileRegistrationContractAndPaymentStates() throws Exception {
+        for (boolean isPaid : List.of(false, true)) {
+            ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+            request.setPaidAtRegistration(isPaid);
+            request.setChargeModel(isPaid ? ChargeModel.PER_PARCEL : ChargeModel.FLAT);
+            MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                            .header("Authorization", officeToken).contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isCreated()).andReturn();
+            JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+            java.util.Set<String> fields = new java.util.HashSet<>();
+            body.fieldNames().forEachRemaining(fields::add);
+            assertEquals(java.util.Set.of("shipmentId", "clientId", "recipientName", "totalAmount", "paidAtRegistration", "trackingIds"), fields);
+            ShipmentResponse response = objectMapper.treeToValue(body, ShipmentResponse.class);
+            assertEquals(0, new BigDecimal(isPaid ? "220.20" : "120.10").compareTo(response.getTotalAmount()));
+            assertEquals(isPaid, response.getPaidAtRegistration());
+            assertEquals(2, response.getTrackingIds().size());
+            assertEquals(RegisteredVia.MOBILE_FIELD, shipmentRepository.findById(response.getShipmentId()).orElseThrow().getRegisteredVia());
+            for (String trackingId : response.getTrackingIds()) {
+                ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+                assertEquals(ParcelStatus.QR_GENERATED, parcel.getCurrentStatus());
+                assertEquals(LabelStatus.NOT_PRINTED, parcel.getLabelStatus());
+                assertEquals(new BigDecimal("0.0300"), parcel.getVolumeCbm());
+                List<TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(trackingId);
+                assertEquals(2, events.size());
+                assertTrue(events.stream().allMatch(event -> "USR-OFFICE".equals(event.getStaff().getUserId())));
+                assertEquals(java.util.Set.of(ParcelStatus.REGISTERED, ParcelStatus.QR_GENERATED),
+                        events.stream().map(TrackingEvent::getStatus).collect(java.util.stream.Collectors.toSet()));
+            }
+            assertEquals(isPaid ? 1 : 0, paymentRepository.count());
+            if (isPaid) {
+                Payment payment = paymentRepository.findAll().getFirst();
+                assertEquals(PaymentMethod.CASH, payment.getMethod());
+                assertEquals(0, response.getTotalAmount().compareTo(payment.getAmountPaid()));
+            }
+        }
+    }
+
+    @Test
+    public void testMobileRegistrationRejectsInvalidTokenAndFieldStaffWithoutWrites() throws Exception {
+        String payload = objectMapper.writeValueAsString(createMobileRegistrationRequest());
+        mockMvc.perform(post("/api/v1/shipments").header("Authorization", "Bearer invalid-token")
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
+        mockMvc.perform(post("/api/v1/shipments").header("Authorization", fieldToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isForbidden());
+        assertEquals(0, shipmentRepository.count());
+        assertEquals(0, paymentRepository.count());
+    }
+
+    @Test
+    public void testMobileRegistrationRejectsInvalidMeasurementsAndFeesWithoutWrites() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setShippingFee(new BigDecimal("-1"));
+        request.getParcels().getFirst().setWeightKg(new BigDecimal("0"));
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments").header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest()).andReturn();
+        JsonNode errors = objectMapper.readTree(result.getResponse().getContentAsString()).get("fieldErrors");
+        assertTrue(errors.has("shippingFee"));
+        assertTrue(errors.has("parcels[0].weightKg"));
+        assertEquals(0, shipmentRepository.count());
+        assertEquals(0, parcelUnitRepository.count());
+        assertEquals(0, paymentRepository.count());
+    }
+
+    private ShipmentRegistrationRequest createMobileRegistrationRequest() {
+        ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
+        request.setClientId("CL-001");
+        request.setRecipientName("Mobile registration recipient");
+        request.setRecipientAddress("Test street, Baguio");
+        request.setRecipientContact("09170000000");
+        request.setQuantity(2);
+        request.setChargeModel(ChargeModel.FLAT);
+        request.setShippingFee(new BigDecimal("100.10"));
+        request.setOtherCharges(new BigDecimal("20.00"));
+        request.setRegisteredVia(RegisteredVia.MOBILE_FIELD);
+        request.setRoute("Manila to TNL Baguio");
+        request.setParcels(List.of(
+                new ParcelUnitRequest(1, new BigDecimal("1.25"), new BigDecimal("40"), new BigDecimal("25"), new BigDecimal("30")),
+                new ParcelUnitRequest(2, new BigDecimal("1.25"), new BigDecimal("40"), new BigDecimal("25"), new BigDecimal("30"))));
+        return request;
+    }
+
+    @Test
+    public void testShipmentPaginationBoundsInvalidPageAndSizeValues() throws Exception {
+        MvcResult oversizedResult = mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .param("page", "-7")
+                        .param("size", "1000000"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode oversizedPage = objectMapper.readTree(oversizedResult.getResponse().getContentAsString()).get("page");
+        assertEquals(0, oversizedPage.get("number").asInt());
+        assertEquals(100, oversizedPage.get("size").asInt());
+
+        MvcResult undersizedResult = mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .param("size", "0"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode undersizedPage = objectMapper.readTree(undersizedResult.getResponse().getContentAsString()).get("page");
+        assertEquals(0, undersizedPage.get("number").asInt());
+        assertEquals(1, undersizedPage.get("size").asInt());
+
+        mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .param("page", "not-a-number"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testShipmentPaginationBoundsDoNotBypassAuthorization() throws Exception {
+        mockMvc.perform(get("/api/v1/shipments")
+                        .param("page", "-7")
+                        .param("size", "1000000"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", "Bearer invalid-token")
+                        .param("page", "-7")
+                        .param("size", "1000000"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
+
+        mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", fieldToken)
+                        .param("page", "-7")
+                        .param("size", "1000000"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testFindParcelSearchFilterAndRoleGates() throws Exception {
+        // 1. Create a mobile shipment with 2 parcels
+        ShipmentRegistrationRequest regReq = createMobileRegistrationRequest();
+        MvcResult regResult = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(regReq)))
+                .andExpect(status().isCreated()).andReturn();
+        ShipmentResponse created = objectMapper.readValue(regResult.getResponse().getContentAsString(), ShipmentResponse.class);
+        String trackingId0 = created.getTrackingIds().getFirst();
+
+        // 2. Role gating: FIELD_STAFF cannot access GET /api/v1/shipments or GET /api/v1/shipments/{id}
+        mockMvc.perform(get("/api/v1/shipments").header("Authorization", fieldToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/shipments/" + created.getShipmentId()).header("Authorization", fieldToken))
+                .andExpect(status().isForbidden());
+
+        // 3. Search by parcel tracking ID finds the parent shipment
+        MvcResult searchResult = mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .param("search", trackingId0))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode searchJson = objectMapper.readTree(searchResult.getResponse().getContentAsString());
+        assertEquals(1, searchJson.get("page").get("totalElements").asInt());
+        JsonNode firstItem = searchJson.get("content").get(0);
+        assertEquals(created.getShipmentId(), firstItem.get("shipmentId").asText());
+        assertEquals("MOBILE_FIELD", firstItem.get("registeredVia").asText());
+        assertEquals(false, firstItem.get("allLabelsPrinted").asBoolean());
+
+        // 4. Label status filter: NEEDS_LABEL returns the shipment
+        MvcResult needsLabelResult = mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .param("labelStatus", "NEEDS_LABEL"))
+                .andExpect(status().isOk()).andReturn();
+        assertEquals(1, objectMapper.readTree(needsLabelResult.getResponse().getContentAsString()).get("page").get("totalElements").asInt());
+
+        // 5. Record label print for all units
+        mockMvc.perform(post("/api/v1/shipments/" + created.getShipmentId() + "/labels/print")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new PrintLabelRequest(
+                                UUID.randomUUID(), null, "SYSTEM-PDF"))))
+                .andExpect(status().isOk());
+
+        // 6. After print, NEEDS_LABEL returns 0 and PRINTED returns 1 with allLabelsPrinted: true
+        MvcResult afterPrintNeeds = mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .param("labelStatus", "NEEDS_LABEL"))
+                .andExpect(status().isOk()).andReturn();
+        assertEquals(0, objectMapper.readTree(afterPrintNeeds.getResponse().getContentAsString()).get("page").get("totalElements").asInt());
+
+        MvcResult afterPrintPrinted = mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .param("labelStatus", "PRINTED"))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode printedJson = objectMapper.readTree(afterPrintPrinted.getResponse().getContentAsString());
+        assertEquals(1, printedJson.get("page").get("totalElements").asInt());
+        assertTrue(printedJson.get("content").get(0).get("allLabelsPrinted").asBoolean());
+
+        // 7. Inspect single parcel endpoint returns full details
+        MvcResult parcelResult = mockMvc.perform(get("/api/v1/parcel-units/" + trackingId0)
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode parcelJson = objectMapper.readTree(parcelResult.getResponse().getContentAsString());
+        assertEquals(trackingId0, parcelJson.get("trackingId").asText());
+        assertEquals(created.getShipmentId(), parcelJson.get("shipmentId").asText());
+        assertEquals("Printed", parcelJson.get("labelStatus").asText());
     }
 
     @Test
@@ -326,7 +541,7 @@ public class ShipmentIntegrationTest {
         mockMvc.perform(post("/api/v1/shipments/" + shipmentId + "/labels/print")
                         .header("Authorization", officeToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new PrintLabelRequest(List.of(trackingId)))))
+                        .content(objectMapper.writeValueAsString(new PrintLabelRequest(UUID.randomUUID(), List.of(trackingId)))))
                 .andExpect(status().isOk());
 
         ParcelUnit updatedUnit = parcelUnitRepository.findById(trackingId).orElseThrow();
@@ -337,7 +552,7 @@ public class ShipmentIntegrationTest {
         mockMvc.perform(post("/api/v1/shipments/" + shipmentId + "/labels/print")
                         .header("Authorization", officeToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new PrintLabelRequest(List.of(trackingId)))))
+                        .content(objectMapper.writeValueAsString(new PrintLabelRequest(UUID.randomUUID(), List.of(trackingId)))))
                 .andExpect(status().isOk());
 
         ParcelUnit reprintedUnit = parcelUnitRepository.findById(trackingId).orElseThrow();

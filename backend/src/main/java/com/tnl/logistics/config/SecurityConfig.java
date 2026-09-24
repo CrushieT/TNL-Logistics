@@ -11,6 +11,8 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.http.HttpStatus;
 
 /**
  * Spring Security configuration for Spring Boot 3.4+.
@@ -38,6 +40,8 @@ public class SecurityConfig {
 			.cors(Customizer.withDefaults()) // Integrates with CorsConfig
 			.csrf(csrf -> csrf.disable()) // Disabled for stateless APIs
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+			.exceptionHandling(exception -> exception
+				.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
 			.authorizeHttpRequests(auth -> auth
 				// Allow internal async and error dispatches (prevents SSE disconnect loops)
 				.dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
@@ -52,6 +56,9 @@ public class SecurityConfig {
 				// Allow public access to Login and First Boot auth endpoints
 				.requestMatchers(
 						"/api/v1/auth/login",
+						"/api/v1/auth/mobile-login",
+						"/api/v1/auth/mobile-pin-login",
+						"/api/v1/auth/mobile-pin-status",
 						"/api/v1/auth/first-boot-status",
 						"/api/v1/auth/first-boot-admin"
 				).permitAll()
@@ -62,7 +69,8 @@ public class SecurityConfig {
 				.anyRequest().authenticated()
 			)
 			// Wire the JWT token verification filter
-			.addFilterBefore(new JwtAuthenticationFilter(appUserRepository), UsernamePasswordAuthenticationFilter.class);
+			.addFilterBefore(new JwtAuthenticationFilter(appUserRepository), UsernamePasswordAuthenticationFilter.class)
+			.addFilterAfter(new OfflineSyncRequestGuard(), JwtAuthenticationFilter.class);
 
 		return http.build();
 	}

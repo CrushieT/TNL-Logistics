@@ -65,21 +65,21 @@ public class RepositoryIntegrationTest {
         assertEquals("Client A", foundClient.get().getName());
 
         // 4. Shipment CRUD
-        Shipment shipment = new Shipment("SHP-2026-001", client, "Recipient A", "Address B", "09187654321",
+        Shipment shipment = new Shipment("SHP-REPO-001", client, "Recipient A", "Address B", "09187654321",
                 1, ChargeModel.FLAT, new BigDecimal("100.00"), BigDecimal.ZERO, new BigDecimal("100.00"),
                 false, RegisteredVia.DESKTOP_OFFICE);
         shipmentRepository.save(shipment);
-        Optional<Shipment> foundShipment = shipmentRepository.findById("SHP-2026-001");
+        Optional<Shipment> foundShipment = shipmentRepository.findById("SHP-REPO-001");
         assertTrue(foundShipment.isPresent());
 
         // 5. ParcelUnit CRUD
-        ParcelUnit unit = new ParcelUnit("TRK-2026-0001", shipment, 1, new BigDecimal("2.50"),
+        ParcelUnit unit = new ParcelUnit("TRK-REPO-0001", shipment, 1, new BigDecimal("2.50"),
                 new BigDecimal("10.00"), new BigDecimal("10.00"), new BigDecimal("10.00"), new BigDecimal("0.0010"));
         unit.setCurrentVehicle(vehicle);
         parcelUnitRepository.save(unit);
-        Optional<ParcelUnit> foundUnit = parcelUnitRepository.findById("TRK-2026-0001");
+        Optional<ParcelUnit> foundUnit = parcelUnitRepository.findById("TRK-REPO-0001");
         assertTrue(foundUnit.isPresent());
-        assertEquals("TRK-2026-0001", foundUnit.get().getTrackingId());
+        assertEquals("TRK-REPO-0001", foundUnit.get().getTrackingId());
         assertEquals(ParcelStatus.REGISTERED, foundUnit.get().getCurrentStatus());
 
         // 6. Payment CRUD

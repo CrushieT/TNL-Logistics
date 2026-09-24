@@ -25,6 +25,8 @@ public class ShipmentSummaryResponse {
     private String dateLabel;
     private String vehicleId;
     private String vehiclePlate;
+    private String registeredVia;
+    private Boolean allLabelsPrinted;
 
     public ShipmentSummaryResponse() {}
 
@@ -33,7 +35,7 @@ public class ShipmentSummaryResponse {
                                    String payment, BigDecimal totalAmount, BigDecimal amountPaid, BigDecimal balance,
                                    String route, LocalDateTime dateRegistered, String dateLabel) {
         this(shipmentId, clientId, clientName, recipientName, recipientContact, quantity, status, statusRollup,
-             payment, totalAmount, amountPaid, balance, route, dateRegistered, dateLabel, null, null);
+             payment, totalAmount, amountPaid, balance, route, dateRegistered, dateLabel, null, null, null, null);
     }
 
     public ShipmentSummaryResponse(String shipmentId, String clientId, String clientName, String recipientName,
@@ -41,6 +43,15 @@ public class ShipmentSummaryResponse {
                                    String payment, BigDecimal totalAmount, BigDecimal amountPaid, BigDecimal balance,
                                    String route, LocalDateTime dateRegistered, String dateLabel,
                                    String vehicleId, String vehiclePlate) {
+        this(shipmentId, clientId, clientName, recipientName, recipientContact, quantity, status, statusRollup,
+             payment, totalAmount, amountPaid, balance, route, dateRegistered, dateLabel, vehicleId, vehiclePlate, null, null);
+    }
+
+    public ShipmentSummaryResponse(String shipmentId, String clientId, String clientName, String recipientName,
+                                   String recipientContact, Integer quantity, String status, String statusRollup,
+                                   String payment, BigDecimal totalAmount, BigDecimal amountPaid, BigDecimal balance,
+                                   String route, LocalDateTime dateRegistered, String dateLabel,
+                                   String vehicleId, String vehiclePlate, String registeredVia, Boolean allLabelsPrinted) {
         this.shipmentId = shipmentId;
         this.clientId = clientId;
         this.clientName = clientName;
@@ -58,6 +69,8 @@ public class ShipmentSummaryResponse {
         this.dateLabel = dateLabel;
         this.vehicleId = vehicleId;
         this.vehiclePlate = vehiclePlate;
+        this.registeredVia = registeredVia;
+        this.allLabelsPrinted = allLabelsPrinted;
     }
 
     public String getShipmentId() { return shipmentId; }
@@ -110,4 +123,10 @@ public class ShipmentSummaryResponse {
 
     public String getVehiclePlate() { return vehiclePlate; }
     public void setVehiclePlate(String vehiclePlate) { this.vehiclePlate = vehiclePlate; }
+
+    public String getRegisteredVia() { return registeredVia; }
+    public void setRegisteredVia(String registeredVia) { this.registeredVia = registeredVia; }
+
+    public Boolean getAllLabelsPrinted() { return allLabelsPrinted; }
+    public void setAllLabelsPrinted(Boolean allLabelsPrinted) { this.allLabelsPrinted = allLabelsPrinted; }
 }
