@@ -35,25 +35,49 @@ export function ThermalLabelPreviewModal({
     confirmSystemPrint,
     assertCanRecordPrintAudit,
     branding: contextBranding,
+    fetchBranding,
   } = usePrinter();
   const [localBranding, setLocalBranding] = React.useState(null);
+  const [brandingLoading, setBrandingLoading] = React.useState(false);
+  const [brandingError, setBrandingError] = React.useState(null);
   const [currentIndex, setCurrentIndex] = React.useState(0);
   const [pendingConfirmation, setPendingConfirmation] = React.useState(null);
   const [confirmationNotice, setConfirmationNotice] = React.useState(null);
 
   React.useEffect(() => {
-    if (!contextBranding) {
+    if (visible) {
       let mounted = true;
-      apiClient.get('/settings/branding')
-        .then(({ data }) => { if (mounted && data) setLocalBranding(data); })
-        .catch(() => {});
+      setBrandingLoading(true);
+      setBrandingError(null);
+      const resolve = fetchBranding ? fetchBranding() : apiClient.get('/settings/branding').then((r) => r.data);
+      resolve
+        .then((data) => {
+          if (mounted && data?.companyName) {
+            setLocalBranding(data);
+            setBrandingLoading(false);
+          } else if (mounted) {
+            throw new Error('Branding response missing company name.');
+          }
+        })
+        .catch((err) => {
+          if (mounted) {
+            setLocalBranding(null);
+            setBrandingLoading(false);
+            setBrandingError(err?.message || 'Unable to retrieve company branding for label printing.');
+          }
+        });
       return () => { mounted = false; };
     }
-  }, [contextBranding]);
+  }, [visible, fetchBranding]);
 
-  const branding = contextBranding || localBranding;
-  const brandTitle = (branding?.companyName || 'TNL LOGISTICS').toUpperCase();
-  const brandBadge = brandTitle.trim().charAt(0) || 'T';
+  const branding = localBranding || contextBranding;
+  const isBrandingReady = Boolean(branding?.companyName) && !brandingLoading && !brandingError;
+  const brandTitle = isBrandingReady
+    ? branding.companyName.toUpperCase()
+    : brandingLoading
+    ? 'LOADING BRANDING...'
+    : 'BRANDING UNAVAILABLE';
+  const brandBadge = isBrandingReady ? brandTitle.trim().charAt(0) || 'T' : '?';
 
   const labelsList = labels && labels.length > 0 ? labels : labelData ? [labelData] : [];
   const currentLabel = labelsList[currentIndex] || labelsList[0] || null;
@@ -69,6 +93,10 @@ export function ThermalLabelPreviewModal({
   if (!visible || !currentLabel) return null;
 
   const handleSystemPrint = async () => {
+    if (!isBrandingReady) {
+      setConfirmationNotice('Cannot print: Company branding could not be verified.');
+      return;
+    }
     try {
       await assertCanRecordPrintAudit();
       const html = buildLabelHtml(labelsList, branding);
@@ -299,6 +327,7 @@ export function ThermalLabelPreviewModal({
               </Text>
             </View>
 
+            {brandingError ? <Text style={[styles.confirmationNotice, { color: colors.danger, fontWeight: '700' }]}>{brandingError}</Text> : null}
             {confirmationNotice ? <Text style={styles.confirmationNotice}>{confirmationNotice}</Text> : null}
 
             {pendingConfirmation ? (
@@ -321,12 +350,15 @@ export function ThermalLabelPreviewModal({
             {!pendingConfirmation ? <View style={styles.actionRow}>
               {isConnected ? (
                 <PressableScale
-                  style={styles.actionBtnWrapper}
+                  disabled={!isBrandingReady}
+                  style={[styles.actionBtnWrapper, !isBrandingReady && { opacity: 0.5 }]}
                   contentStyle={styles.primaryBtn}
-                  onPress={onPrintDirect}
+                  onPress={isBrandingReady ? onPrintDirect : undefined}
                 >
                   <Text style={styles.primaryBtnText}>
-                    {isVirtualMode
+                    {brandingLoading
+                      ? 'Loading...'
+                      : isVirtualMode
                       ? `Simulate Print (${labelsList.length})`
                       : labelsList.length > 1
                       ? `Print All (${labelsList.length}) to Thermal`
@@ -344,9 +376,10 @@ export function ThermalLabelPreviewModal({
               )}
 
               <PressableScale
-                style={styles.actionBtnWrapper}
+                disabled={!isBrandingReady}
+                style={[styles.actionBtnWrapper, !isBrandingReady && { opacity: 0.5 }]}
                 contentStyle={styles.secondaryBtn}
-                onPress={handleSystemPrint}
+                onPress={isBrandingReady ? handleSystemPrint : undefined}
               >
                 <Text style={styles.secondaryBtnText}>Print via System / PDF</Text>
               </PressableScale>

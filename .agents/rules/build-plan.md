@@ -461,5 +461,4 @@
 - Publish the Release asset, configure the URL for the web export, deploy the export, and verify the unauthenticated download before marking this slice complete.
 
 **6.9 — Admin-Only Web Console Access and Staff Mobile API Preservation** — **[UPCOMING]**
-- Implementation and verification plan: `.review/admin-only-web-console-plan.md`.
 - Restrict web login, console routes, and console-only API operations to `ADMIN` while preserving office and field mobile workflows.

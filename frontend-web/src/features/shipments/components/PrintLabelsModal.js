@@ -29,6 +29,8 @@ export default function PrintLabelsModal({
   initialTrackingId,
 }) {
   const [branding, setBranding] = useState(null);
+  const [brandingLoading, setBrandingLoading] = useState(true);
+  const [brandingError, setBrandingError] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [printScope, setPrintScope] = useState('ALL');
   const [pendingConfirmation, setPendingConfirmation] = useState(null);
@@ -36,15 +38,30 @@ export default function PrintLabelsModal({
 
   useEffect(() => {
     let mounted = true;
-    getCompanyBranding()
-      .then((data) => {
-        if (mounted && data) setBranding(data);
-      })
-      .catch(() => {});
+    if (visible) {
+      setBrandingLoading(true);
+      setBrandingError(null);
+      getCompanyBranding(true)
+        .then((data) => {
+          if (mounted && data?.companyName) {
+            setBranding(data);
+            setBrandingLoading(false);
+          } else if (mounted) {
+            throw new Error('Branding payload is missing company name.');
+          }
+        })
+        .catch((error) => {
+          if (mounted) {
+            setBranding(null);
+            setBrandingLoading(false);
+            setBrandingError(error?.message || 'Unable to load company branding. Printing disabled.');
+          }
+        });
+    }
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [visible]);
 
   const units = shipment?.units || [];
   const count = units.length;
@@ -70,10 +87,18 @@ export default function PrintLabelsModal({
 
   const currentUnit = units[currentIndex] || units[0];
 
-  const brandTitle = (branding?.companyName || 'TNL LOGISTICS').toUpperCase();
-  const brandBadge = brandTitle.trim().charAt(0) || 'T';
+  const brandTitle = branding?.companyName
+    ? branding.companyName.toUpperCase()
+    : brandingLoading
+    ? 'LOADING BRANDING...'
+    : 'BRANDING UNAVAILABLE';
+  const brandBadge = branding?.companyName ? brandTitle.trim().charAt(0) || 'T' : '?';
 
   const handlePrint = (scope = 'ALL') => {
+    if (!branding?.companyName || brandingLoading || brandingError) {
+      setNotice('Printing is disabled: Company branding could not be resolved.');
+      return;
+    }
     try {
       assertPrintAuditCapacityAvailable();
       setPrintScope(scope);
@@ -253,6 +278,7 @@ export default function PrintLabelsModal({
           </View>
 
           {notice ? <Text style={styles.noticeText}>{notice}</Text> : null}
+          {brandingError ? <Text style={[styles.noticeText, { color: '#DC2626' }]}>{brandingError}</Text> : null}
 
           {/* Post-Print Confirmation Panel */}
           {pendingConfirmation ? (
@@ -287,12 +313,20 @@ export default function PrintLabelsModal({
                 <Button
                   label={`Print Unit ${currentUnit.packageIndex} Only`}
                   variant="secondary"
+                  disabled={brandingLoading || Boolean(brandingError) || !branding?.companyName}
                   onPress={() => handlePrint('CURRENT')}
                 />
               )}
               <Button
-                label={count > 1 ? `Print All (${count}) Labels` : 'Print Label'}
+                label={
+                  brandingLoading
+                    ? 'Loading...'
+                    : count > 1
+                    ? `Print All (${count}) Labels`
+                    : 'Print Label'
+                }
                 variant="primary"
+                disabled={brandingLoading || Boolean(brandingError) || !branding?.companyName}
                 onPress={() => handlePrint('ALL')}
               />
             </View>
