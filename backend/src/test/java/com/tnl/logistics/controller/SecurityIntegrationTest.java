@@ -10,6 +10,7 @@ import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.service.LoginRateLimiterService;
 import com.tnl.logistics.config.JwtTokenProvider;
+import com.tnl.logistics.config.JwtAuthenticationFilter;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
@@ -23,7 +24,10 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
@@ -830,5 +834,36 @@ public class SecurityIntegrationTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Access-Control-Expose-Headers", org.hamcrest.Matchers.containsString("X-Renewed-Token")));
+    }
+
+    @Test
+    public void testDownstreamExceptionIsNotMaskedAs401ForAdmin() throws Exception {
+        LoginRequest adminLogin = new LoginRequest("admin", "admin123");
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(adminLogin)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String token = objectMapper.readValue(loginResult.getResponse().getContentAsString(), LoginResponse.class).getToken();
+
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(appUserRepository);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/users");
+        request.addHeader("Authorization", "Bearer " + token);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        RuntimeException downstreamFailure = new RuntimeException("Simulated downstream failure");
+
+        SecurityContextHolder.clearContext();
+        try {
+            RuntimeException thrown = assertThrows(RuntimeException.class,
+                    () -> filter.doFilter(request, response, (servletRequest, servletResponse) -> {
+                        throw downstreamFailure;
+                    }));
+            assertSame(downstreamFailure, thrown);
+            assertNotEquals(401, response.getStatus());
+            assertFalse(response.getContentAsString().contains("SESSION_REAUTH_REQUIRED"));
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 }

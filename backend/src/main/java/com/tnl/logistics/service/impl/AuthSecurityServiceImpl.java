@@ -38,16 +38,19 @@ public class AuthSecurityServiceImpl implements AuthSecurityService {
     private final MobileDeviceBindingRepository mobileDeviceBindingRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final LoginRateLimiterService rateLimiterService;
+    private final com.tnl.logistics.service.SseService sseService;
 
     public AuthSecurityServiceImpl(
             AppUserRepository appUserRepository,
             MobileDeviceBindingRepository mobileDeviceBindingRepository,
             BCryptPasswordEncoder passwordEncoder,
-            LoginRateLimiterService rateLimiterService) {
+            LoginRateLimiterService rateLimiterService,
+            com.tnl.logistics.service.SseService sseService) {
         this.appUserRepository = appUserRepository;
         this.mobileDeviceBindingRepository = mobileDeviceBindingRepository;
         this.passwordEncoder = passwordEncoder;
         this.rateLimiterService = rateLimiterService;
+        this.sseService = sseService;
     }
 
     @Override
@@ -111,6 +114,7 @@ public class AuthSecurityServiceImpl implements AuthSecurityService {
         user.setMustChangePassword(false);
         user.incrementTokenVersion();
         appUserRepository.save(user);
+        sseService.closeStreamsForUser(user.getUserId());
         clearFailures(ipKey, accountKey);
         auditSuccess("PASSWORD_CHANGE_SUCCESS", user, null, clientIp);
 
@@ -204,6 +208,7 @@ public class AuthSecurityServiceImpl implements AuthSecurityService {
         user.setPinHash(passwordEncoder.encode(pin));
         user.incrementTokenVersion();
         appUserRepository.save(user);
+        sseService.closeStreamsForUser(user.getUserId());
         auditSuccess(eventPrefix + "_SUCCESS", user, deviceId, clientIp);
         return new PinUpdateResult(user.getUserId(), user.getRole().name(), user.getTokenVersion(), isRotation);
     }
@@ -233,6 +238,7 @@ public class AuthSecurityServiceImpl implements AuthSecurityService {
         mobileDeviceBindingRepository.save(binding);
         user.incrementTokenVersion();
         appUserRepository.save(user);
+        sseService.closeStreamsForUser(user.getUserId());
         auditSuccess("DEVICE_UNBIND_SUCCESS", user, deviceId, clientIp);
         return new UnbindResult(maskDeviceId(deviceId), user.getTokenVersion());
     }

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
+import { evaluateSessionValidationOutcome } from './sessionCore.mjs';
 
 const TOKEN_KEY = 'tnl_admin_token';
 const USER_KEY = 'tnl_user_info';
@@ -280,11 +281,15 @@ apiClient.interceptors.request.use((config) => {
   const token = getToken();
   if (token && !isTokenExpired(token)) {
     config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
-    config.metadata = {
-      generation: sessionGeneration,
-      token,
-    };
+    if (!config.headers.Authorization) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    if (!config.metadata) {
+      config.metadata = {
+        generation: sessionGeneration,
+        token,
+      };
+    }
   }
   return config;
 });
@@ -335,16 +340,40 @@ apiClient.interceptors.response.use(
   }
 );
 
-export async function validateSession() {
+export async function validateSession(isRetry = false) {
   const token = getToken();
   if (!token || isTokenExpired(token)) {
     clearToken();
     clearCurrentUser();
     return false;
   }
+
+  const requestGeneration = sessionGeneration;
+  const requestToken = token;
+
   try {
-    const { data } = await apiClient.get('/auth/me');
-    if (data && data.username) {
+    const { data } = await apiClient.get('/auth/me', {
+      headers: {
+        Authorization: `Bearer ${requestToken}`,
+      },
+      metadata: {
+        generation: requestGeneration,
+        token: requestToken,
+      },
+    });
+
+    const activeToken = getToken();
+    const action = evaluateSessionValidationOutcome({
+      requestGeneration,
+      currentGeneration: sessionGeneration,
+      requestToken,
+      activeToken,
+      isSuccess: Boolean(data && data.username),
+      is401: false,
+      isRetry,
+    });
+
+    if (action === 'APPLY') {
       setCurrentUser({
         userId: data.userId,
         username: data.username,
@@ -354,11 +383,42 @@ export async function validateSession() {
       });
       return true;
     }
-    invalidateSession();
-    return false;
+
+    if (action === 'RETRY' && !isRetry) {
+      return await validateSession(true);
+    }
+
+    if (action === 'INVALIDATE') {
+      invalidateSession();
+      return false;
+    }
+
+    return isAuthenticated();
   } catch (error) {
-    invalidateSession();
-    return false;
+    const status = error?.response?.status;
+    const is401 = status === 401;
+    const activeToken = getToken();
+
+    const action = evaluateSessionValidationOutcome({
+      requestGeneration,
+      currentGeneration: sessionGeneration,
+      requestToken,
+      activeToken,
+      isSuccess: false,
+      is401,
+      isRetry,
+    });
+
+    if (action === 'RETRY' && !isRetry) {
+      return await validateSession(true);
+    }
+
+    if (action === 'INVALIDATE') {
+      invalidateSession();
+      return false;
+    }
+
+    return isAuthenticated();
   }
 }
 

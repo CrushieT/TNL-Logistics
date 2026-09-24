@@ -65,6 +65,82 @@ export function shouldSuppressStale401(requestGeneration, currentGeneration, req
   return false;
 }
 
+export function evaluateSessionValidationOutcome(
+  optionsOrReqGen,
+  currentGeneration,
+  requestToken,
+  activeToken,
+  isSuccess,
+  is401 = false,
+  isRetry = false
+) {
+  let opts;
+  if (typeof optionsOrReqGen === 'object' && optionsOrReqGen !== null) {
+    opts = optionsOrReqGen;
+  } else {
+    opts = {
+      requestGeneration: optionsOrReqGen,
+      currentGeneration,
+      requestToken,
+      activeToken,
+      isSuccess,
+      is401,
+      isRetry,
+    };
+  }
+
+  const {
+    requestGeneration,
+    currentGeneration: curGen,
+    requestToken: reqTok,
+    activeToken: actTok,
+    isSuccess: success,
+    is401: unauthorized = false,
+    isRetry: retry = false,
+  } = opts;
+
+  // Generation mismatch: request belongs to an older session generation.
+  // Must never mutate active session or invalidate it.
+  if (
+    requestGeneration !== undefined &&
+    curGen !== undefined &&
+    requestGeneration !== curGen
+  ) {
+    return 'IGNORE';
+  }
+
+  // Token superseded in same generation by a newer valid token (e.g. sliding window renewal)
+  const isSuperseded = Boolean(
+    reqTok &&
+    actTok &&
+    reqTok !== actTok &&
+    !isTokenExpired(actTok)
+  );
+
+  if (isSuperseded) {
+    if (retry) {
+      return 'IGNORE';
+    }
+    return 'RETRY';
+  }
+
+  // Success outcome
+  if (success) {
+    if (!actTok || isTokenExpired(actTok)) {
+      return 'INVALIDATE';
+    }
+    return 'APPLY';
+  }
+
+  // Failure outcome: genuine 401 for current token must invalidate
+  if (unauthorized) {
+    return 'INVALIDATE';
+  }
+
+  // Non-401 failures (e.g. network glitches) do not invalidate active session
+  return 'IGNORE';
+}
+
 export class SessionCoordinator {
   constructor(storageAdapter = null) {
     this.storage = storageAdapter;
@@ -195,5 +271,17 @@ export class SessionCoordinator {
       return true;
     }
     return false;
+  }
+
+  evaluateValidationOutcome(requestGeneration, requestToken, isSuccess, is401 = false, isRetry = false) {
+    return evaluateSessionValidationOutcome({
+      requestGeneration,
+      currentGeneration: this.sessionGeneration,
+      requestToken,
+      activeToken: this.getToken(),
+      isSuccess,
+      is401,
+      isRetry,
+    });
   }
 }

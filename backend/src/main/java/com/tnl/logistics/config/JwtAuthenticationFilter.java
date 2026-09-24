@@ -60,68 +60,84 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 return;
             }
 
+            String userId;
+            String immutableUserId;
+            String role;
+            Integer tokenVer;
             try {
-                String userId = JwtTokenProvider.getUserIdFromToken(token);
-                String immutableUserId = JwtTokenProvider.getImmutableUserIdFromToken(token);
-                String role = JwtTokenProvider.getRoleFromToken(token);
-                Integer tokenVer = JwtTokenProvider.getTokenVersionFromToken(token);
-
-                if (userId == null || !userId.equals(immutableUserId) || tokenVer == null
-                        || SecurityContextHolder.getContext().getAuthentication() != null) {
-                    auditSecurityMutationFailure(request, userId, null, "SESSION_REAUTH_REQUIRED");
-                    sendSessionReauthenticationRequiredResponse(response);
-                    return;
-                }
-
-                AppUser user = appUserRepository.findById(userId).orElse(null);
-                if (user == null || !Boolean.TRUE.equals(user.getActive())
-                        || !Objects.equals(tokenVer, user.getTokenVersion())) {
-                    auditSecurityMutationFailure(request, userId, user, "SESSION_REAUTH_REQUIRED");
-                    sendSessionReauthenticationRequiredResponse(response);
-                    return;
-                }
-
-                if (Boolean.TRUE.equals(user.getMustChangePassword()) && !isAllowedForMustChangePassword(request)) {
-                    sendPasswordChangeRequiredResponse(response);
-                    return;
-                }
-
-                if (user.getRole() == null || !Objects.equals(role, user.getRole().name())) {
-                    auditSecurityMutationFailure(request, userId, user, "SESSION_REAUTH_REQUIRED");
-                    sendSessionReauthenticationRequiredResponse(response);
-                    return;
-                }
-
-                String effectiveRole = user.getRole().name();
-                SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + effectiveRole);
-                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        userId, null, Collections.singletonList(authority));
-                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(authentication);
-
-                if (JwtTokenProvider.isAdminRole(effectiveRole)) {
-                    response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-                    response.setHeader("Pragma", "no-cache");
-
-                    if (!isSseStreamRequest(request)) {
-                        Long origAuthTime = JwtTokenProvider.getAuthTimeFromToken(token);
-                        long nowSeconds = System.currentTimeMillis() / 1000;
-                        long maxCeilingSeconds = JwtTokenProvider.getAdminMaxLifetimeMs() / 1000;
-                        long effectiveAuthTime = origAuthTime != null ? origAuthTime : nowSeconds;
-
-                        if (nowSeconds - effectiveAuthTime < maxCeilingSeconds) {
-                            String renewedToken = JwtTokenProvider.generateRenewedToken(
-                                    userId, effectiveRole, user.getTokenVersion(), effectiveAuthTime);
-                            JwtRenewalResponseWrapper responseWrapper = new JwtRenewalResponseWrapper(response, renewedToken);
-                            filterChain.doFilter(request, responseWrapper);
-                            responseWrapper.commitRenewalHeader();
-                            return;
-                        }
-                    }
-                }
+                userId = JwtTokenProvider.getUserIdFromToken(token);
+                immutableUserId = JwtTokenProvider.getImmutableUserIdFromToken(token);
+                role = JwtTokenProvider.getRoleFromToken(token);
+                tokenVer = JwtTokenProvider.getTokenVersionFromToken(token);
             } catch (RuntimeException exception) {
                 auditSecurityMutationFailure(request, null, null, "SESSION_REAUTH_REQUIRED");
                 sendSessionReauthenticationRequiredResponse(response);
+                return;
+            }
+
+            if (userId == null || !userId.equals(immutableUserId) || tokenVer == null
+                    || SecurityContextHolder.getContext().getAuthentication() != null) {
+                auditSecurityMutationFailure(request, userId, null, "SESSION_REAUTH_REQUIRED");
+                sendSessionReauthenticationRequiredResponse(response);
+                return;
+            }
+
+            AppUser user = appUserRepository.findById(userId).orElse(null);
+            if (user == null || !Boolean.TRUE.equals(user.getActive())
+                    || !Objects.equals(tokenVer, user.getTokenVersion())) {
+                auditSecurityMutationFailure(request, userId, user, "SESSION_REAUTH_REQUIRED");
+                sendSessionReauthenticationRequiredResponse(response);
+                return;
+            }
+
+            if (Boolean.TRUE.equals(user.getMustChangePassword()) && !isAllowedForMustChangePassword(request)) {
+                sendPasswordChangeRequiredResponse(response);
+                return;
+            }
+
+            if (user.getRole() == null || !Objects.equals(role, user.getRole().name())) {
+                auditSecurityMutationFailure(request, userId, user, "SESSION_REAUTH_REQUIRED");
+                sendSessionReauthenticationRequiredResponse(response);
+                return;
+            }
+
+            String effectiveRole = user.getRole().name();
+            SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + effectiveRole);
+            UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                    userId, null, Collections.singletonList(authority));
+            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+            String renewedAdminToken = null;
+            if (JwtTokenProvider.isAdminRole(effectiveRole)) {
+                response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+                response.setHeader("Pragma", "no-cache");
+
+                if (!isSseStreamRequest(request)) {
+                    Long origAuthTime = JwtTokenProvider.getAuthTimeFromToken(token);
+                    long nowSeconds = System.currentTimeMillis() / 1000;
+                    long maxCeilingSeconds = JwtTokenProvider.getAdminMaxLifetimeMs() / 1000;
+                    long effectiveAuthTime = origAuthTime != null ? origAuthTime : nowSeconds;
+
+                    if (nowSeconds - effectiveAuthTime < maxCeilingSeconds) {
+                        renewedAdminToken = JwtTokenProvider.generateRenewedToken(
+                                userId, effectiveRole, user.getTokenVersion(), effectiveAuthTime);
+                    }
+                }
+            }
+
+            if (isSseStreamRequest(request)) {
+                Long expSeconds = JwtTokenProvider.getExpirationFromToken(token);
+                if (expSeconds != null) {
+                    request.setAttribute("sseAuthDeadlineMillis", expSeconds * 1000L);
+                }
+                request.setAttribute("sseTokenVersion", tokenVer);
+            }
+
+            if (renewedAdminToken != null) {
+                JwtRenewalResponseWrapper responseWrapper = new JwtRenewalResponseWrapper(response, renewedAdminToken);
+                filterChain.doFilter(request, responseWrapper);
+                responseWrapper.commitRenewalHeader();
                 return;
             }
         }
