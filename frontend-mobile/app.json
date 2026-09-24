@@ -1,10 +1,11 @@
 {
   "expo": {
-    "name": "TNL Logistics Field",
+    "name": "TC & CT Staff App",
     "slug": "tnl-field",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -13,6 +14,10 @@
     },
     "android": {
       "versionCode": 2,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      },
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
