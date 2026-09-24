@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import * as Crypto from 'expo-crypto';
 import { bluetoothPrinterService, VIRTUAL_PRINTERS } from '../services/bluetoothPrinterService';
-import { normalizeLabelData } from '../services/thermalLabelData';
+import { normalizeLabelData, resolveCurrentLabelBranding } from '../services/thermalLabelData';
 import { buildEscPosCommands } from '../services/escposFormatter';
 import { shipmentApi } from '../../shipments/services/shipmentApi';
 import { useAuth } from '../../auth/context/AuthContext';
@@ -53,7 +53,7 @@ export function PrinterProvider({ children }) {
     setBrandingError(null);
     try {
       const { data } = await apiClient.get('/settings/branding');
-      if (data?.companyName) {
+      if (typeof data?.companyName === 'string' && data.companyName.trim()) {
         setBranding(data);
         setBrandingLoading(false);
         return data;
@@ -180,17 +180,7 @@ export function PrinterProvider({ children }) {
       setIsPrinting(true);
 
       try {
-        let resolvedBranding = options.branding;
-        if (!resolvedBranding) {
-          try {
-            resolvedBranding = await fetchBranding();
-          } catch {
-            resolvedBranding = branding;
-          }
-        }
-        if (!resolvedBranding?.companyName) {
-          throw new Error('Printing is unavailable: Company branding could not be resolved from the server.');
-        }
+        const resolvedBranding = await resolveCurrentLabelBranding(fetchBranding);
 
         for (let index = 0; index < units.length; index += 1) {
           const unit = units[index];
@@ -239,7 +229,7 @@ export function PrinterProvider({ children }) {
         setIsPrinting(false);
       }
     });
-  }, [assertCanRecordPrintAudit, auditTrackingIds, branding, connectedDevice, fetchBranding]);
+  }, [assertCanRecordPrintAudit, auditTrackingIds, connectedDevice, fetchBranding]);
 
   return (
     <PrinterContext.Provider value={{

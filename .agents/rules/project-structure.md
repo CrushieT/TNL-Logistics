@@ -20,13 +20,11 @@ tnl-logistics/
 │       ├── dependency-review.yml     # Fast PR dependency vulnerability checks
 │       └── owasp-check.yml           # Scheduled and on-demand OWASP backend vulnerability scan
 ├── .review/                          # Implementation plans and verification reports
-│   ├── admin-only-web-console-plan.md # Admin-only web console access implementation plan
 │   ├── admin-sliding-session-plan.md # 30-minute admin sliding session and auth hardening plan
 │   ├── operational-fixes-implementation-plan.md # Operational defects & sliding session implementation plan
 │   ├── phase-6.7-offline-resilience-plan.md # Phase 6.7 offline queue implementation plan
 │   ├── phase-6.7-threat-model.md      # Phase 6.7 offline queue security threat model
-│   ├── phase-6.7-verification-report.md # Phase 6.7 automated and physical-device verification matrix
-│   └── public-mobile-apk-download-plan.md # Public staff APK download implementation plan
+│   └── phase-6.7-verification-report.md # Phase 6.7 automated and physical-device verification matrix
 ├── backend/                          # Spring Boot API (Java 21)
 │   ├── src/
 │   │   ├── main/

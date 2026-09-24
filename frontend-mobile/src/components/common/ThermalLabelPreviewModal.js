@@ -13,9 +13,9 @@ import { colors } from '../../theme';
 import { QRCodeGenerator } from './QRCodeGenerator';
 import { PressableScale } from './PressableScale';
 import { usePrinter } from '../../features/printer/context/PrinterContext';
-import { buildLabelHtml } from '../../features/printer/services/escposFormatter';
+import { prepareVerifiedLabelPrint } from '../../features/printer/services/escposFormatter';
+import { resolveCurrentLabelBranding } from '../../features/printer/services/thermalLabelData';
 import { generateQRMatrix, generateQRSvgPath } from '../../utils/qr';
-import { apiClient } from '../../services/api/client';
 import * as Print from 'expo-print';
 import * as Crypto from 'expo-crypto';
 
@@ -34,7 +34,6 @@ export function ThermalLabelPreviewModal({
     isVirtualMode,
     confirmSystemPrint,
     assertCanRecordPrintAudit,
-    branding: contextBranding,
     fetchBranding,
   } = usePrinter();
   const [localBranding, setLocalBranding] = React.useState(null);
@@ -43,20 +42,19 @@ export function ThermalLabelPreviewModal({
   const [currentIndex, setCurrentIndex] = React.useState(0);
   const [pendingConfirmation, setPendingConfirmation] = React.useState(null);
   const [confirmationNotice, setConfirmationNotice] = React.useState(null);
+  const activeSystemPrintRef = React.useRef(null);
 
   React.useEffect(() => {
     if (visible) {
       let mounted = true;
+      setLocalBranding(null);
       setBrandingLoading(true);
       setBrandingError(null);
-      const resolve = fetchBranding ? fetchBranding() : apiClient.get('/settings/branding').then((r) => r.data);
-      resolve
+      resolveCurrentLabelBranding(fetchBranding)
         .then((data) => {
-          if (mounted && data?.companyName) {
+          if (mounted) {
             setLocalBranding(data);
             setBrandingLoading(false);
-          } else if (mounted) {
-            throw new Error('Branding response missing company name.');
           }
         })
         .catch((err) => {
@@ -66,11 +64,14 @@ export function ThermalLabelPreviewModal({
             setBrandingError(err?.message || 'Unable to retrieve company branding for label printing.');
           }
         });
-      return () => { mounted = false; };
+      return () => {
+        mounted = false;
+        activeSystemPrintRef.current = null;
+      };
     }
   }, [visible, fetchBranding]);
 
-  const branding = localBranding || contextBranding;
+  const branding = localBranding;
   const isBrandingReady = Boolean(branding?.companyName) && !brandingLoading && !brandingError;
   const brandTitle = isBrandingReady
     ? branding.companyName.toUpperCase()
@@ -97,9 +98,25 @@ export function ThermalLabelPreviewModal({
       setConfirmationNotice('Cannot print: Company branding could not be verified.');
       return;
     }
+    if (activeSystemPrintRef.current) return;
+    const printAttempt = {};
+    activeSystemPrintRef.current = printAttempt;
+    setBrandingLoading(true);
     try {
       await assertCanRecordPrintAudit();
-      const html = buildLabelHtml(labelsList, branding);
+      let verifiedPrint;
+      try {
+        verifiedPrint = await prepareVerifiedLabelPrint(labelsList, fetchBranding);
+      } catch (error) {
+        if (activeSystemPrintRef.current === printAttempt) {
+          setLocalBranding(null);
+          setBrandingError(error?.message || 'Unable to verify company branding.');
+        }
+        throw error;
+      }
+      if (activeSystemPrintRef.current !== printAttempt) return;
+      const { html, branding: currentBranding } = verifiedPrint;
+      setLocalBranding(currentBranding);
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         const printWindow = window.open('', '_blank');
         if (printWindow) {
@@ -116,13 +133,21 @@ export function ThermalLabelPreviewModal({
         // Native iOS & Android: invoke OS print spooler & Save as PDF
         await Print.printAsync({ html });
       }
+      if (activeSystemPrintRef.current !== printAttempt) return;
       setPendingConfirmation({
         printJobId: Crypto.randomUUID(),
         shipmentId: labelsList[0].shipmentId,
         trackingIds: labelsList.map((label) => label.trackingId),
       });
     } catch (err) {
-      setConfirmationNotice(err?.message || 'System print failed.');
+      if (activeSystemPrintRef.current === printAttempt) {
+        setConfirmationNotice(err?.message || 'System print failed.');
+      }
+    } finally {
+      if (activeSystemPrintRef.current === printAttempt) {
+        activeSystemPrintRef.current = null;
+        setBrandingLoading(false);
+      }
     }
   };
 

@@ -3,8 +3,16 @@ import assert from 'node:assert/strict';
 import jsQR from 'jsqr';
 
 import { generateQRMatrix, generateQRSvgPath, generateQRBitmapDataUri } from '../src/utils/qr.js';
-import { IncompleteLabelDataError, normalizeLabelData } from '../src/features/printer/services/thermalLabelData.js';
-import { buildEscPosCommands, buildLabelHtml } from '../src/features/printer/services/escposFormatter.js';
+import {
+  IncompleteLabelDataError,
+  normalizeLabelData,
+  resolveCurrentLabelBranding,
+} from '../src/features/printer/services/thermalLabelData.js';
+import {
+  buildEscPosCommands,
+  buildLabelHtml,
+  prepareVerifiedLabelPrint,
+} from '../src/features/printer/services/escposFormatter.js';
 import {
   MAX_OUTBOX_ENTRIES,
   OutboxCapacityError,
@@ -37,6 +45,51 @@ function createAuditEntry(index = 1, overrides = {}) {
     ...overrides,
   };
 }
+
+test('label branding uses the fresh server response', async () => {
+  const refreshedBranding = { companyName: 'TC & CT Integrated Logistics' };
+  let fetchCount = 0;
+  const branding = await resolveCurrentLabelBranding(async () => {
+    fetchCount += 1;
+    return refreshedBranding;
+  });
+
+  assert.equal(branding, refreshedBranding);
+  assert.equal(fetchCount, 1);
+});
+
+test('label branding rejects failed and invalid refreshes', async () => {
+  await assert.rejects(
+    () => resolveCurrentLabelBranding(async () => { throw new Error('Branding service unavailable'); }),
+    /Branding service unavailable/
+  );
+  await assert.rejects(
+    () => resolveCurrentLabelBranding(async () => ({ companyName: '   ' })),
+    /could not be verified/
+  );
+});
+
+test('system label document uses freshly verified branding', async () => {
+  const label = {
+    trackingId: 'TRK-2026-000101',
+    packageIndex: 1,
+    packageCount: 1,
+    recipientName: 'Juan Dela Cruz',
+    destinationHub: 'Manila Hub',
+    shipmentId: 'SHP-2026-001',
+  };
+  const { html, branding } = await prepareVerifiedLabelPrint(label, async () => ({
+    companyName: 'Current Cargo',
+  }));
+
+  assert.equal(branding.companyName, 'Current Cargo');
+  assert.ok(html.includes('CURRENT CARGO'));
+  assert.ok(!html.includes('TNL LOGISTICS'));
+  await assert.rejects(
+    () => prepareVerifiedLabelPrint(label, async () => { throw new Error('Branding service unavailable'); }),
+    /Branding service unavailable/
+  );
+});
 
 test('print audit retries AUTH_PAUSED entries after re-authentication', async () => {
   const outbox = createPrintAuditOutbox(createMemoryStorage());

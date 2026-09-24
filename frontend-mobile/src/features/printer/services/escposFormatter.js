@@ -4,6 +4,7 @@
  */
 
 import { generateQRMatrix, generateQRSvgPath } from '../../../utils/qr.js';
+import { resolveCurrentLabelBranding } from './thermalLabelData.js';
 
 // Command constants
 const ESC = 0x1b;
@@ -364,4 +365,9 @@ export function buildLabelHtml(labelOrLabels, branding = null) {
 ${cardsHtml}
 </body>
 </html>`;
+}
+
+export async function prepareVerifiedLabelPrint(labelOrLabels, loadBranding) {
+  const branding = await resolveCurrentLabelBranding(loadBranding);
+  return { branding, html: buildLabelHtml(labelOrLabels, branding) };
 }

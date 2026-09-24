@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, Platform } from 'react-native';
 import QRCodeGenerator from '../../../components/common/QRCodeGenerator';
 import Button from '../../../components/common/Button';
@@ -8,7 +8,7 @@ import {
   retryPendingPrintAudits,
   submitPrintAudit,
 } from '../services/printAuditOutbox';
-import { normalizeLabelData, printThermalLabels } from '../services/labelPrintService';
+import { normalizeLabelData, printThermalLabels, resolveCurrentLabelBranding } from '../services/labelPrintService';
 import { getCompanyBranding } from '../../settings/services/settingsApi';
 
 function createPrintJobId() {
@@ -35,31 +35,53 @@ export default function PrintLabelsModal({
   const [printScope, setPrintScope] = useState('ALL');
   const [pendingConfirmation, setPendingConfirmation] = useState(null);
   const [notice, setNotice] = useState(null);
+  const modalGenerationRef = useRef(0);
+  const printAttemptRef = useRef(null);
 
   useEffect(() => {
+    const generation = ++modalGenerationRef.current;
     let mounted = true;
-    if (visible) {
+    let requestSequence = 0;
+    const refreshBranding = () => {
+      const requestId = ++requestSequence;
+      setBranding(null);
       setBrandingLoading(true);
       setBrandingError(null);
-      getCompanyBranding(true)
+      resolveCurrentLabelBranding(() => getCompanyBranding(true))
         .then((data) => {
-          if (mounted && data?.companyName) {
+          if (mounted && requestId === requestSequence) {
             setBranding(data);
             setBrandingLoading(false);
-          } else if (mounted) {
-            throw new Error('Branding payload is missing company name.');
           }
         })
         .catch((error) => {
-          if (mounted) {
+          if (mounted && requestId === requestSequence) {
             setBranding(null);
             setBrandingLoading(false);
             setBrandingError(error?.message || 'Unable to load company branding. Printing disabled.');
           }
         });
+    };
+    const handleBrandingInvalidation = (event) => {
+      if (event.key !== 'tnl_branding_invalidated_at') return;
+      modalGenerationRef.current += 1;
+      printAttemptRef.current?.printWindow?.close();
+      printAttemptRef.current = null;
+      setNotice('Company branding changed. Review the updated label before printing.');
+      refreshBranding();
+    };
+    if (visible) {
+      refreshBranding();
+      window.addEventListener('storage', handleBrandingInvalidation);
     }
     return () => {
       mounted = false;
+      if (visible) window.removeEventListener('storage', handleBrandingInvalidation);
+      if (modalGenerationRef.current === generation) {
+        modalGenerationRef.current += 1;
+      }
+      printAttemptRef.current?.printWindow?.close();
+      printAttemptRef.current = null;
     };
   }, [visible]);
 
@@ -94,29 +116,67 @@ export default function PrintLabelsModal({
     : 'BRANDING UNAVAILABLE';
   const brandBadge = branding?.companyName ? brandTitle.trim().charAt(0) || 'T' : '?';
 
-  const handlePrint = (scope = 'ALL') => {
+  const handlePrint = async (scope = 'ALL') => {
     if (!branding?.companyName || brandingLoading || brandingError) {
       setNotice('Printing is disabled: Company branding could not be resolved.');
       return;
     }
+    if (printAttemptRef.current) return;
+
+    let targetUnits;
+    let normalizedLabels;
     try {
       assertPrintAuditCapacityAvailable();
-      setPrintScope(scope);
-      const targetUnits = scope === 'CURRENT' ? [currentUnit] : units;
-
-      const normalizedLabels = targetUnits.map((u, idx) =>
-        normalizeLabelData(shipment, u, scope === 'CURRENT' ? currentIndex : idx, count)
+      targetUnits = scope === 'CURRENT' ? [currentUnit] : units;
+      normalizedLabels = targetUnits.map((unit, index) =>
+        normalizeLabelData(shipment, unit, scope === 'CURRENT' ? currentIndex : index, count)
       );
-
-      printThermalLabels(normalizedLabels, branding);
-
-      setPendingConfirmation({
-        printJobId: createPrintJobId(),
-        shipmentId: shipment.shipmentId,
-        trackingIds: targetUnits.map((u) => u.trackingId),
-      });
     } catch (error) {
       setNotice(error?.message || 'Printing is unavailable because audit storage could not be verified.');
+      return;
+    }
+
+    const printAttempt = { generation: modalGenerationRef.current, printWindow: null };
+    printAttemptRef.current = printAttempt;
+    setBrandingLoading(true);
+    setBrandingError(null);
+    setNotice(null);
+    try {
+      printAttempt.printWindow = window.open('', '_blank');
+    } catch {
+      // The print service will try its iframe fallback.
+    }
+
+    try {
+      const currentBranding = await resolveCurrentLabelBranding(() => getCompanyBranding(true));
+      if (printAttemptRef.current !== printAttempt || modalGenerationRef.current !== printAttempt.generation) {
+        return;
+      }
+      setBranding(currentBranding);
+
+      try {
+        setPrintScope(scope);
+        printThermalLabels(normalizedLabels, currentBranding, printAttempt.printWindow);
+        printAttempt.printWindow = null;
+        setPendingConfirmation({
+          printJobId: createPrintJobId(),
+          shipmentId: shipment.shipmentId,
+          trackingIds: targetUnits.map((unit) => unit.trackingId),
+        });
+      } catch (error) {
+        setNotice(error?.message || 'Printing is unavailable because audit storage could not be verified.');
+      }
+    } catch (error) {
+      if (printAttemptRef.current === printAttempt) {
+        setBranding(null);
+        setBrandingError(error?.message || 'Unable to verify company branding. Printing disabled.');
+      }
+    } finally {
+      printAttempt.printWindow?.close();
+      if (printAttemptRef.current === printAttempt) {
+        printAttemptRef.current = null;
+        setBrandingLoading(false);
+      }
     }
   };
 

@@ -6,6 +6,14 @@ export class IncompleteLabelDataError extends Error {
   }
 }
 
+export async function resolveCurrentLabelBranding(loadBranding) {
+  const branding = await loadBranding();
+  if (typeof branding?.companyName !== 'string' || !branding.companyName.trim()) {
+    throw new Error('Company branding could not be verified for label printing.');
+  }
+  return branding;
+}
+
 function cleanText(value) {
   return typeof value === 'string' ? value.trim() : '';
 }

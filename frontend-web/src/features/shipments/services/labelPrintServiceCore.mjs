@@ -93,6 +93,14 @@ export function normalizeLabelData(shipment, unit, unitIndex = 0, totalUnits = 1
   };
 }
 
+export async function resolveCurrentLabelBranding(loadBranding) {
+  const branding = await loadBranding();
+  if (typeof branding?.companyName !== 'string' || !branding.companyName.trim()) {
+    throw new Error('Company branding could not be verified for label printing.');
+  }
+  return branding;
+}
+
 export function buildLabelHtml(labelOrLabels, branding = null) {
   const labels = Array.isArray(labelOrLabels) ? labelOrLabels : [labelOrLabels];
   if (labels.length === 0) throw new TypeError('At least one label is required');

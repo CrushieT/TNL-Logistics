@@ -5,8 +5,32 @@ import {
   escapeHtml,
   formatFiniteNumber,
   normalizeLabelData,
+  resolveCurrentLabelBranding,
   buildLabelHtml,
 } from '../src/features/shipments/services/labelPrintServiceCore.mjs';
+
+test('label branding uses the current response at print time', async () => {
+  const refreshedBranding = { companyName: 'TC & CT Integrated Logistics' };
+  let fetchCount = 0;
+  const branding = await resolveCurrentLabelBranding(async () => {
+    fetchCount += 1;
+    return refreshedBranding;
+  });
+
+  assert.equal(branding, refreshedBranding);
+  assert.equal(fetchCount, 1);
+});
+
+test('label branding rejects failed and invalid refreshes', async () => {
+  await assert.rejects(
+    () => resolveCurrentLabelBranding(async () => { throw new Error('Branding service unavailable'); }),
+    /Branding service unavailable/
+  );
+  await assert.rejects(
+    () => resolveCurrentLabelBranding(async () => ({ companyName: '   ' })),
+    /could not be verified/
+  );
+});
 
 test('normalizeLabelData extracts full shipment and parcel unit metadata', () => {
   const shipment = {
