@@ -121,7 +121,7 @@ export default function RootLayout() {
         const isValid = await validateSession();
         if (isCancelled) return;
 
-        if (!isValid) {
+        if (!isValid && !isAuthenticated()) {
           lastSessionValidationTimestamp = 0;
           const redirectQuery =
             pathname && pathname !== '/' ? `?redirect=${encodeURIComponent(pathname)}` : '';

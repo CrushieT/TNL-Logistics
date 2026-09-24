@@ -21,7 +21,17 @@ import java.util.Optional;
 @Repository
 public interface AppUserRepository extends JpaRepository<AppUser, String> {
 
+    interface SseAuthorizationState {
+        Boolean getActive();
+        UserRole getRole();
+        Integer getTokenVersion();
+    }
+
     Optional<AppUser> findByUsername(String username);
+
+    @Query("select user.active as active, user.role as role, user.tokenVersion as tokenVersion "
+            + "from AppUser user where user.userId = :userId")
+    Optional<SseAuthorizationState> findSseAuthorizationState(@Param("userId") String userId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select user from AppUser user where user.userId = :userId")

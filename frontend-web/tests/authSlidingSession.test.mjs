@@ -5,6 +5,7 @@ import {
   isTokenExpired,
   shouldAdvanceTokenMonotonically,
   shouldSuppressStale401,
+  evaluateSessionValidationOutcome,
   SessionCoordinator,
 } from '../src/services/api/sessionCore.mjs';
 
@@ -226,4 +227,260 @@ test('SessionCoordinator manages dual memory/localStorage and notifies invalidat
   assert.equal(coordinator.getSessionGeneration(), 1);
 
   unsubscribe();
+});
+
+test('evaluateSessionValidationOutcome handles generation mismatches, token renewals, and current token 401s', () => {
+  const now = Math.floor(Date.now() / 1000);
+  const tokenA = createMockJwt({ sub: 'USR-1', exp: now + 1800 });
+  const tokenB = createMockJwt({ sub: 'USR-2', exp: now + 1800 });
+  const expiredToken = createMockJwt({ sub: 'USR-1', exp: now - 10 });
+
+  // 1. Older-generation success after new login -> IGNORE
+  assert.equal(
+    evaluateSessionValidationOutcome({
+      requestGeneration: 1,
+      currentGeneration: 2,
+      requestToken: tokenA,
+      activeToken: tokenB,
+      isSuccess: true,
+      is401: false,
+    }),
+    'IGNORE'
+  );
+
+  // 2. Older-generation failure (401) after new login -> IGNORE
+  assert.equal(
+    evaluateSessionValidationOutcome({
+      requestGeneration: 1,
+      currentGeneration: 2,
+      requestToken: tokenA,
+      activeToken: tokenB,
+      isSuccess: false,
+      is401: true,
+    }),
+    'IGNORE'
+  );
+
+  // 3. Same-generation failure (401) after sliding renewal -> RETRY
+  assert.equal(
+    evaluateSessionValidationOutcome({
+      requestGeneration: 1,
+      currentGeneration: 1,
+      requestToken: tokenA,
+      activeToken: tokenB,
+      isSuccess: false,
+      is401: true,
+      isRetry: false,
+    }),
+    'RETRY'
+  );
+
+  // 4. Same-generation failure after sliding renewal when already retrying -> IGNORE
+  assert.equal(
+    evaluateSessionValidationOutcome({
+      requestGeneration: 1,
+      currentGeneration: 1,
+      requestToken: tokenA,
+      activeToken: tokenB,
+      isSuccess: false,
+      is401: true,
+      isRetry: true,
+    }),
+    'IGNORE'
+  );
+
+  // 5. Genuine current-token 401 -> INVALIDATE
+  assert.equal(
+    evaluateSessionValidationOutcome({
+      requestGeneration: 1,
+      currentGeneration: 1,
+      requestToken: tokenA,
+      activeToken: tokenA,
+      isSuccess: false,
+      is401: true,
+      isRetry: false,
+    }),
+    'INVALIDATE'
+  );
+
+  // 6. Current valid token success -> APPLY
+  assert.equal(
+    evaluateSessionValidationOutcome({
+      requestGeneration: 1,
+      currentGeneration: 1,
+      requestToken: tokenA,
+      activeToken: tokenA,
+      isSuccess: true,
+      is401: false,
+    }),
+    'APPLY'
+  );
+
+  // 7. Success with expired active token -> INVALIDATE
+  assert.equal(
+    evaluateSessionValidationOutcome({
+      requestGeneration: 1,
+      currentGeneration: 1,
+      requestToken: expiredToken,
+      activeToken: expiredToken,
+      isSuccess: true,
+      is401: false,
+    }),
+    'INVALIDATE'
+  );
+
+  // 8. Network failure (non-401) for current token -> IGNORE
+  assert.equal(
+    evaluateSessionValidationOutcome({
+      requestGeneration: 1,
+      currentGeneration: 1,
+      requestToken: tokenA,
+      activeToken: tokenA,
+      isSuccess: false,
+      is401: false,
+    }),
+    'IGNORE'
+  );
+});
+
+test('web race simulation: login flow preserves new user state against late older-generation responses', () => {
+  const storage = createMockStorage();
+  const coordinator = new SessionCoordinator(storage);
+  const now = Math.floor(Date.now() / 1000);
+
+  const user1Token = createMockJwt({ sub: 'USR-1', exp: now + 1800 });
+  const user2Token = createMockJwt({ sub: 'USR-2', exp: now + 1800 });
+
+  // User 1 logs in (generation 0)
+  coordinator.setToken(user1Token);
+  coordinator.setCurrentUser({ userId: 'USR-1', username: 'user1' });
+
+  // In-flight validateSession started for User 1
+  const inFlightGen = coordinator.getSessionGeneration();
+  const inFlightToken = coordinator.getToken();
+
+  // User 2 logs in before in-flight /auth/me returns (generation increments to 1)
+  coordinator.incrementSessionGeneration();
+  coordinator.setToken(user2Token);
+  coordinator.setCurrentUser({ userId: 'USR-2', username: 'user2' });
+
+  // 1. User 1's late success arrives
+  const successOutcome = coordinator.evaluateValidationOutcome(
+    inFlightGen,
+    inFlightToken,
+    true, // isSuccess
+    false // is401
+  );
+  assert.equal(successOutcome, 'IGNORE', 'Late success from User 1 must be ignored');
+  if (successOutcome === 'APPLY') {
+    coordinator.setCurrentUser({ userId: 'USR-1', username: 'user1' });
+  }
+  assert.equal(coordinator.getCurrentUser().userId, 'USR-2', 'User 2 currentUser must not be overwritten');
+
+  // 2. User 1's late failure (401) arrives
+  const failureOutcome = coordinator.evaluateValidationOutcome(
+    inFlightGen,
+    inFlightToken,
+    false, // isSuccess
+    true   // is401
+  );
+  assert.equal(failureOutcome, 'IGNORE', 'Late 401 from User 1 must be ignored');
+  if (failureOutcome === 'INVALIDATE') {
+    coordinator.invalidateSession();
+  }
+  assert.equal(coordinator.getToken(), user2Token, 'User 2 token must remain active and valid');
+  assert.equal(coordinator.getSessionGeneration(), 1, 'Generation must not have been invalidated');
+});
+
+test('web race simulation: password-change flow prevents stale 401 from tearing down rotated session', () => {
+  const storage = createMockStorage();
+  const coordinator = new SessionCoordinator(storage);
+  const now = Math.floor(Date.now() / 1000);
+
+  const preRotationToken = createMockJwt({ sub: 'USR-ADMIN', exp: now + 1800, ver: 1 });
+  const postRotationToken = createMockJwt({ sub: 'USR-ADMIN', exp: now + 1800, ver: 2 });
+
+  coordinator.setToken(preRotationToken);
+  coordinator.setCurrentUser({ userId: 'USR-ADMIN', username: 'admin', mustChangePassword: true });
+
+  // Routine validateSession initiated with pre-rotation token
+  const reqGen = coordinator.getSessionGeneration();
+  const reqToken = coordinator.getToken();
+
+  // Password change completes: increments generation and updates token
+  coordinator.incrementSessionGeneration();
+  coordinator.setToken(postRotationToken);
+  coordinator.setCurrentUser({ userId: 'USR-ADMIN', username: 'admin', mustChangePassword: false });
+
+  // Backend returned 401 for the pre-rotation token because its token version (1) was revoked
+  const outcome = coordinator.evaluateValidationOutcome(reqGen, reqToken, false, true);
+  assert.equal(outcome, 'IGNORE', 'Stale 401 from pre-rotation token must not invalidate post-rotation session');
+
+  if (outcome === 'INVALIDATE') {
+    coordinator.invalidateSession();
+  }
+
+  assert.equal(coordinator.getToken(), postRotationToken);
+  assert.equal(coordinator.getCurrentUser().mustChangePassword, false);
+});
+
+test('web race simulation: sliding token renewal triggers single retry and succeeds without invalidation', () => {
+  const storage = createMockStorage();
+  const coordinator = new SessionCoordinator(storage);
+  const now = Math.floor(Date.now() / 1000);
+
+  const initialToken = createMockJwt({ sub: 'USR-ADMIN', uid: 'USR-ADMIN', role: 'ADMIN', ver: 1, exp: now + 1800, auth_time: now });
+  const renewedToken = createMockJwt({ sub: 'USR-ADMIN', uid: 'USR-ADMIN', role: 'ADMIN', ver: 1, exp: now + 1900, auth_time: now });
+
+  coordinator.setToken(initialToken);
+  const reqGen = coordinator.getSessionGeneration();
+  const reqToken = coordinator.getToken();
+
+  // Sliding token renewal occurs mid-flight in the same session generation
+  coordinator.handleSlidingTokenRenewal(renewedToken, initialToken, reqGen);
+  assert.equal(coordinator.getToken(), renewedToken);
+
+  // Initial request returns 401 (initial token expired at boundary)
+  const initialOutcome = coordinator.evaluateValidationOutcome(reqGen, reqToken, false, true, false);
+  assert.equal(initialOutcome, 'RETRY', 'Superseded token failure must prompt retry using current token');
+
+  // Retry with active renewed token
+  const retryOutcome = coordinator.evaluateValidationOutcome(
+    coordinator.getSessionGeneration(),
+    coordinator.getToken(),
+    true,
+    false,
+    true
+  );
+  assert.equal(retryOutcome, 'APPLY', 'Retry using active renewed token must apply user state');
+});
+
+test('web race simulation: genuine 401 for current token immediately invalidates session', () => {
+  const storage = createMockStorage();
+  const coordinator = new SessionCoordinator(storage);
+  const now = Math.floor(Date.now() / 1000);
+
+  const activeToken = createMockJwt({ sub: 'USR-ADMIN', exp: now + 1800 });
+  coordinator.setToken(activeToken);
+
+  let invalidated = false;
+  coordinator.onSessionInvalidated(() => {
+    invalidated = true;
+  });
+
+  const outcome = coordinator.evaluateValidationOutcome(
+    coordinator.getSessionGeneration(),
+    coordinator.getToken(),
+    false,
+    true
+  );
+
+  assert.equal(outcome, 'INVALIDATE');
+  if (outcome === 'INVALIDATE') {
+    coordinator.invalidateSession();
+  }
+
+  assert.equal(invalidated, true);
+  assert.equal(coordinator.getToken(), null);
+  assert.equal(coordinator.getCurrentUser(), null);
 });
