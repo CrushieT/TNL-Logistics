@@ -93,12 +93,23 @@ export function normalizeLabelData(shipment, unit, unitIndex = 0, totalUnits = 1
   };
 }
 
-export function buildLabelHtml(labelOrLabels) {
+export function buildLabelHtml(labelOrLabels, branding = null) {
   const labels = Array.isArray(labelOrLabels) ? labelOrLabels : [labelOrLabels];
   if (labels.length === 0) throw new TypeError('At least one label is required');
+
+  const resolvedName = (
+    typeof branding === 'string'
+      ? branding.trim()
+      : branding?.companyName?.trim()
+  ) || 'TNL LOGISTICS';
+
+  const brandTitle = escapeHtml(resolvedName.toUpperCase());
+  const badgeLetter = escapeHtml(resolvedName.charAt(0).toUpperCase() || 'T');
+  const displayBrandInTitle = resolvedName === 'TNL LOGISTICS' ? 'TNL' : resolvedName;
+
   const primaryTitle = escapeHtml(labels.length === 1
-    ? `${labels[0].trackingId} - TNL Shipping Label`
-    : `${labels[0].shipmentId} (${labels.length} Labels) - TNL Shipping Labels`);
+    ? `${labels[0].trackingId} - ${displayBrandInTitle} Shipping Label`
+    : `${labels[0].shipmentId} (${labels.length} Labels) - ${displayBrandInTitle} Shipping Labels`);
 
   const cardsHtml = labels.map((label) => {
     const matrix = generateQRMatrix(label.trackingId);
@@ -121,8 +132,8 @@ export function buildLabelHtml(labelOrLabels) {
     return `  <div class="label-card">
     <div class="header">
       <div class="brand">
-        <div class="brand-badge">T</div>
-        <div class="brand-title">TNL LOGISTICS</div>
+        <div class="brand-badge">${badgeLetter}</div>
+        <div class="brand-title">${brandTitle}</div>
       </div>
       <div class="header-right">
         <div class="pkg-pill">PKG ${packageIndex} / ${packageCount}</div>

@@ -9,6 +9,7 @@ import {
   submitPrintAudit,
 } from '../services/printAuditOutbox';
 import { normalizeLabelData, printThermalLabels } from '../services/labelPrintService';
+import { getCompanyBranding } from '../../settings/services/settingsApi';
 
 function createPrintJobId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -27,10 +28,23 @@ export default function PrintLabelsModal({
   onAuditComplete,
   initialTrackingId,
 }) {
+  const [branding, setBranding] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [printScope, setPrintScope] = useState('ALL');
   const [pendingConfirmation, setPendingConfirmation] = useState(null);
   const [notice, setNotice] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    getCompanyBranding()
+      .then((data) => {
+        if (mounted && data) setBranding(data);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const units = shipment?.units || [];
   const count = units.length;
@@ -56,6 +70,9 @@ export default function PrintLabelsModal({
 
   const currentUnit = units[currentIndex] || units[0];
 
+  const brandTitle = (branding?.companyName || 'TNL LOGISTICS').toUpperCase();
+  const brandBadge = brandTitle.trim().charAt(0) || 'T';
+
   const handlePrint = (scope = 'ALL') => {
     try {
       assertPrintAuditCapacityAvailable();
@@ -66,7 +83,7 @@ export default function PrintLabelsModal({
         normalizeLabelData(shipment, u, scope === 'CURRENT' ? currentIndex : idx, count)
       );
 
-      printThermalLabels(normalizedLabels);
+      printThermalLabels(normalizedLabels, branding);
 
       setPendingConfirmation({
         printJobId: createPrintJobId(),
@@ -99,9 +116,9 @@ export default function PrintLabelsModal({
       <View style={styles.labelHeader}>
         <View style={styles.brandRow}>
           <View style={styles.brandBadge}>
-            <Text style={styles.brandBadgeText}>T</Text>
+            <Text style={styles.brandBadgeText}>{brandBadge}</Text>
           </View>
-          <Text style={styles.brandTitle}>TNL LOGISTICS</Text>
+          <Text style={styles.brandTitle}>{brandTitle}</Text>
         </View>
         <View style={styles.headerRight}>
           <View style={styles.packagePill}>

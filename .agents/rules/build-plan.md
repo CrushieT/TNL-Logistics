@@ -36,6 +36,7 @@
 | ↳ **Phase 6.6** | Mobile Staff Account, Security & 4-Digit PIN Settings (Screens 53–55) | [COMPLETED] |
 | ↳ **Phase 6.7** | Offline Resilience & SQLite Scan Queue (Screen 56) | [COMPLETED] |
 | ↳ **Phase 6.8** | Public Staff Android APK Download from Web Login | [IN PROGRESS] |
+| ↳ **Phase 6.9** | Admin-Only Web Console Access and Staff Mobile API Preservation | [UPCOMING] |
 
 ---
 
@@ -458,3 +459,7 @@
 **6.8 — Public Staff Android APK Download from Web Login** — **[IN PROGRESS]**
 - Web login renders a staff Android app link below sign-in only when `EXPO_PUBLIC_ANDROID_APK_URL` is set. The URL must point to a public, verified GitHub Release APK asset.
 - Publish the Release asset, configure the URL for the web export, deploy the export, and verify the unauthenticated download before marking this slice complete.
+
+**6.9 — Admin-Only Web Console Access and Staff Mobile API Preservation** — **[UPCOMING]**
+- Implementation and verification plan: `.review/admin-only-web-console-plan.md`.
+- Restrict web login, console routes, and console-only API operations to `ADMIN` while preserving office and field mobile workflows.

@@ -10,6 +10,9 @@ export async function getSystemSettings() {
   return data;
 }
 
+let cachedBranding = null;
+let pendingBrandingPromise = null;
+
 /**
  * Update system configuration settings.
  * Restricted to ADMIN role.
@@ -18,15 +21,48 @@ export async function getSystemSettings() {
  */
 export async function updateSystemSettings(payload) {
   const { data } = await apiClient.put('/settings', payload);
+  invalidateCompanyBrandingCache();
   return data;
 }
 
 /**
  * Fetch company branding, collection day, and calculation parameters.
- * Available to all authenticated staff.
+ * Available to all authenticated staff. Cached in memory to deduplicate requests.
+ * @param {boolean} [forceRefresh=false]
  * @returns {Promise<Object>}
  */
-export async function getCompanyBranding() {
-  const { data } = await apiClient.get('/settings/branding');
-  return data;
+export async function getCompanyBranding(forceRefresh = false) {
+  if (!forceRefresh && cachedBranding) {
+    return cachedBranding;
+  }
+  if (!forceRefresh && pendingBrandingPromise) {
+    return pendingBrandingPromise;
+  }
+
+  pendingBrandingPromise = apiClient.get('/settings/branding')
+    .then(({ data }) => {
+      cachedBranding = data;
+      return data;
+    })
+    .finally(() => {
+      pendingBrandingPromise = null;
+    });
+
+  return pendingBrandingPromise;
+}
+
+/**
+ * Retrieve synchronously cached branding if previously fetched.
+ * @returns {Object|null}
+ */
+export function getCachedCompanyBranding() {
+  return cachedBranding;
+}
+
+/**
+ * Invalidate the in-memory company branding cache.
+ */
+export function invalidateCompanyBrandingCache() {
+  cachedBranding = null;
+  pendingBrandingPromise = null;
 }

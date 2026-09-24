@@ -164,3 +164,37 @@ test('buildLabelHtml escapes untrusted input to prevent XSS in print document', 
   assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'), 'Must contain escaped script tag');
   assert.ok(html.includes('&quot;quoted&quot; &amp; &lt;special&gt;'), 'Must contain escaped attributes');
 });
+
+test('buildLabelHtml applies dynamic company branding and badge letter', () => {
+  const labelData = {
+    trackingId: 'TRK-2026-000101',
+    packageIndex: 1,
+    packageCount: 1,
+    recipientName: 'Juan Dela Cruz',
+    destinationHub: 'Camarines Hub',
+    shipmentId: 'SHP-2026-001',
+  };
+
+  const html = buildLabelHtml(labelData, { companyName: 'TC & CT Integrated Logistics' });
+
+  assert.ok(html.includes('TC &amp; CT INTEGRATED LOGISTICS'), 'Must include custom uppercase business name with HTML entities escaped');
+  assert.ok(html.includes('<div class="brand-badge">T</div>'), 'Badge letter must be first letter T');
+  assert.ok(html.includes('TRK-2026-000101 - TC &amp; CT Integrated Logistics Shipping Label'), 'Title must reflect company name');
+});
+
+test('buildLabelHtml derives badge initial from custom company name string', () => {
+  const labelData = {
+    trackingId: 'TRK-2026-000202',
+    packageIndex: 1,
+    packageCount: 1,
+    recipientName: 'Maria Santos',
+    destinationHub: 'Baguio Central',
+    shipmentId: 'SHP-2026-002',
+  };
+
+  const html = buildLabelHtml(labelData, 'Acme Cargo');
+
+  assert.ok(html.includes('ACME CARGO'), 'Must include custom string brand title');
+  assert.ok(html.includes('<div class="brand-badge">A</div>'), 'Badge letter must derive initial A');
+  assert.ok(html.includes('TRK-2026-000202 - Acme Cargo Shipping Label'), 'Title must reflect custom brand string');
+});

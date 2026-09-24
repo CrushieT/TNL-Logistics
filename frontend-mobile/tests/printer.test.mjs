@@ -355,3 +355,38 @@ test('buildLabelHtml escapes all untrusted label text', () => {
   assert.ok(html.includes('&lt;img'));
   assert.ok(html.includes('&#39;&amp;'));
 });
+
+test('buildEscPosCommands applies dynamic company branding to byte stream', () => {
+  const labelData = {
+    trackingId: 'TRK-2026-000101',
+    packageIndex: 1,
+    packageCount: 1,
+    recipientName: 'Juan Dela Cruz',
+    destinationHub: 'Manila Hub',
+  };
+
+  const bytes = buildEscPosCommands(labelData, { companyName: 'TC & CT Integrated Logistics' });
+  const textFromBytes = String.fromCharCode(...bytes);
+
+  assert.ok(textFromBytes.includes('TC & CT INTEGRATED LOGISTICS'), 'Byte stream should contain custom business name');
+});
+
+test('buildLabelHtml applies dynamic company branding and badge initial in mobile', () => {
+  const labelData = {
+    trackingId: 'TRK-2026-000101',
+    packageIndex: 1,
+    packageCount: 1,
+    recipientName: 'Juan Dela Cruz',
+    destinationHub: 'Manila Hub',
+    shipmentId: 'SHP-2026-001',
+  };
+
+  const html = buildLabelHtml(labelData, { companyName: 'TC & CT Integrated Logistics' });
+  assert.ok(html.includes('TC &amp; CT INTEGRATED LOGISTICS'), 'Should include escaped company name');
+  assert.ok(html.includes('<div class="brand-badge">T</div>'), 'Badge initial must be T');
+  assert.ok(html.includes('TRK-2026-000101 - TC &amp; CT Integrated Logistics Shipping Label'), 'Document title must reflect company name');
+
+  const acmeHtml = buildLabelHtml(labelData, 'Acme Cargo');
+  assert.ok(acmeHtml.includes('ACME CARGO'), 'Should include custom uppercase brand title');
+  assert.ok(acmeHtml.includes('<div class="brand-badge">A</div>'), 'Badge initial must be A');
+});

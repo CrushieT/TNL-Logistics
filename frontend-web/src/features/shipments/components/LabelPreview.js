@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import QRCodeGenerator from '../../../components/common/QRCodeGenerator';
 import { colors, fonts, spacing, radius } from '../../../theme';
+import { getCompanyBranding } from '../../settings/services/settingsApi';
 
 export default function LabelPreview({
+  companyName: propCompanyName,
   trackingId = 'TRK-2026-000101',
   packageIndex = 1,
   packageCount = 1,
@@ -17,14 +19,33 @@ export default function LabelPreview({
   route = 'Manila to TNL Baguio',
   total = 500,
 }) {
+  const [branding, setBranding] = useState(null);
+
+  useEffect(() => {
+    if (!propCompanyName) {
+      let mounted = true;
+      getCompanyBranding()
+        .then((data) => {
+          if (mounted && data) setBranding(data);
+        })
+        .catch(() => {});
+      return () => {
+        mounted = false;
+      };
+    }
+  }, [propCompanyName]);
+
+  const brandTitle = (propCompanyName || branding?.companyName || 'TNL LOGISTICS').toUpperCase();
+  const brandBadge = brandTitle.trim().charAt(0) || 'T';
+
   return (
     <View style={styles.card}>
       <View style={styles.header}>
         <View style={styles.brandRow}>
           <View style={styles.brandBadge}>
-            <Text style={styles.brandBadgeText}>T</Text>
+            <Text style={styles.brandBadgeText}>{brandBadge}</Text>
           </View>
-          <Text style={styles.brandTitle}>TNL LOGISTICS</Text>
+          <Text style={styles.brandTitle}>{brandTitle}</Text>
         </View>
         <View style={styles.headerRight}>
           <View style={styles.packagePill}>

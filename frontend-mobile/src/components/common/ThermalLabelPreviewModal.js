@@ -15,6 +15,7 @@ import { PressableScale } from './PressableScale';
 import { usePrinter } from '../../features/printer/context/PrinterContext';
 import { buildLabelHtml } from '../../features/printer/services/escposFormatter';
 import { generateQRMatrix, generateQRSvgPath } from '../../utils/qr';
+import apiClient from '../../services/api/client';
 import * as Print from 'expo-print';
 import * as Crypto from 'expo-crypto';
 
@@ -33,10 +34,26 @@ export function ThermalLabelPreviewModal({
     isVirtualMode,
     confirmSystemPrint,
     assertCanRecordPrintAudit,
+    branding: contextBranding,
   } = usePrinter();
+  const [localBranding, setLocalBranding] = React.useState(null);
   const [currentIndex, setCurrentIndex] = React.useState(0);
   const [pendingConfirmation, setPendingConfirmation] = React.useState(null);
   const [confirmationNotice, setConfirmationNotice] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!contextBranding) {
+      let mounted = true;
+      apiClient.get('/settings/branding')
+        .then(({ data }) => { if (mounted && data) setLocalBranding(data); })
+        .catch(() => {});
+      return () => { mounted = false; };
+    }
+  }, [contextBranding]);
+
+  const branding = contextBranding || localBranding;
+  const brandTitle = (branding?.companyName || 'TNL LOGISTICS').toUpperCase();
+  const brandBadge = brandTitle.trim().charAt(0) || 'T';
 
   const labelsList = labels && labels.length > 0 ? labels : labelData ? [labelData] : [];
   const currentLabel = labelsList[currentIndex] || labelsList[0] || null;
@@ -54,7 +71,7 @@ export function ThermalLabelPreviewModal({
   const handleSystemPrint = async () => {
     try {
       await assertCanRecordPrintAudit();
-      const html = buildLabelHtml(labelsList);
+      const html = buildLabelHtml(labelsList, branding);
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         const printWindow = window.open('', '_blank');
         if (printWindow) {
@@ -181,9 +198,9 @@ export function ThermalLabelPreviewModal({
               <View style={styles.labelHeader}>
                 <View style={styles.brandGroup}>
                   <View style={styles.brandBadge}>
-                    <Text style={styles.brandBadgeText}>T</Text>
+                    <Text style={styles.brandBadgeText}>{brandBadge}</Text>
                   </View>
-                  <Text style={styles.brandTitle}>TNL LOGISTICS</Text>
+                  <Text style={styles.brandTitle}>{brandTitle}</Text>
                 </View>
                 <View style={styles.pkgGroup}>
                   <View style={styles.pkgPill}>

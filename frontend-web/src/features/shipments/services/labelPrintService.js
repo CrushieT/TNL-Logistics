@@ -5,6 +5,7 @@ import {
   normalizeLabelData,
   buildLabelHtml,
 } from './labelPrintServiceCore.mjs';
+import { getCachedCompanyBranding } from '../../settings/services/settingsApi';
 
 export {
   IncompleteLabelDataError,
@@ -20,8 +21,9 @@ export {
  * A6 label cards are printed with 100% fidelity, zero host page leakage, and
  * exactly 1 page per parcel sticker.
  */
-export function printThermalLabels(labelOrLabels) {
-  const html = buildLabelHtml(labelOrLabels);
+export function printThermalLabels(labelOrLabels, branding = null) {
+  const resolvedBranding = branding || getCachedCompanyBranding();
+  const html = buildLabelHtml(labelOrLabels, resolvedBranding);
   if (typeof window === 'undefined') return;
 
   let printWindow = null;
