@@ -39,7 +39,7 @@ tnl-logistics/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
 │   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V30), including offline scan idempotency receipts
-│   │   └── test/                        # Integration and unit test suites, including offline sync API coverage
+│   │   └── test/                        # Integration and unit test suites, including AdminConsoleAuthorizationIntegrationTest and offline sync API coverage
 │   └── pom.xml
 │
 ├── frontend-web/                    # Admin Web Portal (React Native Web / Expo Router)

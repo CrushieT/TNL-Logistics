@@ -29,7 +29,7 @@ public class SoaController {
     }
 
     @GetMapping("/preview")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<StatementPreviewResponse> getStatementPreview(
             @RequestParam String clientId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate targetDate
@@ -39,7 +39,7 @@ public class SoaController {
     }
 
     @PostMapping("/save")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<StatementPreviewResponse> saveStatement(
             @Valid @RequestBody SaveStatementRequest request,
             Authentication authentication
@@ -53,7 +53,7 @@ public class SoaController {
     }
 
     @GetMapping("/collectors")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF', 'FIELD_STAFF')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FIELD_STAFF')")
     public ResponseEntity<List<CollectorOptionDto>> getAuthorizedCollectors() {
         List<CollectorOptionDto> collectors = soaService.getAuthorizedCollectors();
         return ResponseEntity.ok(collectors);

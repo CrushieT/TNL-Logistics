@@ -68,9 +68,9 @@ public class UserManagementIntegrationTest {
     }
 
     @Test
-    void testListUsersUnauthenticatedReturns403() throws Exception {
+    void testListUsersUnauthenticatedReturns401() throws Exception {
         mockMvc.perform(get("/api/v1/users").contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

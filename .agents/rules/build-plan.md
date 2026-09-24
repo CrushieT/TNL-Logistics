@@ -35,8 +35,8 @@
 | ↳ **Phase 6.5** | Field Staff: Personal Scan & Tracking History (Screens 49–52) | [COMPLETED] |
 | ↳ **Phase 6.6** | Mobile Staff Account, Security & 4-Digit PIN Settings (Screens 53–55) | [COMPLETED] |
 | ↳ **Phase 6.7** | Offline Resilience & SQLite Scan Queue (Screen 56) | [COMPLETED] |
-| ↳ **Phase 6.8** | Public Staff Android APK Download from Web Login | [IN PROGRESS] |
-| ↳ **Phase 6.9** | Admin-Only Web Console Access and Staff Mobile API Preservation | [UPCOMING] |
+| ↳ **Phase 6.8** | Public Staff Android APK Download from Web Login | [COMPLETED] |
+| ↳ **Phase 6.9** | Admin-Only Web Console Access and Staff Mobile API Preservation | [COMPLETED] |
 
 ---
 
@@ -456,9 +456,10 @@
   - 131 Node unit tests passing (including `tests/offlineQueue.test.mjs` and `tests/offlineQueue.web.test.mjs`).
   - Production build exports verified cleanly across Web, Android (Hermes), and iOS (Hermes).
 
-**6.8 — Public Staff Android APK Download from Web Login** — **[IN PROGRESS]**
+**6.8 — Public Staff Android APK Download from Web Login** — **[COMPLETED]**
 - Web login renders a staff Android app link below sign-in only when `EXPO_PUBLIC_ANDROID_APK_URL` is set. The URL must point to a public, verified GitHub Release APK asset.
 - Publish the Release asset, configure the URL for the web export, deploy the export, and verify the unauthenticated download before marking this slice complete.
 
-**6.9 — Admin-Only Web Console Access and Staff Mobile API Preservation** — **[UPCOMING]**
-- Restrict web login, console routes, and console-only API operations to `ADMIN` while preserving office and field mobile workflows.
+**6.9 — Admin-Only Web Console Access and Staff Mobile API Preservation** — **[COMPLETED]**
+- Restricted web login, console routes, and console-only API operations to `ADMIN` while preserving office and field mobile workflows.
+- Added backend authorization and frontend session regression coverage for administrator-only web access.

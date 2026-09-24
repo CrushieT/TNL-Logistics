@@ -27,7 +27,7 @@ public class DashboardController {
     }
 
     @GetMapping("/summary")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<DashboardSummaryResponse> getDashboardSummary(
             @RequestParam(value = "cycle", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate cycle) {

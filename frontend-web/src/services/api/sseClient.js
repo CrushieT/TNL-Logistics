@@ -1,4 +1,4 @@
-import { getToken, isAuthenticated, onSessionInvalidated } from './client';
+import { getToken, hasVerifiedAdminSession, onSessionInvalidated } from './client';
 import { Platform } from 'react-native';
 import { createSseStreamParser } from './sseClientCore.mjs';
 
@@ -30,7 +30,7 @@ export async function initRealtimeConnection() {
     return null;
   }
 
-  if (!isAuthenticated()) {
+  if (!hasVerifiedAdminSession()) {
     return null;
   }
 
@@ -87,11 +87,11 @@ export async function initRealtimeConnection() {
       activeAbortController = null;
     }
 
-    if (listeners.size > 0 && isAuthenticated() && !abortController.signal.aborted) {
+    if (listeners.size > 0 && hasVerifiedAdminSession() && !abortController.signal.aborted) {
       if (!reconnectTimer) {
         reconnectTimer = setTimeout(() => {
           reconnectTimer = null;
-          if (listeners.size > 0 && isAuthenticated()) {
+          if (listeners.size > 0 && hasVerifiedAdminSession()) {
             initRealtimeConnection();
           }
         }, 5000);

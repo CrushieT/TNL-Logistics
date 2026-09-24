@@ -57,8 +57,8 @@ public class TrackingLogIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
-    void testGetTrackingLogsAsOfficeStaffReturns200() throws Exception {
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testGetTrackingLogsAsAdminReturns200() throws Exception {
         mockMvc.perform(get("/api/v1/tracking-events")
                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -74,10 +74,10 @@ public class TrackingLogIntegrationTest {
     }
 
     @Test
-    void testGetTrackingLogsUnauthenticatedReturns403Forbidden() throws Exception {
+    void testGetTrackingLogsUnauthenticatedReturns401Unauthorized() throws Exception {
         mockMvc.perform(get("/api/v1/tracking-events")
                 .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

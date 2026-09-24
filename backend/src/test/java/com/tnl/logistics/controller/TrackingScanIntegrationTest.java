@@ -210,9 +210,9 @@ public class TrackingScanIntegrationTest {
                         .header("Authorization", adminToken))
                 .andExpect(status().isForbidden());
 
-        // Unauthenticated -> 401 or 403
+        // Unauthenticated -> 401
         mockMvc.perform(get("/api/v1/tracking-events/scan-context/" + trackingId))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     // 3. Every status maps to the correct next scanner status
@@ -866,6 +866,6 @@ public class TrackingScanIntegrationTest {
         mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }

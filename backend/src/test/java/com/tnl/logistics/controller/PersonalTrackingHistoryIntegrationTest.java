@@ -234,13 +234,13 @@ public class PersonalTrackingHistoryIntegrationTest {
                         .header("Authorization", adminToken))
                 .andExpect(status().isForbidden());
 
-        // Unauthenticated -> 403
+        // Unauthenticated -> 401
         mockMvc.perform(get("/api/v1/tracking-events/mine"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/v1/tracking-events/mine/metrics"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/v1/tracking-events/mine/parcels/" + trackingId))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     // 5. Request parameters cannot select another staff member

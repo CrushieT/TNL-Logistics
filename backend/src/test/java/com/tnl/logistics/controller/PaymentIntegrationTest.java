@@ -260,8 +260,8 @@ public class PaymentIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
-    void testPaymentStaffAttributionWithOfficeUser() throws Exception {
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testPaymentStaffAttributionWithAdministrator() throws Exception {
         // Register an unpaid shipment
         ShipmentRegistrationRequest shipReq = new ShipmentRegistrationRequest();
         shipReq.setClientId("CL-001");
@@ -292,14 +292,14 @@ public class PaymentIntegrationTest {
                 PaymentMethod.CASH,
                 null,
                 LocalDate.now(),
-                "Office staff recorded cash"
+                "Administrator recorded cash"
         );
 
         mockMvc.perform(post("/api/v1/payments")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(payReq)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.recordedByStaff").value("Office Staff"));
+                .andExpect(jsonPath("$.recordedByStaff").value("Admin User"));
     }
 
     @Test

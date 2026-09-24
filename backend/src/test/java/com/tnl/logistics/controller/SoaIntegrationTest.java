@@ -94,7 +94,7 @@ public class SoaIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testStatementPreviewAndSaveLifecycle() throws Exception {
         // 1. Register a shipment for CL-001 to ensure unbilled items in current cycle
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
@@ -156,7 +156,7 @@ public class SoaIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "USR-FIELD", roles = {"FIELD_STAFF"})
     void testAuthorizedCollectorsEndpoint() throws Exception {
         mockMvc.perform(get("/api/v1/soa/collectors"))
                 .andExpect(status().isOk())
@@ -279,7 +279,7 @@ public class SoaIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testSaveStatementDeductionExceedingTotalChargesRejected() throws Exception {
         // Register a shipment with 1200.00 total charges
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
@@ -322,7 +322,7 @@ public class SoaIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testManualSoaBatchIsolationBetweenDistinctClients() throws Exception {
         LocalDate today = LocalDate.now();
         SaveStatementRequest saveReq1 = new SaveStatementRequest(
@@ -358,7 +358,7 @@ public class SoaIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testSavedSoaReflectsSubsequentPayments() throws Exception {
         // 1. Register a shipment with 1000.00 fee
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();

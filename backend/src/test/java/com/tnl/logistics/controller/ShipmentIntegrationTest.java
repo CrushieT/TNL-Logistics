@@ -261,7 +261,7 @@ public class ShipmentIntegrationTest {
         mockMvc.perform(get("/api/v1/shipments")
                         .param("page", "-7")
                         .param("size", "1000000"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
 
         mockMvc.perform(get("/api/v1/shipments")
                         .header("Authorization", "Bearer invalid-token")

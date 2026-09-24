@@ -16,7 +16,7 @@ import { useRouter, useRootNavigationState } from 'expo-router';
 import { colors, fonts, spacing, radius } from '../theme';
 import {
   changePassword,
-  isAuthenticated,
+  hasVerifiedAdminSession,
   getCurrentUser,
   logout,
 } from '../services/api/client';
@@ -80,14 +80,14 @@ export default function ChangePasswordScreen() {
   useEffect(() => {
     if (!navigationState?.key) return;
 
-    if (!isAuthenticated()) {
+    if (!hasVerifiedAdminSession()) {
       router.replace('/login');
     } else if (currentUser && !currentUser.mustChangePassword) {
       router.replace('/');
     }
   }, [navigationState?.key, currentUser?.mustChangePassword, router]);
 
-  if (!isAuthenticated() || (currentUser && !currentUser.mustChangePassword)) {
+  if (!hasVerifiedAdminSession() || (currentUser && !currentUser.mustChangePassword)) {
     return <View style={{ flex: 1, backgroundColor: colors.canvas }} />;
   }
 

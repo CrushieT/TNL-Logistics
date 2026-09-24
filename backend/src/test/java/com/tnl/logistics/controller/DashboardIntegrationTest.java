@@ -51,11 +51,10 @@ public class DashboardIntegrationTest {
 
     @Test
     @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
-    void testGetDashboardSummaryAsOfficeStaffReturns200() throws Exception {
+    void testGetDashboardSummaryAsOfficeStaffReturns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/dashboard/summary")
                 .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.shipmentCount").isNumber());
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -67,10 +66,10 @@ public class DashboardIntegrationTest {
     }
 
     @Test
-    void testGetDashboardSummaryUnauthenticatedReturns403Forbidden() throws Exception {
+    void testGetDashboardSummaryUnauthenticatedReturns401Unauthorized() throws Exception {
         mockMvc.perform(get("/api/v1/dashboard/summary")
                 .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

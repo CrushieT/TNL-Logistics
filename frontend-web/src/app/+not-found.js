@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { colors, fonts, spacing, radius } from '../theme';
-import { isAuthenticated } from '../services/api/client';
+import { hasVerifiedAdminSession } from '../services/api/client';
 import AppShell from '../components/layout/AppShell';
 import PageHeader from '../components/layout/PageHeader';
 import Card from '../components/common/Card';
@@ -18,7 +18,7 @@ import Card from '../components/common/Card';
 export default function NotFoundScreen() {
   const router = useRouter();
   const pathname = usePathname();
-  const authenticated = isAuthenticated();
+  const authenticated = hasVerifiedAdminSession();
 
   const displayPath =
     (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.pathname) ||

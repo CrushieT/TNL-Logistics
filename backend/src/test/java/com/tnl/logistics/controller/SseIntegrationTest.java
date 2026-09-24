@@ -97,6 +97,7 @@ public class SseIntegrationTest {
     private com.tnl.logistics.repository.WaybillRepository waybillRepository;
 
     private String officeToken;
+    private String adminToken;
 
     @BeforeEach
     public void setup() {
@@ -108,6 +109,7 @@ public class SseIntegrationTest {
         vehicleRepository.deleteAll();
 
         officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        adminToken = "Bearer " + JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {
@@ -122,7 +124,7 @@ public class SseIntegrationTest {
     public void testSseStreamConnectionAndBroadcastFlow() throws Exception {
         // 1. Connect to SSE stream
         MvcResult sseResult = mockMvc.perform(get("/api/v1/events/stream")
-                        .header("Authorization", officeToken))
+                        .header("Authorization", adminToken))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -156,7 +158,7 @@ public class SseIntegrationTest {
 
     @Test
     public void testSseStreamAcceptsTokenQueryParameter() throws Exception {
-        String rawToken = JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        String rawToken = JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
         MvcResult sseResult = mockMvc.perform(get("/api/v1/events/stream")
                         .param("token", rawToken))
                 .andExpect(status().isOk())
@@ -170,7 +172,7 @@ public class SseIntegrationTest {
         String rawToken = JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
         mockMvc.perform(get("/api/v1/shipments")
                         .param("token", rawToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

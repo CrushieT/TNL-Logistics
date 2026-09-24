@@ -24,7 +24,7 @@ public class SseController {
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    @PreAuthorize("hasAnyRole('OFFICE_STAFF', 'FIELD_STAFF', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public SseEmitter streamEvents(Authentication authentication, HttpServletRequest request) {
         if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
             throw new AccessDeniedException("Authenticated user context is required");

@@ -87,10 +87,10 @@ public class SystemSettingIntegrationTest {
     }
 
     @Test
-    void testGetSettingsUnauthenticatedReturns403Forbidden() throws Exception {
+    void testGetSettingsUnauthenticatedReturns401Unauthorized() throws Exception {
         mockMvc.perform(get("/api/v1/settings")
                 .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

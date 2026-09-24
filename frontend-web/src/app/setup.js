@@ -65,7 +65,7 @@ export default function SetupScreen() {
     if (!navigationState?.key) return;
 
     checkFirstBootStatus().then((isFirstBoot) => {
-      if (!isFirstBoot) {
+      if (isFirstBoot === false) {
         if (isAuthenticated()) {
           router.replace('/');
         } else {
