@@ -59,6 +59,7 @@ public class TrackingAndVehicleIntegrationTest {
     private PaymentRepository paymentRepository;
 
     private String officeToken;
+    private String adminToken;
     private String fieldToken;
 
     @Autowired
@@ -74,6 +75,7 @@ public class TrackingAndVehicleIntegrationTest {
         vehicleRepository.deleteAll();
 
         officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        adminToken = "Bearer " + JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
         fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
@@ -90,7 +92,7 @@ public class TrackingAndVehicleIntegrationTest {
         // 1. Create first vehicle (VH-001)
         VehicleRequest req1 = new VehicleRequest("NBD-1234", "Isuzu 6-Wheeler Forward Truck", true);
         MvcResult res1 = mockMvc.perform(post("/api/v1/vehicles")
-                        .header("Authorization", officeToken)
+                        .header("Authorization", adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req1)))
                 .andExpect(status().isCreated())
@@ -104,7 +106,7 @@ public class TrackingAndVehicleIntegrationTest {
         // 2. Create second vehicle (VH-002)
         VehicleRequest req2 = new VehicleRequest("XYZ-9876", "Mitsubishi L300 Van", true);
         MvcResult res2 = mockMvc.perform(post("/api/v1/vehicles")
-                        .header("Authorization", officeToken)
+                        .header("Authorization", adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req2)))
                 .andExpect(status().isCreated())
@@ -126,7 +128,7 @@ public class TrackingAndVehicleIntegrationTest {
         // 4. Update vehicle description
         req1.setDescription("Updated Isuzu 6-Wheeler");
         mockMvc.perform(put("/api/v1/vehicles/VH-001")
-                        .header("Authorization", officeToken)
+                        .header("Authorization", adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req1)))
                 .andExpect(status().isOk());
@@ -136,7 +138,7 @@ public class TrackingAndVehicleIntegrationTest {
 
         // 5. Smart Delete: Hard deletes vehicle when 0 events exist
         mockMvc.perform(delete("/api/v1/vehicles/VH-001")
-                        .header("Authorization", officeToken))
+                        .header("Authorization", adminToken))
                 .andExpect(status().isNoContent());
 
         assertTrue(vehicleRepository.findById("VH-001").isEmpty());
@@ -274,7 +276,7 @@ public class TrackingAndVehicleIntegrationTest {
         // 1. Create vehicle with custom type and remarks
         VehicleRequest req = new VehicleRequest("TRK-999", "Refrigerated Wing Van", "Cold storage transport", "Active", "Brake service due soon", true);
         MvcResult res = mockMvc.perform(post("/api/v1/vehicles")
-                        .header("Authorization", officeToken)
+                        .header("Authorization", adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isCreated())
@@ -355,7 +357,7 @@ public class TrackingAndVehicleIntegrationTest {
 
         // 9. Smart Delete: Soft-deactivates when vehicle has past tracking history
         mockMvc.perform(delete("/api/v1/vehicles/" + v.getVehicleId())
-                        .header("Authorization", officeToken))
+                        .header("Authorization", adminToken))
                 .andExpect(status().isNoContent());
 
         Vehicle softDeleted = vehicleRepository.findById(v.getVehicleId()).orElseThrow();

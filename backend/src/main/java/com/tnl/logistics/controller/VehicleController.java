@@ -22,7 +22,7 @@ public class VehicleController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('OFFICE_STAFF', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<VehicleResponse> createVehicle(@Valid @RequestBody VehicleRequest request) {
         VehicleResponse response = vehicleService.createVehicle(request);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
@@ -46,7 +46,7 @@ public class VehicleController {
     }
 
     @PutMapping("/{vehicleId}")
-    @PreAuthorize("hasAnyRole('OFFICE_STAFF', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<VehicleResponse> updateVehicle(
             @PathVariable String vehicleId,
             @Valid @RequestBody VehicleRequest request) {
@@ -55,7 +55,7 @@ public class VehicleController {
     }
 
     @DeleteMapping("/{vehicleId}")
-    @PreAuthorize("hasAnyRole('OFFICE_STAFF', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deactivateVehicle(@PathVariable String vehicleId) {
         vehicleService.deactivateVehicle(vehicleId);
         return ResponseEntity.noContent().build();

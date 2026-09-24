@@ -83,7 +83,7 @@ public class ClientIntegrationTest {
         shipmentRepository.deleteAll();
         clientRepository.deleteAll();
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
     }
 
     @Test
@@ -91,6 +91,7 @@ public class ClientIntegrationTest {
         ClientCreateRequest request = new ClientCreateRequest("Mobile test client", "Baguio test address", "09170000000", null);
         String payload = objectMapper.writeValueAsString(request);
         String fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
+        String mobileOfficeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
         mockMvc.perform(post("/api/v1/clients").header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isForbidden());
@@ -101,12 +102,12 @@ public class ClientIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
         request.setEmail("invalid-email");
-        MvcResult invalid = mockMvc.perform(post("/api/v1/clients").header("Authorization", officeToken)
+        MvcResult invalid = mockMvc.perform(post("/api/v1/clients").header("Authorization", mobileOfficeToken)
                         .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest()).andReturn();
         assertTrue(objectMapper.readTree(invalid.getResponse().getContentAsString()).get("fieldErrors").has("email"));
         assertEquals(0, clientRepository.count());
-        MvcResult created = mockMvc.perform(post("/api/v1/clients").header("Authorization", officeToken)
+        MvcResult created = mockMvc.perform(post("/api/v1/clients").header("Authorization", mobileOfficeToken)
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isOk()).andReturn();
         JsonNode body = objectMapper.readTree(created.getResponse().getContentAsString());
@@ -118,6 +119,10 @@ public class ClientIntegrationTest {
         assertEquals(java.util.Set.of("clientId", "name", "address", "contactNumber", "email", "defaultRateType", "active", "dateRegistered",
                 "totalShipments", "totalParcels", "totalCharges", "totalPaid", "outstandingBalance"), fields);
         assertEquals(1, clientRepository.count());
+
+        mockMvc.perform(get("/api/v1/clients/" + body.get("clientId").asText())
+                        .header("Authorization", mobileOfficeToken))
+                .andExpect(status().isForbidden());
     }
 
     @Test

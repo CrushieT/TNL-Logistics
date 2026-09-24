@@ -28,25 +28,25 @@ public class WaybillController {
     }
 
     @GetMapping("/shipments")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<WaybillShipmentOptionResponse>> getShipmentOptions() {
         return ResponseEntity.ok(waybillService.getShipmentOptions());
     }
 
     @GetMapping("/haulers")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<HaulerStaffOptionResponse>> getHaulerStaffOptions() {
         return ResponseEntity.ok(waybillService.getHaulerStaffOptions());
     }
 
     @GetMapping("/manifest/{shipmentId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF', 'FIELD_STAFF')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'FIELD_STAFF')")
     public ResponseEntity<WaybillManifestResponse> getManifestByShipmentId(@PathVariable("shipmentId") String shipmentId) {
         return ResponseEntity.ok(waybillService.getManifestByShipmentId(shipmentId));
     }
 
     @PostMapping("/send-to-hauler")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<WaybillManifestResponse> sendToHauler(@Valid @RequestBody WaybillCreateRequest request,
                                                                  Principal principal) {
         if (principal == null || principal.getName() == null || principal.getName().isBlank()) {
@@ -56,7 +56,7 @@ public class WaybillController {
     }
 
     @PostMapping("/complete/{shipmentId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<WaybillManifestResponse> markSignedCompleted(@PathVariable("shipmentId") String shipmentId,
                                                                        @RequestBody(required = false) WaybillStatusUpdateRequest request,
                                                                        Principal principal) {
@@ -68,7 +68,7 @@ public class WaybillController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<WaybillSummaryResponse>> getWaybills(
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size,

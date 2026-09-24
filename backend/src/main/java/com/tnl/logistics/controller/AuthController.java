@@ -160,9 +160,9 @@ public class AuthController {
                     .body(Map.of("message", "Account is deactivated"));
         }
 
-        if (user.getRole() == UserRole.FIELD_STAFF) {
+        if (user.getRole() != UserRole.ADMIN) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("message", "Field staff accounts are restricted to the mobile portal."));
+                    .body(Map.of("message", "Staff accounts must use the mobile application."));
         }
 
         rateLimiterService.recordSuccess(clientIp);

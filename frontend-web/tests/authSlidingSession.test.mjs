@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   decodeJwtPayload,
+  isEligibleAdminToken,
   isTokenExpired,
   shouldAdvanceTokenMonotonically,
   shouldSuppressStale401,
@@ -62,6 +63,19 @@ test('isTokenExpired respects 30-second skew leeway for 30-minute tokens', () =>
   // Token already expired 10 seconds ago
   const expired = createMockJwt({ exp: now - 10 });
   assert.equal(isTokenExpired(expired, nowMs), true);
+});
+
+test('isEligibleAdminToken requires an unexpired administrator role claim', () => {
+  const now = Math.floor(Date.now() / 1000);
+  const nowMs = now * 1000;
+  const adminToken = createMockJwt({ role: 'ADMIN', exp: now + 1800 });
+  const officeToken = createMockJwt({ role: 'OFFICE_STAFF', exp: now + 1800 });
+  const expiredAdminToken = createMockJwt({ role: 'ADMIN', exp: now + 10 });
+
+  assert.equal(isEligibleAdminToken(adminToken, nowMs), true);
+  assert.equal(isEligibleAdminToken(officeToken, nowMs), false);
+  assert.equal(isEligibleAdminToken(expiredAdminToken, nowMs), false);
+  assert.equal(isEligibleAdminToken('malformed-token', nowMs), false);
 });
 
 test('shouldAdvanceTokenMonotonically enforces monotonic expiration advance', () => {
@@ -229,6 +243,21 @@ test('SessionCoordinator manages dual memory/localStorage and notifies invalidat
   unsubscribe();
 });
 
+test('SessionCoordinator evicts a stored staff token and user record', () => {
+  const storage = createMockStorage();
+  const coordinator = new SessionCoordinator(storage);
+  const now = Math.floor(Date.now() / 1000);
+  const officeToken = createMockJwt({ role: 'OFFICE_STAFF', exp: now + 1800 });
+
+  storage.setItem('tnl_admin_token', officeToken);
+  storage.setItem('tnl_user_info', JSON.stringify({ role: 'OFFICE_STAFF' }));
+
+  assert.equal(coordinator.getToken(), null);
+  assert.equal(coordinator.getCurrentUser(), null);
+  assert.equal(storage.getItem('tnl_admin_token'), null);
+  assert.equal(storage.getItem('tnl_user_info'), null);
+});
+
 test('evaluateSessionValidationOutcome handles generation mismatches, token renewals, and current token 401s', () => {
   const now = Math.floor(Date.now() / 1000);
   const tokenA = createMockJwt({ sub: 'USR-1', exp: now + 1800 });
@@ -343,13 +372,31 @@ test('evaluateSessionValidationOutcome handles generation mismatches, token rene
   );
 });
 
+test('evaluateSessionValidationOutcome invalidates a non-admin auth-me result', () => {
+  const now = Math.floor(Date.now() / 1000);
+  const token = createMockJwt({ sub: 'USR-ADMIN', role: 'ADMIN', exp: now + 1800 });
+
+  assert.equal(
+    evaluateSessionValidationOutcome({
+      requestGeneration: 1,
+      currentGeneration: 1,
+      requestToken: token,
+      activeToken: token,
+      isSuccess: true,
+      isAuthorized: false,
+      is401: false,
+    }),
+    'INVALIDATE'
+  );
+});
+
 test('web race simulation: login flow preserves new user state against late older-generation responses', () => {
   const storage = createMockStorage();
   const coordinator = new SessionCoordinator(storage);
   const now = Math.floor(Date.now() / 1000);
 
-  const user1Token = createMockJwt({ sub: 'USR-1', exp: now + 1800 });
-  const user2Token = createMockJwt({ sub: 'USR-2', exp: now + 1800 });
+  const user1Token = createMockJwt({ sub: 'USR-1', role: 'ADMIN', exp: now + 1800 });
+  const user2Token = createMockJwt({ sub: 'USR-2', role: 'ADMIN', exp: now + 1800 });
 
   // User 1 logs in (generation 0)
   coordinator.setToken(user1Token);
@@ -397,8 +444,8 @@ test('web race simulation: password-change flow prevents stale 401 from tearing 
   const coordinator = new SessionCoordinator(storage);
   const now = Math.floor(Date.now() / 1000);
 
-  const preRotationToken = createMockJwt({ sub: 'USR-ADMIN', exp: now + 1800, ver: 1 });
-  const postRotationToken = createMockJwt({ sub: 'USR-ADMIN', exp: now + 1800, ver: 2 });
+  const preRotationToken = createMockJwt({ sub: 'USR-ADMIN', role: 'ADMIN', exp: now + 1800, ver: 1 });
+  const postRotationToken = createMockJwt({ sub: 'USR-ADMIN', role: 'ADMIN', exp: now + 1800, ver: 2 });
 
   coordinator.setToken(preRotationToken);
   coordinator.setCurrentUser({ userId: 'USR-ADMIN', username: 'admin', mustChangePassword: true });
@@ -460,7 +507,7 @@ test('web race simulation: genuine 401 for current token immediately invalidates
   const coordinator = new SessionCoordinator(storage);
   const now = Math.floor(Date.now() / 1000);
 
-  const activeToken = createMockJwt({ sub: 'USR-ADMIN', exp: now + 1800 });
+  const activeToken = createMockJwt({ sub: 'USR-ADMIN', role: 'ADMIN', exp: now + 1800 });
   coordinator.setToken(activeToken);
 
   let invalidated = false;

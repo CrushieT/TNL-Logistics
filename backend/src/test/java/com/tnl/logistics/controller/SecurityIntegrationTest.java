@@ -104,9 +104,9 @@ public class SecurityIntegrationTest {
 
     @Test
     public void testAuthenticationAndAuthorizationFlow() throws Exception {
-        // 1. Unauthenticated requests to test endpoints fail (403 Forbidden)
+        // 1. Unauthenticated requests to test endpoints fail (401 Unauthorized)
         mockMvc.perform(get("/api/v1/test/admin"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
 
         // 2. Login with invalid credentials fails
         LoginRequest badRequest = new LoginRequest("admin", "wrong_password");
@@ -214,6 +214,35 @@ public class SecurityIntegrationTest {
         appUserRepository.saveAndFlush(admin);
     }
 
+    @Test
+    public void testStaffWebLoginIsDeniedWhileMobileLoginRemainsAvailable() throws Exception {
+        AppUser officeUser = appUserRepository.findByUsername("office").orElseGet(() -> {
+            AppUser user = new AppUser("USR-OFFICE", "office", passwordEncoder.encode("office123"), "Office Staff", UserRole.OFFICE_STAFF);
+            user.setActive(true);
+            user.setTokenVersion(1);
+            return appUserRepository.saveAndFlush(user);
+        });
+        officeUser.setActive(true);
+        officeUser.setMustChangePassword(false);
+        officeUser.setPasswordHash(passwordEncoder.encode("office123"));
+        appUserRepository.saveAndFlush(officeUser);
+
+        LoginRequest officeLogin = new LoginRequest("office", "office123");
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(officeLogin)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Staff accounts must use the mobile application."))
+                .andExpect(jsonPath("$.token").doesNotExist());
+
+        mockMvc.perform(post("/api/v1/auth/mobile-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(officeLogin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("OFFICE_STAFF"))
+                .andExpect(jsonPath("$.token").isNotEmpty());
+    }
+
     @org.junit.jupiter.api.AfterEach
     public void cleanup() {
         AppUser admin = appUserRepository.findByUsername("admin").orElse(null);
@@ -242,7 +271,7 @@ public class SecurityIntegrationTest {
 
         // Login as flagged office user
         LoginRequest loginRequest = new LoginRequest("flagged_office", "flagged123");
-        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/mobile-login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(loginRequest)))
                 .andExpect(status().isOk())
@@ -309,11 +338,11 @@ public class SecurityIntegrationTest {
         LoginResponse loginResponse = objectMapper.readValue(loginResult.getResponse().getContentAsString(), LoginResponse.class);
         String adminToken = "Bearer " + loginResponse.getToken();
 
-        // 1. Unauthenticated call fails with 403
+        // 1. Unauthenticated call fails with 401
         mockMvc.perform(post("/api/v1/auth/verify-password")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new PasswordVerificationRequest("admin123"))))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
 
         // 2. Incorrect password returns 400 Bad Request
         mockMvc.perform(post("/api/v1/auth/verify-password")

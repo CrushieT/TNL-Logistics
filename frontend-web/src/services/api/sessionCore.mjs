@@ -31,6 +31,11 @@ export function isTokenExpired(token, currentTimeMs = Date.now()) {
   return currentTimeMs >= (parsed.exp * 1000 - 30000);
 }
 
+export function isEligibleAdminToken(token, currentTimeMs = Date.now()) {
+  const parsed = decodeJwtPayload(token);
+  return Boolean(parsed && parsed.role === 'ADMIN' && !isTokenExpired(token, currentTimeMs));
+}
+
 export function shouldAdvanceTokenMonotonically(renewedToken, activeToken, requestToken) {
   if (!renewedToken || !activeToken) return false;
   const activePayload = decodeJwtPayload(activeToken);
@@ -97,6 +102,7 @@ export function evaluateSessionValidationOutcome(
     isSuccess: success,
     is401: unauthorized = false,
     isRetry: retry = false,
+    isAuthorized: authorized = true,
   } = opts;
 
   // Generation mismatch: request belongs to an older session generation.
@@ -126,6 +132,9 @@ export function evaluateSessionValidationOutcome(
 
   // Success outcome
   if (success) {
+    if (!authorized) {
+      return 'INVALIDATE';
+    }
     if (!actTok || isTokenExpired(actTok)) {
       return 'INVALIDATE';
     }
@@ -176,7 +185,7 @@ export class SessionCoordinator {
 
   getToken() {
     if (this.memoryToken) {
-      if (!isTokenExpired(this.memoryToken)) {
+      if (isEligibleAdminToken(this.memoryToken)) {
         return this.memoryToken;
       }
       this.clearToken();
@@ -186,7 +195,7 @@ export class SessionCoordinator {
     if (this.storage) {
       const stored = this.storage.getItem('tnl_admin_token');
       if (stored) {
-        if (!isTokenExpired(stored)) {
+        if (isEligibleAdminToken(stored)) {
           this.memoryToken = stored;
           return stored;
         }

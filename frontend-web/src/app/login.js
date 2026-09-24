@@ -14,8 +14,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useRootNavigationState } from 'expo-router';
 import { colors, fonts, spacing, radius } from '../theme';
-import { login, isAuthenticated, getCurrentUser } from '../services/api/client';
-import { retryPendingPrintAudits } from '../features/shipments/services/printAuditOutbox';
+import { login, hasVerifiedAdminSession, getCurrentUser } from '../services/api/client';
 
 const androidApkUrl = process.env.EXPO_PUBLIC_ANDROID_APK_URL?.trim();
 
@@ -39,7 +38,7 @@ export default function LoginScreen() {
     // Prevent calling router.replace before root navigator has mounted
     if (!navigationState?.key) return;
 
-    if (isAuthenticated()) {
+    if (hasVerifiedAdminSession()) {
       const currentUser = getCurrentUser();
       if (currentUser?.mustChangePassword) {
         router.replace('/change-password');
@@ -64,7 +63,7 @@ export default function LoginScreen() {
   }, [cooldownSeconds]);
 
   // If already authenticated, do not render login form while redirecting
-  if (isAuthenticated()) {
+  if (hasVerifiedAdminSession()) {
     return <View style={{ flex: 1, backgroundColor: colors.canvas }} />;
   }
 
@@ -82,7 +81,6 @@ export default function LoginScreen() {
 
     try {
       const authData = await login(trimmedUsername, password);
-      retryPendingPrintAudits().catch(() => undefined);
       if (authData?.mustChangePassword) {
         router.replace('/change-password');
       } else {

@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
-import { evaluateSessionValidationOutcome } from './sessionCore.mjs';
+import { evaluateSessionValidationOutcome, isEligibleAdminToken } from './sessionCore.mjs';
 
 const TOKEN_KEY = 'tnl_admin_token';
 const USER_KEY = 'tnl_user_info';
@@ -10,6 +10,8 @@ let memoryToken = null;
 let memoryUser = null;
 let sessionGeneration = 0;
 const sessionInvalidationListeners = new Set();
+const sessionChangeListeners = new Set();
+let isAdminSessionVerified = false;
 
 export function getSessionGeneration() {
   return sessionGeneration;
@@ -25,6 +27,11 @@ export function onSessionInvalidated(callback) {
   return () => sessionInvalidationListeners.delete(callback);
 }
 
+export function onSessionChanged(callback) {
+  sessionChangeListeners.add(callback);
+  return () => sessionChangeListeners.delete(callback);
+}
+
 function notifySessionInvalidated() {
   sessionInvalidationListeners.forEach((callback) => {
     try {
@@ -33,6 +40,23 @@ function notifySessionInvalidated() {
       // Ignore subscriber execution error
     }
   });
+}
+
+function notifySessionChanged() {
+  sessionChangeListeners.forEach((callback) => {
+    try {
+      callback();
+    } catch (err) {
+      // Ignore subscriber execution error
+    }
+  });
+}
+
+function clearIneligibleSession() {
+  isAdminSessionVerified = false;
+  clearToken();
+  clearCurrentUser();
+  notifySessionChanged();
 }
 
 export function decodeJwtPayload(token) {
@@ -61,22 +85,20 @@ export function isTokenExpired(token) {
 
 export function getToken() {
   if (memoryToken) {
-    if (!isTokenExpired(memoryToken)) {
+    if (isEligibleAdminToken(memoryToken)) {
       return memoryToken;
     }
-    clearToken();
-    clearCurrentUser();
+    clearIneligibleSession();
     return null;
   }
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
     const stored = window.localStorage.getItem(TOKEN_KEY);
     if (stored) {
-      if (!isTokenExpired(stored)) {
+      if (isEligibleAdminToken(stored)) {
         memoryToken = stored;
         return stored;
       }
-      clearToken();
-      clearCurrentUser();
+      clearIneligibleSession();
       return null;
     }
   }
@@ -138,22 +160,28 @@ export function clearCurrentUser() {
 
 export function isAuthenticated() {
   const token = getToken();
-  return Boolean(token && !isTokenExpired(token));
+  return Boolean(token && isEligibleAdminToken(token));
 }
 
 export async function ensureAuthenticated() {
   const token = getToken();
-  if (!token || isTokenExpired(token)) {
+  if (!token || !isEligibleAdminToken(token)) {
     return null;
   }
   return token;
 }
 
+export function hasVerifiedAdminSession() {
+  return isAdminSessionVerified && isAuthenticated();
+}
+
 export function invalidateSession() {
   incrementSessionGeneration();
+  isAdminSessionVerified = false;
   clearToken();
   clearCurrentUser();
   notifySessionInvalidated();
+  notifySessionChanged();
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
     if (!window.location.pathname.startsWith('/login')) {
       const redirectPath = encodeURIComponent(window.location.pathname + window.location.search);
@@ -207,8 +235,8 @@ export async function login(username, password) {
 
   const { token, userId, role, mustChangePassword } = response.data;
 
-  if (role === 'FIELD_STAFF') {
-    throw new Error('Field staff accounts must use the mobile application.');
+  if (role !== 'ADMIN' || !isEligibleAdminToken(token)) {
+    throw new Error('Staff accounts must use the mobile application.');
   }
 
   incrementSessionGeneration();
@@ -219,6 +247,8 @@ export async function login(username, password) {
     role,
     mustChangePassword,
   });
+  isAdminSessionVerified = true;
+  notifySessionChanged();
 
   return response.data;
 }
@@ -228,7 +258,7 @@ export async function checkFirstBootStatus() {
     const response = await axios.get(`${BASE_URL}/auth/first-boot-status`);
     return Boolean(response.data?.isFirstBoot);
   } catch (error) {
-    return false;
+    return null;
   }
 }
 
@@ -255,6 +285,10 @@ export async function registerFirstBootAdmin({
 
   const { token, userId, role, mustChangePassword } = response.data;
 
+  if (role !== 'ADMIN' || !isEligibleAdminToken(token)) {
+    throw new Error('First-boot setup did not return an administrator session.');
+  }
+
   incrementSessionGeneration();
   setToken(token);
   setCurrentUser({
@@ -264,6 +298,8 @@ export async function registerFirstBootAdmin({
     fullName,
     mustChangePassword,
   });
+  isAdminSessionVerified = true;
+  notifySessionChanged();
 
   return response.data;
 }
@@ -279,7 +315,7 @@ const apiClient = axios.create({
 // Attach JWT and session generation automatically on every request.
 apiClient.interceptors.request.use((config) => {
   const token = getToken();
-  if (token && !isTokenExpired(token)) {
+  if (token && isEligibleAdminToken(token)) {
     config.headers = config.headers || {};
     if (!config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -342,10 +378,9 @@ apiClient.interceptors.response.use(
 
 export async function validateSession(isRetry = false) {
   const token = getToken();
-  if (!token || isTokenExpired(token)) {
-    clearToken();
-    clearCurrentUser();
-    return false;
+  if (!token || !isEligibleAdminToken(token)) {
+    clearIneligibleSession();
+    return 'INVALID';
   }
 
   const requestGeneration = sessionGeneration;
@@ -369,6 +404,7 @@ export async function validateSession(isRetry = false) {
       requestToken,
       activeToken,
       isSuccess: Boolean(data && data.username),
+      isAuthorized: data?.role === 'ADMIN',
       is401: false,
       isRetry,
     });
@@ -381,7 +417,9 @@ export async function validateSession(isRetry = false) {
         fullName: data.fullName,
         mustChangePassword: data.mustChangePassword,
       });
-      return true;
+      isAdminSessionVerified = true;
+      notifySessionChanged();
+      return 'VALID';
     }
 
     if (action === 'RETRY' && !isRetry) {
@@ -390,10 +428,10 @@ export async function validateSession(isRetry = false) {
 
     if (action === 'INVALIDATE') {
       invalidateSession();
-      return false;
+      return 'INVALID';
     }
 
-    return isAuthenticated();
+    return 'UNVERIFIED';
   } catch (error) {
     const status = error?.response?.status;
     const is401 = status === 401;
@@ -415,10 +453,10 @@ export async function validateSession(isRetry = false) {
 
     if (action === 'INVALIDATE') {
       invalidateSession();
-      return false;
+      return 'INVALID';
     }
 
-    return isAuthenticated();
+    return 'UNVERIFIED';
   }
 }
 
@@ -429,8 +467,13 @@ export async function changePassword(oldPassword, newPassword) {
   });
 
   if (response.data?.token) {
+    if (response.data?.role !== 'ADMIN' || !isEligibleAdminToken(response.data.token)) {
+      invalidateSession();
+      throw new Error('Password change did not return an administrator session.');
+    }
     incrementSessionGeneration();
     setToken(response.data.token);
+    isAdminSessionVerified = true;
   }
 
   const currentUser = getCurrentUser();
@@ -443,6 +486,8 @@ export async function changePassword(oldPassword, newPassword) {
       userId: response.data?.userId || currentUser.userId,
     });
   }
+
+  notifySessionChanged();
 
   return response.data;
 }

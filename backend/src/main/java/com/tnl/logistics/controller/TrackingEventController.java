@@ -148,7 +148,7 @@ public class TrackingEventController {
      * Paginated search for company-wide immutable tracking event audit logs.
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<TrackingLogEntryResponse>> getTrackingLogs(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) ParcelStatus status,
@@ -165,7 +165,7 @@ public class TrackingEventController {
      * Retrieve today's operational tracking metrics for the 4-card summary bar.
      */
     @GetMapping("/metrics")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<TrackingMetricsResponse> getTodayTrackingMetrics() {
         TrackingMetricsResponse response = trackingService.getTodayTrackingMetrics();
         return ResponseEntity.ok(response);
