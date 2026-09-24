@@ -17,6 +17,8 @@ import { colors, fonts, spacing, radius } from '../theme';
 import { login, isAuthenticated, getCurrentUser } from '../services/api/client';
 import { retryPendingPrintAudits } from '../features/shipments/services/printAuditOutbox';
 
+const androidApkUrl = process.env.EXPO_PUBLIC_ANDROID_APK_URL?.trim();
+
 export default function LoginScreen() {
   const router = useRouter();
   const searchParams = useLocalSearchParams();
@@ -210,6 +212,16 @@ export default function LoginScreen() {
                 </Text>
               )}
             </TouchableOpacity>
+
+            {Platform.OS === 'web' && androidApkUrl && (
+              <Text
+                accessibilityRole="link"
+                href={androidApkUrl}
+                style={styles.downloadLink}
+              >
+                Download staff Android app
+              </Text>
+            )}
           </View>
 
           {/* Security Footer Notice */}
@@ -382,6 +394,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.9,
+  },
+  downloadLink: {
+    alignSelf: 'center',
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    color: colors.accent,
+    textAlign: 'center',
+    textDecorationLine: 'underline',
   },
   footerNote: {
     marginTop: 28,
