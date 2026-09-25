@@ -29,7 +29,7 @@ tnl-logistics/
 │   ├── src/
 │   │   ├── main/
 │   │   │   ├── java/com/tnl/logistics/
-│   │   │   │   ├── config/              # SecurityConfig, JwtRenewalResponseWrapper, OfflineSyncRequestGuard, CorsConfig, JwtTokenProvider, DataSeeder
+│   │   │   │   ├── config/              # SecurityConfig, JwtRenewalResponseWrapper, OfflineSyncRequestGuard, CorsConfig, JwtTokenProvider, DataSeeder, LoadTestDataSeeder, LoadTestEnvironmentGuard
 │   │   │   │   ├── controller/          # REST endpoints (Shipment, Vehicle, Client, Waybill, Payment, Collections, SOA)
 │   │   │   │   ├── dto/                 # Request & Response DTOs (including CurrentUserResponse, MobileDeviceBindingSummary, and offline-sync contracts)
 │   │   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, Vehicle, Waybill, Payment, Soa, MobileDeviceBinding, OfflineScanReceipt, etc.)
@@ -38,6 +38,7 @@ tnl-logistics/
 │   │   │   └── resources/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
+│   │   │       ├── application-loadtest.properties
 │   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V30), including offline scan idempotency receipts
 │   │   └── test/                        # Integration and unit test suites, including AdminConsoleAuthorizationIntegrationTest and offline sync API coverage
 │   └── pom.xml
@@ -134,7 +135,10 @@ tnl-logistics/
 │   ├── .env.example
 │   └── README.md
 │
+├── load-tests/                       # Synthetic load and performance testing suite (smoke.js, baseline.js, README.md)
 ├── docker-compose.yml                # Local dev: MySQL + Backend
+├── docker-compose.loadtest.yml       # High-volume load test environment: MySQL + Backend (loadtest profile)
+├── .env.loadtest.example             # Template credentials and configuration for load-testing stack
 ├── THIRD_PARTY_NOTICES.md            # Vendored dependency attribution and licensing
 ├── .gitignore                        # Root-level git ignore
 └── README.md                          # Project overview & quick start
@@ -161,7 +165,10 @@ tnl-logistics/
 
 - **Why:** Monorepo makes it easy to `docker-compose up` and have all three apps running locally in one command.
 
-### Workflow Testing
+### Workflow & Load Testing
 
 - `backend/src/main/resources/application-workflow.properties` selects the isolated `tnl_workflow` database and enables the production-shaped workflow fixtures.
 - `docker-compose.workflow.yml` overrides the default Compose stack for the same isolated workflow profile.
+- `backend/src/main/resources/application-loadtest.properties` selects the isolated `tnl_loadtest` database with HikariCP concurrency tuning (pool size 30), strict Hibernate `ddl-auto=validate`, and opt-in deterministic seeder (`LoadTestDataSeeder.java`).
+- `docker-compose.loadtest.yml` spins up `mysql-loadtest` (port 3307) and `backend-loadtest` (port 8082) using `.env.loadtest`.
+- `load-tests/` provides k6 smoke and 25-user baseline scripts targeting `http://localhost:8082` with JWT credential sanitization.

@@ -4,7 +4,7 @@ The scripts target the isolated `loadtest` profile only. They require the synthe
 
 ## Seed an empty local database
 
-Set `LOADTEST_SEED_ENABLED=true` in `.env.loadtest`, start the Compose stack, and wait for `Load-test seed complete` in the backend logs. Set it back to `false` before ordinary restarts. The seeder refuses partially-seeded databases with an error, skips execution if the target dataset is already present, and rejects any database other than `tnl_loadtest`.
+Set `LOADTEST_SEED_ENABLED=true` in `.env.loadtest`, start the Compose stack, and wait for `Load-test seed complete` in the backend logs. Set it back to `false` before ordinary restarts. The seeder skips execution only if the database contains the exact target dataset count (`LOADTEST_SEED_SHIPMENTS`), refuses any other non-zero shipment count with an `IllegalStateException`, and rejects any database target other than `tnl_loadtest`.
 
 ## Run k6 in Docker
 

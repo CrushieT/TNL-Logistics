@@ -37,6 +37,7 @@
 | ↳ **Phase 6.7** | Offline Resilience & SQLite Scan Queue (Screen 56) | [COMPLETED] |
 | ↳ **Phase 6.8** | Public Staff Android APK Download from Web Login | [COMPLETED] |
 | ↳ **Phase 6.9** | Admin-Only Web Console Access and Staff Mobile API Preservation | [COMPLETED] |
+| ↳ **Phase 6.10** | High-Volume Load-Testing Profile, Synthetic Seeder & Strict Schema Validation | [COMPLETED] |
 
 ---
 
@@ -463,3 +464,12 @@
 **6.9 — Admin-Only Web Console Access and Staff Mobile API Preservation** — **[COMPLETED]**
 - Restricted web login, console routes, and console-only API operations to `ADMIN` while preserving office and field mobile workflows.
 - Added backend authorization and frontend session regression coverage for administrator-only web access.
+
+**6.10 — High-Volume Load-Testing Profile, Synthetic Seeder & Strict Schema Validation** — **[COMPLETED]**
+- Dedicated Spring Boot `loadtest` profile (`application-loadtest.properties`) with HikariCP pool tuning (size 30) and Hibernate strict `ddl-auto=validate`.
+- Docker Compose load-testing environment (`docker-compose.loadtest.yml`) spinning up isolated MySQL database (`tnl_loadtest`) on port 3307 and backend on port 8082 with `.env.loadtest` credentials.
+- Opt-in synthetic seeder (`LoadTestDataSeeder.java`) generating 10,000 shipments, 500 clients, 100 vehicles, tracking events, and payments using deterministic random seeding (`20260925`) and batch processing (size 250).
+- Safety guards (`LoadTestEnvironmentGuard.java`) enforcing database name validation (`app.loadtest.expected-database=tnl_loadtest`), exact target equality skip checking (`existingShipments == shipmentTarget`), and immediate startup failure (`IllegalStateException`) on partial (`0 < count < target`) or over-target (`count > target`) datasets.
+- k6 performance testing suite in `load-tests/` (`smoke.js`, `baseline.js`, `README.md`) with automated JWT credential sanitization and git artifact exclusion (`.gitignore`).
+- Unit and integration coverage: `LoadTestEnvironmentGuardTest` (6 tests), `LoadTestDataSeederTest` (5 tests covering disabled, partial, exact-target, over-target, and missing password states), and `LoadTestSchemaValidationIntegrationTest` validating all 17 entity mappings against Flyway migrations (V1–V30).
+
