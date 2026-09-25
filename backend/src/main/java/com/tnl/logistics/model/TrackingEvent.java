@@ -41,13 +41,13 @@ public class TrackingEvent {
     @Column(name = "event_timestamp", nullable = false, updatable = false)
     private LocalDateTime eventTimestamp;
 
-    @Column(name = "client_event_id", length = 36, unique = true)
+    @Column(name = "client_event_id", length = 36, unique = true, columnDefinition = "CHAR(36)")
     private String clientEventId;
 
     @Column(name = "client_captured_at")
     private LocalDateTime clientCapturedAt;
 
-    @Column(name = "client_request_fingerprint", length = 64)
+    @Column(name = "client_request_fingerprint", length = 64, columnDefinition = "CHAR(64)")
     private String clientRequestFingerprint;
 
     @Column(name = "scan_source", nullable = false, length = 16)

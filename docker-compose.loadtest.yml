@@ -1,0 +1,54 @@
+services:
+  mysql-loadtest:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: ${LOADTEST_DB_NAME:?Set LOADTEST_DB_NAME in .env.loadtest}
+      MYSQL_USER: ${LOADTEST_DB_USER:?Set LOADTEST_DB_USER in .env.loadtest}
+      MYSQL_PASSWORD: ${LOADTEST_DB_PASSWORD:?Set LOADTEST_DB_PASSWORD in .env.loadtest}
+      MYSQL_ROOT_PASSWORD: ${LOADTEST_DB_ROOT_PASSWORD:?Set LOADTEST_DB_ROOT_PASSWORD in .env.loadtest}
+    ports:
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - mysql_loadtest_data:/var/lib/mysql
+    networks:
+      - loadtest_network
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  backend-loadtest:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8082:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: loadtest
+      LOADTEST_DATASOURCE_URL: jdbc:mysql://mysql-loadtest:3306/${LOADTEST_DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      LOADTEST_DB_USER: ${LOADTEST_DB_USER}
+      LOADTEST_DB_PASSWORD: ${LOADTEST_DB_PASSWORD}
+      LOADTEST_JWT_SECRET: ${LOADTEST_JWT_SECRET:?Set LOADTEST_JWT_SECRET in .env.loadtest}
+      CORS_ALLOWED_ORIGINS: ${LOADTEST_CORS_ALLOWED_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081}
+      APP_SEED_ADMIN: "false"
+      APP_SEED_SAMPLE_DATA: "false"
+      APP_SEED_WORKFLOW_FIXTURES: "false"
+      APP_SEED_MOBILE_PINS: "false"
+      LOADTEST_SEED_ENABLED: ${LOADTEST_SEED_ENABLED:-false}
+      LOADTEST_SEED_SHIPMENTS: ${LOADTEST_SEED_SHIPMENTS:-10000}
+      LOADTEST_SEED_RANDOM_SEED: ${LOADTEST_SEED_RANDOM_SEED:-20260925}
+      LOADTEST_SEED_BATCH_SIZE: ${LOADTEST_SEED_BATCH_SIZE:-250}
+      LOADTEST_SEED_PASSWORD: ${LOADTEST_SEED_PASSWORD:-}
+    depends_on:
+      mysql-loadtest:
+        condition: service_healthy
+    networks:
+      - loadtest_network
+
+volumes:
+  mysql_loadtest_data:
+
+networks:
+  loadtest_network:
+    name: tnl_loadtest_network

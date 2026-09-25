@@ -26,6 +26,8 @@ bin/
 .env.local
 .env.*.local
 *.env
+.env.loadtest
+load-tests/results/
 
 # --- Backend (Maven / Java) exclusions ---
 backend/target/
