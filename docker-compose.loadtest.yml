@@ -1,6 +1,10 @@
 services:
   mysql-loadtest:
     image: mysql:8.0
+    command:
+      - --performance_schema=OFF
+      - --innodb_buffer_pool_size=64M
+      - --max_connections=30
     environment:
       MYSQL_DATABASE: ${LOADTEST_DB_NAME:?Set LOADTEST_DB_NAME in .env.loadtest}
       MYSQL_USER: ${LOADTEST_DB_USER:?Set LOADTEST_DB_USER in .env.loadtest}
@@ -17,6 +21,11 @@ services:
       interval: 5s
       timeout: 10s
       retries: 20
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
 
   backend-loadtest:
     build:
@@ -26,6 +35,7 @@ services:
       - "127.0.0.1:8082:8080"
     environment:
       SPRING_PROFILES_ACTIVE: loadtest
+      JAVA_TOOL_OPTIONS: "-XX:+UseSerialGC -XX:MaxRAMPercentage=65.0 -XX:InitialRAMPercentage=40.0"
       LOADTEST_DATASOURCE_URL: jdbc:mysql://mysql-loadtest:3306/${LOADTEST_DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
       LOADTEST_DB_USER: ${LOADTEST_DB_USER}
       LOADTEST_DB_PASSWORD: ${LOADTEST_DB_PASSWORD}
@@ -45,6 +55,11 @@ services:
         condition: service_healthy
     networks:
       - loadtest_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
 
 volumes:
   mysql_loadtest_data:

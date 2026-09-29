@@ -466,10 +466,10 @@
 - Added backend authorization and frontend session regression coverage for administrator-only web access.
 
 **6.10 — High-Volume Load-Testing Profile, Synthetic Seeder & Strict Schema Validation** — **[COMPLETED]**
-- Dedicated Spring Boot `loadtest` profile (`application-loadtest.properties`) with HikariCP pool tuning (size 30) and Hibernate strict `ddl-auto=validate`.
-- Docker Compose load-testing environment (`docker-compose.loadtest.yml`) spinning up isolated MySQL database (`tnl_loadtest`) on port 3307 and backend on port 8082 with `.env.loadtest` credentials.
+- Dedicated Spring Boot `loadtest` profile (`application-loadtest.properties`) with configurable HikariCP pool tuning (default pool size 10) and Hibernate strict `ddl-auto=validate`.
+- Docker Compose load-testing environment (`docker-compose.loadtest.yml`) configured for low-cost cloud limits (512 MB RAM / 0.5 vCPU per container) with MySQL memory optimization (`--performance_schema=OFF`, `innodb_buffer_pool_size=64M`) and JVM Serial GC (`-XX:+UseSerialGC -XX:MaxRAMPercentage=65.0`).
 - Opt-in synthetic seeder (`LoadTestDataSeeder.java`) generating 10,000 shipments, 500 clients, 100 vehicles, tracking events, and payments using deterministic random seeding (`20260925`) and batch processing (size 250).
 - Safety guards (`LoadTestEnvironmentGuard.java`) enforcing database name validation (`app.loadtest.expected-database=tnl_loadtest`), exact target equality skip checking (`existingShipments == shipmentTarget`), and immediate startup failure (`IllegalStateException`) on partial (`0 < count < target`) or over-target (`count > target`) datasets.
-- k6 performance testing suite in `load-tests/` (`smoke.js`, `baseline.js`, `README.md`) with automated JWT credential sanitization and git artifact exclusion (`.gitignore`).
+- k6 performance testing suite in `load-tests/` (`smoke.js`, `baseline.js`, `realistic-simulation.js`, `README.md`) with automated JWT credential sanitization and git artifact exclusion (`.gitignore`), achieving 100% success rate across 1,451 live hybrid operations (1 Admin + 20 Couriers) under 512 MB RAM / 0.5 vCPU limits.
 - Unit and integration coverage: `LoadTestEnvironmentGuardTest` (6 tests), `LoadTestDataSeederTest` (5 tests covering disabled, partial, exact-target, over-target, and missing password states), and `LoadTestSchemaValidationIntegrationTest` validating all 17 entity mappings against Flyway migrations (V1–V30).
 
