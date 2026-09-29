@@ -145,6 +145,69 @@ public class TrackingAndVehicleIntegrationTest {
     }
 
     @Test
+    public void testVehicleBoundaryValidation() throws Exception {
+        // Plate number > 20 characters
+        VehicleRequest longPlate = new VehicleRequest("A".repeat(21), "Valid Description", true);
+        MvcResult resPlate = mockMvc.perform(post("/api/v1/vehicles")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(longPlate)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+        assertTrue(objectMapper.readTree(resPlate.getResponse().getContentAsString()).get("fieldErrors").has("plateNumber"));
+
+        // Description > 100 characters
+        VehicleRequest longDesc = new VehicleRequest("ABC-1234", "D".repeat(101), true);
+        MvcResult resDesc = mockMvc.perform(post("/api/v1/vehicles")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(longDesc)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+        assertTrue(objectMapper.readTree(resDesc.getResponse().getContentAsString()).get("fieldErrors").has("description"));
+
+        // Vehicle type > 50 characters
+        VehicleRequest longType = new VehicleRequest("ABC-1234", "T".repeat(51), "Valid Description", "Active", "None", true);
+        MvcResult resType = mockMvc.perform(post("/api/v1/vehicles")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(longType)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+        assertTrue(objectMapper.readTree(resType.getResponse().getContentAsString()).get("fieldErrors").has("vehicleType"));
+
+        // Status > 30 characters
+        VehicleRequest longStatus = new VehicleRequest("ABC-1234", "6-Wheeler Forward", "Valid Description", "S".repeat(31), "None", true);
+        MvcResult resStatus = mockMvc.perform(post("/api/v1/vehicles")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(longStatus)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+        assertTrue(objectMapper.readTree(resStatus.getResponse().getContentAsString()).get("fieldErrors").has("status"));
+
+        // Remarks > 255 characters
+        VehicleRequest longRemarks = new VehicleRequest("ABC-1234", "6-Wheeler Forward", "Valid Description", "Active", "R".repeat(256), true);
+        MvcResult resRemarks = mockMvc.perform(post("/api/v1/vehicles")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(longRemarks)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+        assertTrue(objectMapper.readTree(resRemarks.getResponse().getContentAsString()).get("fieldErrors").has("remarks"));
+
+        // Put update boundary check
+        Vehicle existing = vehicleRepository.saveAndFlush(new Vehicle("VH-099", "PLATE-01", "Existing Truck"));
+        MvcResult resPut = mockMvc.perform(put("/api/v1/vehicles/" + existing.getVehicleId())
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(longDesc)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+        assertTrue(objectMapper.readTree(resPut.getResponse().getContentAsString()).get("fieldErrors").has("description"));
+    }
+
+    @Test
     public void testSequential5StateStatusFlowAndVehicleAssignment() throws Exception {
         // 1. Create a vehicle
         vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "TNL Truck 1"));
