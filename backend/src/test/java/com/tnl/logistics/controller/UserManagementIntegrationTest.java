@@ -143,6 +143,82 @@ public class UserManagementIntegrationTest {
 
     @Test
     @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testUserCreateBoundaryValidation() throws Exception {
+        UserCreateRequest request = new UserCreateRequest();
+        request.setPassword("pass123");
+        request.setRole(UserRole.OFFICE_STAFF);
+
+        // Full name > 150 chars
+        request.setFullName("A".repeat(151));
+        request.setUsername("validuser01");
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.fullName").exists());
+
+        // Full name < 2 chars
+        request.setFullName("A");
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.fullName").exists());
+
+        // Username > 50 chars
+        request.setFullName("Valid Full Name");
+        request.setUsername("u".repeat(51));
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.username").exists());
+
+        // Username < 3 chars
+        request.setUsername("ab");
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.username").exists());
+
+        // Username invalid pattern (starts with special char or contains invalid symbol)
+        request.setUsername("-invalid_user");
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.username").exists());
+    }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testUserUpdateBoundaryValidation() throws Exception {
+        UserUpdateRequest updateReq = new UserUpdateRequest();
+        updateReq.setRole(UserRole.OFFICE_STAFF);
+        updateReq.setActive(true);
+
+        // Full name > 150 chars
+        updateReq.setFullName("B".repeat(151));
+        updateReq.setUsername("validuser02");
+        mockMvc.perform(put("/api/v1/users/USR-OFFICE")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateReq)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.fullName").exists());
+
+        // Username > 50 chars
+        updateReq.setFullName("Valid Staff");
+        updateReq.setUsername("u".repeat(51));
+        mockMvc.perform(put("/api/v1/users/USR-OFFICE")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateReq)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.username").exists());
+    }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testDeleteAdminUserBySelfReturnsForbidden() throws Exception {
         mockMvc.perform(delete("/api/v1/users/USR-ADMIN")
                         .contentType(MediaType.APPLICATION_JSON))
