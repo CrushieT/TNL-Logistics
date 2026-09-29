@@ -3,6 +3,8 @@ package com.tnl.logistics.model;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "weekly_collection")
@@ -31,6 +33,7 @@ public class WeeklyCollection {
     @Column(name = "balance", precision = 12, scale = 2, nullable = false)
     private BigDecimal balance;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "status", nullable = false)
     private String status = "FOR_COLLECTION";
 

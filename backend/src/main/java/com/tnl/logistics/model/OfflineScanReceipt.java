@@ -11,11 +11,11 @@ import java.time.LocalDateTime;
 @Table(name = "offline_scan_receipt")
 public class OfflineScanReceipt {
     @Id
-    @Column(name = "client_event_id", length = 36)
+    @Column(name = "client_event_id", length = 36, columnDefinition = "CHAR(36)")
     private String clientEventId;
     @Column(name = "owner_user_id", nullable = false, length = 20)
     private String ownerUserId;
-    @Column(name = "request_fingerprint", nullable = false, length = 64)
+    @Column(name = "request_fingerprint", nullable = false, length = 64, columnDefinition = "CHAR(64)")
     private String requestFingerprint;
     @Column(name = "requested_tracking_id", nullable = false, length = 30)
     private String requestedTrackingId;
