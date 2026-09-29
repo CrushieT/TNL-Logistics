@@ -9,20 +9,21 @@ import java.time.DayOfWeek;
 public class UpdateSystemSettingRequest {
 
     @NotBlank(message = "Business name is required")
-    @Size(max = 150, message = "Business name must not exceed 150 characters")
+    @Size(max = 50, message = "Business name must not exceed 50 characters")
     private String companyName;
 
     @NotBlank(message = "Address is required")
-    @Size(max = 255, message = "Address must not exceed 255 characters")
+    @Size(max = 100, message = "Address must not exceed 100 characters")
     private String companyAddress;
 
     @NotBlank(message = "Contact number is required")
-    @Size(min = 7, max = 50, message = "Contact number must be between 7 and 50 characters")
+    @Size(min = 7, max = 11, message = "Contact number must be between 7 and 11 characters")
+    @Pattern(regexp = "^[0-9]+$", message = "Contact number must contain digits only")
     private String companyContact;
 
     @NotBlank(message = "Billing email is required")
     @Email(message = "Billing email must be a valid email address")
-    @Size(max = 100, message = "Billing email must not exceed 100 characters")
+    @Size(max = 50, message = "Billing email must not exceed 50 characters")
     private String billingEmail;
 
     @NotNull(message = "Weekly collection day is required")

@@ -60,7 +60,7 @@ public class SystemSettingIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.companyName").value("TNL Logistics"))
                 .andExpect(jsonPath("$.companyAddress").value("Manila Central Hub"))
-                .andExpect(jsonPath("$.companyContact").value("0917-555-0000"))
+                .andExpect(jsonPath("$.companyContact").value("09175550000"))
                 .andExpect(jsonPath("$.billingEmail").value("billing@tnllogistics.ph"))
                 .andExpect(jsonPath("$.collectionDay").value("THURSDAY"))
                 .andExpect(jsonPath("$.volumetricDivisor").value(5000))
@@ -99,7 +99,7 @@ public class SystemSettingIntegrationTest {
         UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
                 "TNL Express Logistics",
                 "Cebu Hub 1",
-                "0918-123-4567",
+                "09181234567",
                 "finance@tnllogistics.ph",
                 DayOfWeek.FRIDAY,
                 6000
@@ -111,7 +111,7 @@ public class SystemSettingIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.companyName").value("TNL Express Logistics"))
                 .andExpect(jsonPath("$.companyAddress").value("Cebu Hub 1"))
-                .andExpect(jsonPath("$.companyContact").value("0918-123-4567"))
+                .andExpect(jsonPath("$.companyContact").value("09181234567"))
                 .andExpect(jsonPath("$.billingEmail").value("finance@tnllogistics.ph"))
                 .andExpect(jsonPath("$.collectionDay").value("FRIDAY"))
                 .andExpect(jsonPath("$.volumetricDivisor").value(6000));
@@ -123,7 +123,7 @@ public class SystemSettingIntegrationTest {
     @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
     void testUpdateSettingsAsOfficeStaffReturns403Forbidden() throws Exception {
         UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
-                "New Name", "New Addr", "0917-000-1111", "test@test.com", DayOfWeek.MONDAY, 5000
+                "New Name", "New Addr", "09170001111", "test@test.com", DayOfWeek.MONDAY, 5000
         );
 
         mockMvc.perform(put("/api/v1/settings")
@@ -136,7 +136,7 @@ public class SystemSettingIntegrationTest {
     @WithMockUser(username = "admin", roles = {"ADMIN"})
     void testUpdateSettingsValidationFailureInvalidDivisor() throws Exception {
         UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
-                "TNL", "Addr", "0917-123-4567", "a@b.com", DayOfWeek.THURSDAY, 500
+                "TNL", "Addr", "09171234567", "a@b.com", DayOfWeek.THURSDAY, 500
         );
 
         mockMvc.perform(put("/api/v1/settings")
@@ -149,7 +149,7 @@ public class SystemSettingIntegrationTest {
     @WithMockUser(username = "admin", roles = {"ADMIN"})
     void testUpdateSettingsValidationFailureInvalidEmail() throws Exception {
         UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
-                "TNL", "Addr", "0917-123-4567", "invalid-email-address", DayOfWeek.THURSDAY, 5000
+                "TNL", "Addr", "09171234567", "invalid-email-address", DayOfWeek.THURSDAY, 5000
         );
 
         mockMvc.perform(put("/api/v1/settings")
@@ -162,7 +162,88 @@ public class SystemSettingIntegrationTest {
     @WithMockUser(username = "admin", roles = {"ADMIN"})
     void testUpdateSettingsValidationFailureEmptyBusinessName() throws Exception {
         UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
-                "", "Addr", "0917-123-4567", "info@tnl.com", DayOfWeek.THURSDAY, 5000
+                "", "Addr", "09171234567", "info@tnl.com", DayOfWeek.THURSDAY, 5000
+        );
+
+        mockMvc.perform(put("/api/v1/settings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testUpdateSettingsValidationFailureBusinessNameExceeds50() throws Exception {
+        String longName = "A".repeat(51);
+        UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
+                longName, "Addr", "09171234567", "info@tnl.com", DayOfWeek.THURSDAY, 5000
+        );
+
+        mockMvc.perform(put("/api/v1/settings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testUpdateSettingsValidationFailureAddressExceeds100() throws Exception {
+        String longAddress = "B".repeat(101);
+        UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
+                "Valid Name", longAddress, "09171234567", "info@tnl.com", DayOfWeek.THURSDAY, 5000
+        );
+
+        mockMvc.perform(put("/api/v1/settings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testUpdateSettingsValidationFailureBillingEmailExceeds50() throws Exception {
+        String longEmail = "a".repeat(45) + "@b.com"; // 51 chars
+        UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
+                "Valid Name", "Valid Addr", "09171234567", longEmail, DayOfWeek.THURSDAY, 5000
+        );
+
+        mockMvc.perform(put("/api/v1/settings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testUpdateSettingsValidationFailureContactContainsNonDigits() throws Exception {
+        UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
+                "Valid Name", "Valid Addr", "0917-555-000", "info@tnl.com", DayOfWeek.THURSDAY, 5000
+        );
+
+        mockMvc.perform(put("/api/v1/settings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testUpdateSettingsValidationFailureContactExceeds11Digits() throws Exception {
+        UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
+                "Valid Name", "Valid Addr", "091712345678", "info@tnl.com", DayOfWeek.THURSDAY, 5000
+        );
+
+        mockMvc.perform(put("/api/v1/settings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testUpdateSettingsValidationFailureContactLessThan7Digits() throws Exception {
+        UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
+                "Valid Name", "Valid Addr", "123456", "info@tnl.com", DayOfWeek.THURSDAY, 5000
         );
 
         mockMvc.perform(put("/api/v1/settings")
@@ -236,7 +317,7 @@ public class SystemSettingIntegrationTest {
             UpdateSystemSettingRequest updateReq = new UpdateSystemSettingRequest(
                     "TNL Logistics",
                     "Manila Central Hub",
-                    "0917-555-0000",
+                    "09175550000",
                     "billing@tnllogistics.ph",
                     DayOfWeek.MONDAY,
                     5000
@@ -266,7 +347,7 @@ public class SystemSettingIntegrationTest {
             UpdateSystemSettingRequest restoreReq = new UpdateSystemSettingRequest(
                     "TNL Logistics",
                     "Manila Central Hub",
-                    "0917-555-0000",
+                    "09175550000",
                     "billing@tnllogistics.ph",
                     DayOfWeek.THURSDAY,
                     5000
@@ -317,7 +398,7 @@ public class SystemSettingIntegrationTest {
             UpdateSystemSettingRequest wedReq = new UpdateSystemSettingRequest(
                     "TNL Logistics",
                     "Manila Central Hub",
-                    "0917-555-0000",
+                    "09175550000",
                     "billing@tnllogistics.ph",
                     DayOfWeek.WEDNESDAY,
                     5000
@@ -339,7 +420,7 @@ public class SystemSettingIntegrationTest {
             UpdateSystemSettingRequest monReq = new UpdateSystemSettingRequest(
                     "TNL Logistics",
                     "Manila Central Hub",
-                    "0917-555-0000",
+                    "09175550000",
                     "billing@tnllogistics.ph",
                     DayOfWeek.MONDAY,
                     5000
@@ -361,7 +442,7 @@ public class SystemSettingIntegrationTest {
             UpdateSystemSettingRequest restoreReq = new UpdateSystemSettingRequest(
                     "TNL Logistics",
                     "Manila Central Hub",
-                    "0917-555-0000",
+                    "09175550000",
                     "billing@tnllogistics.ph",
                     DayOfWeek.THURSDAY,
                     5000
