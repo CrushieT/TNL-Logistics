@@ -66,7 +66,7 @@ public class PaymentIntegrationTest {
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
         shipmentReq.setClientId("CL-001");
         shipmentReq.setRecipientName("Payment Test Recipient");
-        shipmentReq.setRecipientContact("0917-888-9999");
+        shipmentReq.setRecipientContact("09178889999");
         shipmentReq.setRecipientAddress("Baguio City Center");
         shipmentReq.setRoute("Manila → TNL Baguio Hub");
         shipmentReq.setDescription("Electronics & Parts");
@@ -190,7 +190,7 @@ public class PaymentIntegrationTest {
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
         shipmentReq.setClientId("CL-001");
         shipmentReq.setRecipientName("Ref Test Recipient");
-        shipmentReq.setRecipientContact("0917-000-1111");
+        shipmentReq.setRecipientContact("09170001111");
         shipmentReq.setRecipientAddress("Manila Hub");
         shipmentReq.setRoute("Manila → Hub");
         shipmentReq.setDescription("Test items");
@@ -266,7 +266,7 @@ public class PaymentIntegrationTest {
         ShipmentRegistrationRequest shipReq = new ShipmentRegistrationRequest();
         shipReq.setClientId("CL-001");
         shipReq.setRecipientName("Attribution Test Consignee");
-        shipReq.setRecipientContact("0917-123-4567");
+        shipReq.setRecipientContact("09171234567");
         shipReq.setRecipientAddress("Baguio City");
         shipReq.setRoute("Manila -> Baguio");
         shipReq.setDescription("Attribution Goods");
@@ -308,7 +308,7 @@ public class PaymentIntegrationTest {
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
         shipmentReq.setClientId("CL-001");
         shipmentReq.setRecipientName("Lock Test Recipient");
-        shipmentReq.setRecipientContact("0917-555-4321");
+        shipmentReq.setRecipientContact("09175554321");
         shipmentReq.setRecipientAddress("Baguio City Center");
         shipmentReq.setRoute("Manila → TNL Baguio Hub");
         shipmentReq.setDescription("Hardware Supplies");
@@ -374,7 +374,7 @@ public class PaymentIntegrationTest {
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
         shipmentReq.setClientId("CL-001");
         shipmentReq.setRecipientName("Cheque Test Recipient");
-        shipmentReq.setRecipientContact("0917-777-6666");
+        shipmentReq.setRecipientContact("09177776666");
         shipmentReq.setRecipientAddress("Baguio City");
         shipmentReq.setRoute("Manila → TNL Baguio Hub");
         shipmentReq.setDescription("Office Supplies");

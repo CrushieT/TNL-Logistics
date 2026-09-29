@@ -85,7 +85,7 @@ public class WaybillIntegrationTest {
         regReq.setClientId("CL-001");
         regReq.setRecipientName("Juan Dela Cruz");
         regReq.setRecipientAddress("88 Session Road, Baguio City");
-        regReq.setRecipientContact("0917-555-0148");
+        regReq.setRecipientContact("09175550148");
         regReq.setDescription("General Goods");
         regReq.setRoute("Manila → TNL Baguio Hub");
         regReq.setChargeModel(ChargeModel.FLAT);
@@ -210,7 +210,7 @@ public class WaybillIntegrationTest {
         regReq.setClientId("CL-001");
         regReq.setRecipientName("Test Consignee");
         regReq.setRecipientAddress("Baguio City");
-        regReq.setRecipientContact("0917-000-0000");
+        regReq.setRecipientContact("09170000000");
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("300.00"));
         regReq.setQuantity(1);
@@ -258,7 +258,7 @@ public class WaybillIntegrationTest {
         regReq.setClientId("CL-001");
         regReq.setRecipientName("Direct Complete Consignee");
         regReq.setRecipientAddress("Baguio City");
-        regReq.setRecipientContact("0917-000-0000");
+        regReq.setRecipientContact("09170000000");
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("300.00"));
         regReq.setQuantity(1);
@@ -308,7 +308,7 @@ public class WaybillIntegrationTest {
         regReq.setClientId("CL-001");
         regReq.setRecipientName("Strict Consignee");
         regReq.setRecipientAddress("Baguio City");
-        regReq.setRecipientContact("0917-000-0000");
+        regReq.setRecipientContact("09170000000");
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("300.00"));
         regReq.setQuantity(2);
@@ -402,7 +402,7 @@ public class WaybillIntegrationTest {
         regReq.setClientId("CL-001");
         regReq.setRecipientName("Mixed Parcel Consignee");
         regReq.setRecipientAddress("Baguio City");
-        regReq.setRecipientContact("0917-000-0000");
+        regReq.setRecipientContact("09170000000");
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("500.00"));
         regReq.setQuantity(2);
