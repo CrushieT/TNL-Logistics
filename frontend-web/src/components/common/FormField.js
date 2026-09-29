@@ -15,6 +15,7 @@ export default function FormField({
   editable = true,
   numericOnly = false,
   integerOnly = false,
+  maxLength,
   suffix,
   style,
   inputStyle,
@@ -60,6 +61,7 @@ export default function FormField({
           keyboardType={keyboardType || (integerOnly || numericOnly ? 'numeric' : 'default')}
           multiline={multiline}
           editable={editable}
+          maxLength={maxLength}
         />
         {suffix ? <Text style={styles.suffix}>{suffix}</Text> : null}
       </View>

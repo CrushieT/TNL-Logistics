@@ -103,6 +103,39 @@ test('new client validation covers lengths, optional email, and whitespace', () 
   assert.ok(validateRegistration(validForm({ recipientName: ' ', recipientAddress: ' ', recipientContact: ' ' })).recipientName);
 });
 
+test('recipient, description, and route validation enforce maximum character lengths', () => {
+  const invalid = validateRegistration(validForm({
+    recipientName: 'A'.repeat(151),
+    recipientAddress: 'B'.repeat(256),
+    recipientContact: '0'.repeat(12),
+    description: 'D'.repeat(256),
+    route: 'R'.repeat(151),
+  }));
+  assert.ok(invalid.recipientName);
+  assert.ok(invalid.recipientAddress);
+  assert.ok(invalid.recipientContact);
+  assert.ok(invalid.description);
+  assert.ok(invalid.route);
+
+  const nonDigitContact = validateRegistration(validForm({
+    recipientContact: '0917-555-01',
+  }));
+  assert.ok(nonDigitContact.recipientContact);
+
+  const valid = validateRegistration(validForm({
+    recipientName: 'A'.repeat(150),
+    recipientAddress: 'B'.repeat(255),
+    recipientContact: '0'.repeat(11),
+    description: 'D'.repeat(255),
+    route: 'R'.repeat(150),
+  }));
+  assert.equal(valid.recipientName, undefined);
+  assert.equal(valid.recipientAddress, undefined);
+  assert.equal(valid.recipientContact, undefined);
+  assert.equal(valid.description, undefined);
+  assert.equal(valid.route, undefined);
+});
+
 test('request mapping uses mobile source and real API enums without computed or client-only fields', () => {
   const payload = buildShipmentRequest(validForm({ chargeModel: 'PER_PARCEL', paidAtRegistration: true, recipientName: ' Recipient ' }));
   assert.equal(payload.registeredVia, 'MOBILE_FIELD');

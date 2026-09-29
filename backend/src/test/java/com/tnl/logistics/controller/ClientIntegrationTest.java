@@ -107,6 +107,22 @@ public class ClientIntegrationTest {
                 .andExpect(status().isBadRequest()).andReturn();
         assertTrue(objectMapper.readTree(invalid.getResponse().getContentAsString()).get("fieldErrors").has("email"));
         assertEquals(0, clientRepository.count());
+
+        // Verify contact number length and format rejection
+        request.setEmail(null);
+        request.setContactNumber("091700000000"); // 12 digits
+        MvcResult invalidContactLen = mockMvc.perform(post("/api/v1/clients").header("Authorization", mobileOfficeToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest()).andReturn();
+        assertTrue(objectMapper.readTree(invalidContactLen.getResponse().getContentAsString()).get("fieldErrors").has("contactNumber"));
+
+        request.setContactNumber("0917-555-014"); // contains dashes
+        MvcResult invalidContactFmt = mockMvc.perform(post("/api/v1/clients").header("Authorization", mobileOfficeToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest()).andReturn();
+        assertTrue(objectMapper.readTree(invalidContactFmt.getResponse().getContentAsString()).get("fieldErrors").has("contactNumber"));
+
+        request.setContactNumber("09170000000"); // restore valid
         MvcResult created = mockMvc.perform(post("/api/v1/clients").header("Authorization", mobileOfficeToken)
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isOk()).andReturn();
@@ -131,7 +147,7 @@ public class ClientIntegrationTest {
         ClientCreateRequest req1 = new ClientCreateRequest(
                 "Northbridge Trading",
                 "Unit 402, Trade Tower, Binondo, Manila",
-                "0917-555-0148",
+                "09175550148",
                 "orders@northbridge.ph",
                 "FLAT",
                 true
@@ -154,7 +170,7 @@ public class ClientIntegrationTest {
         ClientCreateRequest req2 = new ClientCreateRequest(
                 "Sunrise Hardware",
                 "88 Rizal St., Baguio City",
-                "0918-555-0022",
+                "09185550022",
                 "acctg@sunrisehw.ph",
                 "PER_PARCEL",
                 true

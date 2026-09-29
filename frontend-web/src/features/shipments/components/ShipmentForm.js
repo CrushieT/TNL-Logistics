@@ -106,22 +106,62 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
       const activeClientId = clientId || (clients.length > 0 ? (clients[0].id || clients[0].clientId) : '');
       if (!activeClientId) newErrors.clientId = 'Please select a billing client.';
     } else {
-      if (!newClientName.trim()) newErrors.newClientName = 'Client / Company name is required.';
-      if (!newClientAddress.trim()) newErrors.newClientAddress = 'Billing address is required.';
+      if (!newClientName.trim()) {
+        newErrors.newClientName = 'Client / Company name is required.';
+      } else if (newClientName.trim().length > 150) {
+        newErrors.newClientName = 'Client / Company name cannot exceed 150 characters.';
+      }
+
+      if (!newClientAddress.trim()) {
+        newErrors.newClientAddress = 'Billing address is required.';
+      } else if (newClientAddress.trim().length > 255) {
+        newErrors.newClientAddress = 'Billing address cannot exceed 255 characters.';
+      }
+
       if (!newClientContact.trim() || newClientContact.trim().length < 7) {
         newErrors.newClientContact = 'Valid contact number is required (min 7 digits).';
+      } else if (newClientContact.trim().length > 11) {
+        newErrors.newClientContact = 'Contact number cannot exceed 11 characters.';
+      } else if (!/^\d+$/.test(newClientContact.trim())) {
+        newErrors.newClientContact = 'Contact number must contain digits only.';
+      }
+
+      if (newClientEmail.trim() && newClientEmail.trim().length > 150) {
+        newErrors.newClientEmail = 'Email address cannot exceed 150 characters.';
       }
     }
 
-    if (!recipientName.trim()) newErrors.recipientName = 'Recipient full name is required.';
-    if (!address.trim()) newErrors.address = 'Complete delivery address is required.';
+    if (!recipientName.trim()) {
+      newErrors.recipientName = 'Recipient full name is required.';
+    } else if (recipientName.trim().length > 150) {
+      newErrors.recipientName = 'Recipient full name cannot exceed 150 characters.';
+    }
+
+    if (!address.trim()) {
+      newErrors.address = 'Complete delivery address is required.';
+    } else if (address.trim().length > 255) {
+      newErrors.address = 'Complete delivery address cannot exceed 255 characters.';
+    }
+
     if (!contactNumber.trim() || contactNumber.trim().length < 7) {
       newErrors.contactNumber = 'Valid contact number is required (min 7 digits).';
+    } else if (contactNumber.trim().length > 11) {
+      newErrors.contactNumber = 'Contact number cannot exceed 11 characters.';
+    } else if (!/^\d+$/.test(contactNumber.trim())) {
+      newErrors.contactNumber = 'Contact number must contain digits only.';
+    }
+
+    if (description.trim().length > 255) {
+      newErrors.description = 'Description cannot exceed 255 characters.';
+    }
+
+    if (route.trim().length > 150) {
+      newErrors.route = 'Route cannot exceed 150 characters.';
     }
 
     const qtyNum = parseInt(quantity, 10);
-    if (!quantity || isNaN(qtyNum) || qtyNum < 1) {
-      newErrors.quantity = 'Quantity must be at least 1.';
+    if (!quantity || isNaN(qtyNum) || qtyNum < 1 || qtyNum > 1000) {
+      newErrors.quantity = 'Quantity must be between 1 and 1,000.';
     }
 
     const wtNum = parseFloat(weightPerUnit);
@@ -255,6 +295,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
                   if (errors.newClientName) setErrors((prev) => ({ ...prev, newClientName: null }));
                 }}
                 placeholder="e.g. Northbridge Trading"
+                maxLength={150}
                 error={errors.newClientName}
               />
               <FormField
@@ -266,6 +307,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
                   if (errors.newClientAddress) setErrors((prev) => ({ ...prev, newClientAddress: null }));
                 }}
                 placeholder="Complete street, city, province"
+                maxLength={255}
                 error={errors.newClientAddress}
               />
               <FormField
@@ -273,12 +315,14 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
                 required
                 value={newClientContact}
                 onChangeText={(val) => {
-                  const sanitized = val.replace(/[^0-9+\-() ]/g, '');
+                  const sanitized = val.replace(/[^0-9]/g, '');
                   setNewClientContact(sanitized);
                   if (errors.newClientContact) setErrors((prev) => ({ ...prev, newClientContact: null }));
                 }}
-                placeholder="0917-000-0000"
+                placeholder="09170000000"
                 keyboardType="phone-pad"
+                integerOnly
+                maxLength={11}
                 error={errors.newClientContact}
               />
               <FormField
@@ -287,6 +331,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
                 onChangeText={setNewClientEmail}
                 placeholder="billing@company.com"
                 keyboardType="email-address"
+                maxLength={150}
                 helper="For consolidated SOA billing"
               />
             </View>
@@ -304,6 +349,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
               if (errors.recipientName) setErrors((prev) => ({ ...prev, recipientName: null }));
             }}
             placeholder="Juan Dela Cruz"
+            maxLength={150}
             error={errors.recipientName}
           />
           <FormField
@@ -315,6 +361,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
               if (errors.address) setErrors((prev) => ({ ...prev, address: null }));
             }}
             placeholder="Unit, Street, Barangay, City, Province"
+            maxLength={255}
             error={errors.address}
           />
           <FormField
@@ -322,12 +369,14 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
             required
             value={contactNumber}
             onChangeText={(val) => {
-              const sanitized = val.replace(/[^0-9+\-() ]/g, '');
+              const sanitized = val.replace(/[^0-9]/g, '');
               setContactNumber(sanitized);
               if (errors.contactNumber) setErrors((prev) => ({ ...prev, contactNumber: null }));
             }}
-            placeholder="0917-000-0000"
+            placeholder="09170000000"
             keyboardType="phone-pad"
+            integerOnly
+            maxLength={11}
             error={errors.contactNumber}
           />
         </Card>
@@ -343,6 +392,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
               value={description}
               onChangeText={setDescription}
               placeholder="Office supplies, electronics, etc."
+              maxLength={255}
             />
           </View>
 
@@ -357,7 +407,8 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
               }}
               integerOnly
               placeholder="1"
-              helper="One unique QR per unit"
+              maxLength={4}
+              helper="One unique QR per unit (max 1,000)"
               error={errors.quantity}
             />
           </View>
@@ -373,13 +424,14 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
               }}
               numericOnly
               placeholder="1.0"
+              maxLength={9}
               suffix="kg"
               error={errors.weightPerUnit}
             />
           </View>
 
           <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
-            <FormField label="Route" value={route} onChangeText={setRoute} placeholder="Manila to TNL Baguio" />
+            <FormField label="Route" value={route} onChangeText={setRoute} placeholder="Manila to TNL Baguio" maxLength={150} />
           </View>
         </View>
 
@@ -397,6 +449,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
                 }}
                 numericOnly
                 placeholder="20"
+                maxLength={9}
                 suffix="cm"
                 error={errors.lengthCm}
               />
@@ -411,6 +464,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
                 }}
                 numericOnly
                 placeholder="10"
+                maxLength={9}
                 suffix="cm"
                 error={errors.widthCm}
               />
@@ -425,6 +479,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
                 }}
                 numericOnly
                 placeholder="15"
+                maxLength={9}
                 suffix="cm"
                 error={errors.heightCm}
               />
@@ -460,6 +515,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
               }}
               numericOnly
               placeholder="500"
+              maxLength={13}
               error={errors.shippingFee}
             />
           </View>
@@ -471,6 +527,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
               onChangeText={setOtherCharges}
               numericOnly
               placeholder="0"
+              maxLength={13}
               helper="Valuation, packaging, etc."
             />
           </View>
