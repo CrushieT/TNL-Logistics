@@ -100,7 +100,7 @@ public class SoaIntegrationTest {
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
         shipmentReq.setClientId("CL-001");
         shipmentReq.setRecipientName("SOA Test Consignee");
-        shipmentReq.setRecipientContact("0917-888-0001");
+        shipmentReq.setRecipientContact("09178880001");
         shipmentReq.setRecipientAddress("Baguio City Center");
         shipmentReq.setRoute("Manila -> Baguio");
         shipmentReq.setDescription("Textile Goods");
@@ -285,7 +285,7 @@ public class SoaIntegrationTest {
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
         shipmentReq.setClientId("CL-SOA-001");
         shipmentReq.setRecipientName("Consignee Limit Test");
-        shipmentReq.setRecipientContact("0917-111-2233");
+        shipmentReq.setRecipientContact("09171112233");
         shipmentReq.setRecipientAddress("Baguio City Center");
         shipmentReq.setRoute("Manila -> Baguio");
         shipmentReq.setDescription("Textile Goods");
@@ -364,7 +364,7 @@ public class SoaIntegrationTest {
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
         shipmentReq.setClientId("CL-SOA-001");
         shipmentReq.setRecipientName("Payment Sync Consignee");
-        shipmentReq.setRecipientContact("0917-222-3333");
+        shipmentReq.setRecipientContact("09172223333");
         shipmentReq.setRecipientAddress("Baguio City Center");
         shipmentReq.setRoute("Manila -> Baguio");
         shipmentReq.setDescription("Payment Sync Test");

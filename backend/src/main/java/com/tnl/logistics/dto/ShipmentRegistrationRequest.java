@@ -4,8 +4,10 @@ import com.tnl.logistics.model.ChargeModel;
 import com.tnl.logistics.model.RegisteredVia;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
@@ -21,18 +23,24 @@ public class ShipmentRegistrationRequest {
     private String clientId;
 
     @NotBlank(message = "Recipient name is required")
+    @Size(max = 150, message = "Recipient name cannot exceed 150 characters")
     private String recipientName;
 
     @NotBlank(message = "Recipient address is required")
+    @Size(max = 255, message = "Recipient address cannot exceed 255 characters")
     private String recipientAddress;
 
     @NotBlank(message = "Recipient contact is required")
+    @Size(max = 11, message = "Recipient contact cannot exceed 11 characters")
+    @Pattern(regexp = "^[0-9]+$", message = "Recipient contact must contain digits only")
     private String recipientContact;
 
+    @Size(max = 255, message = "Description cannot exceed 255 characters")
     private String description;
 
     @NotNull(message = "Quantity is required")
     @Positive(message = "Quantity must be greater than zero")
+    @Max(value = 1000, message = "Quantity cannot exceed 1000")
     private Integer quantity;
 
     @NotNull(message = "Charge model is required")
@@ -49,6 +57,7 @@ public class ShipmentRegistrationRequest {
 
     private Boolean paidAtRegistration = false;
 
+    @Size(max = 150, message = "Route cannot exceed 150 characters")
     private String route;
 
     @NotNull(message = "Registration source is required")

@@ -126,7 +126,7 @@ export default function DashboardScreen() {
   const recentActivities = summary.recentActivity || [];
 
   return (
-    <AppShell shipmentCount={shipmentCount} parcelCount={parcelCount}>
+    <AppShell>
       <PageHeader
         eyebrow="OPERATIONS"
         title="Dashboard"

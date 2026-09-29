@@ -121,7 +121,10 @@ export function RegistrationScreen() {
   }, [isDirty]);
 
   function changeField(name, value) {
-    setForm((previous) => ({ ...previous, [name]: value }));
+    const nextValue = (name === 'recipientContact' || name === 'newClientContact')
+      ? value.replace(/[^0-9]/g, '')
+      : value;
+    setForm((previous) => ({ ...previous, [name]: nextValue }));
     setErrors((previous) => ({ ...previous, [name]: undefined }));
   }
 
@@ -217,20 +220,20 @@ export function RegistrationScreen() {
               </View> : <>
                 {field('newClientName', 'CLIENT / COMPANY NAME *', { placeholder: 'Company or client name', maxLength: 150 })}
                 {field('newClientAddress', 'BILLING ADDRESS *', { placeholder: 'Street, city, province', multiline: true, maxLength: 255 })}
-                {field('newClientContact', 'CONTACT NUMBER *', { keyboardType: 'phone-pad', maxLength: 30 })}
+                {field('newClientContact', 'CONTACT NUMBER *', { keyboardType: 'phone-pad', inputMode: 'numeric', maxLength: 11, placeholder: '09XXXXXXXXX' })}
                 {field('newClientEmail', 'EMAIL ADDRESS', { keyboardType: 'email-address', autoCapitalize: 'none', autoCorrect: false, maxLength: 150 })}
               </>}
             </View>
             <View style={styles.section}>
               <Text accessibilityRole="header" style={styles.sectionTitle}>Recipient</Text>
-              {field('recipientName', 'RECIPIENT NAME *', { placeholder: 'Full name' })}
-              {field('recipientAddress', 'COMPLETE ADDRESS *', { placeholder: 'Unit, street, barangay, city, province', multiline: true })}
-              {field('recipientContact', 'CONTACT NUMBER *', { keyboardType: 'phone-pad' })}
+              {field('recipientName', 'RECIPIENT NAME *', { placeholder: 'Full name', maxLength: 150 })}
+              {field('recipientAddress', 'COMPLETE ADDRESS *', { placeholder: 'Unit, street, barangay, city, province', multiline: true, maxLength: 255 })}
+              {field('recipientContact', 'CONTACT NUMBER *', { keyboardType: 'phone-pad', inputMode: 'numeric', maxLength: 11, placeholder: '09XXXXXXXXX' })}
             </View>
             <View style={styles.section}>
               <Text accessibilityRole="header" style={styles.sectionTitle}>Parcel Details</Text>
-              {field('description', 'DESCRIPTION', { placeholder: 'General Goods' })}
-              {field('route', 'ROUTE', { placeholder: 'Manila to TNL Baguio' })}
+              {field('description', 'DESCRIPTION', { placeholder: 'General Goods', maxLength: 255 })}
+              {field('route', 'ROUTE', { placeholder: 'Manila to TNL Baguio', maxLength: 150 })}
               <View style={rowStyle}>
                 {field('quantity', 'QUANTITY (UNITS) *', { keyboardType: 'number-pad', inputMode: 'numeric', maxLength: 4 })}
                 {field('weightKg', 'WEIGHT / UNIT (KG) *', numericProps)}

@@ -57,6 +57,7 @@ export default function CollectionWeightTrackingCard({
               placeholder="5000"
               keyboardType="numeric"
               integerOnly
+              maxLength={5}
               error={errors.volumetricDivisor}
             />
           </View>

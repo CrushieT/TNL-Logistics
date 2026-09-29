@@ -100,8 +100,26 @@ export default function CreateUserModal({ visible, onClose, onSaved }) {
   };
 
   const handleSubmit = async () => {
-    if (!fullName.trim()) { setError('Full name is required.'); return; }
-    if (!username.trim()) { setError('Username is required.'); return; }
+    if (!fullName.trim() || fullName.trim().length < 2) {
+      setError('Full name must be at least 2 characters.');
+      return;
+    }
+    if (fullName.trim().length > 150) {
+      setError('Full name cannot exceed 150 characters.');
+      return;
+    }
+    if (!username.trim() || username.trim().length < 3) {
+      setError('Username must be at least 3 characters.');
+      return;
+    }
+    if (username.trim().length > 50) {
+      setError('Username cannot exceed 50 characters.');
+      return;
+    }
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{2,49}$/.test(username.trim())) {
+      setError('Username must start with a letter or number and contain only letters, numbers, periods, underscores, or hyphens.');
+      return;
+    }
     if (!password.trim() || password.trim().length < 6) {
       setError('Temporary password must be at least 6 characters.');
       return;
@@ -164,6 +182,7 @@ export default function CreateUserModal({ visible, onClose, onSaved }) {
                 placeholderTextColor={colors.inkFaint}
                 value={fullName}
                 onChangeText={setFullName}
+                maxLength={150}
               />
             </View>
 
@@ -176,6 +195,7 @@ export default function CreateUserModal({ visible, onClose, onSaved }) {
                 value={username}
                 onChangeText={setUsername}
                 autoCapitalize="none"
+                maxLength={50}
               />
             </View>
 

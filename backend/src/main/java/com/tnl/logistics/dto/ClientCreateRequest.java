@@ -2,6 +2,7 @@ package com.tnl.logistics.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -18,7 +19,8 @@ public class ClientCreateRequest {
     private String address;
 
     @NotBlank(message = "Contact number is required")
-    @Size(min = 7, max = 30, message = "Contact number must be between 7 and 30 characters")
+    @Size(min = 7, max = 11, message = "Contact number must be between 7 and 11 characters")
+    @Pattern(regexp = "^[0-9]+$", message = "Contact number must contain digits only")
     private String contactNumber;
 
     @Email(message = "Email must be a valid email address")

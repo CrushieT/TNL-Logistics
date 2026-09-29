@@ -29,7 +29,7 @@ export default function SettingsScreen() {
   const [form, setForm] = useState({
     companyName: 'TC & CT Integrated Logistics',
     companyAddress: 'Labo, Camarines Norte',
-    companyContact: '0917-555-0000',
+    companyContact: '09175550000',
     billingEmail: 'billing@tnllogistics.ph',
     collectionDay: 'THURSDAY',
     volumetricDivisor: '5000',
@@ -56,7 +56,7 @@ export default function SettingsScreen() {
         setForm({
           companyName: data.companyName || '',
           companyAddress: data.companyAddress || '',
-          companyContact: data.companyContact || '',
+          companyContact: (data.companyContact || '').replace(/[^0-9]/g, ''),
           billingEmail: data.billingEmail || '',
           collectionDay: data.collectionDay || 'THURSDAY',
           volumetricDivisor: String(data.volumetricDivisor || 5000),
@@ -104,25 +104,29 @@ export default function SettingsScreen() {
 
     if (!form.companyName.trim()) {
       newErrors.companyName = 'Business name is required';
-    } else if (form.companyName.trim().length > 150) {
-      newErrors.companyName = 'Business name must not exceed 150 characters';
+    } else if (form.companyName.trim().length > 50) {
+      newErrors.companyName = 'Business name must not exceed 50 characters';
     }
 
     if (!form.companyAddress.trim()) {
       newErrors.companyAddress = 'Hub address is required';
-    } else if (form.companyAddress.trim().length > 255) {
-      newErrors.companyAddress = 'Address must not exceed 255 characters';
+    } else if (form.companyAddress.trim().length > 100) {
+      newErrors.companyAddress = 'Address must not exceed 100 characters';
     }
 
     if (!form.companyContact.trim()) {
       newErrors.companyContact = 'Contact number is required';
-    } else if (form.companyContact.trim().length < 7) {
-      newErrors.companyContact = 'Contact number must be at least 7 characters';
+    } else if (!/^\d+$/.test(form.companyContact.trim())) {
+      newErrors.companyContact = 'Contact number must contain digits only';
+    } else if (form.companyContact.trim().length < 7 || form.companyContact.trim().length > 11) {
+      newErrors.companyContact = 'Contact number must be between 7 and 11 characters';
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!form.billingEmail.trim()) {
       newErrors.billingEmail = 'Billing email is required';
+    } else if (form.billingEmail.trim().length > 50) {
+      newErrors.billingEmail = 'Billing email must not exceed 50 characters';
     } else if (!emailRegex.test(form.billingEmail.trim())) {
       newErrors.billingEmail = 'Please enter a valid billing email address';
     }
@@ -168,7 +172,7 @@ export default function SettingsScreen() {
           ...prev,
           companyName: updated.companyName,
           companyAddress: updated.companyAddress,
-          companyContact: updated.companyContact,
+          companyContact: (updated.companyContact || '').replace(/[^0-9]/g, ''),
           billingEmail: updated.billingEmail,
           collectionDay: updated.collectionDay,
           volumetricDivisor: String(updated.volumetricDivisor),

@@ -17,6 +17,7 @@ export default function CompanyBrandingCard({
         value={form.companyName}
         onChangeText={(val) => onChangeField('companyName', val)}
         placeholder="TC & CT Integrated Logistics"
+        maxLength={50}
         error={errors.companyName}
         style={styles.field}
       />
@@ -26,6 +27,7 @@ export default function CompanyBrandingCard({
         value={form.companyAddress}
         onChangeText={(val) => onChangeField('companyAddress', val)}
         placeholder="Labo, Camarines Norte"
+        maxLength={100}
         error={errors.companyAddress}
         style={styles.field}
       />
@@ -33,8 +35,10 @@ export default function CompanyBrandingCard({
         label="CONTACT"
         required
         value={form.companyContact}
-        onChangeText={(val) => onChangeField('companyContact', val)}
-        placeholder="0917-555-0000"
+        onChangeText={(val) => onChangeField('companyContact', val.replace(/[^0-9]/g, ''))}
+        placeholder="09175550000"
+        maxLength={11}
+        keyboardType="phone-pad"
         error={errors.companyContact}
         style={styles.field}
       />
@@ -44,6 +48,7 @@ export default function CompanyBrandingCard({
         value={form.billingEmail}
         onChangeText={(val) => onChangeField('billingEmail', val)}
         placeholder="billing@tnllogistics.ph"
+        maxLength={50}
         keyboardType="email-address"
         error={errors.billingEmail}
         style={styles.field}

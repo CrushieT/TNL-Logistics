@@ -58,12 +58,32 @@ export default function RegisterClientModal({ visible, clientToEdit, onClose, on
       setError('Client / Company name is required.');
       return;
     }
+    if (name.trim().length > 150) {
+      setError('Client / Company name cannot exceed 150 characters.');
+      return;
+    }
     if (!address.trim()) {
       setError('Billing address is required.');
       return;
     }
+    if (address.trim().length > 255) {
+      setError('Billing address cannot exceed 255 characters.');
+      return;
+    }
     if (!contactNumber.trim() || contactNumber.trim().length < 7) {
       setError('Valid contact number is required (min 7 digits).');
+      return;
+    }
+    if (contactNumber.trim().length > 11) {
+      setError('Contact number cannot exceed 11 characters.');
+      return;
+    }
+    if (!/^\d+$/.test(contactNumber.trim())) {
+      setError('Contact number must contain digits only.');
+      return;
+    }
+    if (email.trim().length > 150) {
+      setError('Email address cannot exceed 150 characters.');
       return;
     }
 
@@ -133,6 +153,7 @@ export default function RegisterClientModal({ visible, clientToEdit, onClose, on
                 value={name}
                 onChangeText={setName}
                 autoFocus={!isEditing}
+                maxLength={150}
               />
             </View>
 
@@ -145,6 +166,7 @@ export default function RegisterClientModal({ visible, clientToEdit, onClose, on
                 placeholderTextColor={colors.inkFaint}
                 value={address}
                 onChangeText={setAddress}
+                maxLength={255}
               />
             </View>
 
@@ -154,14 +176,15 @@ export default function RegisterClientModal({ visible, clientToEdit, onClose, on
                 <Text style={styles.fieldLabel}>CONTACT NUMBER *</Text>
                 <TextInput
                   style={[styles.input, styles.monoInput]}
-                  placeholder="0917-555-0148"
+                  placeholder="09170000000"
                   placeholderTextColor={colors.inkFaint}
                   value={contactNumber}
                   onChangeText={(val) => {
-                    const sanitized = val.replace(/[^0-9+\-() ]/g, '');
+                    const sanitized = val.replace(/[^0-9]/g, '');
                     setContactNumber(sanitized);
                   }}
                   keyboardType="phone-pad"
+                  maxLength={11}
                 />
               </View>
 
@@ -175,6 +198,7 @@ export default function RegisterClientModal({ visible, clientToEdit, onClose, on
                   onChangeText={setEmail}
                   keyboardType="email-address"
                   autoCapitalize="none"
+                  maxLength={150}
                 />
               </View>
             </View>

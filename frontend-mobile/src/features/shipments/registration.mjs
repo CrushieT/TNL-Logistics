@@ -23,11 +23,14 @@ export function validateRegistration(form) {
     const lengths = {
       newClientName: [2, 150, 'Client name'],
       newClientAddress: [2, 255, 'Billing address'],
-      newClientContact: [7, 30, 'Contact number'],
+      newClientContact: [7, 11, 'Contact number'],
     };
     for (const [field, [minimum, maximum, label]] of Object.entries(lengths)) {
       const length = form[field].trim().length;
       if (length < minimum || length > maximum) errors[field] = `${label} must be ${minimum}–${maximum} characters.`;
+    }
+    if (form.newClientContact.trim() && !/^\d+$/.test(form.newClientContact.trim())) {
+      errors.newClientContact = 'Contact number must contain digits only.';
     }
     const email = form.newClientEmail.trim();
     if (email && (email.length > 150 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
@@ -41,8 +44,26 @@ export function validateRegistration(form) {
   })) {
     if (!form[field].trim()) errors[field] = `${label} is required.`;
   }
-  if (form.recipientContact.trim() && form.recipientContact.trim().length < 7) {
-    errors.recipientContact = 'Enter a contact number with at least 7 characters.';
+  if (form.recipientName.trim().length > 150) {
+    errors.recipientName = 'Recipient name cannot exceed 150 characters.';
+  }
+  if (form.recipientAddress.trim().length > 255) {
+    errors.recipientAddress = 'Complete address cannot exceed 255 characters.';
+  }
+  if (form.recipientContact.trim()) {
+    if (!/^\d+$/.test(form.recipientContact.trim())) {
+      errors.recipientContact = 'Contact number must contain digits only.';
+    } else if (form.recipientContact.trim().length < 7) {
+      errors.recipientContact = 'Enter a contact number with at least 7 characters.';
+    } else if (form.recipientContact.trim().length > 11) {
+      errors.recipientContact = 'Contact number cannot exceed 11 characters.';
+    }
+  }
+  if (form.description && form.description.trim().length > 255) {
+    errors.description = 'Description cannot exceed 255 characters.';
+  }
+  if (form.route && form.route.trim().length > 150) {
+    errors.route = 'Route cannot exceed 150 characters.';
   }
   if (!/^\d+$/.test(form.quantity.trim()) || Number(form.quantity) < 1 || Number(form.quantity) > MAX_PARCELS) {
     errors.quantity = `Enter a whole number from 1 to ${MAX_PARCELS}.`;

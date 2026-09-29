@@ -230,6 +230,32 @@ public class ShipmentIntegrationTest {
     }
 
     @Test
+    public void testRegistrationRejectsOversizedFieldsAndExcessiveQuantityWithoutWrites() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setRecipientName("A".repeat(151));
+        request.setRecipientAddress("B".repeat(256));
+        request.setRecipientContact("0".repeat(12));
+        request.setDescription("D".repeat(256));
+        request.setRoute("R".repeat(151));
+        request.setQuantity(1001);
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments").header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest()).andReturn();
+
+        JsonNode errors = objectMapper.readTree(result.getResponse().getContentAsString()).get("fieldErrors");
+        assertTrue(errors.has("recipientName"));
+        assertTrue(errors.has("recipientAddress"));
+        assertTrue(errors.has("recipientContact"));
+        assertTrue(errors.has("description"));
+        assertTrue(errors.has("route"));
+        assertTrue(errors.has("quantity"));
+        assertEquals(0, shipmentRepository.count());
+        assertEquals(0, parcelUnitRepository.count());
+        assertEquals(0, paymentRepository.count());
+    }
+
+    @Test
     public void testShipmentPaginationBoundsInvalidPageAndSizeValues() throws Exception {
         MvcResult oversizedResult = mockMvc.perform(get("/api/v1/shipments")
                         .header("Authorization", officeToken)

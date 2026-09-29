@@ -45,8 +45,26 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
   if (!visible || !userToEdit) return null;
 
   const handleSubmit = async () => {
-    if (!fullName.trim()) { setError('Full name is required.'); return; }
-    if (!username.trim()) { setError('Username is required.'); return; }
+    if (!fullName.trim() || fullName.trim().length < 2) {
+      setError('Full name must be at least 2 characters.');
+      return;
+    }
+    if (fullName.trim().length > 150) {
+      setError('Full name cannot exceed 150 characters.');
+      return;
+    }
+    if (!username.trim() || username.trim().length < 3) {
+      setError('Username must be at least 3 characters.');
+      return;
+    }
+    if (username.trim().length > 50) {
+      setError('Username cannot exceed 50 characters.');
+      return;
+    }
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{2,49}$/.test(username.trim())) {
+      setError('Username must start with a letter or number and contain only letters, numbers, periods, underscores, or hyphens.');
+      return;
+    }
     if (role === 'FIELD_STAFF' && !staffType) { setError('Staff type is required for Field Staff.'); return; }
 
     try {
@@ -92,6 +110,7 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
                 value={fullName}
                 onChangeText={setFullName}
                 placeholderTextColor={colors.inkFaint}
+                maxLength={150}
               />
             </View>
 
@@ -103,6 +122,7 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
                 onChangeText={setUsername}
                 autoCapitalize="none"
                 placeholderTextColor={colors.inkFaint}
+                maxLength={50}
               />
             </View>
 
