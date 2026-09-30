@@ -178,7 +178,7 @@ public class PersonalTrackingHistoryIntegrationTest {
                 .andExpect(jsonPath("$.content").isArray())
                 .andExpect(jsonPath("$.content", hasSize(greaterThanOrEqualTo(1))))
                 .andExpect(jsonPath("$.page.totalElements").value(greaterThanOrEqualTo(1)))
-                .andExpect(jsonPath("$.content[0].syncStatus").value("SYNCED"));
+                .andExpect(jsonPath("$.content[0].syncStatus").doesNotExist());
     }
 
     // 2. Feed events match the authenticated principal's staff_id
@@ -240,6 +240,20 @@ public class PersonalTrackingHistoryIntegrationTest {
         mockMvc.perform(get("/api/v1/tracking-events/mine/metrics"))
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/v1/tracking-events/mine/parcels/" + trackingId))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    public void testRemovedOfflineSyncEndpointIsNotAvailable() throws Exception {
+        mockMvc.perform(post("/api/v1/tracking-events/offline-sync")
+                        .header("Authorization", field1Token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(post("/api/v1/tracking-events/offline-sync")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
                 .andExpect(status().isUnauthorized());
     }
 

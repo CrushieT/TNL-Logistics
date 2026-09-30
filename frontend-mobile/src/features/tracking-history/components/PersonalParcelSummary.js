@@ -1,7 +1,6 @@
 import React from 'react';
 import { StyleSheet, View, Text, Platform } from 'react-native';
 import { colors, typography } from '../../../theme';
-import { SyncStatusBadge } from './SyncStatusBadge';
 import { formatPackageDisplay, resolveTrackingStatusDisplay } from '../trackingHistoryFlow.mjs';
 
 function getStatusBadgeStyle(statusCode) {
@@ -98,11 +97,6 @@ export function PersonalParcelSummary({ parcel }) {
             {`Label: ${labelStatusDisplay}`}
           </Text>
         </View>
-      </View>
-
-      <View style={styles.statusRow}>
-        <Text style={styles.statusFieldLabel}>Sync Status</Text>
-        <SyncStatusBadge syncStatus="SYNCED" />
       </View>
     </View>
   );

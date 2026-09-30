@@ -69,8 +69,7 @@ public class SecurityConfig {
 				.anyRequest().authenticated()
 			)
 			// Wire the JWT token verification filter
-			.addFilterBefore(new JwtAuthenticationFilter(appUserRepository), UsernamePasswordAuthenticationFilter.class)
-			.addFilterAfter(new OfflineSyncRequestGuard(), JwtAuthenticationFilter.class);
+			.addFilterBefore(new JwtAuthenticationFilter(appUserRepository), UsernamePasswordAuthenticationFilter.class);
 
 		return http.build();
 	}

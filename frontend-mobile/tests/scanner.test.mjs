@@ -19,6 +19,7 @@ import {
   canSubmitSingle,
   canSubmitBatch,
   canActivateCamera,
+  getScannerConnectivity,
   initialScannerState,
   scannerReducer
 } from '../src/features/scanner/scannerFlow.mjs';
@@ -605,5 +606,31 @@ describe('Scanner Flow & State Machine', () => {
     assert.strictEqual(reconciled.batchVehicleId, null);
     assert.deepStrictEqual(reconciled.batchQueue, []);
     assert.match(reconciled.error, /not permitted/);
+  });
+
+  it('39. Scanner connectivity blocks unknown and offline network states', () => {
+    assert.deepStrictEqual(getScannerConnectivity(null, null), {
+      isKnown: false,
+      isOnline: false
+    });
+    assert.deepStrictEqual(getScannerConnectivity(true, null), {
+      isKnown: false,
+      isOnline: false
+    });
+    assert.deepStrictEqual(getScannerConnectivity(false, false), {
+      isKnown: true,
+      isOnline: false
+    });
+  });
+
+  it('40. Scanner connectivity permits actions only with confirmed internet reachability', () => {
+    assert.deepStrictEqual(getScannerConnectivity(true, true), {
+      isKnown: true,
+      isOnline: true
+    });
+    assert.deepStrictEqual(getScannerConnectivity(true, false), {
+      isKnown: true,
+      isOnline: false
+    });
   });
 });

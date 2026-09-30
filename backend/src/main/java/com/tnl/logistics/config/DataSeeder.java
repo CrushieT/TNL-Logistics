@@ -190,7 +190,6 @@ public class DataSeeder implements CommandLineRunner {
             AppUser actor = status == ParcelStatus.REGISTERED || status == ParcelStatus.QR_GENERATED || status == ParcelStatus.COMPLETED ? office : status == ParcelStatus.LOADED_TO_HAULER ? hauler : courier;
             TrackingEvent event = new TrackingEvent(parcel, status, status == ParcelStatus.LOADED_ON_TRUCK ? truck : null, actor, "Workflow fixture " + status.name());
             event.setEventTimestamp(startedAt.plusMinutes(index * 15L));
-            event.setScanSource("ONLINE");
             trackingEventRepository.save(event);
         }
     }

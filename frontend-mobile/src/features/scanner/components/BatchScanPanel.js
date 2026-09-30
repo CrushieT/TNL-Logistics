@@ -17,11 +17,12 @@ export default function BatchScanPanel({
   onClearBatch,
   onSubmit,
   isSubmitting,
+  isOnline,
   staffType
 }) {
   const allowedOperations = getAllowedBatchOperations(staffType);
   const isVehicleRequired = operation === 'LOADED_ON_TRUCK';
-  const canSubmit = canSubmitBatch(queue, operation, selectedVehicleId, staffType) && !isSubmitting;
+  const canSubmit = canSubmitBatch(queue, operation, selectedVehicleId, staffType) && !isSubmitting && isOnline;
 
   const renderQueueItem = ({ item, index }) => (
     <View style={styles.queueItemRow}>
@@ -51,7 +52,7 @@ export default function BatchScanPanel({
                 key={op}
                 style={[styles.opButton, isSelected && styles.opButtonSelected]}
                 onPress={() => onSelectOperation(op)}
-                disabled={isSubmitting}
+                disabled={isSubmitting || !isOnline}
               >
                 <Text style={[styles.opButtonText, isSelected && styles.opButtonTextSelected]}>
                   {formatStatusLabel(op)}
@@ -75,7 +76,7 @@ export default function BatchScanPanel({
           {vehicles.length === 0 && !loadingVehicles ? (
             <View style={styles.vehicleErrorBox}>
               <Text style={styles.vehicleErrorText}>No active vehicles found.</Text>
-              <TouchableOpacity onPress={onRetryVehicles} style={styles.retryLink}>
+              <TouchableOpacity onPress={onRetryVehicles} style={styles.retryLink} disabled={!isOnline}>
                 <Text style={styles.retryLinkText}>Retry</Text>
               </TouchableOpacity>
             </View>
@@ -88,7 +89,7 @@ export default function BatchScanPanel({
                     key={v.vehicleId}
                     style={[styles.vehicleChip, isSelected && styles.vehicleChipSelected]}
                     onPress={() => onSelectVehicle(v.vehicleId)}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !isOnline}
                   >
                     <Text style={[styles.vehicleChipPlate, isSelected && styles.vehicleChipPlateSelected]}>
                       {v.plateNumber}

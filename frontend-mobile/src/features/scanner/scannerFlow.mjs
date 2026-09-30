@@ -49,6 +49,14 @@ export const STATUS_LABELS = {
   COMPLETED: 'Completed'
 };
 
+export function getScannerConnectivity(isConnected, isInternetReachable) {
+  const isKnown = typeof isConnected === 'boolean' && typeof isInternetReachable === 'boolean';
+  return {
+    isKnown,
+    isOnline: isKnown && isConnected && isInternetReachable
+  };
+}
+
 /**
  * Formats status code to approved human-readable mobile display label.
  */

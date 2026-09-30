@@ -37,20 +37,17 @@ public class TrackingServiceImpl implements TrackingService {
     private final TrackingEventRepository trackingEventRepository;
     private final AppUserRepository appUserRepository;
     private final SseService sseService;
-    private final OfflineTrackingSyncItemService offlineTrackingSyncItemService;
     private final TrackingTransitionPolicy transitionPolicy;
 
     public TrackingServiceImpl(ParcelUnitRepository parcelUnitRepository,
                                TrackingEventRepository trackingEventRepository,
                                AppUserRepository appUserRepository,
                                SseService sseService,
-                               OfflineTrackingSyncItemService offlineTrackingSyncItemService,
                                TrackingTransitionPolicy transitionPolicy) {
         this.parcelUnitRepository = parcelUnitRepository;
         this.trackingEventRepository = trackingEventRepository;
         this.appUserRepository = appUserRepository;
         this.sseService = sseService;
-        this.offlineTrackingSyncItemService = offlineTrackingSyncItemService;
         this.transitionPolicy = transitionPolicy;
     }
 
@@ -270,65 +267,6 @@ public class TrackingServiceImpl implements TrackingService {
         }
 
         return responses;
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public OfflineTrackingSyncResponse processOfflineSync(OfflineTrackingSyncRequest request, String actingStaffUserId) {
-        AppUser actor = appUserRepository.findById(actingStaffUserId)
-                .orElseThrow(() -> new IllegalArgumentException("Staff user not found"));
-        if (!Boolean.TRUE.equals(actor.getActive()) || actor.getRole() != UserRole.FIELD_STAFF) {
-            throw new org.springframework.security.access.AccessDeniedException("Field Staff access is required");
-        }
-        for (OfflineTrackingSyncItemRequest item : request.items()) {
-            requireStaffAuthorization(actor, item.targetStatus());
-        }
-        Set<String> eventIds = new HashSet<>();
-        for (OfflineTrackingSyncItemRequest item : request.items()) {
-            if (!eventIds.add(java.util.UUID.fromString(item.clientEventId()).toString())) {
-                throw new IllegalArgumentException("Duplicate clientEventId in batch");
-            }
-        }
-        List<OfflineTrackingSyncItemRequest> ordered = new ArrayList<>(request.items());
-        ordered.sort(Comparator.comparing(OfflineTrackingSyncItemRequest::clientSequence));
-        List<OfflineTrackingSyncItemResponse> results = new ArrayList<>(ordered.size());
-        Set<String> failedParcels = new HashSet<>();
-        for (OfflineTrackingSyncItemRequest item : ordered) {
-            String trackingId = item.trackingId().trim().toUpperCase();
-            if (failedParcels.contains(trackingId)) {
-                results.add(new OfflineTrackingSyncItemResponse(item.clientEventId(), trackingId, "BLOCKED_BY_PRIOR_FAILURE",
-                        "PRIOR_ITEM_FAILED", false, false, null, null, null));
-                continue;
-            }
-            try {
-                OfflineTrackingSyncItemResponse result = offlineTrackingSyncItemService.process(item, actor);
-                results.add(result);
-                if (!"APPLIED".equals(result.outcome()) && !"ALREADY_APPLIED".equals(result.outcome())) {
-                    failedParcels.add(trackingId);
-                }
-            } catch (org.springframework.dao.DataIntegrityViolationException ex) {
-                OfflineTrackingSyncItemResponse recovered = offlineTrackingSyncItemService.recoverDuplicateReservation(item, actor);
-                if (recovered != null) {
-                    results.add(recovered);
-                    if (!"APPLIED".equals(recovered.outcome()) && !"ALREADY_APPLIED".equals(recovered.outcome())) {
-                        failedParcels.add(trackingId);
-                    }
-                    continue;
-                }
-                results.add(new OfflineTrackingSyncItemResponse(item.clientEventId(), trackingId, "RETRYABLE_ERROR",
-                        "TEMPORARY_FAILURE", true, false, null, null, null));
-                failedParcels.add(trackingId);
-            } catch (org.springframework.dao.DataAccessException ex) {
-                results.add(new OfflineTrackingSyncItemResponse(item.clientEventId(), trackingId, "RETRYABLE_ERROR",
-                        "TEMPORARY_FAILURE", true, false, null, null, null));
-                failedParcels.add(trackingId);
-            }
-        }
-        int applied = (int) results.stream().filter(value -> "APPLIED".equals(value.outcome())).count();
-        int alreadyApplied = (int) results.stream().filter(value -> "ALREADY_APPLIED".equals(value.outcome())).count();
-        int retryable = (int) results.stream().filter(OfflineTrackingSyncItemResponse::retryable).count();
-        return new OfflineTrackingSyncResponse(results.size(), applied, alreadyApplied,
-                results.size() - applied - alreadyApplied - retryable, retryable, results);
     }
 
     private ScanTransitionResult processStatusScanInternal(
@@ -723,8 +661,6 @@ public class TrackingServiceImpl implements TrackingService {
         String vehicleId = vehicle != null ? vehicle.getVehicleId() : null;
         String vehiclePlateNumber = vehicle != null ? vehicle.getPlateNumber() : null;
         LocalDateTime timestamp = event.getEventTimestamp();
-        String syncStatus = "SYNCED";
-
         return new PersonalTrackingEventResponse(
                 event.getEventId(),
                 trackingId,
@@ -735,8 +671,7 @@ public class TrackingServiceImpl implements TrackingService {
                 statusDisplay,
                 vehicleId,
                 vehiclePlateNumber,
-                timestamp,
-                syncStatus
+                timestamp
         );
     }
 

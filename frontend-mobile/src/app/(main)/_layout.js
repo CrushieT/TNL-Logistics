@@ -5,7 +5,6 @@ import { useAuth } from '../../features/auth/context/AuthContext';
 import { colors } from '../../theme';
 
 import { PrinterProvider } from '../../features/printer/context/PrinterContext';
-import { OfflineSyncProvider } from '../../features/offline-sync/context/OfflineSyncContext';
 
 export default function MainLayout() {
   const { isAuthenticated, isLoading, isLocked, mustSetupPin, boundUser } = useAuth();
@@ -46,7 +45,6 @@ export default function MainLayout() {
   }
 
   return (
-    <OfflineSyncProvider>
     <PrinterProvider>
       <Stack
         screenOptions={{
@@ -64,13 +62,11 @@ export default function MainLayout() {
         <Stack.Screen name="shipments/parcel/[trackingId]" />
         <Stack.Screen name="tracking-history/index" />
         <Stack.Screen name="tracking-history/[trackingId]" />
-        <Stack.Screen name="offline-queue" />
         <Stack.Screen name="settings/index" />
         <Stack.Screen name="settings/password" />
         <Stack.Screen name="settings/pin" />
       </Stack>
     </PrinterProvider>
-    </OfflineSyncProvider>
   );
 }
 

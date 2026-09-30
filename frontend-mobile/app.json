@@ -32,8 +32,7 @@
           "cameraPermission": "Allow TNL Logistics to access your camera to scan parcel QR codes."
         }
       ],
-      "expo-font",
-      "expo-sqlite"
+      "expo-font"
     ],
     "scheme": "tnl-field",
     "extra": {

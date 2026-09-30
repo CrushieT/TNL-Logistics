@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   HISTORY_PAGE_SIZE,
-  SYNC_STATUSES,
   STATUS_LABELS,
   normalizeHistorySearch,
   resolveStatusSearch,
@@ -15,7 +14,6 @@ import {
   formatPackageDisplay,
   resolveTrackingStatusDisplay,
   encodeTrackingId,
-  getSyncStatusMeta,
 } from '../src/features/tracking-history/trackingHistoryFlow.mjs';
 import { createTrackingHistoryRequestCoordinator } from '../src/features/tracking-history/trackingHistoryRequestCoordinator.mjs';
 
@@ -236,29 +234,15 @@ describe('Field Personal Scan and Tracking History Logic', () => {
     assert.strictEqual(STATUS_LABELS.COMPLETED, 'Completed');
   });
 
-  // 16. SYNCED and PENDING_OFFLINE_SYNC produce distinct display states
-  it('16. SYNCED and PENDING_OFFLINE_SYNC produce distinct display states', () => {
-    const syncedMeta = getSyncStatusMeta(SYNC_STATUSES.SYNCED);
-    assert.strictEqual(syncedMeta.label, 'SYNCED');
-    assert.strictEqual(syncedMeta.isPending, false);
-
-    const pendingMeta = getSyncStatusMeta(SYNC_STATUSES.PENDING_OFFLINE_SYNC);
-    assert.strictEqual(pendingMeta.label, 'PENDING OFFLINE SYNC');
-    assert.strictEqual(pendingMeta.isPending, true);
-
-    assert.notStrictEqual(syncedMeta.color, pendingMeta.color);
-    assert.notStrictEqual(syncedMeta.bgColor, pendingMeta.bgColor);
-  });
-
-  // 17. Tracking IDs are encoded for detail navigation
-  it('17. Tracking IDs are encoded for detail navigation', () => {
+  // 16. Tracking IDs are encoded for detail navigation
+  it('16. Tracking IDs are encoded for detail navigation', () => {
     assert.strictEqual(encodeTrackingId('TRK-2026-000101'), 'TRK-2026-000101');
     assert.strictEqual(encodeTrackingId('TRK 2026 000101'), 'TRK%202026%20000101');
     assert.strictEqual(encodeTrackingId('  TRK-2026-000102  '), 'TRK-2026-000102');
   });
 
-  // 18. No helper fabricates customer or placeholder values
-  it('18. No helper fabricates customer or placeholder values', () => {
+  // 17. No helper fabricates customer or placeholder values
+  it('17. No helper fabricates customer or placeholder values', () => {
     // Formatters reject invalid inputs with explicit placeholders, never fabricated business defaults
     assert.strictEqual(formatHistoryTimestamp(null), '—');
     assert.strictEqual(formatHistoryTimestamp(''), '—');

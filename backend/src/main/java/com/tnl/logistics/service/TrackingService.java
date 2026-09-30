@@ -16,8 +16,6 @@ public interface TrackingService {
 
     List<TrackingScanResponse> processBatchScan(BatchTrackingScanRequest request, String actingStaffUserId);
 
-    OfflineTrackingSyncResponse processOfflineSync(OfflineTrackingSyncRequest request, String actingStaffUserId);
-
     Page<TrackingLogEntryResponse> getTrackingLogs(String search, ParcelStatus status,
                                                   LocalDate startDate, LocalDate endDate,
                                                   Pageable pageable);

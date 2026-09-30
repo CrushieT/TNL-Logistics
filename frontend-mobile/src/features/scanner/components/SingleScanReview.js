@@ -14,13 +14,14 @@ export default function SingleScanReview({
   onConfirm,
   onCancel,
   isSubmitting,
+  isOnline,
   staffType
 }) {
   if (!context) return null;
 
   const isVehicleRequired = Boolean(context.requiresVehicle);
   const permission = getSingleScanPermission(context, staffType);
-  const canConfirm = canSubmitSingle(context, selectedVehicleId, staffType) && !isSubmitting;
+  const canConfirm = canSubmitSingle(context, selectedVehicleId, staffType) && !isSubmitting && isOnline;
 
   return (
     <View style={styles.container}>
@@ -109,7 +110,7 @@ export default function SingleScanReview({
             ) : vehicles.length === 0 ? (
               <View style={styles.errorBox}>
                 <Text style={styles.errorText}>No active vehicles available.</Text>
-                <TouchableOpacity style={styles.retryButton} onPress={onRetryVehicles}>
+                <TouchableOpacity style={styles.retryButton} onPress={onRetryVehicles} disabled={!isOnline}>
                   <Text style={styles.retryButtonText}>Retry Loading Vehicles</Text>
                 </TouchableOpacity>
               </View>
@@ -122,7 +123,7 @@ export default function SingleScanReview({
                       key={v.vehicleId}
                       style={[styles.vehicleCard, isSelected && styles.vehicleCardSelected]}
                       onPress={() => onSelectVehicle(v.vehicleId)}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || !isOnline}
                     >
                       <View style={styles.vehicleCardHeader}>
                         <Text style={[styles.vehiclePlate, isSelected && styles.vehiclePlateSelected]}>

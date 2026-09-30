@@ -23,12 +23,8 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -988,35 +984,6 @@ public class TrackingScanIntegrationTest {
     }
 
     @Test
-    public void testCrossRoleOfflineScansReturnForbiddenWithoutReceiptsOrEvents() throws Exception {
-        vehicleRepository.saveAndFlush(new Vehicle("VH-901", "AUTH-1003", "Offline Authorization Truck"));
-        String internalTarget = createTestShipment(1);
-        ParcelUnit arrivedParcel = parcelUnitRepository.findById(internalTarget).orElseThrow();
-        arrivedParcel.setCurrentStatus(ParcelStatus.ARRIVED_AT_TNL);
-        parcelUnitRepository.saveAndFlush(arrivedParcel);
-        String haulerTarget = createTestShipment(1);
-        long eventCountBefore = trackingEventRepository.count();
-
-        mockMvc.perform(post("/api/v1/tracking-events/offline-sync")
-                        .header("Authorization", fieldToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(buildOfflineSyncRequest(internalTarget, ParcelStatus.LOADED_TO_HAULER, null)))
-                .andExpect(status().isForbidden());
-
-        mockMvc.perform(post("/api/v1/tracking-events/offline-sync")
-                        .header("Authorization", haulerToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(buildOfflineSyncRequest(haulerTarget, ParcelStatus.LOADED_ON_TRUCK, "VH-901")))
-                .andExpect(status().isForbidden());
-
-        assertEquals(ParcelStatus.ARRIVED_AT_TNL,
-                parcelUnitRepository.findById(internalTarget).orElseThrow().getCurrentStatus());
-        assertEquals(ParcelStatus.QR_GENERATED,
-                parcelUnitRepository.findById(haulerTarget).orElseThrow().getCurrentStatus());
-        assertEquals(eventCountBefore, trackingEventRepository.count());
-    }
-
-    @Test
     public void testNullStaffTypeRetainsFullSequentialAccessAndCannotSkipArrival() throws Exception {
         vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "AUTH-1004", "General Staff Truck"));
         String trackingId = createTestShipment(1);
@@ -1054,19 +1021,5 @@ public class TrackingScanIntegrationTest {
                 .andExpect(status().isBadRequest());
         assertEquals(ParcelStatus.LOADED_ON_TRUCK,
                 parcelUnitRepository.findById(skippedTrackingId).orElseThrow().getCurrentStatus());
-    }
-
-    private String buildOfflineSyncRequest(String trackingId, ParcelStatus targetStatus, String vehicleId)
-            throws Exception {
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("clientEventId", UUID.randomUUID().toString());
-        item.put("trackingId", trackingId);
-        item.put("targetStatus", targetStatus.name());
-        if (vehicleId != null) {
-            item.put("vehicleId", vehicleId);
-        }
-        item.put("capturedAt", Instant.now().minusSeconds(5).toString());
-        item.put("clientSequence", 1);
-        return objectMapper.writeValueAsString(Map.of("items", List.of(item)));
     }
 }

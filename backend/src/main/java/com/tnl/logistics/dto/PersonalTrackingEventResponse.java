@@ -14,7 +14,6 @@ public class PersonalTrackingEventResponse {
     private String vehicleId;
     private String vehiclePlateNumber;
     private LocalDateTime timestamp;
-    private String syncStatus;
 
     public PersonalTrackingEventResponse() {}
 
@@ -22,7 +21,7 @@ public class PersonalTrackingEventResponse {
                                          Integer packageIndex, Integer packageCount,
                                          String statusCode, String statusDisplay,
                                          String vehicleId, String vehiclePlateNumber,
-                                         LocalDateTime timestamp, String syncStatus) {
+                                         LocalDateTime timestamp) {
         this.eventId = eventId;
         this.trackingId = trackingId;
         this.shipmentId = shipmentId;
@@ -33,7 +32,6 @@ public class PersonalTrackingEventResponse {
         this.vehicleId = vehicleId;
         this.vehiclePlateNumber = vehiclePlateNumber;
         this.timestamp = timestamp;
-        this.syncStatus = syncStatus;
     }
 
     public Long getEventId() { return eventId; }
@@ -65,7 +63,4 @@ public class PersonalTrackingEventResponse {
 
     public LocalDateTime getTimestamp() { return timestamp; }
     public void setTimestamp(LocalDateTime timestamp) { this.timestamp = timestamp; }
-
-    public String getSyncStatus() { return syncStatus; }
-    public void setSyncStatus(String syncStatus) { this.syncStatus = syncStatus; }
 }

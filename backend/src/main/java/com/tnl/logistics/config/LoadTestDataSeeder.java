@@ -174,7 +174,6 @@ public class LoadTestDataSeeder implements CommandLineRunner {
                     : entityManager.getReference(Vehicle.class, vehicleId(shipmentIndex)) : null;
             TrackingEvent event = new TrackingEvent(parcel, status, eventVehicle, statusIndex < 2 ? officeUser : fieldUser, "Synthetic load-test event");
             event.setEventTimestamp(registeredAt.plusMinutes(statusIndex * 20L));
-            event.setScanSource("LOADTEST");
             entityManager.persist(event);
         }
     }

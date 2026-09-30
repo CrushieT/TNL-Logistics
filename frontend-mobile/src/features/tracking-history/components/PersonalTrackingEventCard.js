@@ -2,7 +2,6 @@ import React from 'react';
 import { StyleSheet, View, Text, Platform } from 'react-native';
 import { colors, typography } from '../../../theme';
 import { PressableScale } from '../../../components/common/PressableScale';
-import { SyncStatusBadge } from './SyncStatusBadge';
 import {
   formatHistoryTimestamp,
   formatPackageDisplay,
@@ -68,10 +67,6 @@ export function PersonalTrackingEventCard({ event, onPress }) {
           <Text style={styles.vehicleValue}>{vehicleDisplay}</Text>
         </View>
       )}
-
-      <View style={styles.bottomRow}>
-        <SyncStatusBadge syncStatus={event.syncStatus || 'SYNCED'} />
-      </View>
     </PressableScale>
   );
 }
@@ -151,11 +146,5 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.ink,
     fontWeight: '700',
-  },
-  bottomRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    marginTop: 2,
   },
 });
