@@ -161,17 +161,18 @@ export function AuthProvider({ children }) {
             await setAppLocked(true);
           }
 
-          if (!storedUser.mustChangePassword && deviceCredentials) {
-            try {
-              const profile = await authService.fetchCurrentUser();
-              if (isMounted) {
-                const refreshedUser = { ...storedUser, ...profile };
-                await saveUser(refreshedUser);
-                setUser(refreshedUser);
-              }
-            } catch {
-              // The API interceptor owns session and device credential failures.
-            }
+          if (!restoredLocked && !storedUser.mustChangePassword && deviceCredentials) {
+            authService.fetchCurrentUser()
+              .then(async (profile) => {
+                if (isMounted) {
+                  const refreshedUser = { ...storedUser, ...profile };
+                  await saveUser(refreshedUser);
+                  setUser(refreshedUser);
+                }
+              })
+              .catch(() => {
+                // The API interceptor owns session and device credential failures.
+              });
           }
         } else if (storedBoundUser && deviceCredentials) {
           const restoredLocked = shouldRestoreLockedSession({
