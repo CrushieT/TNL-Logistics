@@ -101,7 +101,7 @@ export default function ReportsScreen() {
 
     const unsubscribe = subscribeRealtimeEvents((event) => {
       if (
-        ['STATUS_UPDATE', 'SHIPMENT_CREATED', 'PAYMENT_RECORDED', 'SOA_GENERATED'].includes(event.type)
+        ['STATUS_UPDATE', 'SHIPMENT_CREATED', 'PAYMENT_RECORDED', 'SOA_GENERATED', 'SOA_UPDATED'].includes(event.type)
       ) {
         if (debounceTimer.current) clearTimeout(debounceTimer.current);
         debounceTimer.current = setTimeout(() => {
