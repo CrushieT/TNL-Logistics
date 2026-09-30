@@ -6,7 +6,7 @@ export function createRegistrationForm() {
     newClientName: '', newClientAddress: '', newClientContact: '', newClientEmail: '',
     recipientName: '', recipientAddress: '', recipientContact: '', description: '',
     quantity: '1', weightKg: '', lengthCm: '', widthCm: '', heightCm: '',
-    route: 'Manila to TNL Baguio', chargeModel: 'FLAT', shippingFee: '',
+    route: 'Manila to TNL Labo C.N.', chargeModel: 'FLAT', shippingFee: '',
     otherCharges: '0', paidAtRegistration: false,
   };
 }

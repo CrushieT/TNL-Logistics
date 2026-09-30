@@ -124,11 +124,11 @@ export default function PaymentHistoryModal({
               <ScrollView style={styles.scrollArea}>
                 {/* Ledger Header */}
                 <View style={styles.ledgerHeaderRow}>
-                  <Text style={[styles.ledgerHeaderCell, { flex: 1.1 }]}>DATE</Text>
-                  <Text style={[styles.ledgerHeaderCell, { flex: 1.0, textAlign: 'right' }]}>AMOUNT</Text>
-                  <Text style={[styles.ledgerHeaderCell, { flex: 1.1 }]}>METHOD</Text>
+                  <Text style={[styles.ledgerHeaderCell, { flex: 1.0 }]}>DATE</Text>
+                  <Text style={[styles.ledgerHeaderCell, styles.amountHeaderCell, { flex: 1.1 }]}>AMOUNT</Text>
+                  <Text style={[styles.ledgerHeaderCell, styles.methodHeaderCell, { flex: 1.1 }]}>METHOD</Text>
                   <Text style={[styles.ledgerHeaderCell, { flex: 1.3 }]}>REFERENCE NO.</Text>
-                  <Text style={[styles.ledgerHeaderCell, { flex: 1.5 }]}>REMARKS</Text>
+                  <Text style={[styles.ledgerHeaderCell, { flex: 1.4 }]}>REMARKS</Text>
                   <Text style={[styles.ledgerHeaderCell, { flex: 1.1 }]}>STAFF</Text>
                 </View>
 
@@ -152,15 +152,15 @@ export default function PaymentHistoryModal({
                         idx !== paymentsList.length - 1 && styles.ledgerRowDivider,
                       ]}
                     >
-                      <View style={{ flex: 1.1 }}>
+                      <View style={{ flex: 1.0 }}>
                         <Text style={styles.dateCell}>{p.paymentDateFormatted || p.paymentDate || '-'}</Text>
                       </View>
 
-                      <View style={{ flex: 1.0, alignItems: 'flex-end' }}>
+                      <View style={[styles.amountCellWrapper, { flex: 1.1 }]}>
                         <Text style={styles.amountCell}>{formatCurrency(p.amountPaid)}</Text>
                       </View>
 
-                      <View style={{ flex: 1.1 }}>
+                      <View style={[styles.methodCellWrapper, { flex: 1.1 }]}>
                         <Text style={styles.methodCell}>{methodLabel}</Text>
                       </View>
 
@@ -168,7 +168,7 @@ export default function PaymentHistoryModal({
                         <Text style={styles.refCell}>{p.referenceNo || '-'}</Text>
                       </View>
 
-                      <View style={{ flex: 1.5 }}>
+                      <View style={{ flex: 1.4 }}>
                         <Text style={styles.remarksCell}>{p.remarks || '-'}</Text>
                       </View>
 
@@ -314,6 +314,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
+  amountHeaderCell: {
+    textAlign: 'right',
+    paddingRight: spacing.md,
+  },
+  methodHeaderCell: {
+    paddingLeft: spacing.md,
+  },
   ledgerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -323,6 +330,13 @@ const styles = StyleSheet.create({
   ledgerRowDivider: {
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  amountCellWrapper: {
+    alignItems: 'flex-end',
+    paddingRight: spacing.md,
+  },
+  methodCellWrapper: {
+    paddingLeft: spacing.md,
   },
   dateCell: {
     fontFamily: fonts.sans,
