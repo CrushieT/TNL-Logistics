@@ -38,6 +38,7 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final ParcelUnitRepository parcelUnitRepository;
     private final ClientRepository clientRepository;
     private final PaymentRepository paymentRepository;
+    private final SoaRepository soaRepository;
     private final AppUserRepository appUserRepository;
     private final TrackingEventRepository trackingEventRepository;
     private final WaybillRepository waybillRepository;
@@ -51,6 +52,7 @@ public class ShipmentServiceImpl implements ShipmentService {
                                ParcelUnitRepository parcelUnitRepository,
                                ClientRepository clientRepository,
                                PaymentRepository paymentRepository,
+                               SoaRepository soaRepository,
                                AppUserRepository appUserRepository,
                                TrackingEventRepository trackingEventRepository,
                                WaybillRepository waybillRepository,
@@ -63,6 +65,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         this.parcelUnitRepository = parcelUnitRepository;
         this.clientRepository = clientRepository;
         this.paymentRepository = paymentRepository;
+        this.soaRepository = soaRepository;
         this.appUserRepository = appUserRepository;
         this.trackingEventRepository = trackingEventRepository;
         this.waybillRepository = waybillRepository;
@@ -259,6 +262,16 @@ public class ShipmentServiceImpl implements ShipmentService {
                 .filter(p -> p.getShipment() != null)
                 .collect(Collectors.groupingBy(p -> p.getShipment().getShipmentId()));
 
+        Set<String> statementIds = shipments.stream()
+                .map(Shipment::getStatementId)
+                .filter(Objects::nonNull)
+                .filter(statementId -> !statementId.isBlank())
+                .collect(Collectors.toSet());
+        Map<String, Soa> statementsById = statementIds.isEmpty()
+                ? Collections.emptyMap()
+                : soaRepository.findAllById(statementIds).stream()
+                        .collect(Collectors.toMap(Soa::getSoaNo, statement -> statement));
+
         // Check if any parcels need vehicle fallback from tracking events
         List<String> trackingIdsNeedingVehicle = allParcels.stream()
                 .filter(p -> p.getCurrentVehicle() == null)
@@ -281,7 +294,8 @@ public class ShipmentServiceImpl implements ShipmentService {
                         s,
                         parcelsByShipment.getOrDefault(s.getShipmentId(), Collections.emptyList()),
                         paymentsByShipment.getOrDefault(s.getShipmentId(), Collections.emptyList()),
-                        latestEventWithVehicleByTrackingId
+                        latestEventWithVehicleByTrackingId,
+                        statementsById.get(s.getStatementId())
                 ))
                 .collect(Collectors.toList());
 
@@ -663,7 +677,8 @@ public class ShipmentServiceImpl implements ShipmentService {
             Shipment s,
             List<ParcelUnit> parcels,
             List<Payment> payments,
-            Map<String, TrackingEvent> latestEventWithVehicleByTrackingId
+            Map<String, TrackingEvent> latestEventWithVehicleByTrackingId,
+            Soa statement
     ) {
         if (parcels == null) parcels = Collections.emptyList();
         if (payments == null) payments = Collections.emptyList();
@@ -677,6 +692,13 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         String paymentStr = totalPaid.compareTo(s.getTotalAmount()) >= 0 ? "Paid"
                 : (totalPaid.compareTo(BigDecimal.ZERO) > 0 ? "Partial" : "Unpaid");
+        boolean isPaid = "Paid".equals(paymentStr);
+        boolean isStatementSettled = !isPaid
+                && statement != null
+                && statement.getOutstandingBalance() != null
+                && statement.getOutstandingBalance().compareTo(BigDecimal.ZERO) <= 0;
+        String financialStatus = isStatementSettled ? "Settled" : paymentStr;
+        BigDecimal collectibleBalance = (isPaid || isStatementSettled) ? BigDecimal.ZERO : balance;
 
         RollupStatus rollup = computeRollupStatus(parcels);
 
@@ -710,7 +732,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         boolean allLabelsPrinted = !parcels.isEmpty() && parcels.stream().allMatch(p -> p.getLabelStatus() == LabelStatus.PRINTED);
         String registeredVia = s.getRegisteredVia() != null ? s.getRegisteredVia().name() : null;
 
-        return new ShipmentSummaryResponse(
+        ShipmentSummaryResponse response = new ShipmentSummaryResponse(
                 s.getShipmentId(),
                 clientId,
                 clientName,
@@ -731,6 +753,10 @@ public class ShipmentServiceImpl implements ShipmentService {
                 registeredVia,
                 allLabelsPrinted
         );
+        response.setFinancialStatus(financialStatus);
+        response.setCollectibleBalance(collectibleBalance);
+        response.setStatementId(s.getStatementId());
+        return response;
     }
 
     private ShipmentSummaryResponse mapToSummaryResponse(Shipment s) {
@@ -746,7 +772,10 @@ public class ShipmentServiceImpl implements ShipmentService {
                 }
             }
         }
-        return mapToSummaryResponse(s, parcels, payments, eventMap);
+        Soa statement = s.getStatementId() != null && !s.getStatementId().isBlank()
+                ? soaRepository.findById(s.getStatementId()).orElse(null)
+                : null;
+        return mapToSummaryResponse(s, parcels, payments, eventMap, statement);
     }
 
     private static class RollupStatus {

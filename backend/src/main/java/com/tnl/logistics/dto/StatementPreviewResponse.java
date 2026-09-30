@@ -33,6 +33,7 @@ public class StatementPreviewResponse {
     private BigDecimal totalCharges;
     private BigDecimal totalPaid;
     private BigDecimal amountDue;
+    private String status;
 
     private List<StatementShipmentItem> items = new ArrayList<>();
 
@@ -94,6 +95,9 @@ public class StatementPreviewResponse {
 
     public BigDecimal getAmountDue() { return amountDue; }
     public void setAmountDue(BigDecimal amountDue) { this.amountDue = amountDue; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
 
     public List<StatementShipmentItem> getItems() { return items; }
     public void setItems(List<StatementShipmentItem> items) { this.items = items; }

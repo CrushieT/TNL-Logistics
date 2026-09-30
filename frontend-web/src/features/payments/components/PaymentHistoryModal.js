@@ -48,10 +48,18 @@ export default function PaymentHistoryModal({
 
   const totalDue = historyData?.totalAmount ?? Number(shipment.totalAmount ?? shipment.amountDue ?? 0);
   const totalPaid = historyData?.totalPaid ?? Number(shipment.amountPaid ?? shipment.paid ?? 0);
-  const remainingBalance = historyData?.balance ?? (shipment.balance !== undefined && shipment.balance !== null
+  const paymentBalance = historyData?.balance ?? (shipment.balance !== undefined && shipment.balance !== null
     ? Number(shipment.balance)
     : Math.max(0, totalDue - totalPaid));
-  const paymentStatus = historyData?.paymentStatus || shipment.payment || (remainingBalance <= 0 ? 'Paid' : totalPaid > 0 ? 'Partial' : 'Unpaid');
+  const collectibleBalance = historyData?.collectibleBalance
+    ?? shipment.collectibleBalance
+    ?? paymentBalance;
+  const financialStatus = historyData?.financialStatus
+    || shipment.financialStatus
+    || historyData?.paymentStatus
+    || shipment.payment
+    || (paymentBalance <= 0 ? 'Paid' : totalPaid > 0 ? 'Partial' : 'Unpaid');
+  const statementAdjustment = historyData?.statementAdjustment || null;
 
   const paymentsList = historyData?.payments || [];
 
@@ -78,7 +86,7 @@ export default function PaymentHistoryModal({
               <Text style={styles.shipmentTitle}>
                 {shipment.shipmentId} | {historyData?.clientName || shipment.clientName || shipment.client || 'Client'}
               </Text>
-              <StatusBadge value={paymentStatus} kind="payment" />
+              <StatusBadge value={financialStatus} kind="payment" />
             </View>
 
             {/* 3-Column Metrics Breakdown */}
@@ -94,12 +102,30 @@ export default function PaymentHistoryModal({
               </View>
 
               <View style={styles.metricCol}>
-                <Text style={styles.metricLabel}>BALANCE</Text>
-                <Text style={[styles.metricValue, { color: remainingBalance > 0 ? '#DC2626' : '#16A34A' }]}>
-                  {formatCurrency(remainingBalance)}
+                <Text style={styles.metricLabel}>COLLECTIBLE BALANCE</Text>
+                <Text style={[styles.metricValue, { color: collectibleBalance > 0 ? '#DC2626' : '#16A34A' }]}>
+                  {formatCurrency(collectibleBalance)}
                 </Text>
               </View>
             </View>
+
+            {statementAdjustment && Number(statementAdjustment.amount || 0) > 0 ? (
+              <View style={styles.adjustmentCard}>
+                <View style={styles.adjustmentHeader}>
+                  <Text style={styles.adjustmentTitle}>SOA ADJUSTMENT · STATEMENT-WIDE</Text>
+                  <Text style={styles.adjustmentAmount}>-{formatCurrency(statementAdjustment.amount)}</Text>
+                </View>
+                <Text style={styles.adjustmentMeta}>
+                  {statementAdjustment.soaNo} · {statementAdjustment.status === 'SETTLED' ? 'Settled' : 'For collection'}
+                </Text>
+                <Text style={styles.adjustmentReason}>
+                  {statementAdjustment.reason || 'Adjustment credit applied to the Statement of Account.'}
+                </Text>
+                <Text style={styles.adjustmentScope}>
+                  This adjustment applies to the complete statement and is not an individual payment against this shipment.
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           {/* Ledger Table Content */}
@@ -117,7 +143,9 @@ export default function PaymentHistoryModal({
               <View style={styles.emptyBox}>
                 <Text style={styles.emptyTitle}>No payments recorded yet</Text>
                 <Text style={styles.emptySub}>
-                  Payments recorded against this shipment will be listed here chronologically.
+                  {statementAdjustment && Number(statementAdjustment.amount || 0) > 0
+                    ? 'The statement adjustment shown above is not recorded as a payment.'
+                    : 'Payments recorded against this shipment will be listed here chronologically.'}
                 </Text>
               </View>
             ) : (
@@ -288,6 +316,52 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     color: colors.ink,
+  },
+  adjustmentCard: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#6EE7B7',
+    borderRadius: radius.sm,
+  },
+  adjustmentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  adjustmentTitle: {
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#166534',
+    letterSpacing: 0.6,
+  },
+  adjustmentAmount: {
+    fontFamily: fonts.mono,
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#166534',
+  },
+  adjustmentMeta: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    color: colors.inkSoft,
+    marginTop: spacing.xs,
+  },
+  adjustmentReason: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: colors.ink,
+    marginTop: spacing.sm,
+  },
+  adjustmentScope: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    color: colors.inkFaint,
+    marginTop: spacing.xs,
+    lineHeight: 15,
   },
   body: {
     paddingHorizontal: spacing.xl,

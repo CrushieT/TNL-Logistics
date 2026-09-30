@@ -61,17 +61,20 @@ tnl-logistics/
 │   │   │   ├── waybills/            # Waybills & printable manifest
 │   │   │   │   └── index.js         # Screens 23-25 Waybill workflow & printable manifest
 │   │   │   ├── reports.js           # Screen 26 Operational & Financial Reports
+│   │   │   ├── reports/
+│   │   │   │   └── print.js         # Dedicated isolated printable report document
 │   │   │   ├── users.js             # Screen 27 User & Staff Management
 │   │   │   └── settings.js          # Screen 28 System Settings
 │   │   ├── components/              # Shared design system (common/ atoms, layout/ AppShell)
 │   │   ├── features/                # Domain modules
 │   │   │   ├── shipments/           # ClientSelectDropdown, registrationCalculations.mjs, PrintLabelsModal, LabelPreview, durable outbox & isolated thermal print service
+│   │   │   ├── reports/             # Operational & financial report cards, PrintableReportDocument, reportPrintModel.mjs
 │   │   │   └── settings/            # AdminSecurityCard, ConfirmPasswordModal, settings components
 │   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sessionCore.mjs, sseClient.js, sseClientCore.mjs)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
 │   │   ├── utils/                   # Shared QR facade
 │   │   └── vendor/qrcodegen/        # Vendored Project Nayuki QR generator
-│   ├── tests/                       # Web unit suites (authSlidingSession.test.mjs, labelPrint.test.mjs, qr.test.mjs, registrationCalculations.test.mjs, sseClient.test.mjs)
+│   ├── tests/                       # Web unit suites (authSlidingSession.test.mjs, labelPrint.test.mjs, qr.test.mjs, registrationCalculations.test.mjs, reportPrint.test.mjs, sseClient.test.mjs)
 │   ├── assets/                      # favicon.png, tracking-logo.png
 │   ├── app.json                     # Expo web configuration
 │   ├── package.json

@@ -216,6 +216,15 @@ public class SseServiceImpl implements SseService {
         broadcastEvent("PAYMENT_RECORDED", payment);
     }
 
+    @Override
+    public void broadcastSoaUpdated(String soaNo, String clientId, List<String> shipmentIds) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("soaNo", soaNo);
+        payload.put("clientId", clientId);
+        payload.put("shipmentIds", shipmentIds);
+        broadcastEvent("SOA_UPDATED", payload);
+    }
+
     @Scheduled(fixedRate = 20000)
     @Override
     public void sendHeartbeat() {

@@ -158,6 +158,7 @@ export default function RootLayout() {
           <Stack.Screen name="statements/print" />
           <Stack.Screen name="tracking-logs" />
           <Stack.Screen name="reports" />
+          <Stack.Screen name="reports/print" />
           <Stack.Screen name="users" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="vehicles" />

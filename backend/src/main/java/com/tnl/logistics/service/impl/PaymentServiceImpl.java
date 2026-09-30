@@ -19,8 +19,10 @@ import com.tnl.logistics.service.SseService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -82,6 +84,21 @@ public class PaymentServiceImpl implements PaymentService {
             throw new IllegalStateException(String.format("Shipment %s is already fully paid.", shipment.getShipmentId()));
         }
 
+        if (shipment.getStatementId() != null && !shipment.getStatementId().isBlank()) {
+            soaRepository.findById(shipment.getStatementId()).ifPresent(soa -> {
+                BigDecimal statementBalance = soa.getOutstandingBalance() != null
+                        ? soa.getOutstandingBalance()
+                        : BigDecimal.ZERO;
+                if (statementBalance.compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new ResponseStatusException(
+                            HttpStatus.CONFLICT,
+                            String.format("Shipment %s belongs to settled statement %s.",
+                                    shipment.getShipmentId(), soa.getSoaNo())
+                    );
+                }
+            });
+        }
+
         if (request.getAmountPaid().compareTo(remainingBalance) > 0) {
             throw new IllegalArgumentException(String.format(
                     "Payment amount ₱%s exceeds remaining balance ₱%s for shipment %s",
@@ -124,7 +141,10 @@ public class PaymentServiceImpl implements PaymentService {
 
                 BigDecimal charges = soa.getCurrentCharges() != null ? soa.getCurrentCharges() : BigDecimal.ZERO;
                 BigDecimal deductions = soa.getDeductions() != null ? soa.getDeductions() : BigDecimal.ZERO;
-                BigDecimal updatedBalance = charges.subtract(updatedTotalPaid).subtract(deductions);
+                BigDecimal previousBalance = soa.getPreviousBalance() != null
+                        ? soa.getPreviousBalance()
+                        : BigDecimal.ZERO;
+                BigDecimal updatedBalance = charges.add(previousBalance).subtract(updatedTotalPaid).subtract(deductions);
                 if (updatedBalance.compareTo(BigDecimal.ZERO) < 0) {
                     updatedBalance = BigDecimal.ZERO;
                 }
@@ -184,11 +204,24 @@ public class PaymentServiceImpl implements PaymentService {
                 ? "Paid"
                 : (totalPaid.compareTo(BigDecimal.ZERO) > 0 ? "Partial" : "Unpaid");
 
+        Soa statement = null;
+        if (shipment.getStatementId() != null && !shipment.getStatementId().isBlank()) {
+            statement = soaRepository.findById(shipment.getStatementId()).orElse(null);
+        }
+        boolean isPaid = totalPaid.compareTo(shipment.getTotalAmount()) >= 0;
+        boolean isStatementSettled = !isPaid
+                && statement != null
+                && statement.getOutstandingBalance() != null
+                && statement.getOutstandingBalance().compareTo(BigDecimal.ZERO) <= 0;
+        String financialStatus = isPaid ? "Paid"
+                : (isStatementSettled ? "Settled" : paymentStatus);
+        BigDecimal collectibleBalance = (isPaid || isStatementSettled) ? BigDecimal.ZERO : balance;
+
         List<PaymentResponse> paymentResponses = payments.stream()
                 .map(p -> mapToResponse(p, shipment, totalPaid, balance, paymentStatus))
                 .collect(Collectors.toList());
 
-        return new ShipmentPaymentSummaryResponse(
+        ShipmentPaymentSummaryResponse response = new ShipmentPaymentSummaryResponse(
                 shipment.getShipmentId(),
                 shipment.getClient() != null ? shipment.getClient().getClientId() : null,
                 shipment.getClient() != null ? shipment.getClient().getName() : "—",
@@ -199,6 +232,25 @@ public class PaymentServiceImpl implements PaymentService {
                 paymentStatus,
                 paymentResponses
         );
+        response.setFinancialStatus(financialStatus);
+        response.setCollectibleBalance(collectibleBalance);
+        if (statement != null) {
+            BigDecimal deduction = statement.getDeductions() != null
+                    ? statement.getDeductions()
+                    : BigDecimal.ZERO;
+            BigDecimal statementBalance = statement.getOutstandingBalance() != null
+                    ? statement.getOutstandingBalance()
+                    : BigDecimal.ZERO;
+            response.setStatementAdjustment(new ShipmentPaymentSummaryResponse.StatementAdjustmentSummary(
+                    statement.getSoaNo(),
+                    deduction,
+                    statement.getDeductionReason(),
+                    statement.getStatementDate(),
+                    statementBalance,
+                    statementBalance.compareTo(BigDecimal.ZERO) <= 0 ? "SETTLED" : "FOR_COLLECTION"
+            ));
+        }
+        return response;
     }
 
     @Override

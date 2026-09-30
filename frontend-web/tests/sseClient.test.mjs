@@ -40,6 +40,30 @@ test('createSseStreamParser correctly parses PAYMENT_RECORDED events with financ
   assert.equal(events[0].data.shipmentPaymentStatus, 'Paid');
 });
 
+test('createSseStreamParser parses SOA_UPDATED events used to refresh settlement state', () => {
+  const events = [];
+  const parser = createSseStreamParser((type, data) => {
+    events.push({ type, data });
+  });
+
+  const payload = JSON.stringify({
+    soaNo: 'SOA-2026-CL001-W40',
+    clientId: 'CL001',
+    shipmentIds: ['SHP-2026-011'],
+  });
+
+  parser.feed(`event: SOA_UPDATED\ndata: ${payload}\n\n`);
+
+  assert.deepEqual(events, [{
+    type: 'SOA_UPDATED',
+    data: {
+      soaNo: 'SOA-2026-CL001-W40',
+      clientId: 'CL001',
+      shipmentIds: ['SHP-2026-011'],
+    },
+  }]);
+});
+
 test('createSseStreamParser handles chunk fragmentation across network boundaries', () => {
   const events = [];
   const parser = createSseStreamParser((type, data) => {

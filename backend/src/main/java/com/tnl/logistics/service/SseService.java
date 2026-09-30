@@ -22,5 +22,7 @@ public interface SseService {
 
     void broadcastPaymentRecorded(Object payment);
 
+    void broadcastSoaUpdated(String soaNo, String clientId, List<String> shipmentIds);
+
     void sendHeartbeat();
 }

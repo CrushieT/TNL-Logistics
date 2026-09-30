@@ -70,10 +70,13 @@ export default function PaymentsTable({
         shipments.map((s, idx) => {
           const totalAmountNum = Number(s.totalAmount ?? s.amountDue ?? 0);
           const paidNum = Number(s.amountPaid ?? s.paid ?? 0);
-          const balanceNum = s.balance !== undefined && s.balance !== null
+          const balanceNum = s.collectibleBalance !== undefined && s.collectibleBalance !== null
+            ? Number(s.collectibleBalance)
+            : s.balance !== undefined && s.balance !== null
             ? Number(s.balance)
             : Math.max(0, totalAmountNum - paidNum);
-          const isSettled = balanceNum <= 0 || (s.payment && s.payment.toLowerCase() === 'paid');
+          const financialStatus = s.financialStatus || s.payment || 'Unpaid';
+          const isSettled = financialStatus === 'Settled' || financialStatus === 'Paid';
 
           return (
             <View
@@ -132,7 +135,7 @@ export default function PaymentsTable({
                   },
                 ]}
               >
-                <StatusBadge value={s.payment || 'Unpaid'} kind="payment" />
+                <StatusBadge value={financialStatus} kind="payment" />
               </View>
 
               {/* Action Column */}

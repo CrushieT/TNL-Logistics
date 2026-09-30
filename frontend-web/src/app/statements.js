@@ -176,8 +176,10 @@ export default function StatementsScreen() {
     }
 
     const totalCharges = Number(statementData?.totalCharges || 0);
-    if (numDeduction > totalCharges) {
-      setErrorMessage(`Deduction amount cannot exceed total charges (₱${totalCharges.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).`);
+    const totalPaid = Number(statementData?.totalPaid || 0);
+    const remainingBeforeDeduction = Math.max(0, totalCharges - totalPaid);
+    if (numDeduction > remainingBeforeDeduction) {
+      setErrorMessage(`Deduction amount cannot exceed the remaining statement balance (₱${remainingBeforeDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).`);
       return;
     }
 
@@ -214,7 +216,9 @@ export default function StatementsScreen() {
 
       const updated = await saveStatement(payload);
       setStatementData(updated);
-      setSuccessToast('Statement of Account deductions and collector saved.');
+      setSuccessToast(updated?.status === 'SETTLED'
+        ? 'Statement of Account saved and settled.'
+        : 'Statement of Account deductions and collector saved.');
       setTimeout(() => setSuccessToast(null), 4000);
     } catch (err) {
       console.error('Failed to save statement:', err);
@@ -229,8 +233,10 @@ export default function StatementsScreen() {
     if (!selectedClientId) return;
     const numDeduction = Number(deductionAmount) || 0;
     const totalCharges = Number(statementData?.totalCharges || 0);
-    if (numDeduction > totalCharges) {
-      setErrorMessage(`Deduction amount cannot exceed total charges (₱${totalCharges.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).`);
+    const totalPaid = Number(statementData?.totalPaid || 0);
+    const remainingBeforeDeduction = Math.max(0, totalCharges - totalPaid);
+    if (numDeduction > remainingBeforeDeduction) {
+      setErrorMessage(`Deduction amount cannot exceed the remaining statement balance (₱${remainingBeforeDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).`);
       return;
     }
 

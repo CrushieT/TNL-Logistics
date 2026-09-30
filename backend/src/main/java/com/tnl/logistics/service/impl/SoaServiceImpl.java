@@ -8,6 +8,7 @@ import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.*;
 import com.tnl.logistics.service.CollectionsService;
 import com.tnl.logistics.service.SoaService;
+import com.tnl.logistics.service.SseService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +36,7 @@ public class SoaServiceImpl implements SoaService {
     private final SoaBatchRepository soaBatchRepository;
     private final AppUserRepository appUserRepository;
     private final CollectionsService collectionsService;
+    private final SseService sseService;
 
     public SoaServiceImpl(ClientRepository clientRepository,
                           ShipmentRepository shipmentRepository,
@@ -43,7 +45,8 @@ public class SoaServiceImpl implements SoaService {
                           WeeklyCollectionRepository weeklyCollectionRepository,
                           SoaBatchRepository soaBatchRepository,
                           AppUserRepository appUserRepository,
-                          CollectionsService collectionsService) {
+                          CollectionsService collectionsService,
+                          SseService sseService) {
         this.clientRepository = clientRepository;
         this.shipmentRepository = shipmentRepository;
         this.paymentRepository = paymentRepository;
@@ -52,6 +55,7 @@ public class SoaServiceImpl implements SoaService {
         this.soaBatchRepository = soaBatchRepository;
         this.appUserRepository = appUserRepository;
         this.collectionsService = collectionsService;
+        this.sseService = sseService;
     }
 
     @Override
@@ -182,6 +186,9 @@ public class SoaServiceImpl implements SoaService {
         response.setTotalCharges(totalCharges);
         response.setTotalPaid(totalPaid);
         response.setAmountDue(amountDue);
+        response.setStatus(existingSoa.isPresent() && amountDue.compareTo(BigDecimal.ZERO) == 0
+                ? "SETTLED"
+                : "FOR_COLLECTION");
 
         response.setItems(items);
         return response;
@@ -242,7 +249,7 @@ public class SoaServiceImpl implements SoaService {
 
         // 3. Compute charges and payments for cycle shipments
         Optional<Soa> existingOpt = soaRepository.findByClient_ClientIdAndStatementDate(client.getClientId(), targetThursday);
-        List<Shipment> rawShipments = shipmentRepository.findByClient_ClientIdAndDateRegisteredBetween(client.getClientId(), cycleStart, cycleEnd);
+        List<Shipment> rawShipments = shipmentRepository.findByClientAndCycleForUpdate(client.getClientId(), cycleStart, cycleEnd);
         List<Shipment> shipments = rawShipments.stream()
                 .filter(s -> {
                     if (s.getStatementId() != null && !s.getStatementId().trim().isEmpty()) {
@@ -271,18 +278,19 @@ public class SoaServiceImpl implements SoaService {
         }
 
         BigDecimal deduction = request.getDeductionAmount() != null ? request.getDeductionAmount() : BigDecimal.ZERO;
-        if (deduction.compareTo(currentCharges) > 0) {
+        BigDecimal previousBalance = BigDecimal.ZERO;
+        BigDecimal remainingBeforeDeduction = currentCharges.add(previousBalance).subtract(totalPaid);
+        if (remainingBeforeDeduction.compareTo(BigDecimal.ZERO) < 0) {
+            remainingBeforeDeduction = BigDecimal.ZERO;
+        }
+        if (deduction.compareTo(remainingBeforeDeduction) > 0) {
             throw new IllegalArgumentException(String.format(
-                    "Deduction amount (₱%s) cannot exceed total charges (₱%s)",
+                    "Deduction amount (₱%s) cannot exceed remaining statement balance (₱%s)",
                     deduction.toPlainString(),
-                    currentCharges.toPlainString()
+                    remainingBeforeDeduction.toPlainString()
             ));
         }
-        BigDecimal previousBalance = BigDecimal.ZERO;
-        BigDecimal outstandingBalance = currentCharges.add(previousBalance).subtract(totalPaid).subtract(deduction);
-        if (outstandingBalance.compareTo(BigDecimal.ZERO) < 0) {
-            outstandingBalance = BigDecimal.ZERO;
-        }
+        BigDecimal outstandingBalance = remainingBeforeDeduction.subtract(deduction).max(BigDecimal.ZERO);
 
         int weekNumber = targetThursday.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR);
         String soaNo = formatPreviewSoaNo(client.getClientId(), targetThursday, weekNumber);
@@ -340,6 +348,8 @@ public class SoaServiceImpl implements SoaService {
         collection.setBalance(outstandingBalance);
         collection.setStatus(outstandingBalance.compareTo(BigDecimal.ZERO) == 0 ? "PAID" : "FOR_COLLECTION");
         weeklyCollectionRepository.save(collection);
+
+        sseService.broadcastSoaUpdated(soa.getSoaNo(), client.getClientId(), shipmentIds);
 
         return getStatementPreview(client.getClientId(), targetThursday);
     }
