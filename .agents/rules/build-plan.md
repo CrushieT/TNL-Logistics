@@ -34,7 +34,7 @@
 | ↳ **Phase 6.4** | Field Staff: Camera QR Scanner & Status Flow Engine (Screens 45–48) | [COMPLETED] |
 | ↳ **Phase 6.5** | Field Staff: Personal Scan & Tracking History (Screens 49–52) | [COMPLETED] |
 | ↳ **Phase 6.6** | Mobile Staff Account, Security & 4-Digit PIN Settings (Screens 53–55) | [COMPLETED] |
-| ↳ **Phase 6.7** | Offline Resilience & SQLite Scan Queue (Screen 56) | [COMPLETED] |
+| â†³ **Phase 6.7** | Online-Only Scanner Simplification & Offline Queue Removal | [COMPLETED] |
 | ↳ **Phase 6.8** | Public Staff Android APK Download from Web Login | [COMPLETED] |
 | ↳ **Phase 6.9** | Admin-Only Web Console Access and Staff Mobile API Preservation | [COMPLETED] |
 | ↳ **Phase 6.10** | High-Volume Load-Testing Profile, Synthetic Seeder & Strict Schema Validation | [COMPLETED] |
@@ -380,7 +380,7 @@
 - Single scan workflow (`POST /api/v1/tracking-events/scan`): context review, vehicle selector, submission progress indicators, inline lookup recovery, and idempotent retry detection (`transitionApplied = false` creating zero duplicate tracking events).
 - Rapid batch workflow (`POST /api/v1/tracking-events/batch-scan`): operation selector, fleet selector, 100-item queue with duplicate prevention and 750ms camera cooldown, deadlock-free sorted pessimistic locking, pre-validation of all transitions before entity mutation, atomic transaction rollback on failure, selective inactive vehicle idempotency, and discard confirmation navigation guards (`beforeRemove`).
 - Real-time SSE broadcast synchronization: tracking events are published to connected clients strictly after transaction commit via Spring's `TransactionSynchronizationManager.afterCommit()`, preventing phantom broadcasts from rolled-back batches.
-- Staff-type authorization is enforced before single, batch, and offline synchronization locks or mutations: `INTERNAL_TRUCK` handles truck load/arrival, `HAULER_STAFF` handles hauler handover/completion, `null` staff type retains sequential access, and unknown types fail closed.
+- Staff-type authorization is enforced before single and batch locks or mutations: `INTERNAL_TRUCK` handles truck load/arrival, `HAULER_STAFF` handles hauler handover/completion, `null` staff type retains sequential access, and unknown types fail closed.
 - Mobile scanner selectors filter Rapid Batch operations, keep `COMPLETED` Single Scan-only, hide hauler vehicle controls, and render unauthorized Single Scan transitions as read-only.
 - Verification & Testing: 30/30 `TrackingScanIntegrationTest` tests, 159/159 mobile Node tests, and Android Hermes production export passed.
 
@@ -396,11 +396,11 @@
   - Generic Parcel Detail PII Bypass Closed: Updated `GET /api/v1/parcel-units/{trackingId}` in `ParcelUnitController` to `@PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")`, blocking `FIELD_STAFF` from retrieving sensitive customer data.
   - Parcel Scan Ownership Gating: Field staff can only view operational details for parcels they have personally scanned (`hasStaffScannedParcel`). Unowned parcels return HTTP 404 Not Found (matching nonexistent parcels to prevent tracking ID enumeration).
 - Mobile Implementation & UI (Screens 49–52):
-  - Pure, testable business logic in `src/features/tracking-history/trackingHistoryFlow.mjs` (query normalization, server pagination merging with duplicate suppression, shift metrics mapping, timestamp and package formatters without fabricated fallbacks, sync status metadata, and `replacePageZeroEvents`).
+  - Pure, testable business logic in `src/features/tracking-history/trackingHistoryFlow.mjs` (query normalization, server pagination merging with duplicate suppression, shift metrics mapping, timestamp and package formatters without fabricated fallbacks, and `replacePageZeroEvents`).
   - API client `src/features/tracking-history/services/trackingHistoryApi.js` leveraging centralized `apiClient`.
   - Main history screen (`src/app/(main)/tracking-history/index.js`): 2x2 daily shift metrics grid matching `prototype field tracking page.png`, debounced search input, server pagination (`HISTORY_PAGE_SIZE = 20`) coordinated with pure request coordinator (`trackingHistoryRequestCoordinator.mjs`) managing abort controllers, query generation version tokens, and pagination locks, pull-to-refresh, empty and error states with retry, and role guard.
   - Selected parcel screen (`src/app/(main)/tracking-history/[trackingId].js`): operational parcel summary card matching `prototype field tracking selected.png`, `SHOW/HIDE MY HISTORY` collapsible toggle (collapsed by default), chronological personal scan timeline with orange dots and vertical connector lines, non-looping focus refresh, and 404 handling.
-  - Components: `PersonalScanMetrics`, `PersonalTrackingEventCard`, `PersonalParcelSummary`, `PersonalTrackingTimeline`, `SyncStatusBadge` (with zero fabricated operational defaults).
+  - Components: `PersonalScanMetrics`, `PersonalTrackingEventCard`, `PersonalParcelSummary`, `PersonalTrackingTimeline` (with zero fabricated operational defaults).
   - Wired navigation in `(main)/_layout.js` Stack navigator and hooked `FieldDashboard.js` `handleTrackingHistory` action.
 - Verification & Testing:
   - Automated integration test suite in `PersonalTrackingHistoryIntegrationTest.java` (18 tests covering all 6 supported statuses, pagination completeness without omissions, equal-timestamp `eventId DESC` sorting, field-owned QR metric increment, role gating, and PII exclusion).
@@ -442,24 +442,16 @@
   - Backend OWASP dependency analysis migrated to automated GitHub Actions CI/CD workflows (`.github/workflows/owasp-check.yml` and `.github/workflows/dependency-review.yml`) with NVD API key and local cache support.
   - Physical on-device acceptance testing on mobile hardware completed and verified.
 
-**6.7 — Offline Resilience & SQLite Scan Queue (Screen 56)** — **[COMPLETED]**
-- Flyway Migration `V30__add_offline_scan_idempotency.sql`: Added nullable `client_event_id` (with unique index), `client_captured_at`, and `scan_source` to `tracking_event`, plus 90-day retention `offline_scan_receipt` table.
-- Dedicated Replay API Endpoint (`POST /api/v1/tracking-events/offline-sync`):
-  - Role-gated strictly to `FIELD_STAFF` with method authorization and `OfflineSyncRequestGuard` (64 KiB payload limit, rate limits of 20 requests/min per user and 100/min per IP).
-  - Itemized `TransactionTemplate` execution ensuring partial batch success without rolling back valid items when individual conflicts occur.
-  - Item outcomes (`APPLIED`, `ALREADY_APPLIED`, `STALE_STATE`, `CONFLICT`, `REJECTED`, `RETRYABLE_ERROR`) with post-commit SSE event broadcasting.
-  - Periodic background scheduled receipt cleanup (`OfflineReceiptCleanupService`) purging 90-day old sync receipts.
-- Mobile Architecture & SQLite Persistence (Screen 56):
-  - Native SQLite queue store (`offlineQueueStore.native.js`) using `expo-sqlite` with `userId` ownership isolation, sequence tracking, retry due-time calculations, and safe web no-ops (`offlineQueueStore.web.js`).
-  - React Context (`OfflineSyncContext.js`) with `@react-native-community/netinfo` listener managing auto-sync, retries, foreground scheduling, and state badges.
-  - Screen 56 (`src/app/(main)/offline-queue.js`): Queue review, manual sync trigger, and conflict acknowledgement UI.
-  - Rapid Batch scanning (`scan.js`) queues offline scans; Single Scan blocks offline execution to prevent unverified single-item transitions.
-  - Session & Unbind Safeguards (`AuthContext.js`): Blocks device unbinding (`Sign Out and Unbind Device`) while un-synced offline scans remain.
-- Verification & Testing:
-  - 29 Spring Boot integration test classes passing (including `OfflineTrackingSyncIntegrationTest` and `OfflineSyncRequestGuardTest`).
-  - 131 Node unit tests passing (including `tests/offlineQueue.test.mjs` and `tests/offlineQueue.web.test.mjs`).
-  - Production build exports verified cleanly across Web, Android (Hermes), and iOS (Hermes).
-
+**6.7 — Online-Only Scanner Simplification & Offline Queue Removal** — **[COMPLETED]**
+- Pre-deployment scope decision: removed the unpaid offline synchronization feature across mobile and backend instead of maintaining a replay subsystem before launch.
+- Mobile scanner uses `@react-native-community/netinfo` as a fail-closed gate. Unknown or offline connectivity disables camera scanning, manual lookup, Single Scan confirmation, and Rapid Batch submission with a clear inline explanation.
+- Single and batch operations submit directly to `POST /api/v1/tracking-events/scan` and `POST /api/v1/tracking-events/batch-scan`; Rapid Batch state is in memory only and is retained during temporary connectivity loss.
+- Removed Screen 56, `OfflineSyncContext`, SQLite queue stores, replay coordinator/API client, cached vehicle support, pending-sync UI, and the unbind queue guard.
+- Removed backend replay endpoint, request guard, request/response DTOs, replay and cleanup services, receipt entity/repository, and runtime `TrackingEvent` offline metadata. Existing sequential and staff-type scan authorization remains unchanged.
+- Retired endpoint behavior is explicit: authenticated requests receive the standard HTTP 404 response and unauthenticated requests remain HTTP 401.
+- Preserved `V30__add_offline_scan_idempotency.sql` unchanged as immutable Flyway history. No follow-up migration was added because the application has not been deployed and runtime mappings no longer use the historical schema artifacts.
+- Removed `expo-sqlite`; retained NetInfo for online gating and `expo-crypto` for printer hashing and identifiers.
+- Verification: full backend suite 331/331 passed, full mobile suite 140/140 passed, and Android Hermes production export passed.
 **6.8 — Public Staff Android APK Download from Web Login** — **[COMPLETED]**
 - Web login renders a staff Android app link below sign-in only when `EXPO_PUBLIC_ANDROID_APK_URL` is set. The URL must point to a public, verified GitHub Release APK asset.
 - Publish the Release asset, configure the URL for the web export, deploy the export, and verify the unauthenticated download before marking this slice complete.

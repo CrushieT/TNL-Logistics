@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon } from 'react-native-paper';
 import { useRouter, useNavigation, useFocusEffect } from 'expo-router';
 import { useCameraPermissions } from 'expo-camera';
+import { useNetInfo } from '@react-native-community/netinfo';
 import { useAuth } from '../../features/auth/context/AuthContext';
 import { colors, typography, spacing, radius } from '../../theme';
 import {
@@ -26,13 +27,12 @@ import {
   buildSingleScanRequest,
   buildBatchScanRequest,
   canActivateCamera,
-  isStaffTransitionAllowed
+  getScannerConnectivity,
+  isStaffTransitionAllowed,
+  validateBatchCandidate
 } from '../../features/scanner/scannerFlow.mjs';
 import { trackingScanApi } from '../../features/scanner/services/trackingScanApi';
 import { safeHaptics } from '../../features/scanner/utils/haptics';
-import { useOfflineSync } from '../../features/offline-sync/context/OfflineSyncContext';
-import { cacheVehicles, getCachedVehicles } from '../../features/offline-sync/services/offlineQueueStore';
-import { isOfflineSingleScanBlocked } from '../../features/offline-sync/offlineQueueFlow.mjs';
 import ScanViewfinder from '../../features/scanner/components/ScanViewfinder';
 import SingleScanReview from '../../features/scanner/components/SingleScanReview';
 import BatchScanPanel from '../../features/scanner/components/BatchScanPanel';
@@ -42,7 +42,8 @@ export default function ScanScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { user, isLoading: authLoading } = useAuth();
-  const { isOnline, enqueue: enqueueOfflineScan, isNativeOfflineSupported } = useOfflineSync();
+  const netInfo = useNetInfo();
+  const connectivity = getScannerConnectivity(netInfo.isConnected, netInfo.isInternetReachable);
   const [permission, requestPermission] = useCameraPermissions();
 
   const [state, dispatch] = useReducer(scannerReducer, initialScannerState);
@@ -121,6 +122,11 @@ export default function ScanScreen() {
   }, [user?.staffType]);
 
   const loadVehicles = useCallback(async () => {
+    if (!connectivity.isOnline) {
+      setVehicles([]);
+      setLoadingVehicles(false);
+      return;
+    }
     if (!isStaffTransitionAllowed(user?.staffType ?? null, 'LOADED_ON_TRUCK')) {
       setVehicles([]);
       setLoadingVehicles(false);
@@ -130,13 +136,13 @@ export default function ScanScreen() {
     try {
       const data = await trackingScanApi.getActiveVehicles();
       setVehicles(Array.isArray(data) ? data : []);
-      if (Array.isArray(data)) await cacheVehicles(data);
     } catch {
-      setVehicles(await getCachedVehicles());
+      setVehicles([]);
+      dispatch({ type: 'SET_ERROR', payload: 'Unable to load active vehicles. Check your connection and retry.' });
     } finally {
       setLoadingVehicles(false);
     }
-  }, [user?.staffType]);
+  }, [connectivity.isOnline, user?.staffType]);
 
   // When switching to BATCH with LOADED_ON_TRUCK, load vehicles
   useEffect(() => {
@@ -155,13 +161,14 @@ export default function ScanScreen() {
   const handleScanCandidate = async (rawValue) => {
     if (!rawValue || scanLockRef.current) return;
 
+    if (!connectivity.isOnline) {
+      void safeHaptics.warning();
+      dispatch({ type: 'SET_ERROR', payload: 'Internet connection required to scan parcels.' });
+      return;
+    }
+
     if (state.mode === SCANNER_MODES.SINGLE) {
       if (state.phase !== SCANNER_PHASES.SCANNING && state.phase !== SCANNER_PHASES.RESULT) {
-        return;
-      }
-      if (isOfflineSingleScanBlocked(state.mode, isOnline, isNativeOfflineSupported)) {
-        void safeHaptics.warning();
-        dispatch({ type: 'SET_ERROR', payload: 'Single Scan requires a connection. Use Rapid Batch to queue offline scans.' });
         return;
       }
       scanLockRef.current = true;
@@ -239,24 +246,6 @@ export default function ScanScreen() {
         return;
       }
 
-      if (!isOnline && isNativeOfflineSupported) {
-        try {
-          await enqueueOfflineScan({
-            trackingId: normalized.trackingId,
-            targetStatus: state.batchOperation,
-            vehicleId: state.batchOperation === 'LOADED_ON_TRUCK' ? state.batchVehicleId : null,
-          });
-          void safeHaptics.success();
-          dispatch({ type: 'SET_ERROR', payload: `${normalized.trackingId} queued for synchronization.` });
-        } catch (error) {
-          void safeHaptics.error();
-          dispatch({ type: 'SET_ERROR', payload: error?.message || 'Unable to save offline scan.' });
-        } finally {
-          cooldownTimerRef.current = setTimeout(() => { scanLockRef.current = false; }, 750);
-        }
-        return;
-      }
-
       if (state.batchQueue.length >= MAX_BATCH_SIZE) {
         void safeHaptics.error();
         dispatch({ type: 'SET_ERROR', payload: `Batch queue limit reached (${MAX_BATCH_SIZE} parcels).` });
@@ -264,13 +253,37 @@ export default function ScanScreen() {
         return;
       }
 
-      void safeHaptics.selection();
-      dispatch({ type: 'ADD_TO_BATCH', payload: normalized.trackingId });
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
-      // 750ms cooldown before accepting next scan
-      cooldownTimerRef.current = setTimeout(() => {
-        scanLockRef.current = false;
-      }, 750);
+      try {
+        const context = await trackingScanApi.getScanContext(normalized.trackingId, controller.signal);
+        const validation = validateBatchCandidate(context, state.batchOperation, user?.staffType ?? null);
+
+        if (!validation.isValid) {
+          void safeHaptics.warning();
+          dispatch({ type: 'SET_ERROR', payload: validation.error });
+          cooldownTimerRef.current = setTimeout(() => { scanLockRef.current = false; }, 750);
+          return;
+        }
+
+        void safeHaptics.selection();
+        dispatch({ type: 'ADD_TO_BATCH', payload: normalized.trackingId });
+
+        // 750ms cooldown before accepting next scan
+        cooldownTimerRef.current = setTimeout(() => {
+          scanLockRef.current = false;
+        }, 750);
+      } catch (err) {
+        if (err.name === 'CanceledError' || err.name === 'AbortError') return;
+        void safeHaptics.error();
+        const msg = err.response?.data?.message || err.message || 'Failed to verify parcel status.';
+        dispatch({ type: 'SET_ERROR', payload: msg });
+        cooldownTimerRef.current = setTimeout(() => { scanLockRef.current = false; }, 750);
+      }
     }
   };
 
@@ -280,15 +293,16 @@ export default function ScanScreen() {
   };
 
   const handleManualSubmit = () => {
+    if (scanLockRef.current) return;
     if (!state.manualInput || !state.manualInput.trim()) return;
     handleScanCandidate(state.manualInput.trim());
   };
 
   const handleSingleConfirm = async () => {
     if (submitLockRef.current) return;
-    if (isOfflineSingleScanBlocked(state.mode, isOnline, isNativeOfflineSupported)) {
+    if (!connectivity.isOnline) {
       void safeHaptics.warning();
-      dispatch({ type: 'SUBMISSION_FAILED', payload: 'Single Scan requires a connection. Use Rapid Batch to queue offline scans.' });
+      dispatch({ type: 'SUBMISSION_FAILED', payload: 'Internet connection required to update this parcel.' });
       return;
     }
     submitLockRef.current = true;
@@ -313,6 +327,11 @@ export default function ScanScreen() {
 
   const handleBatchSubmit = async () => {
     if (submitLockRef.current) return;
+    if (!connectivity.isOnline) {
+      void safeHaptics.warning();
+      dispatch({ type: 'SUBMISSION_FAILED', payload: 'Internet connection required to submit this batch.' });
+      return;
+    }
     submitLockRef.current = true;
     dispatch({ type: 'SET_SUBMITTING', payload: true });
     try {
@@ -379,7 +398,7 @@ export default function ScanScreen() {
   };
 
   // Compute camera eligibility using pure selector
-  const cameraActive = canActivateCamera({
+  const cameraActive = connectivity.isOnline && canActivateCamera({
     permissionGranted: Boolean(permission?.granted),
     isScreenFocused,
     cameraError: state.cameraError,
@@ -431,9 +450,7 @@ export default function ScanScreen() {
             <Icon source="arrow-left" size={24} color={colors.ink} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>SCAN QR</Text>
-          <TouchableOpacity onPress={() => router.push('/(main)/offline-queue')} style={styles.queueButton} accessibilityRole="button" accessibilityLabel="Open offline scan queue">
-            <Icon source="cloud-sync-outline" size={22} color={colors.accent} />
-          </TouchableOpacity>
+          <View style={styles.headerSpacer} />
         </View>
 
         {/* 2. Dark Camera Region */}
@@ -460,13 +477,26 @@ export default function ScanScreen() {
               : `Batch Mode: ${state.batchQueue.length} / ${MAX_BATCH_SIZE} items scanned`
           }
           pausedText={
-            state.mode === SCANNER_MODES.BATCH &&
+            !connectivity.isOnline
+              ? 'Internet connection required to scan parcels'
+              : state.mode === SCANNER_MODES.BATCH &&
             state.batchOperation === 'LOADED_ON_TRUCK' &&
             !state.batchVehicleId
               ? 'Please select an active vehicle below to start scanning'
               : 'Camera preview paused'
           }
         />
+
+        {!connectivity.isOnline && (
+          <View style={styles.networkBanner}>
+            <Icon source="wifi-off" size={18} color={colors.danger} />
+            <Text style={styles.networkBannerText}>
+              {connectivity.isKnown
+                ? 'No internet connection. Scanning and submission are unavailable.'
+                : 'Checking internet connection. Scanning and submission are unavailable.'}
+            </Text>
+          </View>
+        )}
 
         {/* Error Notification Banner (non-lookup errors) */}
         {state.error && !state.failedLookupTrackingId && (
@@ -569,6 +599,7 @@ export default function ScanScreen() {
               onConfirm={handleSingleConfirm}
               onCancel={handleScanNext}
               isSubmitting={state.isSubmitting}
+              isOnline={connectivity.isOnline}
               staffType={user?.staffType ?? null}
             />
           )}
@@ -589,6 +620,7 @@ export default function ScanScreen() {
                 onClearBatch={() => dispatch({ type: 'CLEAR_BATCH' })}
                 onSubmit={handleBatchSubmit}
                 isSubmitting={state.isSubmitting}
+                isOnline={connectivity.isOnline}
                 staffType={user?.staffType ?? null}
               />
             )}
@@ -619,11 +651,12 @@ export default function ScanScreen() {
                   maxLength={15}
                   returnKeyType="go"
                   onSubmitEditing={handleManualSubmit}
+                  editable={connectivity.isOnline}
                 />
                 <TouchableOpacity
-                  style={[styles.goButton, (!state.manualInput || !state.manualInput.trim()) && styles.goButtonDisabled]}
+                  style={[styles.goButton, (!connectivity.isOnline || !state.manualInput || !state.manualInput.trim()) && styles.goButtonDisabled]}
                   onPress={handleManualSubmit}
-                  disabled={!state.manualInput || !state.manualInput.trim()}
+                  disabled={!connectivity.isOnline || !state.manualInput || !state.manualInput.trim()}
                 >
                   <Text style={styles.goButtonText}>GO</Text>
                 </TouchableOpacity>
@@ -687,11 +720,9 @@ const styles = StyleSheet.create({
   backButton: {
     padding: spacing.xs
   },
-  queueButton: {
+  headerSpacer: {
     minWidth: 40,
-    minHeight: 40,
-    alignItems: 'center',
-    justifyContent: 'center'
+    minHeight: 40
   },
   headerTitle: {
     ...typography.eyebrow,
@@ -710,6 +741,22 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border
   },
   errorBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: colors.danger,
+    fontWeight: '600'
+  },
+  networkBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.dangerSoft,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  networkBannerText: {
     flex: 1,
     fontSize: 12,
     color: colors.danger,

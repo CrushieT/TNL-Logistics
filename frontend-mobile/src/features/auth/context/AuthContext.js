@@ -19,8 +19,6 @@ import {
   saveUser,
   setAppLocked,
 } from '../../../services/storage/secureStore';
-import { getQueueRows } from '../../offline-sync/services/offlineQueueStore';
-import { isUnresolved } from '../../offline-sync/offlineQueueFlow.mjs';
 import { shouldRestoreLockedSession } from '../services/appLifecycleLock.mjs';
 
 const AuthContext = createContext(null);
@@ -163,17 +161,18 @@ export function AuthProvider({ children }) {
             await setAppLocked(true);
           }
 
-          if (!storedUser.mustChangePassword && deviceCredentials) {
-            try {
-              const profile = await authService.fetchCurrentUser();
-              if (isMounted) {
-                const refreshedUser = { ...storedUser, ...profile };
-                await saveUser(refreshedUser);
-                setUser(refreshedUser);
-              }
-            } catch {
-              // The API interceptor owns session and device credential failures.
-            }
+          if (!restoredLocked && !storedUser.mustChangePassword && deviceCredentials) {
+            authService.fetchCurrentUser()
+              .then(async (profile) => {
+                if (isMounted) {
+                  const refreshedUser = { ...storedUser, ...profile };
+                  await saveUser(refreshedUser);
+                  setUser(refreshedUser);
+                }
+              })
+              .catch(() => {
+                // The API interceptor owns session and device credential failures.
+              });
           }
         } else if (storedBoundUser && deviceCredentials) {
           const restoredLocked = shouldRestoreLockedSession({
@@ -307,15 +306,11 @@ export function AuthProvider({ children }) {
   }, [router]);
 
   const unbindCurrentDevice = useCallback(async () => {
-    const offlineRows = user?.userId ? await getQueueRows(user.userId) : [];
-    if (offlineRows.some(isUnresolved)) {
-      throw { code: 'OFFLINE_QUEUE_PENDING', message: 'Synchronize or review offline scans before unbinding this device.' };
-    }
     const result = await authService.unbindCurrentDevice();
     await clearInvalidDeviceSession();
     router.replace('/(auth)/login');
     return result;
-  }, [clearInvalidDeviceSession, router, user?.userId]);
+  }, [clearInvalidDeviceSession, router]);
 
   const updateBoundUserPinStatus = useCallback(async (hasPinSet) => {
     const currentBoundUser = boundUser || await getBoundUser();

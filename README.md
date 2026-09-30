@@ -30,7 +30,7 @@ Commercial freight forwarding requires strict chain-of-custody tracking, legal p
 ```text
                                   ┌────────────────────────────────┐
                                   │       MySQL 8.0 Database       │
-                                  │   (Flyway Migrations V1-V29)   │
+                                  │   (Flyway Migrations V1-V30)   │
                                   └───────────────┬────────────────┘
                                                   │
                                                   ▼
@@ -78,13 +78,13 @@ Unlike simplistic CRUD apps that conflate tracking and accounting into a single 
 
 | Phase | Milestone Description | Status | Key Deliverables |
 | :--- | :--- | :---: | :--- |
-| **Phase 0** | **Foundation & Security** | `[COMPLETED]` | Spring Boot 3.4, Flyway migrations `V1`–`V28`, MySQL 8, JPA models, stateless JWT auth with 3 roles (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`). |
+| **Phase 0** | **Foundation & Security** | `[COMPLETED]` | Spring Boot 3.4, Flyway migrations `V1`–`V30`, MySQL 8, JPA models, stateless JWT auth with 3 roles (`ADMIN`, `OFFICE_STAFF`, `FIELD_STAFF`). |
 | **Phase 1** | **Shipment Registration & QR Labels** | `[COMPLETED]` | Sequential IDs (`SHP-YYYY-XXX`, `TRK-YYYY-XXXXXX`), volumetric weight ($\div 5000$) & $m^3$ calculations, vector thermal QR labels, paginated table, tracking inspection. |
 | **Phase 2** | **Status Flow, Real-Time SSE, Fleet & Client Management** | `[COMPLETED]` | Sequential 5-state transition engine, live SSE stream, vehicle fleet CRUD (`VH-XXX`), client directory & profile view (`CL-XXX`), smart deletion, composite indexing, and batch aggregation. |
 | **Phase 3** | **Waybills & Freight Manifest Handover** | `[COMPLETED]` | `WYB-YYYY-XXXX` auto-numbering, 4-state lifecycle (`Generated` → `Sent to Hauler` → `Signed/Completed`), and print-ready A4 3rd-party hauler manifest. |
 | **Phase 4** | **Billing, Collections & Statement of Account** | `[COMPLETED]` | Payment ledger (`/payments`), Thursday weekly collections consolidation (`/weekly-collections`), `SOA-YYYY-XXX-WXX` multi-page statement preview (`/statements`), isolated print architecture (`/statements/print`), deduction management, and dynamic active cycle filtering. |
 | **Phase 5** | **Web Console Administration & Reports** | `[COMPLETED]` | Desktop login with branded artwork, route guarding, and rate limiting (`[COMPLETED]`); live operational dashboard metrics (`[COMPLETED]`); tracking logs audit feed (`[COMPLETED]`); operational & financial reports screen (`[COMPLETED]`); user & staff management (`[COMPLETED]`); system settings with dynamic collection day, volumetric divisor calculation, branding propagation, and real-time SSE updates (`[COMPLETED]`); first-boot admin registration, 2-step setup wizard, self-service credential management, and rate-limited password authorization modals (`[COMPLETED]`). |
-| **Phase 6** | **Role-Aware Mobile Courier Portal & Performance** | `[IN PROGRESS]` | Phases 6.1, 6.2, 6.3a, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, and 6.10 (`[COMPLETED]`): mobile auth & PIN, shipment registration & software printing, camera QR scanner & 5-state status flow, personal scan history & shift metrics, staff account settings, offline resilience & SQLite queue, public Android APK download link, admin-only web console access, isolated load-testing profile (`docker-compose.loadtest.yml`), deterministic 10k seeder (`LoadTestDataSeeder`), and strict Hibernate schema validation test (`LoadTestSchemaValidationIntegrationTest`). Phase 6.3b (`[UPCOMING]`) covers physical Bluetooth printer integration. |
+| **Phase 6** | **Role-Aware Mobile Courier Portal & Performance** | `[IN PROGRESS]` | Phases 6.1, 6.2, 6.3a, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, and 6.10 (`[COMPLETED]`): mobile auth & PIN, shipment registration & software printing, camera QR scanner & 5-state status flow, personal scan history & shift metrics, staff account settings, online-only camera scanner simplification & offline queue removal, public Android APK download link, admin-only web console access, isolated load-testing profile (`docker-compose.loadtest.yml`), deterministic 10k seeder (`LoadTestDataSeeder`), and strict Hibernate schema validation test (`LoadTestSchemaValidationIntegrationTest`). Phase 6.3b (`[UPCOMING]`) covers physical Bluetooth printer integration. |
 
 ---
 
@@ -101,7 +101,7 @@ logistics/
 │   │   ├── repository/                    # Spring Data Repositories, Group By Aggregations & MobileDeviceBindingRepository
 │   │   └── service/                       # Business Service Contracts & Implementations (impl/)
 │   └── src/main/resources/
-│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V29)
+│       ├── db/migration/                  # Versioned Flyway DB Migrations (V1 to V30)
 │       └── application-dev.properties     # Environment Configuration
 │
 ├── frontend-web/                          # Expo / React Native Web Admin Portal

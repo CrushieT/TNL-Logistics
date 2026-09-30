@@ -49,6 +49,14 @@ export const STATUS_LABELS = {
   COMPLETED: 'Completed'
 };
 
+export function getScannerConnectivity(isConnected, isInternetReachable) {
+  const isKnown = typeof isConnected === 'boolean' && typeof isInternetReachable === 'boolean';
+  return {
+    isKnown,
+    isOnline: isKnown && isConnected && isInternetReachable
+  };
+}
+
 /**
  * Formats status code to approved human-readable mobile display label.
  */
@@ -82,6 +90,54 @@ export function getSingleScanPermission(context, staffType) {
     isAllowed: false,
     isPermissionDenied: true,
     message: `Your staff type is not permitted to update parcels to ${formatStatusLabel(context.nextStatusCode)}.`
+  };
+}
+
+/**
+ * Validates whether a parcel candidate can be added to the rapid batch queue for the target operation.
+ */
+export function validateBatchCandidate(context, targetOperation, staffType) {
+  if (!context || !context.trackingId) {
+    return {
+      isValid: false,
+      error: 'Invalid parcel scan context.'
+    };
+  }
+
+  if (!context.canScan || !context.nextStatusCode) {
+    const currentLabel = context.currentStatusLabel || formatStatusLabel(context.currentStatusCode) || 'Completed';
+    return {
+      isValid: false,
+      error: `Parcel ${context.trackingId} has reached terminal status (${currentLabel}) and cannot be scanned.`
+    };
+  }
+
+  if (!targetOperation) {
+    return {
+      isValid: false,
+      error: 'Please select a target operation before scanning parcels.'
+    };
+  }
+
+  if (!isStaffTransitionAllowed(staffType, targetOperation)) {
+    return {
+      isValid: false,
+      error: `Your staff type is not permitted to update parcels to ${formatStatusLabel(targetOperation)}.`
+    };
+  }
+
+  if (context.nextStatusCode !== targetOperation) {
+    const currentLabel = context.currentStatusLabel || formatStatusLabel(context.currentStatusCode) || 'Unknown';
+    const targetLabel = formatStatusLabel(targetOperation);
+    return {
+      isValid: false,
+      error: `Cannot add ${context.trackingId}: current status is "${currentLabel}". Expected next status is "${targetLabel}".`
+    };
+  }
+
+  return {
+    isValid: true,
+    error: null
   };
 }
 

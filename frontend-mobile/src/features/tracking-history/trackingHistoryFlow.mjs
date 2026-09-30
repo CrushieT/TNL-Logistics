@@ -5,11 +5,6 @@
 
 export const HISTORY_PAGE_SIZE = 20;
 
-export const SYNC_STATUSES = Object.freeze({
-  SYNCED: 'SYNCED',
-  PENDING_OFFLINE_SYNC: 'PENDING_OFFLINE_SYNC',
-});
-
 export const STATUS_LABELS = Object.freeze({
   REGISTERED: 'Registered',
   QR_GENERATED: 'QR Generated',
@@ -214,26 +209,4 @@ export function replacePageZeroEvents(incoming = []) {
 export function encodeTrackingId(value) {
   if (value == null) return '';
   return encodeURIComponent(String(value).trim());
-}
-
-/**
- * Resolves display metadata for sync status badges.
- */
-export function getSyncStatusMeta(status) {
-  if (status === SYNC_STATUSES.PENDING_OFFLINE_SYNC) {
-    return {
-      label: 'PENDING OFFLINE SYNC',
-      isPending: true,
-      color: '#A8790F',
-      bgColor: '#F7EFDA',
-      borderColor: '#D4A437',
-    };
-  }
-  return {
-    label: 'SYNCED',
-    isPending: false,
-    color: '#2E7D46',
-    bgColor: '#E7F3EA',
-    borderColor: '#98D2A5',
-  };
 }

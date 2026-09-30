@@ -13,6 +13,9 @@ tnl-logistics/
 │       ├── hardening-plan.md         # Post-review system hardening & lifecycle remediation plan
 │       ├── karpathy-guidelines.md    # LLM coding best practices
 │       └── project-structure.md      # Project directory layout & philosophies
+├── .review/
+│   ├── admin-partial-delivery-plan.md # Deferred Admin-only partial-delivery implementation plan
+│   └── BRANCH_PLAN.md                # Three-branch punch list and progress tracker
 ├── .github/
 │   ├── pull_request_template.md      # GitHub Pull Request template
 │   ├── PR_DRAFT.md                   # Current shipping-task handoff draft
@@ -23,18 +26,18 @@ tnl-logistics/
 │   ├── src/
 │   │   ├── main/
 │   │   │   ├── java/com/tnl/logistics/
-│   │   │   │   ├── config/              # SecurityConfig, JwtRenewalResponseWrapper, OfflineSyncRequestGuard, CorsConfig, JwtTokenProvider, DataSeeder, LoadTestDataSeeder, LoadTestEnvironmentGuard
+│   │   │   │   ├── config/              # SecurityConfig, JwtRenewalResponseWrapper, CorsConfig, JwtTokenProvider, DataSeeder, LoadTestDataSeeder, LoadTestEnvironmentGuard
 │   │   │   │   ├── controller/          # REST endpoints (Shipment, Vehicle, Client, Waybill, Payment, Collections, SOA)
-│   │   │   │   ├── dto/                 # Request & Response DTOs (including CurrentUserResponse, MobileDeviceBindingSummary, and offline-sync contracts)
-│   │   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, Vehicle, Waybill, Payment, Soa, MobileDeviceBinding, OfflineScanReceipt, etc.)
-│   │   │   │   ├── repository/          # Spring Data repositories, including pessimistic user and device-binding authentication queries plus offline receipt recovery
-│   │   │   │   └── service/             # Business logic, including AuthSecurityService, offline receipt cleanup, and transactional implementation (impl/)
+│   │   │   │   ├── dto/                 # Request & Response DTOs (including CurrentUserResponse and MobileDeviceBindingSummary)
+│   │   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, Vehicle, Waybill, Payment, Soa, MobileDeviceBinding, etc.)
+│   │   │   │   ├── repository/          # Spring Data repositories, including pessimistic user and device-binding authentication queries
+│   │   │   │   └── service/             # Business logic, including AuthSecurityService and transactional implementation (impl/)
 │   │   │   └── resources/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
 │   │   │       ├── application-loadtest.properties
-│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V30), including offline scan idempotency receipts
-│   │   └── test/                        # Integration and unit test suites, including AdminConsoleAuthorizationIntegrationTest and offline sync API coverage
+│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V30); V30 is retained as immutable pre-deployment history
+│   │   └── test/                        # Integration and unit test suites, including AdminConsoleAuthorizationIntegrationTest and scanner API coverage
 │   └── pom.xml
 │
 ├── frontend-web/                    # Admin Web Portal (React Native Web / Expo Router)
@@ -99,8 +102,7 @@ tnl-logistics/
 │   │   │       │   ├── [id].js       # Screen 39 Shipment Parcel Units Breakdown
 │   │   │       │   └── parcel/
 │   │   │       │       └── [trackingId].js # Screen 40 Single Parcel Details & Scan Audit Timeline
-│   │   │       ├── scan.js           # Screen 45 Camera QR scanner with native offline batch queueing
-│   │   │       ├── offline-queue.js  # Screen 56 Offline Queue, sync receipt, and conflict resolution
+│   │   │       ├── scan.js           # Screen 45 online-only camera QR scanner with in-memory Rapid Batch
 │   │   │       ├── settings/          # Screens 53–55 Mobile Account & Security
 │   │   │       │   ├── index.js       # Screen 53 account, session, and bound-device overview
 │   │   │       │   ├── password.js    # Screen 54 in-app password rotation
@@ -117,18 +119,17 @@ tnl-logistics/
 │   │   │   ├── shipments/            # Shipment registration, explorer, detail screens, and barcode scanner modal
 │   │   │   ├── printer/              # Driver isolation, audit outbox, ESC/POS formatter, and serialized PrinterContext
 │   │   │   ├── scanner/              # Field camera scanner (ScanViewfinder, SingleScanReview, BatchScanPanel, ScanResultPanel, scannerFlow.mjs, trackingScanApi.js, haptics.js, hapticsCore.mjs)
-│   │   │   ├── tracking-history/     # Field personal scan feed, metrics, parcel summary, personal timeline, sync status badge, pure flow logic (trackingHistoryFlow.mjs), request coordinator (trackingHistoryRequestCoordinator.mjs), and API client (trackingHistoryApi.js)
-│   │   │   └── offline-sync/         # Platform-specific native SQLite queue and web no-op store, network-aware sync context, response mapping, retry policy, and offline-sync API client
+│   │   │   ├── tracking-history/     # Field personal scan feed, metrics, parcel summary, personal timeline, pure flow logic (trackingHistoryFlow.mjs), request coordinator (trackingHistoryRequestCoordinator.mjs), and API client (trackingHistoryApi.js)
 │   │   ├── services/
 │   │   │   ├── api/                  # Axios client plus sessionHandling.mjs retry and redaction helpers
 │   │   │   └── storage/secureStore.js# Hardware-backed SecureStore adapter
 │   │   ├── theme/index.js            # TNL design tokens (canvas, ink, accent, keypad)
 │   │   ├── utils/                    # QR matrix, SVG path, and BMP facade
 │   │   └── vendor/qrcodegen/         # Vendored Project Nayuki QR generator
-│   ├── tests/                        # Mobile unit suites, including auth security, AppState lock, scanner, and offline queue coverage
+│   ├── tests/                        # Mobile unit suites, including auth security, cold-launch lock, scanner connectivity, and tracking history coverage
 │   ├── app.json                      # Expo configuration
 │   ├── eas.json                      # EAS Build configuration
-│   ├── package.json                  # Dependencies (including expo-camera, expo-haptics, expo-sqlite, and NetInfo)
+│   ├── package.json                  # Dependencies (including expo-camera, expo-haptics, expo-crypto, and NetInfo)
 │   ├── .env.example
 │   └── README.md
 │

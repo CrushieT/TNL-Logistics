@@ -19,8 +19,10 @@ import {
   canSubmitSingle,
   canSubmitBatch,
   canActivateCamera,
+  getScannerConnectivity,
   initialScannerState,
-  scannerReducer
+  scannerReducer,
+  validateBatchCandidate
 } from '../src/features/scanner/scannerFlow.mjs';
 import { invokeHapticSafely } from '../src/features/scanner/utils/hapticsCore.mjs';
 
@@ -605,5 +607,147 @@ describe('Scanner Flow & State Machine', () => {
     assert.strictEqual(reconciled.batchVehicleId, null);
     assert.deepStrictEqual(reconciled.batchQueue, []);
     assert.match(reconciled.error, /not permitted/);
+  });
+
+  it('39. Scanner connectivity blocks unknown and offline network states', () => {
+    assert.deepStrictEqual(getScannerConnectivity(null, null), {
+      isKnown: false,
+      isOnline: false
+    });
+    assert.deepStrictEqual(getScannerConnectivity(true, null), {
+      isKnown: false,
+      isOnline: false
+    });
+    assert.deepStrictEqual(getScannerConnectivity(false, false), {
+      isKnown: true,
+      isOnline: false
+    });
+  });
+
+  it('40. Scanner connectivity permits actions only with confirmed internet reachability', () => {
+    assert.deepStrictEqual(getScannerConnectivity(true, true), {
+      isKnown: true,
+      isOnline: true
+    });
+    assert.deepStrictEqual(getScannerConnectivity(true, false), {
+      isKnown: true,
+      isOnline: false
+    });
+  });
+
+  // Rapid Batch Candidate Validation
+  it('41. Batch candidate matching target operation passes validation', () => {
+    const context = {
+      trackingId: 'TRK-2026-000101',
+      currentStatusCode: 'QR_GENERATED',
+      currentStatusLabel: 'QR Generated',
+      nextStatusCode: 'LOADED_ON_TRUCK',
+      nextStatusLabel: 'Loaded on Truck',
+      canScan: true
+    };
+    const result = validateBatchCandidate(context, 'LOADED_ON_TRUCK', 'INTERNAL_TRUCK');
+    assert.strictEqual(result.isValid, true);
+    assert.strictEqual(result.error, null);
+  });
+
+  it('42. Batch candidate matching ARRIVED_AT_TNL passes validation for INTERNAL_TRUCK', () => {
+    const context = {
+      trackingId: 'TRK-2026-000102',
+      currentStatusCode: 'LOADED_ON_TRUCK',
+      currentStatusLabel: 'Loaded on Truck',
+      nextStatusCode: 'ARRIVED_AT_TNL',
+      nextStatusLabel: 'Outload / Arrive TNL',
+      canScan: true
+    };
+    const result = validateBatchCandidate(context, 'ARRIVED_AT_TNL', 'INTERNAL_TRUCK');
+    assert.strictEqual(result.isValid, true);
+    assert.strictEqual(result.error, null);
+  });
+
+  it('43. Status mismatch rejects parcel with clear current and expected next status', () => {
+    const context = {
+      trackingId: 'TRK-2026-000103',
+      currentStatusCode: 'QR_GENERATED',
+      currentStatusLabel: 'QR Generated',
+      nextStatusCode: 'LOADED_ON_TRUCK',
+      nextStatusLabel: 'Loaded on Truck',
+      canScan: true
+    };
+    const result = validateBatchCandidate(context, 'ARRIVED_AT_TNL', 'INTERNAL_TRUCK');
+    assert.strictEqual(result.isValid, false);
+    assert.match(result.error, /Cannot add TRK-2026-000103/);
+    assert.match(result.error, /current status is "QR Generated"/);
+    assert.match(result.error, /Expected next status is "Outload \/ Arrive TNL"/);
+  });
+
+  it('44. Terminal parcel is rejected as unscannable', () => {
+    const context = {
+      trackingId: 'TRK-2026-000104',
+      currentStatusCode: 'COMPLETED',
+      currentStatusLabel: 'Completed',
+      nextStatusCode: null,
+      canScan: false
+    };
+    const result = validateBatchCandidate(context, 'LOADED_ON_TRUCK', 'INTERNAL_TRUCK');
+    assert.strictEqual(result.isValid, false);
+    assert.match(result.error, /has reached terminal status/);
+  });
+
+  it('45. Missing or empty target operation is rejected', () => {
+    const context = {
+      trackingId: 'TRK-2026-000105',
+      currentStatusCode: 'QR_GENERATED',
+      nextStatusCode: 'LOADED_ON_TRUCK',
+      canScan: true
+    };
+    const result = validateBatchCandidate(context, null, 'INTERNAL_TRUCK');
+    assert.strictEqual(result.isValid, false);
+    assert.match(result.error, /Please select a target operation/);
+  });
+
+  it('46. Staff type not permitted for target operation is rejected', () => {
+    const context = {
+      trackingId: 'TRK-2026-000106',
+      currentStatusCode: 'ARRIVED_AT_TNL',
+      currentStatusLabel: 'Outload / Arrive TNL',
+      nextStatusCode: 'LOADED_TO_HAULER',
+      nextStatusLabel: 'Loaded to Hauler',
+      canScan: true
+    };
+    // INTERNAL_TRUCK cannot do LOADED_TO_HAULER
+    const result = validateBatchCandidate(context, 'LOADED_TO_HAULER', 'INTERNAL_TRUCK');
+    assert.strictEqual(result.isValid, false);
+    assert.match(result.error, /not permitted/);
+  });
+
+  it('47. Null, undefined, or missing tracking ID context is rejected', () => {
+    assert.strictEqual(validateBatchCandidate(null, 'LOADED_ON_TRUCK', 'INTERNAL_TRUCK').isValid, false);
+    assert.strictEqual(validateBatchCandidate({}, 'LOADED_ON_TRUCK', 'INTERNAL_TRUCK').isValid, false);
+    assert.strictEqual(validateBatchCandidate({ canScan: true }, 'LOADED_ON_TRUCK', 'INTERNAL_TRUCK').isValid, false);
+  });
+
+  it('48. HAULER_STAFF can validate LOADED_TO_HAULER candidate but not LOADED_ON_TRUCK', () => {
+    const context = {
+      trackingId: 'TRK-2026-000107',
+      currentStatusCode: 'ARRIVED_AT_TNL',
+      currentStatusLabel: 'Outload / Arrive TNL',
+      nextStatusCode: 'LOADED_TO_HAULER',
+      nextStatusLabel: 'Loaded to Hauler',
+      canScan: true
+    };
+    const allowedResult = validateBatchCandidate(context, 'LOADED_TO_HAULER', 'HAULER_STAFF');
+    assert.strictEqual(allowedResult.isValid, true);
+
+    const truckContext = {
+      trackingId: 'TRK-2026-000108',
+      currentStatusCode: 'QR_GENERATED',
+      currentStatusLabel: 'QR Generated',
+      nextStatusCode: 'LOADED_ON_TRUCK',
+      nextStatusLabel: 'Loaded on Truck',
+      canScan: true
+    };
+    const deniedResult = validateBatchCandidate(truckContext, 'LOADED_ON_TRUCK', 'HAULER_STAFF');
+    assert.strictEqual(deniedResult.isValid, false);
+    assert.match(deniedResult.error, /not permitted/);
   });
 });

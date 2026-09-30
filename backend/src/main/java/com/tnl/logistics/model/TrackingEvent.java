@@ -41,18 +41,6 @@ public class TrackingEvent {
     @Column(name = "event_timestamp", nullable = false, updatable = false)
     private LocalDateTime eventTimestamp;
 
-    @Column(name = "client_event_id", length = 36, unique = true, columnDefinition = "CHAR(36)")
-    private String clientEventId;
-
-    @Column(name = "client_captured_at")
-    private LocalDateTime clientCapturedAt;
-
-    @Column(name = "client_request_fingerprint", length = 64, columnDefinition = "CHAR(64)")
-    private String clientRequestFingerprint;
-
-    @Column(name = "scan_source", nullable = false, length = 16)
-    private String scanSource = "ONLINE";
-
     public TrackingEvent() {}
 
     public TrackingEvent(ParcelUnit parcelUnit, ParcelStatus status, AppUser staff, String remarks) {
@@ -91,14 +79,6 @@ public class TrackingEvent {
 
     public LocalDateTime getEventTimestamp() { return eventTimestamp; }
     public void setEventTimestamp(LocalDateTime eventTimestamp) { this.eventTimestamp = eventTimestamp; }
-    public String getClientEventId() { return clientEventId; }
-    public void setClientEventId(String clientEventId) { this.clientEventId = clientEventId; }
-    public LocalDateTime getClientCapturedAt() { return clientCapturedAt; }
-    public void setClientCapturedAt(LocalDateTime clientCapturedAt) { this.clientCapturedAt = clientCapturedAt; }
-    public String getClientRequestFingerprint() { return clientRequestFingerprint; }
-    public void setClientRequestFingerprint(String clientRequestFingerprint) { this.clientRequestFingerprint = clientRequestFingerprint; }
-    public String getScanSource() { return scanSource; }
-    public void setScanSource(String scanSource) { this.scanSource = scanSource; }
 
     @Override
     public boolean equals(Object o) {
