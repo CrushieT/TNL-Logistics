@@ -41,8 +41,9 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
            "OR EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND LOWER(pu.trackingId) LIKE LOWER(CONCAT('%', :search, '%')))) " +
            "AND (:paymentFilter IS NULL " +
            "  OR (:paymentFilter = 'PAID' AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) >= s.totalAmount) " +
-           "  OR (:paymentFilter = 'UNPAID' AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) = 0) " +
-           "  OR (:paymentFilter = 'PARTIAL' AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) > 0 AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) < s.totalAmount)) " +
+           "  OR (:paymentFilter = 'SETTLED' AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) < s.totalAmount AND EXISTS (SELECT soa FROM Soa soa WHERE soa.soaNo = s.statementId AND soa.outstandingBalance <= 0)) " +
+           "  OR (:paymentFilter = 'UNPAID' AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) = 0 AND NOT EXISTS (SELECT soa FROM Soa soa WHERE soa.soaNo = s.statementId AND soa.outstandingBalance <= 0)) " +
+           "  OR (:paymentFilter = 'PARTIAL' AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) > 0 AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) < s.totalAmount AND NOT EXISTS (SELECT soa FROM Soa soa WHERE soa.soaNo = s.statementId AND soa.outstandingBalance <= 0))) " +
            "AND (:statusFilter IS NULL " +
            "  OR (:statusFilter = 'REGISTERED' AND NOT EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.currentStatus != com.tnl.logistics.model.ParcelStatus.REGISTERED)) " +
            "  OR (:statusFilter = 'QR_GENERATED' AND EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.currentStatus = com.tnl.logistics.model.ParcelStatus.QR_GENERATED) AND NOT EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.currentStatus IN (com.tnl.logistics.model.ParcelStatus.LOADED_ON_TRUCK, com.tnl.logistics.model.ParcelStatus.ARRIVED_AT_TNL, com.tnl.logistics.model.ParcelStatus.LOADED_TO_HAULER, com.tnl.logistics.model.ParcelStatus.COMPLETED))) " +
@@ -63,8 +64,9 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
            "OR EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND LOWER(pu.trackingId) LIKE LOWER(CONCAT('%', :search, '%')))) " +
            "AND (:paymentFilter IS NULL " +
            "  OR (:paymentFilter = 'PAID' AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) >= s.totalAmount) " +
-           "  OR (:paymentFilter = 'UNPAID' AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) = 0) " +
-           "  OR (:paymentFilter = 'PARTIAL' AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) > 0 AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) < s.totalAmount)) " +
+           "  OR (:paymentFilter = 'SETTLED' AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) < s.totalAmount AND EXISTS (SELECT soa FROM Soa soa WHERE soa.soaNo = s.statementId AND soa.outstandingBalance <= 0)) " +
+           "  OR (:paymentFilter = 'UNPAID' AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) = 0 AND NOT EXISTS (SELECT soa FROM Soa soa WHERE soa.soaNo = s.statementId AND soa.outstandingBalance <= 0)) " +
+           "  OR (:paymentFilter = 'PARTIAL' AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) > 0 AND (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s) < s.totalAmount AND NOT EXISTS (SELECT soa FROM Soa soa WHERE soa.soaNo = s.statementId AND soa.outstandingBalance <= 0))) " +
            "AND (:statusFilter IS NULL " +
            "  OR (:statusFilter = 'REGISTERED' AND NOT EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.currentStatus != com.tnl.logistics.model.ParcelStatus.REGISTERED)) " +
            "  OR (:statusFilter = 'QR_GENERATED' AND EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.currentStatus = com.tnl.logistics.model.ParcelStatus.QR_GENERATED) AND NOT EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.currentStatus IN (com.tnl.logistics.model.ParcelStatus.LOADED_ON_TRUCK, com.tnl.logistics.model.ParcelStatus.ARRIVED_AT_TNL, com.tnl.logistics.model.ParcelStatus.LOADED_TO_HAULER, com.tnl.logistics.model.ParcelStatus.COMPLETED))) " +
@@ -104,6 +106,13 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
     List<Shipment> findByDateRegisteredBetweenOrderByDateRegisteredDesc(@Param("start") java.time.LocalDateTime start, @Param("end") java.time.LocalDateTime end);
 
     List<Shipment> findByClient_ClientIdAndDateRegisteredBetween(String clientId, java.time.LocalDateTime start, java.time.LocalDateTime end);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM Shipment s WHERE s.client.clientId = :clientId " +
+           "AND s.dateRegistered BETWEEN :start AND :end ORDER BY s.shipmentId")
+    List<Shipment> findByClientAndCycleForUpdate(@Param("clientId") String clientId,
+                                                 @Param("start") java.time.LocalDateTime start,
+                                                 @Param("end") java.time.LocalDateTime end);
 
     @Query("SELECT DISTINCT CAST(s.dateRegistered AS LocalDate) FROM Shipment s WHERE s.dateRegistered IS NOT NULL")
     List<LocalDate> findDistinctRegistrationDates();

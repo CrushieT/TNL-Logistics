@@ -280,7 +280,7 @@ public class SoaIntegrationTest {
 
     @Test
     @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
-    void testSaveStatementDeductionExceedingTotalChargesRejected() throws Exception {
+    void testSaveStatementDeductionExceedingRemainingBalanceRejected() throws Exception {
         // Register a shipment with 1200.00 total charges
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
         shipmentReq.setClientId("CL-SOA-001");
@@ -304,7 +304,7 @@ public class SoaIntegrationTest {
                         .content(objectMapper.writeValueAsString(shipmentReq)))
                 .andExpect(status().isCreated());
 
-        // Attempt to save deduction of 1500.00 (which exceeds 1200.00 total charges)
+        // Attempt to save deduction of 1500.00 (which exceeds 1200.00 remaining balance)
         SaveStatementRequest excessiveDeduction = new SaveStatementRequest(
                 "CL-SOA-001",
                 LocalDate.now(),
@@ -318,7 +318,110 @@ public class SoaIntegrationTest {
                         .content(objectMapper.writeValueAsString(excessiveDeduction)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Bad Request"))
-                .andExpect(jsonPath("$.message", containsString("cannot exceed total charges")));
+                .andExpect(jsonPath("$.message", containsString("cannot exceed remaining statement balance")));
+    }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testZeroBalanceDeductionSettlesWithoutCreatingPaymentAndCanReopen() throws Exception {
+        ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
+        shipmentReq.setClientId("CL-SOA-001");
+        shipmentReq.setRecipientName("Settlement Test Consignee");
+        shipmentReq.setRecipientContact("09173334444");
+        shipmentReq.setRecipientAddress("Baguio City Center");
+        shipmentReq.setRoute("Manila -> Baguio");
+        shipmentReq.setDescription("Settlement Test");
+        shipmentReq.setQuantity(1);
+        shipmentReq.setChargeModel(ChargeModel.FLAT);
+        shipmentReq.setShippingFee(new BigDecimal("500.00"));
+        shipmentReq.setOtherCharges(BigDecimal.ZERO);
+        shipmentReq.setPaidAtRegistration(false);
+        shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipmentReq.setParcels(List.of(
+                new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))
+        ));
+
+        var registration = mockMvc.perform(post("/api/v1/shipments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(shipmentReq)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String shipmentId = objectMapper.readTree(registration.getResponse().getContentAsString())
+                .get("shipmentId").asText();
+
+        SaveStatementRequest settleRequest = new SaveStatementRequest(
+                "CL-SOA-001",
+                LocalDate.now(),
+                new BigDecimal("500.00"),
+                "Approved full statement adjustment",
+                "Carlos Mendoza"
+        );
+
+        mockMvc.perform(post("/api/v1/soa/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(settleRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amountDue").value(0.00))
+                .andExpect(jsonPath("$.status").value("SETTLED"));
+
+        mockMvc.perform(get("/api/v1/shipments")
+                        .param("search", shipmentId)
+                        .param("paymentStatus", "Settled"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].shipmentId").value(shipmentId))
+                .andExpect(jsonPath("$.content[0].payment").value("Unpaid"))
+                .andExpect(jsonPath("$.content[0].financialStatus").value("Settled"))
+                .andExpect(jsonPath("$.content[0].collectibleBalance").value(0.00));
+
+        mockMvc.perform(get("/api/v1/payments/shipment/{shipmentId}", shipmentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paymentStatus").value("Unpaid"))
+                .andExpect(jsonPath("$.financialStatus").value("Settled"))
+                .andExpect(jsonPath("$.collectibleBalance").value(0.00))
+                .andExpect(jsonPath("$.statementAdjustment.amount").value(500.00))
+                .andExpect(jsonPath("$.statementAdjustment.status").value("SETTLED"))
+                .andExpect(jsonPath("$.payments").isEmpty());
+
+        PaymentRecordRequest blockedPayment = new PaymentRecordRequest(
+                shipmentId,
+                new BigDecimal("100.00"),
+                PaymentMethod.CASH,
+                "CASH-BLOCKED-001",
+                LocalDate.now(),
+                "Must be rejected while SOA is settled"
+        );
+        mockMvc.perform(post("/api/v1/payments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(blockedPayment)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message", containsString("belongs to settled statement")));
+
+        SaveStatementRequest reopenRequest = new SaveStatementRequest(
+                "CL-SOA-001",
+                LocalDate.now(),
+                new BigDecimal("300.00"),
+                "Reduced statement adjustment",
+                "Carlos Mendoza"
+        );
+        mockMvc.perform(post("/api/v1/soa/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reopenRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amountDue").value(200.00))
+                .andExpect(jsonPath("$.status").value("FOR_COLLECTION"));
+
+        PaymentRecordRequest reopenedPayment = new PaymentRecordRequest(
+                shipmentId,
+                new BigDecimal("200.00"),
+                PaymentMethod.CASH,
+                "CASH-REOPENED-001",
+                LocalDate.now(),
+                "Payment after adjustment was reduced"
+        );
+        mockMvc.perform(post("/api/v1/payments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reopenedPayment)))
+                .andExpect(status().isCreated());
     }
 
     @Test

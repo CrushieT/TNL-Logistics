@@ -121,6 +121,7 @@ export const statusStyles = {
 
 export const paymentStyles = {
   Paid: { fg: '#16A34A', bg: '#F0FDF4', border: '#86EFAC', dot: '#16A34A' },
+  Settled: { fg: '#166534', bg: '#ECFDF5', border: '#6EE7B7', dot: '#10B981' },
   Unpaid: { fg: '#DC2626', bg: '#FEF2F2', border: '#FCA5A5', dot: '#DC2626' },
   Partial: { fg: '#D97706', bg: '#FFFBEB', border: '#FDE68A', dot: '#D97706' },
 };

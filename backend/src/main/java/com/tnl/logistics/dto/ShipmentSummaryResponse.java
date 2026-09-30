@@ -20,6 +20,9 @@ public class ShipmentSummaryResponse {
     private BigDecimal totalAmount;
     private BigDecimal amountPaid;
     private BigDecimal balance;
+    private String financialStatus;
+    private BigDecimal collectibleBalance;
+    private String statementId;
     private String route;
     private LocalDateTime dateRegistered;
     private String dateLabel;
@@ -108,6 +111,15 @@ public class ShipmentSummaryResponse {
 
     public BigDecimal getBalance() { return balance; }
     public void setBalance(BigDecimal balance) { this.balance = balance; }
+
+    public String getFinancialStatus() { return financialStatus; }
+    public void setFinancialStatus(String financialStatus) { this.financialStatus = financialStatus; }
+
+    public BigDecimal getCollectibleBalance() { return collectibleBalance; }
+    public void setCollectibleBalance(BigDecimal collectibleBalance) { this.collectibleBalance = collectibleBalance; }
+
+    public String getStatementId() { return statementId; }
+    public void setStatementId(String statementId) { this.statementId = statementId; }
 
     public String getRoute() { return route; }
     public void setRoute(String route) { this.route = route; }

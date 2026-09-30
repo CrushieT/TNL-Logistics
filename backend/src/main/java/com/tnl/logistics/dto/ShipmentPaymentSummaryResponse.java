@@ -16,7 +16,50 @@ public class ShipmentPaymentSummaryResponse {
     private BigDecimal totalPaid;
     private BigDecimal balance;
     private String paymentStatus;
+    private String financialStatus;
+    private BigDecimal collectibleBalance;
+    private StatementAdjustmentSummary statementAdjustment;
     private List<PaymentResponse> payments;
+
+    public static class StatementAdjustmentSummary {
+        private String soaNo;
+        private BigDecimal amount;
+        private String reason;
+        private java.time.LocalDate statementDate;
+        private BigDecimal outstandingBalance;
+        private String status;
+
+        public StatementAdjustmentSummary() {}
+
+        public StatementAdjustmentSummary(String soaNo, BigDecimal amount, String reason,
+                                          java.time.LocalDate statementDate,
+                                          BigDecimal outstandingBalance, String status) {
+            this.soaNo = soaNo;
+            this.amount = amount;
+            this.reason = reason;
+            this.statementDate = statementDate;
+            this.outstandingBalance = outstandingBalance;
+            this.status = status;
+        }
+
+        public String getSoaNo() { return soaNo; }
+        public void setSoaNo(String soaNo) { this.soaNo = soaNo; }
+
+        public BigDecimal getAmount() { return amount; }
+        public void setAmount(BigDecimal amount) { this.amount = amount; }
+
+        public String getReason() { return reason; }
+        public void setReason(String reason) { this.reason = reason; }
+
+        public java.time.LocalDate getStatementDate() { return statementDate; }
+        public void setStatementDate(java.time.LocalDate statementDate) { this.statementDate = statementDate; }
+
+        public BigDecimal getOutstandingBalance() { return outstandingBalance; }
+        public void setOutstandingBalance(BigDecimal outstandingBalance) { this.outstandingBalance = outstandingBalance; }
+
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+    }
 
     public ShipmentPaymentSummaryResponse() {}
 
@@ -58,6 +101,15 @@ public class ShipmentPaymentSummaryResponse {
 
     public String getPaymentStatus() { return paymentStatus; }
     public void setPaymentStatus(String paymentStatus) { this.paymentStatus = paymentStatus; }
+
+    public String getFinancialStatus() { return financialStatus; }
+    public void setFinancialStatus(String financialStatus) { this.financialStatus = financialStatus; }
+
+    public BigDecimal getCollectibleBalance() { return collectibleBalance; }
+    public void setCollectibleBalance(BigDecimal collectibleBalance) { this.collectibleBalance = collectibleBalance; }
+
+    public StatementAdjustmentSummary getStatementAdjustment() { return statementAdjustment; }
+    public void setStatementAdjustment(StatementAdjustmentSummary statementAdjustment) { this.statementAdjustment = statementAdjustment; }
 
     public List<PaymentResponse> getPayments() { return payments; }
     public void setPayments(List<PaymentResponse> payments) { this.payments = payments; }

@@ -19,6 +19,7 @@ const PAYMENT_FILTER_OPTIONS = [
   { value: 'Unpaid', label: 'Payment: Unpaid' },
   { value: 'Partial', label: 'Payment: Partial' },
   { value: 'Paid', label: 'Payment: Paid' },
+  { value: 'Settled', label: 'Payment: Settled' },
 ];
 
 export default function PaymentsScreen() {
@@ -88,7 +89,7 @@ export default function PaymentsScreen() {
 
           // Calculate total outstanding balance from uncollected items
           const sumOutstanding = data.content.reduce((acc, item) => {
-            const bal = Number(item.balance || 0);
+            const bal = Number(item.collectibleBalance ?? item.balance ?? 0);
             return acc + (bal > 0 ? bal : 0);
           }, 0);
           setTotalOutstanding(sumOutstanding);
@@ -97,7 +98,7 @@ export default function PaymentsScreen() {
           setTotalPages(1);
           setTotalElements(data.length);
           const sumOutstanding = data.reduce((acc, item) => {
-            const bal = Number(item.balance || 0);
+            const bal = Number(item.collectibleBalance ?? item.balance ?? 0);
             return acc + (bal > 0 ? bal : 0);
           }, 0);
           setTotalOutstanding(sumOutstanding);
@@ -152,6 +153,7 @@ export default function PaymentsScreen() {
     const unsubscribe = subscribeRealtimeEvents((event) => {
       if (
         event.type === 'PAYMENT_RECORDED' ||
+        event.type === 'SOA_UPDATED' ||
         event.type === 'SHIPMENT_CREATED' ||
         event.type === 'STATUS_UPDATE' ||
         event.type === 'LABEL_PRINTED'

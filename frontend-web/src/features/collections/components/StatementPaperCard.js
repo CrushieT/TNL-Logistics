@@ -291,6 +291,9 @@ export default function StatementPaperCard({
                       <Text style={styles.amountDueLabel}>Amount Due</Text>
                       <Text style={styles.amountDueValue}>{formatCurrency(finalAmountDue)}</Text>
                     </View>
+                    <Text style={finalAmountDue <= 0 ? styles.settledStatus : styles.collectionStatus}>
+                      {finalAmountDue <= 0 ? 'SETTLED' : 'FOR COLLECTION'}
+                    </Text>
                   </View>
                 </View>
 
@@ -732,6 +735,22 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: '#111110',
+  },
+  settledStatus: {
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.success,
+    marginTop: 6,
+    letterSpacing: 0.8,
+  },
+  collectionStatus: {
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.warning,
+    marginTop: 6,
+    letterSpacing: 0.8,
   },
 
   printFooter: {
