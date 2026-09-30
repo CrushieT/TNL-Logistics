@@ -6,6 +6,7 @@ import PageHeader from '../components/layout/PageHeader';
 import Toast from '../components/common/Toast';
 import { ShipmentForm, ShipmentResultView, PrintLabelsModal, getShipment, registerShipment } from '../features/shipments';
 import { listClients, createClient } from '../features/clients';
+import { getCompanyBranding } from '../features/settings';
 import { colors, fonts, spacing, radius } from '../theme';
 
 export default function RegisterShipmentScreen() {
@@ -17,6 +18,9 @@ export default function RegisterShipmentScreen() {
   const [toastVisible, setToastVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
   const [detailLoadError, setDetailLoadError] = useState(null);
+  const [volumetricDivisor, setVolumetricDivisor] = useState(null);
+  const [calculationSettingsState, setCalculationSettingsState] = useState('loading');
+  const [calculationSettingsAttempt, setCalculationSettingsAttempt] = useState(0);
 
   const loadCanonicalResult = useCallback(async (shipmentId) => {
     setDetailLoadError(null);
@@ -29,6 +33,33 @@ export default function RegisterShipmentScreen() {
       return null;
     }
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    setCalculationSettingsState('loading');
+
+    getCompanyBranding(calculationSettingsAttempt > 0)
+      .then((settings) => {
+        const divisor = Number(settings?.volumetricDivisor);
+        if (!Number.isFinite(divisor) || divisor <= 0) {
+          throw new Error('Invalid volumetric divisor');
+        }
+        if (isMounted) {
+          setVolumetricDivisor(divisor);
+          setCalculationSettingsState('ready');
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setVolumetricDivisor(null);
+          setCalculationSettingsState('error');
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [calculationSettingsAttempt]);
 
   // Load active clients from backend GET /api/v1/clients?active=true
   useEffect(() => {
@@ -174,6 +205,9 @@ export default function RegisterShipmentScreen() {
         clients={clients}
         onSubmit={handleSubmit}
         submitting={submitting}
+        volumetricDivisor={volumetricDivisor}
+        calculationSettingsState={calculationSettingsState}
+        onRetryCalculationSettings={() => setCalculationSettingsAttempt((attempt) => attempt + 1)}
       />
     </AppShell>
   );

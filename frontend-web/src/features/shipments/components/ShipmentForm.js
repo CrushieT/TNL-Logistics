@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Switch, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, View, Text, StyleSheet, Switch, TouchableOpacity, useWindowDimensions } from 'react-native';
 import Card from '../../../components/common/Card';
 import FormField from '../../../components/common/FormField';
 import SelectField from '../../../components/common/SelectField';
 import Button from '../../../components/common/Button';
 import ClientSelectDropdown from './ClientSelectDropdown';
+import { calculateShipmentMetrics } from '../registrationCalculations.mjs';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
 
 const CHARGE_MODELS = [
@@ -12,7 +13,19 @@ const CHARGE_MODELS = [
   { value: 'PER_UNIT', label: 'Per unit' },
 ];
 
-export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubmit, submitting }) {
+function formatMeasure(value, digits, suffix) {
+  return value === null ? 'Unavailable' : `${value.toFixed(digits)} ${suffix}`;
+}
+
+export default function ShipmentForm({
+  clients = [],
+  nextShipmentPreview,
+  onSubmit,
+  submitting,
+  volumetricDivisor,
+  calculationSettingsState = 'loading',
+  onRetryCalculationSettings,
+}) {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
   const isTablet = width >= 768 && width < 1024;
@@ -72,21 +85,13 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
     return fee + other;
   }, [shippingFee, otherCharges, chargeModel, quantity]);
 
-  // Live Volume Calculation: (L * W * H) / 1,000,000
-  const volumeStats = useMemo(() => {
-    const l = parseFloat(lengthCm) || 0;
-    const w = parseFloat(widthCm) || 0;
-    const h = parseFloat(heightCm) || 0;
-    const qty = parseInt(quantity, 10) || 1;
-
-    const unitCbm = (l * w * h) / 1000000;
-    const totalCbm = unitCbm * qty;
-
-    return {
-      unitCbm: unitCbm.toFixed(4),
-      totalCbm: totalCbm.toFixed(4),
-    };
-  }, [lengthCm, widthCm, heightCm, quantity]);
+  const shipmentMetrics = useMemo(() => calculateShipmentMetrics({
+    quantity,
+    weightPerUnit,
+    lengthCm,
+    widthCm,
+    heightCm,
+  }, volumetricDivisor), [quantity, weightPerUnit, lengthCm, widthCm, heightCm, volumetricDivisor]);
 
   function validateForm() {
     const newErrors = {};
@@ -425,9 +430,9 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
           </View>
         </View>
 
-        {/* Row 2: Parcel Dimensions & Auto-Calculated Volume */}
+        {/* Row 2: Parcel Dimensions & Auto-Calculated Weight and Volume */}
         <View style={styles.dimensionsBox}>
-          <Text style={styles.dimensionsHeader}>PARCEL DIMENSIONS & VOLUME</Text>
+          <Text style={styles.dimensionsHeader}>PARCEL DIMENSIONS & BILLABLE WEIGHT</Text>
           <View style={styles.dimensionsRow}>
             <View style={styles.dimField}>
               <FormField
@@ -474,10 +479,45 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
                 error={errors.heightCm}
               />
             </View>
-            <View style={styles.volumeResultBox}>
-              <Text style={styles.volumeLabel}>CALCULATED VOLUME</Text>
-              <Text style={styles.volumeValue}>{volumeStats.unitCbm} m³</Text>
-              <Text style={styles.volumeSub}>Total ({quantity || 1} units): {volumeStats.totalCbm} m³</Text>
+            <View style={styles.metricsResultBox}>
+              <Text style={styles.volumeLabel}>WEIGHT / VOLUME · AUTO-COMPUTED</Text>
+              <View style={styles.metricRow}>
+                <Text style={styles.metricLabel}>Volume / unit</Text>
+                <Text style={styles.metricValue}>{formatMeasure(shipmentMetrics.unitVolume, 4, 'm³')}</Text>
+              </View>
+              <View style={styles.metricRow}>
+                <Text style={styles.metricLabel}>Total volume</Text>
+                <Text style={styles.metricValue}>{formatMeasure(shipmentMetrics.totalVolume, 4, 'm³')}</Text>
+              </View>
+              <View style={styles.metricRow}>
+                <Text style={styles.metricLabel}>Total actual weight</Text>
+                <Text style={styles.metricValue}>{formatMeasure(shipmentMetrics.actualWeight, 2, 'kg')}</Text>
+              </View>
+              <View style={styles.metricRow}>
+                <Text style={styles.metricLabel}>Volumetric weight</Text>
+                <Text style={styles.metricValue}>{formatMeasure(shipmentMetrics.volumetricWeight, 2, 'kg')}</Text>
+              </View>
+              <View style={[styles.metricRow, styles.billableRow]}>
+                <Text style={styles.billableLabel}>Billable weight</Text>
+                <Text style={styles.billableValue}>{formatMeasure(shipmentMetrics.billableWeight, 2, 'kg')}</Text>
+              </View>
+              {calculationSettingsState === 'loading' ? (
+                <View style={styles.settingsStatusRow}>
+                  <ActivityIndicator color={colors.inkSoft} size="small" />
+                  <Text style={styles.settingsMessage}>Loading weight calculation settings...</Text>
+                </View>
+              ) : null}
+              {calculationSettingsState === 'error' ? (
+                <View style={styles.settingsError}>
+                  <Text style={styles.settingsMessage}>Weight estimates are unavailable. You can still register this shipment.</Text>
+                  <TouchableOpacity accessibilityRole="button" onPress={onRetryCalculationSettings} style={styles.settingsRetry}>
+                    <Text style={styles.settingsRetryText}>Retry weight settings</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+              {calculationSettingsState === 'ready' ? (
+                <Text style={styles.settingsMessage}>Estimates only. Shipping charges use the rate entered below.</Text>
+              ) : null}
             </View>
           </View>
         </View>
@@ -685,9 +725,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 100,
   },
-  volumeResultBox: {
+  metricsResultBox: {
     flex: 1.5,
-    minWidth: 160,
+    minWidth: 260,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: colors.border,
@@ -702,18 +742,69 @@ const styles = StyleSheet.create({
     color: colors.inkFaint,
     letterSpacing: 0.6,
   },
-  volumeValue: {
+  metricRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: spacing.md,
+    marginTop: spacing.xs,
+  },
+  metricLabel: {
     fontFamily: fonts.sans,
-    fontSize: 16,
+    fontSize: 11,
+    color: colors.inkSoft,
+  },
+  metricValue: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.ink,
+    textAlign: 'right',
+  },
+  billableRow: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+  },
+  billableLabel: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
     fontWeight: '800',
     color: colors.ink,
-    marginTop: 2,
   },
-  volumeSub: {
+  billableValue: {
+    fontFamily: fonts.sans,
+    fontSize: 15,
+    fontWeight: '900',
+    color: colors.ink,
+  },
+  settingsStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  settingsError: {
+    marginTop: spacing.sm,
+  },
+  settingsMessage: {
     fontFamily: fonts.sans,
     fontSize: 10.5,
     color: colors.inkSoft,
-    marginTop: 2,
+    marginTop: spacing.sm,
+    lineHeight: 15,
+  },
+  settingsRetry: {
+    alignSelf: 'flex-start',
+    paddingVertical: spacing.sm,
+  },
+  settingsRetryText: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.ink,
+    textDecorationLine: 'underline',
   },
   totalBox: {
     borderWidth: 1.5,

@@ -233,7 +233,7 @@ export function RegistrationScreen() {
             <View style={styles.section}>
               <Text accessibilityRole="header" style={styles.sectionTitle}>Parcel Details</Text>
               {field('description', 'DESCRIPTION', { placeholder: 'General Goods', maxLength: 255 })}
-              {field('route', 'ROUTE', { placeholder: 'Manila to TNL Baguio', maxLength: 150 })}
+              {field('route', 'ROUTE', { placeholder: 'Manila to TNL Labo C.N.', maxLength: 150 })}
               <View style={rowStyle}>
                 {field('quantity', 'QUANTITY (UNITS) *', { keyboardType: 'number-pad', inputMode: 'numeric', maxLength: 4 })}
                 {field('weightKg', 'WEIGHT / UNIT (KG) *', numericProps)}
