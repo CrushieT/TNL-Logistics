@@ -38,7 +38,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
   const [heightCm, setHeightCm] = useState('15');
 
   // Charges & Options
-  const [route, setRoute] = useState('Manila to TNL Baguio');
+  const [route, setRoute] = useState('Manila to TNL Labo C.N.');
   const [chargeModel, setChargeModel] = useState('FLAT');
   const [shippingFee, setShippingFee] = useState('500');
   const [otherCharges, setOtherCharges] = useState('0');
@@ -200,7 +200,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
       lengthCm: parseFloat(lengthCm) || 20.0,
       widthCm: parseFloat(widthCm) || 10.0,
       heightCm: parseFloat(heightCm) || 15.0,
-      route: route.trim() || 'Manila to TNL Baguio',
+      route: route.trim() || 'Manila to TNL Labo C.N.',
       chargeModel,
       shippingFee: parseFloat(shippingFee) || 0,
       otherCharges: parseFloat(otherCharges) || 0,
@@ -431,7 +431,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
           </View>
 
           <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
-            <FormField label="Route" value={route} onChangeText={setRoute} placeholder="Manila to TNL Baguio" maxLength={150} />
+            <FormField label="Route" value={route} onChangeText={setRoute} placeholder="Manila to TNL Labo C.N." maxLength={150} />
           </View>
         </View>
 
