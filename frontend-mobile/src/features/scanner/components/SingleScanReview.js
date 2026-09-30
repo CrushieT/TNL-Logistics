@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { colors, typography, spacing, radius } from '../../../theme';
+import { canSubmitSingle, getSingleScanPermission } from '../scannerFlow.mjs';
 
 export default function SingleScanReview({
   context,
@@ -12,12 +13,14 @@ export default function SingleScanReview({
   onRetryVehicles,
   onConfirm,
   onCancel,
-  isSubmitting
+  isSubmitting,
+  staffType
 }) {
   if (!context) return null;
 
   const isVehicleRequired = Boolean(context.requiresVehicle);
-  const canConfirm = context.canScan && (!isVehicleRequired || Boolean(selectedVehicleId)) && !isSubmitting;
+  const permission = getSingleScanPermission(context, staffType);
+  const canConfirm = canSubmitSingle(context, selectedVehicleId, staffType) && !isSubmitting;
 
   return (
     <View style={styles.container}>
@@ -82,8 +85,16 @@ export default function SingleScanReview({
           </View>
         )}
 
+        {permission.isPermissionDenied && (
+          <View style={styles.permissionCard}>
+            <Icon source="shield-lock-outline" size={24} color={colors.warning} />
+            <Text style={styles.permissionTitle}>Read-Only Scan Result</Text>
+            <Text style={styles.permissionDescription}>{permission.message}</Text>
+          </View>
+        )}
+
         {/* Vehicle Selection for LOADED_ON_TRUCK */}
-        {context.canScan && isVehicleRequired && (
+        {permission.isAllowed && isVehicleRequired && (
           <View style={styles.vehicleSection}>
             <View style={styles.vehicleHeaderRow}>
               <Text style={styles.sectionTitle}>ASSIGN VEHICLE *</Text>
@@ -135,7 +146,7 @@ export default function SingleScanReview({
 
       {/* Action Buttons */}
       <View style={styles.footer}>
-        {context.canScan ? (
+        {context.canScan && permission.isAllowed ? (
           <View style={styles.buttonRow}>
             <TouchableOpacity
               style={styles.cancelButton}
@@ -301,6 +312,28 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     alignItems: 'center',
     marginBottom: spacing.md
+  },
+  permissionCard: {
+    backgroundColor: colors.warningSoft || colors.canvas,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    alignItems: 'center',
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.warning
+  },
+  permissionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.ink,
+    marginTop: 6,
+    marginBottom: 4
+  },
+  permissionDescription: {
+    fontSize: 12,
+    color: colors.inkSoft,
+    textAlign: 'center',
+    lineHeight: 16
   },
   terminalTitle: {
     fontSize: 14,

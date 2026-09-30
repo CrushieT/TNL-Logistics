@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { colors, typography, spacing, radius } from '../../../theme';
-import { BATCH_OPERATIONS, formatStatusLabel, canSubmitBatch, MAX_BATCH_SIZE } from '../scannerFlow.mjs';
+import { getAllowedBatchOperations, formatStatusLabel, canSubmitBatch, MAX_BATCH_SIZE } from '../scannerFlow.mjs';
 
 export default function BatchScanPanel({
   operation,
@@ -16,10 +16,12 @@ export default function BatchScanPanel({
   onRemoveItem,
   onClearBatch,
   onSubmit,
-  isSubmitting
+  isSubmitting,
+  staffType
 }) {
+  const allowedOperations = getAllowedBatchOperations(staffType);
   const isVehicleRequired = operation === 'LOADED_ON_TRUCK';
-  const canSubmit = canSubmitBatch(queue, operation, selectedVehicleId) && !isSubmitting;
+  const canSubmit = canSubmitBatch(queue, operation, selectedVehicleId, staffType) && !isSubmitting;
 
   const renderQueueItem = ({ item, index }) => (
     <View style={styles.queueItemRow}>
@@ -42,7 +44,7 @@ export default function BatchScanPanel({
       <View style={styles.operationSection}>
         <Text style={styles.sectionEyebrow}>TARGET OPERATION *</Text>
         <View style={styles.operationButtonsRow}>
-          {BATCH_OPERATIONS.map((op) => {
+          {allowedOperations.map((op) => {
             const isSelected = operation === op;
             return (
               <TouchableOpacity
@@ -58,6 +60,9 @@ export default function BatchScanPanel({
             );
           })}
         </View>
+        {allowedOperations.length === 0 && (
+          <Text style={styles.permissionMessage}>No Rapid Batch operations are permitted for this staff type.</Text>
+        )}
       </View>
 
       {/* Vehicle Selection when LOADED_ON_TRUCK is chosen */}
@@ -174,6 +179,11 @@ const styles = StyleSheet.create({
   operationButtonsRow: {
     flexDirection: 'row',
     gap: spacing.xs
+  },
+  permissionMessage: {
+    fontSize: 12,
+    color: colors.inkSoft,
+    marginTop: spacing.xs
   },
   opButton: {
     flex: 1,

@@ -25,6 +25,19 @@ export const BATCH_OPERATIONS = [
   'LOADED_TO_HAULER'
 ];
 
+const ALL_SEQUENTIAL_TRANSITIONS = [
+  'QR_GENERATED',
+  'LOADED_ON_TRUCK',
+  'ARRIVED_AT_TNL',
+  'LOADED_TO_HAULER',
+  'COMPLETED'
+];
+
+const STAFF_TYPE_TRANSITIONS = {
+  INTERNAL_TRUCK: ['LOADED_ON_TRUCK', 'ARRIVED_AT_TNL'],
+  HAULER_STAFF: ['LOADED_TO_HAULER', 'COMPLETED']
+};
+
 export const MAX_BATCH_SIZE = 100;
 
 export const STATUS_LABELS = {
@@ -42,6 +55,34 @@ export const STATUS_LABELS = {
 export function formatStatusLabel(statusCode) {
   if (!statusCode) return 'Unknown';
   return STATUS_LABELS[statusCode] || statusCode;
+}
+
+export function getAllowedTransitions(staffType) {
+  if (staffType == null) return [...ALL_SEQUENTIAL_TRANSITIONS];
+  return [...(STAFF_TYPE_TRANSITIONS[staffType] || [])];
+}
+
+export function isStaffTransitionAllowed(staffType, targetStatus) {
+  if (!targetStatus) return false;
+  return getAllowedTransitions(staffType).includes(targetStatus);
+}
+
+export function getAllowedBatchOperations(staffType) {
+  return BATCH_OPERATIONS.filter((operation) => isStaffTransitionAllowed(staffType, operation));
+}
+
+export function getSingleScanPermission(context, staffType) {
+  if (!context?.canScan || !context?.nextStatusCode) {
+    return { isAllowed: false, isPermissionDenied: false, message: null };
+  }
+  if (isStaffTransitionAllowed(staffType, context.nextStatusCode)) {
+    return { isAllowed: true, isPermissionDenied: false, message: null };
+  }
+  return {
+    isAllowed: false,
+    isPermissionDenied: true,
+    message: `Your staff type is not permitted to update parcels to ${formatStatusLabel(context.nextStatusCode)}.`
+  };
 }
 
 /**
@@ -123,9 +164,12 @@ export function removeTrackingIdFromBatch(queue, trackingId) {
 /**
  * Builds the payload for a single scan submission.
  */
-export function buildSingleScanRequest(context, vehicleId) {
+export function buildSingleScanRequest(context, vehicleId, staffType) {
   if (!context || !context.trackingId || !context.nextStatusCode) {
     throw new Error('Valid scan context with next status is required');
+  }
+  if (!isStaffTransitionAllowed(staffType, context.nextStatusCode)) {
+    throw new Error('Your staff type is not permitted to perform this tracking transition');
   }
   const isVehicleRequired = context.nextStatusCode === 'LOADED_ON_TRUCK';
   if (isVehicleRequired && (!vehicleId || !String(vehicleId).trim())) {
@@ -148,12 +192,15 @@ export function buildSingleScanRequest(context, vehicleId) {
 /**
  * Builds the payload for a rapid batch scan submission.
  */
-export function buildBatchScanRequest(queue, targetStatus, vehicleId) {
+export function buildBatchScanRequest(queue, targetStatus, vehicleId, staffType) {
   if (!Array.isArray(queue) || queue.length === 0) {
     throw new Error('At least one tracking ID is required in batch queue');
   }
   if (!targetStatus || !BATCH_OPERATIONS.includes(targetStatus)) {
     throw new Error(`Valid target operation is required. Must be one of: ${BATCH_OPERATIONS.join(', ')}`);
+  }
+  if (!isStaffTransitionAllowed(staffType, targetStatus)) {
+    throw new Error('Your staff type is not permitted to perform this tracking transition');
   }
   const isVehicleRequired = targetStatus === 'LOADED_ON_TRUCK';
   if (isVehicleRequired && (!vehicleId || !String(vehicleId).trim())) {
@@ -176,8 +223,9 @@ export function buildBatchScanRequest(queue, targetStatus, vehicleId) {
 /**
  * Validates whether single scan can be confirmed.
  */
-export function canSubmitSingle(context, vehicleId) {
+export function canSubmitSingle(context, vehicleId, staffType) {
   if (!context || !context.canScan || !context.nextStatusCode) return false;
+  if (!isStaffTransitionAllowed(staffType, context.nextStatusCode)) return false;
   if (context.requiresVehicle && (!vehicleId || !String(vehicleId).trim())) return false;
   return true;
 }
@@ -185,9 +233,10 @@ export function canSubmitSingle(context, vehicleId) {
 /**
  * Validates whether batch scan can be submitted.
  */
-export function canSubmitBatch(queue, targetStatus, vehicleId) {
+export function canSubmitBatch(queue, targetStatus, vehicleId, staffType) {
   if (!Array.isArray(queue) || queue.length === 0) return false;
   if (!targetStatus || !BATCH_OPERATIONS.includes(targetStatus)) return false;
+  if (!isStaffTransitionAllowed(staffType, targetStatus)) return false;
   if (targetStatus === 'LOADED_ON_TRUCK' && (!vehicleId || !String(vehicleId).trim())) return false;
   return true;
 }
@@ -202,7 +251,8 @@ export function canActivateCamera({
   phase,
   mode,
   batchOperation,
-  batchVehicleId
+  batchVehicleId,
+  staffType
 }) {
   if (!permissionGranted) return false;
   if (!isScreenFocused) return false;
@@ -210,6 +260,7 @@ export function canActivateCamera({
   if (phase !== SCANNER_PHASES.SCANNING && phase !== SCANNER_PHASES.BATCH_READY) return false;
   if (mode === SCANNER_MODES.BATCH) {
     if (!batchOperation) return false;
+    if (!isStaffTransitionAllowed(staffType, batchOperation)) return false;
     if (batchOperation === 'LOADED_ON_TRUCK' && (!batchVehicleId || !String(batchVehicleId).trim())) {
       return false;
     }
@@ -330,6 +381,19 @@ export function scannerReducer(state, action) {
         batchOperation: action.payload,
         batchVehicleId: action.payload === 'LOADED_ON_TRUCK' ? state.batchVehicleId : null,
         error: null
+      };
+    }
+
+    case 'RECONCILE_STAFF_PERMISSIONS': {
+      if (!state.batchOperation || isStaffTransitionAllowed(action.payload, state.batchOperation)) {
+        return state;
+      }
+      return {
+        ...state,
+        batchOperation: null,
+        batchVehicleId: null,
+        batchQueue: [],
+        error: 'The selected batch operation is not permitted for your staff type.'
       };
     }
 

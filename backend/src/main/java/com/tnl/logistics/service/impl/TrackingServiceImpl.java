@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -94,6 +95,11 @@ public class TrackingServiceImpl implements TrackingService {
                 canScan = true;
                 break;
             case LOADED_TO_HAULER:
+                nextStatusCode = ParcelStatus.COMPLETED.name();
+                nextStatusLabel = formatStatusDisplay(ParcelStatus.COMPLETED);
+                requiresVehicle = false;
+                canScan = true;
+                break;
             case COMPLETED:
             default:
                 nextStatusCode = null;
@@ -136,6 +142,9 @@ public class TrackingServiceImpl implements TrackingService {
             throw new IllegalArgumentException("Target status is required");
         }
 
+        AppUser actingStaff = requireActingStaff(actingStaffUserId);
+        requireStaffAuthorization(actingStaff, request.getTargetStatus());
+
         String normalizedTrackingId = request.getTrackingId().trim();
         String normalizedVehicleId = request.getVehicleId() != null ? request.getVehicleId().trim() : null;
 
@@ -147,9 +156,6 @@ public class TrackingServiceImpl implements TrackingService {
 
         ParcelUnit parcel = parcelUnitRepository.findByIdWithPessimisticLock(normalizedTrackingId)
                 .orElseThrow(() -> new IllegalArgumentException("Parcel unit not found: " + normalizedTrackingId));
-
-        AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
-                .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
 
         TrackingTransitionPolicy.Decision decision = transitionPolicy.decide(parcel.getCurrentStatus(), request.getTargetStatus(),
                 vehicleId(parcel.getCurrentVehicle()), normalizedVehicleId);
@@ -189,6 +195,9 @@ public class TrackingServiceImpl implements TrackingService {
             throw new IllegalArgumentException("Target status is required");
         }
 
+        AppUser actingStaff = requireActingStaff(actingStaffUserId);
+        requireStaffAuthorization(actingStaff, request.getTargetStatus());
+
         String normalizedVehicleId = request.getVehicleId() != null ? request.getVehicleId().trim() : null;
         if (request.getTargetStatus() == ParcelStatus.LOADED_ON_TRUCK) {
             if (normalizedVehicleId == null || normalizedVehicleId.isEmpty()) {
@@ -209,9 +218,6 @@ public class TrackingServiceImpl implements TrackingService {
             }
             normalizedIds.add(trimmed);
         }
-
-        AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
-                .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
 
         // Acquire parcel locks in sorted Tracking ID order to prevent deadlocks
         List<String> sortedIds = new ArrayList<>(normalizedIds);
@@ -273,6 +279,9 @@ public class TrackingServiceImpl implements TrackingService {
                 .orElseThrow(() -> new IllegalArgumentException("Staff user not found"));
         if (!Boolean.TRUE.equals(actor.getActive()) || actor.getRole() != UserRole.FIELD_STAFF) {
             throw new org.springframework.security.access.AccessDeniedException("Field Staff access is required");
+        }
+        for (OfflineTrackingSyncItemRequest item : request.items()) {
+            requireStaffAuthorization(actor, item.targetStatus());
         }
         Set<String> eventIds = new HashSet<>();
         for (OfflineTrackingSyncItemRequest item : request.items()) {
@@ -425,6 +434,19 @@ public class TrackingServiceImpl implements TrackingService {
             throw new IllegalStateException("Vehicle " + requestedVehicleId + " is inactive and cannot be assigned to shipments");
         }
         return resolution.vehicle();
+    }
+
+    private AppUser requireActingStaff(String actingStaffUserId) {
+        return appUserRepository.findById(actingStaffUserId)
+                .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
+    }
+
+    private void requireStaffAuthorization(AppUser actingStaff, ParcelStatus targetStatus) {
+        TrackingTransitionPolicy.StaffAuthorizationDecision decision =
+                transitionPolicy.decideStaffAuthorization(actingStaff.getStaffType(), targetStatus);
+        if (decision == TrackingTransitionPolicy.StaffAuthorizationDecision.DENIED) {
+            throw new AccessDeniedException("Staff type is not permitted to perform this tracking transition");
+        }
     }
 
     private static String vehicleId(Vehicle vehicle) {

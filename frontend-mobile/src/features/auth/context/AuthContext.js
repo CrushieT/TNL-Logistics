@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { authService } from '../services/authService';
 import { setSessionEventCallback } from '../../../services/api/client';
@@ -20,6 +21,7 @@ import {
 } from '../../../services/storage/secureStore';
 import { getQueueRows } from '../../offline-sync/services/offlineQueueStore';
 import { isUnresolved } from '../../offline-sync/offlineQueueFlow.mjs';
+import { shouldRestoreLockedSession } from '../services/appLifecycleLock.mjs';
 
 const AuthContext = createContext(null);
 
@@ -147,9 +149,19 @@ export function AuthProvider({ children }) {
 
         setBoundUser(storedBoundUser || null);
         if (storedToken && storedUser) {
+          const restoredLocked = shouldRestoreLockedSession({
+            platform: Platform.OS,
+            boundUser: storedBoundUser,
+            user: storedUser,
+            hasDeviceCredentials: Boolean(deviceCredentials),
+            persistedLocked: locked,
+          });
           setToken(storedToken);
           setUser(storedUser);
-          setIsLocked(storedUser.mustChangePassword ? false : locked);
+          setIsLocked(restoredLocked);
+          if (restoredLocked && !locked) {
+            await setAppLocked(true);
+          }
 
           if (!storedUser.mustChangePassword && deviceCredentials) {
             try {
@@ -164,7 +176,17 @@ export function AuthProvider({ children }) {
             }
           }
         } else if (storedBoundUser && deviceCredentials) {
-          setIsLocked(true);
+          const restoredLocked = shouldRestoreLockedSession({
+            platform: Platform.OS,
+            boundUser: storedBoundUser,
+            user: null,
+            hasDeviceCredentials: true,
+            persistedLocked: locked,
+          });
+          setIsLocked(restoredLocked);
+          if (restoredLocked && !locked) {
+            await setAppLocked(true);
+          }
         }
       } catch {
         if (isMounted) {
@@ -278,9 +300,10 @@ export function AuthProvider({ children }) {
   }, [boundUser?.username, clearInvalidDeviceSession, installSession, user?.username]);
 
   const lockSession = useCallback(async () => {
-    await setAppLocked(true);
     setIsLocked(true);
+    const persistLock = setAppLocked(true);
     router.replace('/(auth)/pin');
+    await persistLock;
   }, [router]);
 
   const unbindCurrentDevice = useCallback(async () => {

@@ -25,7 +25,8 @@ import {
   normalizeTrackingId,
   buildSingleScanRequest,
   buildBatchScanRequest,
-  canActivateCamera
+  canActivateCamera,
+  isStaffTransitionAllowed
 } from '../../features/scanner/scannerFlow.mjs';
 import { trackingScanApi } from '../../features/scanner/services/trackingScanApi';
 import { safeHaptics } from '../../features/scanner/utils/haptics';
@@ -111,7 +112,20 @@ export default function ScanScreen() {
     return unsubscribe;
   }, [navigation, state.mode, state.batchQueue.length]);
 
+  useEffect(() => {
+    const staffType = user?.staffType ?? null;
+    dispatch({ type: 'RECONCILE_STAFF_PERMISSIONS', payload: staffType });
+    if (!isStaffTransitionAllowed(staffType, 'LOADED_ON_TRUCK')) {
+      setVehicles([]);
+    }
+  }, [user?.staffType]);
+
   const loadVehicles = useCallback(async () => {
+    if (!isStaffTransitionAllowed(user?.staffType ?? null, 'LOADED_ON_TRUCK')) {
+      setVehicles([]);
+      setLoadingVehicles(false);
+      return;
+    }
     setLoadingVehicles(true);
     try {
       const data = await trackingScanApi.getActiveVehicles();
@@ -122,14 +136,17 @@ export default function ScanScreen() {
     } finally {
       setLoadingVehicles(false);
     }
-  }, []);
+  }, [user?.staffType]);
 
   // When switching to BATCH with LOADED_ON_TRUCK, load vehicles
   useEffect(() => {
-    if (state.mode === SCANNER_MODES.BATCH && state.batchOperation === 'LOADED_ON_TRUCK' && vehicles.length === 0) {
+    if (state.mode === SCANNER_MODES.BATCH
+      && state.batchOperation === 'LOADED_ON_TRUCK'
+      && isStaffTransitionAllowed(user?.staffType ?? null, state.batchOperation)
+      && vehicles.length === 0) {
       loadVehicles();
     }
-  }, [state.mode, state.batchOperation, vehicles.length, loadVehicles]);
+  }, [state.mode, state.batchOperation, vehicles.length, loadVehicles, user?.staffType]);
 
   const handleToggleTorch = () => {
     setTorchEnabled((prev) => !prev);
@@ -169,7 +186,9 @@ export default function ScanScreen() {
       try {
         const context = await trackingScanApi.getScanContext(normalized.trackingId, controller.signal);
         dispatch({ type: 'SET_CONTEXT', payload: context });
-        if (context.requiresVehicle && vehicles.length === 0) {
+        if (context.requiresVehicle
+          && isStaffTransitionAllowed(user?.staffType ?? null, context.nextStatusCode)
+          && vehicles.length === 0) {
           loadVehicles();
         }
       } catch (err) {
@@ -190,6 +209,11 @@ export default function ScanScreen() {
       if (!state.batchOperation) {
         void safeHaptics.warning();
         dispatch({ type: 'SET_ERROR', payload: 'Please select a target operation before scanning parcels.' });
+        return;
+      }
+      if (!isStaffTransitionAllowed(user?.staffType ?? null, state.batchOperation)) {
+        void safeHaptics.warning();
+        dispatch({ type: 'RECONCILE_STAFF_PERMISSIONS', payload: user?.staffType ?? null });
         return;
       }
       if (state.batchOperation === 'LOADED_ON_TRUCK' && !state.batchVehicleId) {
@@ -270,7 +294,11 @@ export default function ScanScreen() {
     submitLockRef.current = true;
     dispatch({ type: 'SET_SUBMITTING', payload: true });
     try {
-      const payload = buildSingleScanRequest(state.currentContext, state.selectedVehicleId);
+      const payload = buildSingleScanRequest(
+        state.currentContext,
+        state.selectedVehicleId,
+        user?.staffType ?? null
+      );
       const res = await trackingScanApi.submitSingleScan(payload);
       void safeHaptics.success();
       dispatch({ type: 'SET_SINGLE_RESULT', payload: res });
@@ -288,7 +316,12 @@ export default function ScanScreen() {
     submitLockRef.current = true;
     dispatch({ type: 'SET_SUBMITTING', payload: true });
     try {
-      const payload = buildBatchScanRequest(state.batchQueue, state.batchOperation, state.batchVehicleId);
+      const payload = buildBatchScanRequest(
+        state.batchQueue,
+        state.batchOperation,
+        state.batchVehicleId,
+        user?.staffType ?? null
+      );
       const responses = await trackingScanApi.submitBatchScan(payload);
       void safeHaptics.success();
       const transitionedCount = responses.filter((r) => r.transitionApplied).length;
@@ -353,7 +386,8 @@ export default function ScanScreen() {
     phase: state.phase,
     mode: state.mode,
     batchOperation: state.batchOperation,
-    batchVehicleId: state.batchVehicleId
+    batchVehicleId: state.batchVehicleId,
+    staffType: user?.staffType ?? null
   });
 
   const getModalCopy = () => {
@@ -535,6 +569,7 @@ export default function ScanScreen() {
               onConfirm={handleSingleConfirm}
               onCancel={handleScanNext}
               isSubmitting={state.isSubmitting}
+              staffType={user?.staffType ?? null}
             />
           )}
 
@@ -554,6 +589,7 @@ export default function ScanScreen() {
                 onClearBatch={() => dispatch({ type: 'CLEAR_BATCH' })}
                 onSubmit={handleBatchSubmit}
                 isSubmitting={state.isSubmitting}
+                staffType={user?.staffType ?? null}
               />
             )}
 
