@@ -3,7 +3,7 @@
 **System Architecture:** Unified Modular Monolith (Spring Boot 3.4 + MySQL 8.0 + React Native / Expo Web & Mobile). Single shared database where every transaction encoded on PC or mobile is immediately available across all platforms in real time.
 
 **4 Independent Status Concepts (Rule 19):**
-* **Tracking Status (5-state):** `Registered` → `QR Generated` → `Loaded on Truck` → `Outload / Arrive TNL` → `Loaded to Hauler`
+* **Tracking Status (6-state):** `Registered` -> `QR Generated` -> `Loaded on Truck` -> `Outload / Arrive TNL` -> `Loaded to Hauler` -> `Completed`
 * **Payment Status:** `Unpaid` → `Partially Paid` → `Paid` (and `For Collection` during Thursday batch)
 * **Label Status:** `Not Printed` → `Printed` → `Reprinted`
 * **Waybill Status (4-state):** `Not Generated` → `Generated` → `Sent to Hauler` → `Signed / Completed`
@@ -16,7 +16,7 @@
 | :--- | :--- | :---: |
 | **Phase 0** | Foundation (Skeleton, Flyway Migrations V1-V6, JPA Entities, JWT Auth & Roles) | [COMPLETED] |
 | **Phase 1** | Register Shipment (`SHP-YYYY-XXX`, `TRK-YYYY-XXXXXX`), $m^3$ Volume, Vector QR Labels & Paginated Table | [COMPLETED] |
-| **Phase 2.1** | Backend: 5-State Status Flow Engine & Sequential Scan Validation (`POST /tracking-events/scan`) | [COMPLETED] |
+| **Phase 2.1** | Backend: 6-State Status Flow Engine & Sequential Scan Validation (`POST /tracking-events/scan`) | [COMPLETED] |
 | **Phase 2.2** | Backend: Vehicle Fleet Management (`VH-XXX` generator & CRUD endpoints) | [COMPLETED] |
 | **Phase 2.3** | Real-Time Live Auto-Updates (Server-Sent Events streaming pipeline `GET /api/v1/events/stream`) | [COMPLETED] |
 | **Phase 2.4** | Web: Vehicle Fleet Management UI (`/vehicles` list & register modal — Desktop Screens 13/14) | [COMPLETED] |
@@ -87,8 +87,8 @@
 
 ## Phase 2 — Status Flow, Vehicle Fleet & Real-Time Sync [COMPLETED / IN PROGRESS]
 
-**2.1 — Backend: 5-State Status Flow Engine** — **[COMPLETED]**
-- Status lifecycle: `REGISTERED` → `QR_GENERATED` → `LOADED_ON_TRUCK` → `ARRIVED_AT_TNL` → `LOADED_TO_HAULER`.
+**2.1 — Backend: 6-State Status Flow Engine** — **[COMPLETED]**
+- Status lifecycle: `REGISTERED` -> `QR_GENERATED` -> `LOADED_ON_TRUCK` -> `ARRIVED_AT_TNL` -> `LOADED_TO_HAULER` -> `COMPLETED`.
 - Strict sequential transition validation; invalid skips rejected with HTTP 400 Bad Request.
 - `POST /api/v1/tracking-events/scan` (single) and `POST /api/v1/tracking-events/batch-scan` (batch).
 - Dynamic shipment rollup status derivation (Rule 09).
@@ -375,12 +375,14 @@
 **6.4 — Field Staff: Camera QR Scanner & Status Flow Engine (Screens 45–48)** — **[COMPLETED]**
 - Real-time camera viewfinder QR and Code-128 scanner (`expo-camera`) with torch toggle, four-corner orange reticle, horizontal scan line, safe platform-guarded haptics (`expo-haptics`), and manual `TRK-YYYY-NNNNNN` entry fallback with a compact `GO` button.
 - Dedicated scan context endpoint (`GET /api/v1/tracking-events/scan-context/{trackingId}`) role-gated strictly to `FIELD_STAFF` (`@PreAuthorize("hasRole('FIELD_STAFF')")`), providing parcel identity, sequence (`PACKAGE X OF Y`), current status, proposed next status, and vehicle requirements while stripping recipient, address, billing, and payment PII.
-- Strict status flow engine with sequential transition validation (`REGISTERED` → `QR_GENERATED` → `LOADED_ON_TRUCK` → `ARRIVED_AT_TNL` → `LOADED_TO_HAULER`); terminal states `LOADED_TO_HAULER` and `COMPLETED` expose `canScan = false` with no mutation actions.
+- Strict status flow engine with sequential transition validation (`REGISTERED` -> `QR_GENERATED` -> `LOADED_ON_TRUCK` -> `ARRIVED_AT_TNL` -> `LOADED_TO_HAULER` -> `COMPLETED`); only `COMPLETED` is terminal.
 - Mandatory active vehicle fleet enforcement: `LOADED_ON_TRUCK` requires an active vehicle from `GET /api/v1/vehicles`; transitioning to `ARRIVED_AT_TNL` or `LOADED_TO_HAULER` safely clears the parcel's current vehicle assignment while preserving historical audit events.
 - Single scan workflow (`POST /api/v1/tracking-events/scan`): context review, vehicle selector, submission progress indicators, inline lookup recovery, and idempotent retry detection (`transitionApplied = false` creating zero duplicate tracking events).
 - Rapid batch workflow (`POST /api/v1/tracking-events/batch-scan`): operation selector, fleet selector, 100-item queue with duplicate prevention and 750ms camera cooldown, deadlock-free sorted pessimistic locking, pre-validation of all transitions before entity mutation, atomic transaction rollback on failure, selective inactive vehicle idempotency, and discard confirmation navigation guards (`beforeRemove`).
 - Real-time SSE broadcast synchronization: tracking events are published to connected clients strictly after transaction commit via Spring's `TransactionSynchronizationManager.afterCommit()`, preventing phantom broadcasts from rolled-back batches.
-- Verification & Testing: 26 integration tests in `TrackingScanIntegrationTest.java` (244/244 backend tests passing), 33 frontend unit tests in `tests/scanner.test.mjs` (82/82 mobile tests passing), and clean multi-platform production export via `npx expo export` (Web, Android, iOS).
+- Staff-type authorization is enforced before single, batch, and offline synchronization locks or mutations: `INTERNAL_TRUCK` handles truck load/arrival, `HAULER_STAFF` handles hauler handover/completion, `null` staff type retains sequential access, and unknown types fail closed.
+- Mobile scanner selectors filter Rapid Batch operations, keep `COMPLETED` Single Scan-only, hide hauler vehicle controls, and render unauthorized Single Scan transitions as read-only.
+- Verification & Testing: 30/30 `TrackingScanIntegrationTest` tests, 159/159 mobile Node tests, and Android Hermes production export passed.
 
 **6.5 — Field Staff: Personal Scan & Tracking History (Screens 49–52)** — **[COMPLETED]**
 - Flyway migration `V29__add_personal_tracking_history_indexes.sql`: composite performance indexes on `tracking_event` (`staff_id, event_timestamp, event_id` and `staff_id, tracking_id, event_timestamp, event_id`) optimizing personal feed sorting, shift metric counters, and parcel ownership checks.
@@ -429,6 +431,7 @@
   - Stale Response Protection & Single-Retry: Axios response interceptor retries once on `401 SESSION_REAUTH_REQUIRED` if a newer replacement token exists in storage.
   - Sensitive Error Redaction: Login, profile, password, PIN, device status, and unbind failures expose only safe status/code/message/retry metadata and remove request bodies, bearer tokens, raw device tokens, and Axios configuration.
   - AuthContext Operations: Handles `rotatePasswordInSession`, `rotateUserPin`, `lockSession`, `startPasswordReauthentication`, `unbindCurrentDevice`, and `clearInvalidDeviceSession`.
+  - Native cold-launch restoration requires PIN for fully configured bound users; background, inactive, and focus-loss events remain unlocked. Explicit manual Lock still persists immediately, while password-change and initial-PIN setup flows remain exempt.
   - Header & Dashboard Navigation: `MobileHeader` receives `onAccount` routing to Screen 53 and keeps quick Lock action; removes header-level destructive logout; updates `FieldDashboard` (Screen 33) and `OfficeDashboard` (Screen 31) `ACCOUNT & SHIFT` cards to navigate to `/(main)/settings`.
 - Verification & Testing:
   - Targeted backend verification: `MobileAuthIntegrationTest` (53) and `SecurityIntegrationTest` (19), 72/72 passing, including rollback and concurrent credential-mutation coverage.

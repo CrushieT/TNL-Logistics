@@ -4,6 +4,10 @@ import {
   SCANNER_MODES,
   SCANNER_PHASES,
   BATCH_OPERATIONS,
+  getAllowedBatchOperations,
+  getAllowedTransitions,
+  getSingleScanPermission,
+  isStaffTransitionAllowed,
   MAX_BATCH_SIZE,
   STATUS_LABELS,
   formatStatusLabel,
@@ -219,7 +223,7 @@ describe('Scanner Flow & State Machine', () => {
   it('16. Terminal contexts expose no mutation action', () => {
     const terminalContext = {
       trackingId: 'TRK-2026-000101',
-      currentStatusCode: 'LOADED_TO_HAULER',
+      currentStatusCode: 'COMPLETED',
       nextStatusCode: null,
       canScan: false
     };
@@ -519,5 +523,87 @@ describe('Scanner Flow & State Machine', () => {
       return Promise.resolve();
     });
     assert.strictEqual(result, true);
+  });
+
+  it('34. Batch operations are filtered by staff type and never include COMPLETED', () => {
+    assert.deepStrictEqual(getAllowedBatchOperations('INTERNAL_TRUCK'), [
+      'LOADED_ON_TRUCK',
+      'ARRIVED_AT_TNL'
+    ]);
+    assert.deepStrictEqual(getAllowedBatchOperations('HAULER_STAFF'), ['LOADED_TO_HAULER']);
+    assert.deepStrictEqual(getAllowedBatchOperations(null), BATCH_OPERATIONS);
+    assert.deepStrictEqual(getAllowedBatchOperations('UNKNOWN_STAFF_TYPE'), []);
+    for (const staffType of ['INTERNAL_TRUCK', 'HAULER_STAFF', null, 'UNKNOWN_STAFF_TYPE']) {
+      assert.strictEqual(getAllowedBatchOperations(staffType).includes('COMPLETED'), false);
+    }
+  });
+
+  it('35. Single-scan permissions follow the complete staff transition matrix', () => {
+    assert.deepStrictEqual(getAllowedTransitions('INTERNAL_TRUCK'), ['LOADED_ON_TRUCK', 'ARRIVED_AT_TNL']);
+    assert.deepStrictEqual(getAllowedTransitions('HAULER_STAFF'), ['LOADED_TO_HAULER', 'COMPLETED']);
+    assert.strictEqual(isStaffTransitionAllowed(null, 'QR_GENERATED'), true);
+    assert.strictEqual(isStaffTransitionAllowed('INTERNAL_TRUCK', 'LOADED_TO_HAULER'), false);
+    assert.strictEqual(isStaffTransitionAllowed('HAULER_STAFF', 'ARRIVED_AT_TNL'), false);
+    assert.strictEqual(isStaffTransitionAllowed('UNKNOWN_STAFF_TYPE', 'LOADED_ON_TRUCK'), false);
+
+    const permission = getSingleScanPermission({
+      canScan: true,
+      nextStatusCode: 'COMPLETED'
+    }, 'INTERNAL_TRUCK');
+    assert.strictEqual(permission.isAllowed, false);
+    assert.strictEqual(permission.isPermissionDenied, true);
+    assert.match(permission.message, /not permitted/);
+  });
+
+  it('36. Request builders and submit selectors reject unauthorized stale state', () => {
+    const singleContext = {
+      trackingId: 'TRK-2026-000101',
+      nextStatusCode: 'LOADED_TO_HAULER',
+      canScan: true,
+      requiresVehicle: false
+    };
+    assert.strictEqual(canSubmitSingle(singleContext, null, 'INTERNAL_TRUCK'), false);
+    assert.throws(
+      () => buildSingleScanRequest(singleContext, null, 'INTERNAL_TRUCK'),
+      /not permitted/
+    );
+
+    const queue = ['TRK-2026-000101'];
+    assert.strictEqual(canSubmitBatch(queue, 'ARRIVED_AT_TNL', null, 'HAULER_STAFF'), false);
+    assert.throws(
+      () => buildBatchScanRequest(queue, 'ARRIVED_AT_TNL', null, 'HAULER_STAFF'),
+      /not permitted/
+    );
+  });
+
+  it('37. Vehicle selection remains required only for permitted truck loading', () => {
+    const truckContext = {
+      trackingId: 'TRK-2026-000101',
+      nextStatusCode: 'LOADED_ON_TRUCK',
+      canScan: true,
+      requiresVehicle: true
+    };
+    assert.strictEqual(canSubmitSingle(truckContext, null, 'INTERNAL_TRUCK'), false);
+    assert.strictEqual(canSubmitSingle(truckContext, 'VH-001', 'INTERNAL_TRUCK'), true);
+    assert.strictEqual(canSubmitSingle(truckContext, 'VH-001', 'HAULER_STAFF'), false);
+  });
+
+  it('38. Staff-type changes clear a no-longer-permitted batch selection and queue', () => {
+    const staleState = {
+      ...initialScannerState,
+      mode: SCANNER_MODES.BATCH,
+      phase: SCANNER_PHASES.BATCH_READY,
+      batchOperation: 'LOADED_ON_TRUCK',
+      batchVehicleId: 'VH-001',
+      batchQueue: ['TRK-2026-000101']
+    };
+    const reconciled = scannerReducer(staleState, {
+      type: 'RECONCILE_STAFF_PERMISSIONS',
+      payload: 'HAULER_STAFF'
+    });
+    assert.strictEqual(reconciled.batchOperation, null);
+    assert.strictEqual(reconciled.batchVehicleId, null);
+    assert.deepStrictEqual(reconciled.batchQueue, []);
+    assert.match(reconciled.error, /not permitted/);
   });
 });

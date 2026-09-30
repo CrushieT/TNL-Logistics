@@ -14,6 +14,7 @@ import com.tnl.logistics.repository.ParcelUnitRepository;
 import com.tnl.logistics.repository.TrackingEventRepository;
 import com.tnl.logistics.service.SseService;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -48,6 +49,7 @@ public class OfflineTrackingSyncItemService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public OfflineTrackingSyncItemResponse process(OfflineTrackingSyncItemRequest request, AppUser actor) {
+        requireStaffAuthorization(actor, request.targetStatus());
         String trackingId = request.trackingId().trim().toUpperCase();
         String vehicleId = request.vehicleId() == null ? null : request.vehicleId().trim().toUpperCase();
         String fingerprint = fingerprint(actor.getUserId(), trackingId, request.targetStatus(), vehicleId,
@@ -114,6 +116,7 @@ public class OfflineTrackingSyncItemService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     public OfflineTrackingSyncItemResponse recoverDuplicateReservation(OfflineTrackingSyncItemRequest request, AppUser actor) {
+        requireStaffAuthorization(actor, request.targetStatus());
         String trackingId = request.trackingId().trim().toUpperCase();
         String vehicleId = request.vehicleId() == null ? null : request.vehicleId().trim().toUpperCase();
         String eventId = java.util.UUID.fromString(request.clientEventId()).toString();
@@ -140,6 +143,13 @@ public class OfflineTrackingSyncItemService {
             Thread.sleep(25L * (attempt + 1));
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private void requireStaffAuthorization(AppUser actor, ParcelStatus targetStatus) {
+        if (transitionPolicy.decideStaffAuthorization(actor.getStaffType(), targetStatus)
+                == TrackingTransitionPolicy.StaffAuthorizationDecision.DENIED) {
+            throw new AccessDeniedException("Staff type is not permitted to perform this tracking transition");
         }
     }
 

@@ -61,6 +61,7 @@ public class TrackingAndVehicleIntegrationTest {
     private String officeToken;
     private String adminToken;
     private String fieldToken;
+    private String haulerToken;
 
     @Autowired
     private com.tnl.logistics.repository.WaybillRepository waybillRepository;
@@ -77,6 +78,7 @@ public class TrackingAndVehicleIntegrationTest {
         officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
         adminToken = "Bearer " + JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
         fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
+        haulerToken = "Bearer " + JwtTokenProvider.generateToken("USR-HAULER", "FIELD_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {
@@ -271,7 +273,7 @@ public class TrackingAndVehicleIntegrationTest {
         // 5. Scan: ARRIVED_AT_TNL -> LOADED_TO_HAULER (Final terminal dispatch)
         TrackingScanRequest scan3 = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_TO_HAULER, null, "Dispatched to 3rd party hauler");
         MvcResult res3 = mockMvc.perform(post("/api/v1/tracking-events/scan")
-                        .header("Authorization", fieldToken)
+                        .header("Authorization", haulerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(scan3)))
                 .andExpect(status().isOk())
@@ -306,7 +308,7 @@ public class TrackingAndVehicleIntegrationTest {
         // 2. Attempt skipping from QR_GENERATED straight to LOADED_TO_HAULER (Should fail)
         TrackingScanRequest invalidSkip = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_TO_HAULER, null, "Invalid skip");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
-                        .header("Authorization", fieldToken)
+                        .header("Authorization", haulerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(invalidSkip)))
                 .andExpect(status().isBadRequest());

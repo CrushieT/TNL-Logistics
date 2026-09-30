@@ -112,7 +112,7 @@ tnl-logistics/
 │   │   │   ├── common/
 │   │   │   └── layout/               # MobileHeader
 │   │   ├── features/                 # Domain feature slices (auth, office, field, shipments, printer, scanner, tracking-history, settings)
-│   │   │   ├── auth/services/        # Auth API and pure authStorageTransitions.mjs lifecycle helpers
+│   │   │   ├── auth/services/        # Auth API, secure storage transitions, and pure cold-launch/PIN lifecycle helpers
 │   │   │   ├── settings/             # Account/security flow helpers and reusable settings components
 │   │   │   ├── shipments/            # Shipment registration, explorer, detail screens, and barcode scanner modal
 │   │   │   ├── printer/              # Driver isolation, audit outbox, ESC/POS formatter, and serialized PrinterContext
@@ -125,7 +125,7 @@ tnl-logistics/
 │   │   ├── theme/index.js            # TNL design tokens (canvas, ink, accent, keypad)
 │   │   ├── utils/                    # QR matrix, SVG path, and BMP facade
 │   │   └── vendor/qrcodegen/         # Vendored Project Nayuki QR generator
-│   ├── tests/                        # Mobile unit suites, including authSecurity.test.mjs, offlineQueue.test.mjs, and offlineQueue.web.test.mjs
+│   ├── tests/                        # Mobile unit suites, including auth security, AppState lock, scanner, and offline queue coverage
 │   ├── app.json                      # Expo configuration
 │   ├── eas.json                      # EAS Build configuration
 │   ├── package.json                  # Dependencies (including expo-camera, expo-haptics, expo-sqlite, and NetInfo)

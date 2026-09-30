@@ -1,6 +1,7 @@
 package com.tnl.logistics.service.impl;
 
 import com.tnl.logistics.model.ParcelStatus;
+import com.tnl.logistics.model.StaffType;
 import com.tnl.logistics.model.Vehicle;
 import com.tnl.logistics.repository.VehicleRepository;
 import org.springframework.stereotype.Component;
@@ -10,6 +11,7 @@ import java.util.Map;
 @Component
 public class TrackingTransitionPolicy {
     public enum DecisionKind { APPLY, ALREADY_APPLIED, STALE_STATE, VEHICLE_MISMATCH, INVALID_TRANSITION }
+    public enum StaffAuthorizationDecision { ALLOWED, DENIED }
     public enum VehicleKind { ACTIVE, NOT_FOUND, INACTIVE }
     public record Decision(DecisionKind kind) {}
     public record VehicleResolution(VehicleKind kind, Vehicle vehicle) {}
@@ -38,6 +40,26 @@ public class TrackingTransitionPolicy {
         if (STATUS_RANKS.get(target) < STATUS_RANKS.get(current)) return new Decision(DecisionKind.STALE_STATE);
         if (STATUS_RANKS.get(target) != STATUS_RANKS.get(current) + 1) return new Decision(DecisionKind.INVALID_TRANSITION);
         return new Decision(DecisionKind.APPLY);
+    }
+
+    public StaffAuthorizationDecision decideStaffAuthorization(StaffType staffType, ParcelStatus targetStatus) {
+        if (staffType == null) {
+            return StaffAuthorizationDecision.ALLOWED;
+        }
+        if (targetStatus == null) {
+            return StaffAuthorizationDecision.DENIED;
+        }
+        return switch (staffType) {
+            case INTERNAL_TRUCK -> targetStatus == ParcelStatus.LOADED_ON_TRUCK
+                    || targetStatus == ParcelStatus.ARRIVED_AT_TNL
+                    ? StaffAuthorizationDecision.ALLOWED
+                    : StaffAuthorizationDecision.DENIED;
+            case HAULER_STAFF -> targetStatus == ParcelStatus.LOADED_TO_HAULER
+                    || targetStatus == ParcelStatus.COMPLETED
+                    ? StaffAuthorizationDecision.ALLOWED
+                    : StaffAuthorizationDecision.DENIED;
+            default -> StaffAuthorizationDecision.DENIED;
+        };
     }
 
     public VehicleResolution resolveActiveVehicle(String vehicleId) {
