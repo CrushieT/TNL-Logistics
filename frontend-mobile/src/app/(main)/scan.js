@@ -28,7 +28,8 @@ import {
   buildBatchScanRequest,
   canActivateCamera,
   getScannerConnectivity,
-  isStaffTransitionAllowed
+  isStaffTransitionAllowed,
+  validateBatchCandidate
 } from '../../features/scanner/scannerFlow.mjs';
 import { trackingScanApi } from '../../features/scanner/services/trackingScanApi';
 import { safeHaptics } from '../../features/scanner/utils/haptics';
@@ -252,13 +253,37 @@ export default function ScanScreen() {
         return;
       }
 
-      void safeHaptics.selection();
-      dispatch({ type: 'ADD_TO_BATCH', payload: normalized.trackingId });
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
-      // 750ms cooldown before accepting next scan
-      cooldownTimerRef.current = setTimeout(() => {
-        scanLockRef.current = false;
-      }, 750);
+      try {
+        const context = await trackingScanApi.getScanContext(normalized.trackingId, controller.signal);
+        const validation = validateBatchCandidate(context, state.batchOperation, user?.staffType ?? null);
+
+        if (!validation.isValid) {
+          void safeHaptics.warning();
+          dispatch({ type: 'SET_ERROR', payload: validation.error });
+          cooldownTimerRef.current = setTimeout(() => { scanLockRef.current = false; }, 750);
+          return;
+        }
+
+        void safeHaptics.selection();
+        dispatch({ type: 'ADD_TO_BATCH', payload: normalized.trackingId });
+
+        // 750ms cooldown before accepting next scan
+        cooldownTimerRef.current = setTimeout(() => {
+          scanLockRef.current = false;
+        }, 750);
+      } catch (err) {
+        if (err.name === 'CanceledError' || err.name === 'AbortError') return;
+        void safeHaptics.error();
+        const msg = err.response?.data?.message || err.message || 'Failed to verify parcel status.';
+        dispatch({ type: 'SET_ERROR', payload: msg });
+        cooldownTimerRef.current = setTimeout(() => { scanLockRef.current = false; }, 750);
+      }
     }
   };
 
@@ -268,6 +293,7 @@ export default function ScanScreen() {
   };
 
   const handleManualSubmit = () => {
+    if (scanLockRef.current) return;
     if (!state.manualInput || !state.manualInput.trim()) return;
     handleScanCandidate(state.manualInput.trim());
   };
