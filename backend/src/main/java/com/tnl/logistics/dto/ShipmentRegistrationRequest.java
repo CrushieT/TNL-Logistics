@@ -51,8 +51,8 @@ public class ShipmentRegistrationRequest {
     @Digits(integer = 10, fraction = 2, message = "Shipping fee must have up to 10 integer digits and 2 decimal places")
     private BigDecimal shippingFee;
 
-    @PositiveOrZero(message = "Other charges must be zero or positive")
-    @Digits(integer = 10, fraction = 2, message = "Other charges must have up to 10 integer digits and 2 decimal places")
+    @PositiveOrZero(message = "Charges must be zero or positive")
+    @Digits(integer = 10, fraction = 2, message = "Charges must have up to 10 integer digits and 2 decimal places")
     private BigDecimal otherCharges = BigDecimal.ZERO;
 
     private Boolean paidAtRegistration = false;

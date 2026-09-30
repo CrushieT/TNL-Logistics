@@ -492,7 +492,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
           </View>
         </View>
 
-        {/* Row 3: Charge Model, Shipping Fee, Other Charges, Total Amount */}
+        {/* Row 3: Charge Model, Shipping Fee, Charges, Total Amount */}
         <View style={styles.gridRow}>
           <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
             <SelectField
@@ -522,7 +522,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
 
           <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
             <FormField
-              label="Other Charges (₱)"
+              label="Charges (₱)"
               value={otherCharges}
               onChangeText={setOtherCharges}
               numericOnly

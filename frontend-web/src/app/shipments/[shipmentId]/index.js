@@ -294,7 +294,7 @@ export default function ShipmentDetailScreen() {
           <Card title="PAYMENT: TRANSACTION" style={styles.paymentCard}>
             <Text style={styles.chargingLabel}>{(shipment.chargeModel || 'Flat')} charging</Text>
             <PaymentLine label="Shipping" value={shipment.shippingFee} />
-            <PaymentLine label="Other Charges" value={shipment.otherCharges} />
+            <PaymentLine label="Charges" value={shipment.otherCharges} />
             <PaymentLine label="Total Due" value={shipment.totalAmount} strong />
             <PaymentLine label="Amount Paid" value={shipment.amountPaid} />
             <View style={styles.paymentDivider} />

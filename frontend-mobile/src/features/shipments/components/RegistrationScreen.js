@@ -269,12 +269,12 @@ export function RegistrationScreen() {
               </View>
               <View style={rowStyle}>
                 {field('shippingFee', form.chargeModel === 'FLAT' ? 'SHIPPING FEE (₱) *' : 'FEE / UNIT (₱) *', { ...numericProps, maxLength: 13 })}
-                {field('otherCharges', 'OTHER CHARGES (₱)', { ...numericProps, maxLength: 13 })}
+                {field('otherCharges', 'CHARGES (₱)', { ...numericProps, maxLength: 13 })}
               </View>
               <View style={styles.totalBox}>
                 <Text style={styles.label}>TOTAL AMOUNT</Text>
                 <Text style={styles.total}>{totals.totalCents === null ? '—' : `₱${(totals.totalCents / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</Text>
-                <Text style={styles.helper}>{form.chargeModel === 'FLAT' ? 'Shipping fee + other charges' : 'Shipping fee × quantity + other charges'}</Text>
+                <Text style={styles.helper}>{form.chargeModel === 'FLAT' ? 'Shipping fee + charges' : 'Shipping fee × quantity + charges'}</Text>
               </View>
               <View style={styles.paymentRow}>
                 <Switch accessibilityLabel="Paid at registration" value={form.paidAtRegistration} disabled={isSubmitting} onValueChange={(value) => changeField('paidAtRegistration', value)} trackColor={{ false: colors.border, true: colors.black }} thumbColor={colors.surface} />
