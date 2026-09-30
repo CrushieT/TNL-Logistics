@@ -10,8 +10,8 @@ const COLUMNS = [
   { key: 'qty', label: 'QTY', flex: 0.5, align: 'center' },
   { key: 'amountDue', label: 'AMOUNT DUE', flex: 1.0, align: 'flex-end' },
   { key: 'paid', label: 'PAID', flex: 1.0, align: 'flex-end' },
-  { key: 'balance', label: 'BALANCE', flex: 1.0, align: 'flex-end' },
-  { key: 'status', label: 'STATUS', flex: 1.0 },
+  { key: 'balance', label: 'BALANCE', flex: 1.0, align: 'flex-end', paddingRight: spacing.lg },
+  { key: 'status', label: 'STATUS', flex: 1.0, paddingLeft: spacing.lg },
   { key: 'action', label: '', flex: 1.4, align: 'flex-end' },
 ];
 
@@ -44,6 +44,8 @@ export default function PaymentsTable({
               { flex: col.flex },
               col.align === 'center' && styles.alignCenter,
               col.align === 'flex-end' && styles.alignRight,
+              col.paddingRight ? { paddingRight: col.paddingRight } : null,
+              col.paddingLeft ? { paddingLeft: col.paddingLeft } : null,
             ]}
           >
             {col.label}
@@ -107,12 +109,29 @@ export default function PaymentsTable({
               </View>
 
               {/* Balance */}
-              <View style={[styles.cell, { flex: COLUMNS[5].flex, alignItems: 'flex-end' }]}>
+              <View
+                style={[
+                  styles.cell,
+                  {
+                    flex: COLUMNS[5].flex,
+                    alignItems: 'flex-end',
+                    paddingRight: COLUMNS[5].paddingRight,
+                  },
+                ]}
+              >
                 <Text style={styles.balanceText}>{formatCurrency(balanceNum)}</Text>
               </View>
 
               {/* Payment Status Badge */}
-              <View style={[styles.cell, { flex: COLUMNS[6].flex }]}>
+              <View
+                style={[
+                  styles.cell,
+                  {
+                    flex: COLUMNS[6].flex,
+                    paddingLeft: COLUMNS[6].paddingLeft,
+                  },
+                ]}
+              >
                 <StatusBadge value={s.payment || 'Unpaid'} kind="payment" />
               </View>
 
