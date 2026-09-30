@@ -33,7 +33,7 @@ export default function RegisterShipmentScreen() {
   // Load active clients from backend GET /api/v1/clients?active=true
   useEffect(() => {
     let isMounted = true;
-    listClients({ active: true })
+    listClients({ active: true, all: true })
       .then((data) => {
         if (isMounted) {
           const list = Array.isArray(data) ? data : (data?.content || []);

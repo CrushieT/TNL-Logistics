@@ -4,6 +4,7 @@ import Card from '../../../components/common/Card';
 import FormField from '../../../components/common/FormField';
 import SelectField from '../../../components/common/SelectField';
 import Button from '../../../components/common/Button';
+import ClientSelectDropdown from './ClientSelectDropdown';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
 
 const CHARGE_MODELS = [
@@ -59,18 +60,6 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
       }
     }
   }, [clients, clientId]);
-
-  const clientOptions = useMemo(
-    () =>
-      (clients || [])
-        .filter((c) => c.active !== false)
-        .map((c) => {
-          const val = c.id || c.clientId;
-          const code = c.code || c.clientId || c.id;
-          return { value: val, label: `${code}: ${c.name}` };
-        }),
-    [clients]
-  );
 
   // Live Total Calculation
   const totalAmount = useMemo(() => {
@@ -265,11 +254,12 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
               </TouchableOpacity>
             </View>
           }
-          style={[styles.halfCard, isMobile && styles.cardMobile]}
+          style={[styles.halfCard, isMobile && styles.cardMobile, styles.clientCard]}
+          bodyStyle={styles.clientCardBody}
         >
           {clientMode === 'EXISTING' ? (
             <>
-              <SelectField
+              <ClientSelectDropdown
                 label="Select Client"
                 required
                 value={clientId}
@@ -277,7 +267,7 @@ export default function ShipmentForm({ clients = [], nextShipmentPreview, onSubm
                   setClientId(val);
                   if (errors.clientId) setErrors((prev) => ({ ...prev, clientId: null }));
                 }}
-                options={clientOptions.length ? clientOptions : [{ value: '', label: 'No clients loaded' }]}
+                clients={clients}
                 error={errors.clientId}
               />
               <Text style={styles.helperNote}>
@@ -584,9 +574,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.lg,
     marginBottom: spacing.lg,
+    zIndex: 100,
+    position: 'relative',
   },
   topRowMobile: {
     flexDirection: 'column',
+    zIndex: 100,
   },
   halfCard: {
     flex: 1,
@@ -595,6 +588,13 @@ const styles = StyleSheet.create({
   cardMobile: {
     width: '100%',
     minWidth: '100%',
+  },
+  clientCard: {
+    overflow: 'visible',
+    zIndex: 50,
+  },
+  clientCardBody: {
+    overflow: 'visible',
   },
   fullWidthCard: {
     marginBottom: spacing.lg,

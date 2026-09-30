@@ -65,7 +65,7 @@ tnl-logistics/
 │   │   │   └── settings.js          # Screen 28 System Settings
 │   │   ├── components/              # Shared design system (common/ atoms, layout/ AppShell)
 │   │   ├── features/                # Domain modules
-│   │   │   ├── shipments/           # PrintLabelsModal, LabelPreview, durable outbox & isolated thermal print service
+│   │   │   ├── shipments/           # ClientSelectDropdown, PrintLabelsModal, LabelPreview, durable outbox & isolated thermal print service
 │   │   │   └── settings/            # AdminSecurityCard, ConfirmPasswordModal, settings components
 │   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sessionCore.mjs, sseClient.js, sseClientCore.mjs)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
