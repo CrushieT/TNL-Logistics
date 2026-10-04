@@ -22,7 +22,6 @@ public class ShipmentRegistrationRequest {
     @NotBlank(message = "Client ID is required")
     private String clientId;
 
-    @NotBlank(message = "Recipient name is required")
     @Size(max = 150, message = "Recipient name cannot exceed 150 characters")
     private String recipientName;
 
@@ -43,10 +42,8 @@ public class ShipmentRegistrationRequest {
     @Max(value = 1000, message = "Quantity cannot exceed 1000")
     private Integer quantity;
 
-    @NotNull(message = "Charge model is required")
     private ChargeModel chargeModel;
 
-    @NotNull(message = "Shipping fee is required")
     @PositiveOrZero(message = "Shipping fee must be zero or positive")
     @Digits(integer = 10, fraction = 2, message = "Shipping fee must have up to 10 integer digits and 2 decimal places")
     private BigDecimal shippingFee;
@@ -56,6 +53,16 @@ public class ShipmentRegistrationRequest {
     private BigDecimal otherCharges = BigDecimal.ZERO;
 
     private Boolean paidAtRegistration = false;
+
+    @NotNull(message = "Expected rate per kilo is required")
+    @jakarta.validation.constraints.DecimalMin(value = "0.01", message = "Expected rate per kilo must be positive")
+    @Digits(integer = 10, fraction = 2, message = "Expected rate per kilo must have up to 10 integer digits and 2 decimal places")
+    private BigDecimal expectedRatePerKilo;
+
+    @NotNull(message = "Expected volumetric divisor is required")
+    @jakarta.validation.constraints.Min(value = 1000, message = "Expected volumetric divisor must be at least 1000")
+    @jakarta.validation.constraints.Max(value = 10000, message = "Expected volumetric divisor must not exceed 10000")
+    private Integer expectedVolumetricDivisor;
 
     @Size(max = 150, message = "Route cannot exceed 150 characters")
     private String route;
@@ -107,4 +114,10 @@ public class ShipmentRegistrationRequest {
 
     public List<ParcelUnitRequest> getParcels() { return parcels; }
     public void setParcels(List<ParcelUnitRequest> parcels) { this.parcels = parcels; }
+
+    public BigDecimal getExpectedRatePerKilo() { return expectedRatePerKilo; }
+    public void setExpectedRatePerKilo(BigDecimal expectedRatePerKilo) { this.expectedRatePerKilo = expectedRatePerKilo; }
+
+    public Integer getExpectedVolumetricDivisor() { return expectedVolumetricDivisor; }
+    public void setExpectedVolumetricDivisor(Integer expectedVolumetricDivisor) { this.expectedVolumetricDivisor = expectedVolumetricDivisor; }
 }

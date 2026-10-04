@@ -102,7 +102,8 @@ public class SystemSettingIntegrationTest {
                 "09181234567",
                 "finance@tnllogistics.ph",
                 DayOfWeek.FRIDAY,
-                6000
+                6000,
+                new BigDecimal("125.50")
         );
 
         mockMvc.perform(put("/api/v1/settings")
@@ -114,7 +115,8 @@ public class SystemSettingIntegrationTest {
                 .andExpect(jsonPath("$.companyContact").value("09181234567"))
                 .andExpect(jsonPath("$.billingEmail").value("finance@tnllogistics.ph"))
                 .andExpect(jsonPath("$.collectionDay").value("FRIDAY"))
-                .andExpect(jsonPath("$.volumetricDivisor").value(6000));
+                .andExpect(jsonPath("$.volumetricDivisor").value(6000))
+                .andExpect(jsonPath("$.ratePerKilo").value(125.50));
 
         assertEquals(DayOfWeek.FRIDAY, collectionsService.getCollectionDayOfWeek());
     }
@@ -123,7 +125,7 @@ public class SystemSettingIntegrationTest {
     @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
     void testUpdateSettingsAsOfficeStaffReturns403Forbidden() throws Exception {
         UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
-                "New Name", "New Addr", "09170001111", "test@test.com", DayOfWeek.MONDAY, 5000
+                "New Name", "New Addr", "09170001111", "test@test.com", DayOfWeek.MONDAY, 5000, new BigDecimal("100.00")
         );
 
         mockMvc.perform(put("/api/v1/settings")
@@ -136,7 +138,7 @@ public class SystemSettingIntegrationTest {
     @WithMockUser(username = "admin", roles = {"ADMIN"})
     void testUpdateSettingsValidationFailureInvalidDivisor() throws Exception {
         UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
-                "TNL", "Addr", "09171234567", "a@b.com", DayOfWeek.THURSDAY, 500
+                "TNL", "Addr", "09171234567", "a@b.com", DayOfWeek.THURSDAY, 500, new BigDecimal("100.00")
         );
 
         mockMvc.perform(put("/api/v1/settings")
@@ -253,6 +255,52 @@ public class SystemSettingIntegrationTest {
     }
 
     @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testUpdateSettingsValidationFailureRatePerKiloNull() throws Exception {
+        UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
+                "Valid Name", "Valid Addr", "09171234567", "info@tnl.com", DayOfWeek.THURSDAY, 5000, null
+        );
+
+        mockMvc.perform(put("/api/v1/settings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testUpdateSettingsValidationFailureRatePerKiloZeroOrNegative() throws Exception {
+        UpdateSystemSettingRequest zeroReq = new UpdateSystemSettingRequest(
+                "Valid Name", "Valid Addr", "09171234567", "info@tnl.com", DayOfWeek.THURSDAY, 5000, BigDecimal.ZERO
+        );
+        mockMvc.perform(put("/api/v1/settings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(zeroReq)))
+                .andExpect(status().isBadRequest());
+
+        UpdateSystemSettingRequest negReq = new UpdateSystemSettingRequest(
+                "Valid Name", "Valid Addr", "09171234567", "info@tnl.com", DayOfWeek.THURSDAY, 5000, new BigDecimal("-5.00")
+        );
+        mockMvc.perform(put("/api/v1/settings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(negReq)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testUpdateSettingsValidationFailureRatePerKiloExcessivePrecision() throws Exception {
+        UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
+                "Valid Name", "Valid Addr", "09171234567", "info@tnl.com", DayOfWeek.THURSDAY, 5000, new BigDecimal("12.345")
+        );
+
+        mockMvc.perform(put("/api/v1/settings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
     void testGetCompanyBrandingAsOfficeStaffReturns200() throws Exception {
         mockMvc.perform(get("/api/v1/settings/branding")
@@ -320,7 +368,8 @@ public class SystemSettingIntegrationTest {
                     "09175550000",
                     "billing@tnllogistics.ph",
                     DayOfWeek.MONDAY,
-                    5000
+                    5000,
+                    new BigDecimal("100.00")
             );
 
             mockMvc.perform(put("/api/v1/settings")
@@ -350,7 +399,8 @@ public class SystemSettingIntegrationTest {
                     "09175550000",
                     "billing@tnllogistics.ph",
                     DayOfWeek.THURSDAY,
-                    5000
+                    5000,
+                    new BigDecimal("100.00")
             );
             mockMvc.perform(put("/api/v1/settings")
                     .contentType(MediaType.APPLICATION_JSON)
@@ -401,7 +451,8 @@ public class SystemSettingIntegrationTest {
                     "09175550000",
                     "billing@tnllogistics.ph",
                     DayOfWeek.WEDNESDAY,
-                    5000
+                    5000,
+                    new BigDecimal("100.00")
             );
             mockMvc.perform(put("/api/v1/settings")
                     .contentType(MediaType.APPLICATION_JSON)
@@ -423,7 +474,8 @@ public class SystemSettingIntegrationTest {
                     "09175550000",
                     "billing@tnllogistics.ph",
                     DayOfWeek.MONDAY,
-                    5000
+                    5000,
+                    new BigDecimal("100.00")
             );
             mockMvc.perform(put("/api/v1/settings")
                     .contentType(MediaType.APPLICATION_JSON)
@@ -445,7 +497,8 @@ public class SystemSettingIntegrationTest {
                     "09175550000",
                     "billing@tnllogistics.ph",
                     DayOfWeek.THURSDAY,
-                    5000
+                    5000,
+                    new BigDecimal("100.00")
             );
             mockMvc.perform(put("/api/v1/settings")
                     .contentType(MediaType.APPLICATION_JSON)

@@ -66,10 +66,19 @@ public class ParcelPrintIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
     private String officeToken;
 
     @BeforeEach
     public void setUp() {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
         printEventRepository.deleteAll();
         printAuditJobRepository.deleteAll();
         waybillRepository.deleteAll();
@@ -101,6 +110,8 @@ public class ParcelPrintIntegrationTest {
         request.setChargeModel(ChargeModel.FLAT);
         request.setShippingFee(new BigDecimal("150.00"));
         request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        request.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        request.setExpectedVolumetricDivisor(5000);
         request.setParcels(List.of(parcel));
 
         MvcResult result = mockMvc.perform(post("/api/v1/shipments")
@@ -405,6 +416,8 @@ public class ParcelPrintIntegrationTest {
         multiRequest.setChargeModel(ChargeModel.FLAT);
         multiRequest.setShippingFee(new BigDecimal("200.00"));
         multiRequest.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        multiRequest.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        multiRequest.setExpectedVolumetricDivisor(5000);
         multiRequest.setParcels(List.of(p1, p2));
 
         MvcResult regResult = mockMvc.perform(post("/api/v1/shipments")

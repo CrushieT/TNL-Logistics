@@ -41,6 +41,9 @@ public class SystemSetting {
     @Column(name = "volumetric_divisor", nullable = false)
     private Integer volumetricDivisor = 5000;
 
+    @Column(name = "rate_per_kilo", precision = 12, scale = 2)
+    private java.math.BigDecimal ratePerKilo;
+
     @Column(name = "tracking_prefix", length = 20, nullable = false)
     private String trackingPrefix = "TRK";
 
@@ -59,6 +62,14 @@ public class SystemSetting {
     public SystemSetting(Integer settingId, String companyName, String companyAddress,
                          String companyContact, String billingEmail, DayOfWeek collectionDay,
                          Integer volumetricDivisor, String trackingPrefix, String shipmentPrefix) {
+        this(settingId, companyName, companyAddress, companyContact, billingEmail, collectionDay,
+             volumetricDivisor, null, trackingPrefix, shipmentPrefix);
+    }
+
+    public SystemSetting(Integer settingId, String companyName, String companyAddress,
+                         String companyContact, String billingEmail, DayOfWeek collectionDay,
+                         Integer volumetricDivisor, java.math.BigDecimal ratePerKilo,
+                         String trackingPrefix, String shipmentPrefix) {
         this.settingId = settingId;
         this.companyName = companyName;
         this.companyAddress = companyAddress;
@@ -66,6 +77,7 @@ public class SystemSetting {
         this.billingEmail = billingEmail;
         this.collectionDay = collectionDay;
         this.volumetricDivisor = volumetricDivisor;
+        this.ratePerKilo = ratePerKilo;
         this.trackingPrefix = trackingPrefix;
         this.shipmentPrefix = shipmentPrefix;
     }
@@ -90,6 +102,9 @@ public class SystemSetting {
 
     public Integer getVolumetricDivisor() { return volumetricDivisor; }
     public void setVolumetricDivisor(Integer volumetricDivisor) { this.volumetricDivisor = volumetricDivisor; }
+
+    public java.math.BigDecimal getRatePerKilo() { return ratePerKilo; }
+    public void setRatePerKilo(java.math.BigDecimal ratePerKilo) { this.ratePerKilo = ratePerKilo; }
 
     public String getTrackingPrefix() { return trackingPrefix; }
     public void setTrackingPrefix(String trackingPrefix) { this.trackingPrefix = trackingPrefix; }

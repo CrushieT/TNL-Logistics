@@ -39,7 +39,8 @@ public class SystemSettingServiceImpl implements SystemSettingService {
         if (cachedSettings != null) {
             return cachedSettings;
         }
-        return refreshCachedSettings();
+        refreshCachedSettings();
+        return cachedSettings;
     }
 
     @Override
@@ -52,7 +53,8 @@ public class SystemSettingServiceImpl implements SystemSettingService {
                 settings.getCompanyContact(),
                 settings.getBillingEmail(),
                 settings.getCollectionDay(),
-                settings.getVolumetricDivisor()
+                settings.getVolumetricDivisor(),
+                settings.getRatePerKilo()
         );
     }
 
@@ -78,14 +80,15 @@ public class SystemSettingServiceImpl implements SystemSettingService {
         setting.setBillingEmail(request.getBillingEmail().trim());
         setting.setCollectionDay(request.getCollectionDay());
         setting.setVolumetricDivisor(request.getVolumetricDivisor());
+        setting.setRatePerKilo(request.getRatePerKilo());
         setting.setUpdatedBy(actingUserId != null ? actingUserId : "ADMIN");
 
         SystemSetting saved = systemSettingRepository.save(setting);
         SystemSettingDto dto = toDto(saved);
         this.cachedSettings = dto;
 
-        log.info("System settings updated by {}: collectionDay={}, volumetricDivisor={}",
-                actingUserId, dto.getCollectionDay(), dto.getVolumetricDivisor());
+        log.info("System settings updated by {}: collectionDay={}, volumetricDivisor={}, ratePerKilo={}",
+                actingUserId, dto.getCollectionDay(), dto.getVolumetricDivisor(), dto.getRatePerKilo());
 
         try {
             sseService.broadcastEvent("SETTINGS_UPDATED", dto);
@@ -106,7 +109,13 @@ public class SystemSettingServiceImpl implements SystemSettingService {
         return getSettings().getVolumetricDivisor();
     }
 
-    private synchronized SystemSettingDto refreshCachedSettings() {
+    @Override
+    public java.math.BigDecimal getRatePerKilo() {
+        return getSettings().getRatePerKilo();
+    }
+
+    @Override
+    public synchronized void refreshCachedSettings() {
         SystemSetting setting = systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID)
                 .orElseGet(() -> systemSettingRepository.save(new SystemSetting(
                         SystemSetting.DEFAULT_SETTING_ID,
@@ -121,7 +130,6 @@ public class SystemSettingServiceImpl implements SystemSettingService {
                 )));
         SystemSettingDto dto = toDto(setting);
         this.cachedSettings = dto;
-        return dto;
     }
 
     private SystemSettingDto toDto(SystemSetting setting) {
@@ -133,6 +141,7 @@ public class SystemSettingServiceImpl implements SystemSettingService {
                 setting.getBillingEmail(),
                 setting.getCollectionDay() != null ? setting.getCollectionDay() : DayOfWeek.THURSDAY,
                 setting.getVolumetricDivisor() != null ? setting.getVolumetricDivisor() : 5000,
+                setting.getRatePerKilo(),
                 setting.getTrackingPrefix() != null ? setting.getTrackingPrefix() : "TRK",
                 setting.getShipmentPrefix() != null ? setting.getShipmentPrefix() : "SHP",
                 setting.getUpdatedAt(),

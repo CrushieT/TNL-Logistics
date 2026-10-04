@@ -96,11 +96,20 @@ public class SseIntegrationTest {
     @Autowired
     private com.tnl.logistics.repository.WaybillRepository waybillRepository;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
     private String officeToken;
     private String adminToken;
 
     @BeforeEach
     public void setup() {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
         waybillRepository.deleteAll();
         trackingEventRepository.deleteAll();
         parcelUnitRepository.deleteAll();
@@ -142,6 +151,8 @@ public class SseIntegrationTest {
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("350.00"));
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2.5"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10"))));
 
         var shipResp = shipmentService.registerShipment(regReq, "USR-OFFICE");

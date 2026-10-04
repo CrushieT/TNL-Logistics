@@ -72,10 +72,19 @@ public class ClientIntegrationTest {
     @Autowired
     private ShipmentService shipmentService;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
     private String officeToken;
 
     @BeforeEach
     public void setup() {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
         waybillRepository.deleteAll();
         trackingEventRepository.deleteAll();
         parcelUnitRepository.deleteAll();
@@ -235,10 +244,12 @@ public class ClientIntegrationTest {
         regReq1.setShippingFee(new BigDecimal("1550.00"));
         regReq1.setPaidAtRegistration(false);
         regReq1.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq1.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq1.setExpectedVolumetricDivisor(5000);
         regReq1.setParcels(List.of(
-                new ParcelUnitRequest(1, new BigDecimal("2"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10")),
-                new ParcelUnitRequest(2, new BigDecimal("2"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10")),
-                new ParcelUnitRequest(3, new BigDecimal("2"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10"))
+                new ParcelUnitRequest(1, new BigDecimal("5.5"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10")),
+                new ParcelUnitRequest(2, new BigDecimal("5.0"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10")),
+                new ParcelUnitRequest(3, new BigDecimal("5.0"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10"))
         ));
         shipmentService.registerShipment(regReq1, "USR-OFFICE");
 
@@ -253,8 +264,10 @@ public class ClientIntegrationTest {
         regReq2.setShippingFee(new BigDecimal("450.00"));
         regReq2.setPaidAtRegistration(true);
         regReq2.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq2.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq2.setExpectedVolumetricDivisor(5000);
         regReq2.setParcels(List.of(
-                new ParcelUnitRequest(1, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))
+                new ParcelUnitRequest(1, new BigDecimal("4.5"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))
         ));
         shipmentService.registerShipment(regReq2, "USR-OFFICE");
 
@@ -395,6 +408,8 @@ public class ClientIntegrationTest {
         regReq.setShippingFee(new BigDecimal("1000.00"));
         regReq.setPaidAtRegistration(true);
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setParcels(List.of(
                 new ParcelUnitRequest(1, new BigDecimal("2"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10")),
                 new ParcelUnitRequest(2, new BigDecimal("3"), new BigDecimal("25"), new BigDecimal("15"), new BigDecimal("10"))

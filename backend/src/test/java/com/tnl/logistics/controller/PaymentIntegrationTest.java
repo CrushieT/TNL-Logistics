@@ -50,8 +50,17 @@ public class PaymentIntegrationTest {
     @Autowired
     private ShipmentRepository shipmentRepository;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
     @BeforeEach
     void setup() {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client != null) {
             client.setActive(true);
@@ -76,9 +85,11 @@ public class PaymentIntegrationTest {
         shipmentReq.setOtherCharges(new BigDecimal("100.00"));
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipmentReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipmentReq.setExpectedVolumetricDivisor(5000);
 
-        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("4.0"), new BigDecimal("30"), new BigDecimal("20"), new BigDecimal("15"));
-        ParcelUnitRequest p2 = new ParcelUnitRequest(2, new BigDecimal("6.0"), new BigDecimal("40"), new BigDecimal("30"), new BigDecimal("25"));
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("6.0"), new BigDecimal("30"), new BigDecimal("20"), new BigDecimal("15"));
+        ParcelUnitRequest p2 = new ParcelUnitRequest(2, new BigDecimal("8.0"), new BigDecimal("40"), new BigDecimal("30"), new BigDecimal("25"));
         shipmentReq.setParcels(List.of(p1, p2));
 
         MvcResult createResult = mockMvc.perform(post("/api/v1/shipments")
@@ -200,7 +211,9 @@ public class PaymentIntegrationTest {
         shipmentReq.setOtherCharges(BigDecimal.ZERO);
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
-        shipmentReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
+        shipmentReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipmentReq.setExpectedVolumetricDivisor(5000);
+        shipmentReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("5.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
         MvcResult createResult = mockMvc.perform(post("/api/v1/shipments")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -276,7 +289,9 @@ public class PaymentIntegrationTest {
         shipReq.setOtherCharges(BigDecimal.ZERO);
         shipReq.setPaidAtRegistration(false);
         shipReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
-        shipReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
+        shipReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipReq.setExpectedVolumetricDivisor(5000);
+        shipReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("6.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
         MvcResult res = mockMvc.perform(post("/api/v1/shipments")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -318,7 +333,9 @@ public class PaymentIntegrationTest {
         shipmentReq.setOtherCharges(BigDecimal.ZERO);
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
-        shipmentReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
+        shipmentReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipmentReq.setExpectedVolumetricDivisor(5000);
+        shipmentReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("10.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
         MvcResult createResult = mockMvc.perform(post("/api/v1/shipments")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -384,7 +401,9 @@ public class PaymentIntegrationTest {
         shipmentReq.setOtherCharges(BigDecimal.ZERO);
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
-        shipmentReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("3.0"), new BigDecimal("15"), new BigDecimal("15"), new BigDecimal("15"))));
+        shipmentReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipmentReq.setExpectedVolumetricDivisor(5000);
+        shipmentReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("20.0"), new BigDecimal("15"), new BigDecimal("15"), new BigDecimal("15"))));
 
         MvcResult createResult = mockMvc.perform(post("/api/v1/shipments")
                         .contentType(MediaType.APPLICATION_JSON)

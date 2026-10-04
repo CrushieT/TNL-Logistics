@@ -59,8 +59,17 @@ public class WaybillIntegrationTest {
     @Autowired
     private TrackingEventRepository trackingEventRepository;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
     @BeforeEach
     void setup() {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
         // Ensure CL-001 is active
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client != null) {
@@ -94,6 +103,8 @@ public class WaybillIntegrationTest {
         regReq.setQuantity(2);
         regReq.setPaidAtRegistration(true);
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setParcels(List.of(p1, p2));
 
         MvcResult regResult = mockMvc.perform(post("/api/v1/shipments")
@@ -215,6 +226,8 @@ public class WaybillIntegrationTest {
         regReq.setShippingFee(new BigDecimal("300.00"));
         regReq.setQuantity(1);
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setParcels(List.of(p1));
 
         MvcResult regResult = mockMvc.perform(post("/api/v1/shipments")
@@ -263,6 +276,8 @@ public class WaybillIntegrationTest {
         regReq.setShippingFee(new BigDecimal("300.00"));
         regReq.setQuantity(1);
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setParcels(List.of(p1));
 
         MvcResult regResult = mockMvc.perform(post("/api/v1/shipments")
@@ -313,6 +328,8 @@ public class WaybillIntegrationTest {
         regReq.setShippingFee(new BigDecimal("300.00"));
         regReq.setQuantity(2);
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setParcels(List.of(p1, p2));
 
         MvcResult regResult = mockMvc.perform(post("/api/v1/shipments")
@@ -407,6 +424,8 @@ public class WaybillIntegrationTest {
         regReq.setShippingFee(new BigDecimal("500.00"));
         regReq.setQuantity(2);
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setParcels(List.of(p1, p2));
 
         MvcResult regResult = mockMvc.perform(post("/api/v1/shipments")

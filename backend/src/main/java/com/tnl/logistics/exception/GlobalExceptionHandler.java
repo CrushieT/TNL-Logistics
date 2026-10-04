@@ -176,7 +176,14 @@ public class GlobalExceptionHandler {
         error.put("timestamp", LocalDateTime.now());
         error.put("status", ex.getStatusCode().value());
         error.put("error", ex.getStatusCode().toString());
-        error.put("message", ex.getReason());
+        String reason = ex.getReason();
+        if (reason != null && reason.contains(": ")) {
+            String[] parts = reason.split(": ", 2);
+            error.put("code", parts[0]);
+            error.put("message", parts[1]);
+        } else {
+            error.put("message", reason);
+        }
         return new ResponseEntity<>(error, ex.getStatusCode());
     }
 

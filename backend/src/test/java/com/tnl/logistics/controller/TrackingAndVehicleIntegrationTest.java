@@ -66,8 +66,17 @@ public class TrackingAndVehicleIntegrationTest {
     @Autowired
     private com.tnl.logistics.repository.WaybillRepository waybillRepository;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
     @BeforeEach
     public void setup() {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
         waybillRepository.deleteAll();
         trackingEventRepository.deleteAll();
         parcelUnitRepository.deleteAll();
@@ -224,6 +233,8 @@ public class TrackingAndVehicleIntegrationTest {
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("350.00"));
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2.5"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10"))));
 
         ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "USR-OFFICE");
@@ -300,6 +311,8 @@ public class TrackingAndVehicleIntegrationTest {
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("200.00"));
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
         ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "USR-OFFICE");
@@ -363,6 +376,8 @@ public class TrackingAndVehicleIntegrationTest {
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("500.00"));
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setParcels(List.of(
                 new ParcelUnitRequest(1, new BigDecimal("5"), new BigDecimal("30"), new BigDecimal("30"), new BigDecimal("30")),
                 new ParcelUnitRequest(2, new BigDecimal("5"), new BigDecimal("30"), new BigDecimal("30"), new BigDecimal("30"))

@@ -19,6 +19,7 @@ export default function RegisterShipmentScreen() {
   const [errorMessage, setErrorMessage] = useState(null);
   const [detailLoadError, setDetailLoadError] = useState(null);
   const [volumetricDivisor, setVolumetricDivisor] = useState(null);
+  const [ratePerKilo, setRatePerKilo] = useState(null);
   const [calculationSettingsState, setCalculationSettingsState] = useState('loading');
   const [calculationSettingsAttempt, setCalculationSettingsAttempt] = useState(0);
 
@@ -44,14 +45,21 @@ export default function RegisterShipmentScreen() {
         if (!Number.isFinite(divisor) || divisor <= 0) {
           throw new Error('Invalid volumetric divisor');
         }
+        const rate = settings?.ratePerKilo != null ? Number(settings.ratePerKilo) : null;
         if (isMounted) {
           setVolumetricDivisor(divisor);
-          setCalculationSettingsState('ready');
+          setRatePerKilo(Number.isFinite(rate) && rate > 0 ? rate : null);
+          if (!Number.isFinite(rate) || rate <= 0) {
+            setCalculationSettingsState('unconfigured');
+          } else {
+            setCalculationSettingsState('ready');
+          }
         }
       })
       .catch(() => {
         if (isMounted) {
           setVolumetricDivisor(null);
+          setRatePerKilo(null);
           setCalculationSettingsState('error');
         }
       });
@@ -123,7 +131,18 @@ export default function RegisterShipmentScreen() {
 
       // Extract accurate server or network error message
       let msg = 'Failed to register shipment.';
-      if (err.response?.data?.message) {
+      if (err.response?.status === 409) {
+        const errCode = err.response?.data?.code;
+        if (errCode === 'STALE_SETTINGS' || err.response?.data?.message?.includes('STALE_SETTINGS')) {
+          setCalculationSettingsAttempt((prev) => prev + 1);
+          msg = 'Calculation settings were updated on the server. Rates have been refreshed. Please review the updated amounts and submit again.';
+        } else if (errCode === 'RATE_PER_KILO_NOT_CONFIGURED' || err.response?.data?.message?.includes('RATE_PER_KILO_NOT_CONFIGURED')) {
+          setCalculationSettingsState('unconfigured');
+          msg = 'Rate per kilo is not configured. An administrator must set the rate per kilo in Settings before shipments can be registered.';
+        } else if (err.response?.data?.message) {
+          msg = err.response.data.message;
+        }
+      } else if (err.response?.data?.message) {
         msg = err.response.data.message;
       } else if (err.response?.data?.errors) {
         const errList = Object.values(err.response.data.errors).join(', ');
@@ -206,6 +225,7 @@ export default function RegisterShipmentScreen() {
         onSubmit={handleSubmit}
         submitting={submitting}
         volumetricDivisor={volumetricDivisor}
+        ratePerKilo={ratePerKilo}
         calculationSettingsState={calculationSettingsState}
         onRetryCalculationSettings={() => setCalculationSettingsAttempt((attempt) => attempt + 1)}
       />

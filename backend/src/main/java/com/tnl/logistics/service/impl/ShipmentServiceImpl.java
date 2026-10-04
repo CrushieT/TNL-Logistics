@@ -33,6 +33,9 @@ public class ShipmentServiceImpl implements ShipmentService {
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("MMM d, yyyy");
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("h:mm a");
+    private static final BigDecimal MAX_DECIMAL_12_2 = new BigDecimal("9999999999.99");
+    private static final BigDecimal MAX_CBM_10_4 = new BigDecimal("999999.9999");
+    private static final BigDecimal ONE_MILLION = new BigDecimal("1000000");
 
     private final ShipmentRepository shipmentRepository;
     private final ParcelUnitRepository parcelUnitRepository;
@@ -88,6 +91,28 @@ public class ShipmentServiceImpl implements ShipmentService {
         AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
                 .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
 
+        // Validate rate per kilo configuration
+        BigDecimal configuredRate = systemSettingService.getRatePerKilo();
+        if (configuredRate == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "RATE_PER_KILO_NOT_CONFIGURED: Rate per kilo is not configured. An administrator must set the rate per kilo before registering shipments.");
+        }
+
+        Integer configuredDivisor = systemSettingService.getVolumetricDivisor();
+        if (configuredDivisor == null || configuredDivisor <= 0) {
+            configuredDivisor = 5000;
+        }
+
+        // Stale-settings guards: reject if expected settings are missing or do not match active settings
+        if (request.getExpectedRatePerKilo() == null || request.getExpectedRatePerKilo().compareTo(configuredRate) != 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "STALE_SETTINGS: Calculation settings have changed. Please refresh and review the updated calculation before submitting.");
+        }
+        if (request.getExpectedVolumetricDivisor() == null || !request.getExpectedVolumetricDivisor().equals(configuredDivisor)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "STALE_SETTINGS: Calculation settings have changed. Please refresh and review the updated calculation before submitting.");
+        }
+
         // Validate parcel items count and contiguous sequence (Item 4)
         if (request.getParcels() == null || request.getParcels().isEmpty()) {
             throw new IllegalArgumentException("Shipment must contain at least one parcel unit.");
@@ -117,16 +142,44 @@ public class ShipmentServiceImpl implements ShipmentService {
             }
         }
 
-        // 1. Pricing Model Calculations
-        BigDecimal totalAmount;
-        BigDecimal otherCharges = request.getOtherCharges() != null ? request.getOtherCharges() : BigDecimal.ZERO;
+        // 1. Per-Unit Measurement & Rating Model Calculations
+        BigDecimal totalActualWeight = BigDecimal.ZERO;
+        BigDecimal totalVolumeCm3 = BigDecimal.ZERO;
 
-        if (request.getChargeModel() == ChargeModel.FLAT) {
-            totalAmount = request.getShippingFee().add(otherCharges);
-        } else {
-            totalAmount = request.getShippingFee()
-                    .multiply(new BigDecimal(request.getQuantity()))
-                    .add(otherCharges);
+        for (ParcelUnitRequest parcelReq : request.getParcels()) {
+            if (parcelReq.getWeightKg() == null || parcelReq.getLengthCm() == null
+                    || parcelReq.getHeightCm() == null || parcelReq.getWidthCm() == null) {
+                throw new IllegalArgumentException("Weight, length, width, and height are required for each parcel unit.");
+            }
+            BigDecimal unitVolume = parcelReq.getLengthCm()
+                    .multiply(parcelReq.getWidthCm())
+                    .multiply(parcelReq.getHeightCm());
+            BigDecimal unitVolumeCbm = unitVolume.divide(ONE_MILLION, 4, RoundingMode.HALF_UP);
+            if (unitVolumeCbm.compareTo(MAX_CBM_10_4) > 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        String.format("CALCULATION_OVERFLOW: Unit #%d volume (%s m³) exceeds maximum allowed storage capacity.", parcelReq.getSeq(), unitVolumeCbm));
+            }
+            totalActualWeight = totalActualWeight.add(parcelReq.getWeightKg());
+            totalVolumeCm3 = totalVolumeCm3.add(unitVolume);
+        }
+
+        BigDecimal divisorBd = new BigDecimal(String.valueOf(configuredDivisor));
+        BigDecimal roundedActualWeight = totalActualWeight.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalVolumetricWeight = totalVolumeCm3.divide(divisorBd, 2, RoundingMode.HALF_UP);
+        BigDecimal billableWeight = roundedActualWeight.max(totalVolumetricWeight);
+        BigDecimal shippingFee = billableWeight.multiply(configuredRate).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal otherCharges = request.getOtherCharges() != null ? request.getOtherCharges() : BigDecimal.ZERO;
+        BigDecimal totalAmount = shippingFee.add(otherCharges);
+
+        if (roundedActualWeight.compareTo(MAX_DECIMAL_12_2) > 0 ||
+                totalVolumetricWeight.compareTo(MAX_DECIMAL_12_2) > 0 ||
+                billableWeight.compareTo(MAX_DECIMAL_12_2) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "CALCULATION_OVERFLOW: Calculated shipment weight exceeds maximum allowed capacity.");
+        }
+        if (shippingFee.compareTo(MAX_DECIMAL_12_2) > 0 || totalAmount.compareTo(MAX_DECIMAL_12_2) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "CALCULATION_OVERFLOW: Calculated shipping fee or total amount exceeds maximum allowed capacity.");
         }
 
         // 2. Generate Sequential Shipment ID: SHP-YYYY-XXX
@@ -134,16 +187,17 @@ public class ShipmentServiceImpl implements ShipmentService {
         long nextShipmentSeq = identifierCounterService.next(IdentifierCounterService.IdentifierFamily.SHIPMENT, Integer.valueOf(currentYear));
         String shipmentId = String.format("SHP-%s-%03d", currentYear, nextShipmentSeq);
 
-        // 3. Save Shipment Entity
+        // 3. Save Shipment Entity with Snapshots (recipient name derived from client)
+        String canonicalRecipientName = client.getName();
         Shipment shipment = new Shipment(
                 shipmentId,
                 client,
-                request.getRecipientName(),
+                canonicalRecipientName,
                 request.getRecipientAddress(),
                 request.getRecipientContact(),
                 request.getQuantity(),
-                request.getChargeModel(),
-                request.getShippingFee(),
+                ChargeModel.PER_KILO,
+                shippingFee,
                 otherCharges,
                 totalAmount,
                 request.getPaidAtRegistration() != null ? request.getPaidAtRegistration() : false,
@@ -151,6 +205,11 @@ public class ShipmentServiceImpl implements ShipmentService {
         );
         shipment.setDescription(request.getDescription());
         shipment.setRoute(request.getRoute());
+        shipment.setAppliedRatePerKilo(configuredRate);
+        shipment.setAppliedVolumetricDivisor(configuredDivisor);
+        shipment.setTotalActualWeight(roundedActualWeight);
+        shipment.setTotalVolumetricWeight(totalVolumetricWeight);
+        shipment.setBillableWeight(billableWeight);
         shipmentRepository.save(shipment);
 
         // 4. Generate Sequential Tracking IDs (TRK-YYYY-XXXXXX) & Process Parcel Units
@@ -229,7 +288,14 @@ public class ShipmentServiceImpl implements ShipmentService {
                 shipment.getRecipientName(),
                 totalAmount,
                 shipment.getPaidAtRegistration(),
-                trackingIds
+                trackingIds,
+                configuredRate,
+                configuredDivisor,
+                roundedActualWeight,
+                totalVolumetricWeight,
+                billableWeight,
+                shippingFee,
+                otherCharges
         );
     }
 
@@ -381,7 +447,13 @@ public class ShipmentServiceImpl implements ShipmentService {
         resp.setStatus(rollup.overallStatus);
         resp.setStatusRollup(rollup.statusRollup);
         resp.setPayment(paymentStr);
-        resp.setChargeModel(shipment.getChargeModel() == ChargeModel.PER_PARCEL ? "Per unit" : "Flat");
+        String chargeModelLabel = "Flat";
+        if (shipment.getChargeModel() == ChargeModel.PER_KILO) {
+            chargeModelLabel = "Per kilo";
+        } else if (shipment.getChargeModel() == ChargeModel.PER_PARCEL) {
+            chargeModelLabel = "Per unit";
+        }
+        resp.setChargeModel(chargeModelLabel);
         resp.setShippingFee(shipment.getShippingFee());
         resp.setOtherCharges(shipment.getOtherCharges());
         resp.setTotalAmount(shipment.getTotalAmount());
@@ -391,11 +463,19 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         resp.setDestination(extractDestination(shipment.getRoute()));
 
+        // Calculation snapshots
+        resp.setAppliedRatePerKilo(shipment.getAppliedRatePerKilo());
+        resp.setAppliedVolumetricDivisor(shipment.getAppliedVolumetricDivisor());
+        resp.setTotalActualWeight(shipment.getTotalActualWeight());
+        resp.setTotalVolumetricWeight(shipment.getTotalVolumetricWeight());
+        resp.setBillableWeight(shipment.getBillableWeight());
+
         // Dimensions and Weight calculation
         BigDecimal actualWeight = BigDecimal.ZERO;
         BigDecimal length = new BigDecimal("50");
         BigDecimal width = new BigDecimal("40");
         BigDecimal height = new BigDecimal("35");
+        BigDecimal totalVolumeCm3 = BigDecimal.ZERO;
 
         if (!parcels.isEmpty()) {
             ParcelUnit first = parcels.get(0);
@@ -407,29 +487,42 @@ public class ShipmentServiceImpl implements ShipmentService {
                 if (p.getWeightKg() != null) {
                     actualWeight = actualWeight.add(p.getWeightKg());
                 }
+                if (p.getLengthCm() != null && p.getWidthCm() != null && p.getHeightCm() != null) {
+                    totalVolumeCm3 = totalVolumeCm3.add(p.getLengthCm().multiply(p.getWidthCm()).multiply(p.getHeightCm()));
+                }
             }
         }
-        if (actualWeight.compareTo(BigDecimal.ZERO) == 0) {
+        if (actualWeight.compareTo(BigDecimal.ZERO) == 0 && shipment.getTotalActualWeight() == null) {
             actualWeight = new BigDecimal("2.5");
         }
 
-        // Volume in cm3: L x W x H per unit * quantity
-        BigDecimal unitVolumeCm3 = length.multiply(width).multiply(height);
-        BigDecimal totalVolumeCm3 = unitVolumeCm3.multiply(new BigDecimal(shipment.getQuantity()));
+        if (totalVolumeCm3.compareTo(BigDecimal.ZERO) == 0) {
+            BigDecimal unitVolumeCm3 = length.multiply(width).multiply(height);
+            totalVolumeCm3 = unitVolumeCm3.multiply(new BigDecimal(shipment.getQuantity()));
+        }
 
-        // Volumetric weight: totalVolumeCm3 / divisor
-        int divisor = (systemSettingService != null && systemSettingService.getVolumetricDivisor() != null)
+        int divisor = shipment.getAppliedVolumetricDivisor() != null
+                ? shipment.getAppliedVolumetricDivisor()
+                : ((systemSettingService != null && systemSettingService.getVolumetricDivisor() != null)
                 ? systemSettingService.getVolumetricDivisor()
-                : 5000;
-        BigDecimal volumetricWeight = totalVolumeCm3.divide(new BigDecimal(String.valueOf(divisor)), 2, RoundingMode.HALF_UP);
+                : 5000);
 
-        // Billable weight: max(actualWeight, volumetricWeight)
-        BigDecimal billableWeight = actualWeight.max(volumetricWeight);
+        BigDecimal volumetricWeight = shipment.getTotalVolumetricWeight() != null
+                ? shipment.getTotalVolumetricWeight()
+                : totalVolumeCm3.divide(new BigDecimal(String.valueOf(divisor)), 2, RoundingMode.HALF_UP);
+
+        BigDecimal effectiveActualWeight = shipment.getTotalActualWeight() != null
+                ? shipment.getTotalActualWeight()
+                : actualWeight;
+
+        BigDecimal billableWeight = shipment.getBillableWeight() != null
+                ? shipment.getBillableWeight()
+                : effectiveActualWeight.max(volumetricWeight);
 
         resp.setLengthCm(length);
         resp.setWidthCm(width);
         resp.setHeightCm(height);
-        resp.setWeightKg(actualWeight);
+        resp.setWeightKg(effectiveActualWeight);
         resp.setVolumeCm3(totalVolumeCm3);
         resp.setVolumetricWeightKg(volumetricWeight);
         resp.setBillableWeightKg(billableWeight);
