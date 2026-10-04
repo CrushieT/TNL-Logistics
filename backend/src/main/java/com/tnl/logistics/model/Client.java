@@ -1,6 +1,7 @@
 package com.tnl.logistics.model;
 
 import jakarta.persistence.*;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Objects;
 import org.hibernate.annotations.CreationTimestamp;
@@ -35,6 +36,9 @@ public class Client implements Persistable<String> {
     @Enumerated(EnumType.STRING)
     @Column(name = "default_rate_type", nullable = false)
     private ChargeModel defaultRateType = ChargeModel.FLAT;
+
+    @Column(name = "rate_per_kilo", precision = 12, scale = 2)
+    private BigDecimal ratePerKilo;
 
     @Column(name = "active", nullable = false)
     private Boolean active = true;
@@ -112,6 +116,9 @@ public class Client implements Persistable<String> {
 
     public ChargeModel getDefaultRateType() { return defaultRateType; }
     public void setDefaultRateType(ChargeModel defaultRateType) { this.defaultRateType = defaultRateType; }
+
+    public BigDecimal getRatePerKilo() { return ratePerKilo; }
+    public void setRatePerKilo(BigDecimal ratePerKilo) { this.ratePerKilo = ratePerKilo; }
 
     public Boolean getActive() { return active; }
     public void setActive(Boolean active) { this.active = active; }

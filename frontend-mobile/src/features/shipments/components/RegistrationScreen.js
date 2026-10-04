@@ -98,9 +98,11 @@ export function RegistrationScreen() {
 
   useEffect(() => {
     const controller = new AbortController();
+    const selectedClientId = form.clientMode === 'EXISTING' ? form.clientId : null;
     setSettingsState('loading');
-    shipmentApi.getCalculationSettings(controller.signal).then((settings) => {
+    shipmentApi.getCalculationSettings(selectedClientId, controller.signal).then((settings) => {
       if (controller.signal.aborted) return;
+      if (selectedClientId && settings.clientId !== selectedClientId) return;
       if (!Number.isFinite(settings.volumetricDivisor) || settings.volumetricDivisor <= 0) {
         throw new Error('Missing divisor');
       }
@@ -122,7 +124,7 @@ export function RegistrationScreen() {
       }
     });
     return () => controller.abort();
-  }, [settingsAttempt]);
+  }, [form.clientId, form.clientMode, settingsAttempt]);
 
   useEffect(() => {
     const fieldName = pendingFocusField.current;
@@ -363,7 +365,7 @@ export function RegistrationScreen() {
         setSettingsAttempt((c) => c + 1);
         const code = error.response?.data?.code;
         if (code === 'RATE_PER_KILO_NOT_CONFIGURED') {
-          setErrorMessage('Shipment registration is blocked because Rate per Kilo is not configured on the server. Please ask an administrator to set the rate in Settings.');
+          setErrorMessage('Shipment registration is blocked because neither this client nor the system has a configured rate per kilo.');
         } else {
           setErrorMessage('Rate or calculation settings were updated on the server. Totals have been refreshed. Please review and resubmit.');
         }
@@ -528,7 +530,7 @@ export function RegistrationScreen() {
                 <Text style={styles.rateValue}>
                   {ratePerKilo !== null ? `₱${ratePerKilo.toFixed(2)} / kg` : '—'}
                 </Text>
-                <Text style={styles.helper}>Configured by administrator.</Text>
+                <Text style={styles.helper}>Rate for selected client.</Text>
               </View>
 
               <View style={styles.calculations}>
@@ -573,7 +575,7 @@ export function RegistrationScreen() {
                 <View style={styles.unconfiguredBox}>
                   <Text style={styles.unconfiguredTitle}>Rate per Kilo Not Configured</Text>
                   <Text style={styles.unconfiguredText}>
-                    Shipment registration is blocked because Rate per Kilo is not configured. An administrator must set the rate in Settings before shipments can be registered.
+                    Shipment registration is blocked because neither this client nor the system has a configured rate per kilo.
                   </Text>
                 </View>
               ) : null}

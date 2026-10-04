@@ -24,6 +24,7 @@ export default function ShipmentForm({
   volumetricDivisor,
   ratePerKilo,
   calculationSettingsState = 'loading',
+  onPricingClientChange,
   onRetryCalculationSettings,
 }) {
   const { width } = useWindowDimensions();
@@ -96,6 +97,10 @@ export default function ShipmentForm({
   const derivedRecipientName = clientMode === 'EXISTING'
     ? (selectedClient?.name || '')
     : (newClientName.trim() || '');
+
+  useEffect(() => {
+    onPricingClientChange?.(clientMode === 'EXISTING' ? clientId : null);
+  }, [clientId, clientMode, onPricingClientChange]);
 
   function handleQuantityChange(value) {
     const cleaned = value.replace(/[^0-9]/g, '');

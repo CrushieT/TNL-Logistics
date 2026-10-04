@@ -62,6 +62,13 @@ public class ShipmentController {
         return ResponseEntity.ok(shipments);
     }
 
+    @GetMapping("/calculation-settings")
+    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    public ResponseEntity<ShipmentCalculationSettingsResponse> getCalculationSettings(
+            @RequestParam String clientId) {
+        return ResponseEntity.ok(shipmentService.getCalculationSettings(clientId));
+    }
+
     @GetMapping("/{shipmentId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
     public ResponseEntity<ShipmentDetailResponse> getShipmentById(@PathVariable String shipmentId) {

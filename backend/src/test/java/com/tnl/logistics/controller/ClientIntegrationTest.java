@@ -220,6 +220,86 @@ public class ClientIntegrationTest {
     }
 
     @Test
+    public void testAdminManagesClientRateAndOfficeReadsEffectiveRate() throws Exception {
+        Client client = new Client(
+                "CL-001",
+                "Negotiated Rate Client",
+                "Baguio City",
+                "09170000000",
+                null,
+                ChargeModel.FLAT,
+                true
+        );
+        clientRepository.saveAndFlush(client);
+
+        String mobileOfficeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        String fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
+
+        mockMvc.perform(get("/api/v1/shipments/calculation-settings")
+                        .header("Authorization", mobileOfficeToken)
+                        .param("clientId", "CL-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.clientId").value("CL-001"))
+                .andExpect(jsonPath("$.ratePerKilo").value(100.00))
+                .andExpect(jsonPath("$.volumetricDivisor").value(5000));
+
+        String customRatePayload = "{\"ratePerKilo\":75.50}";
+        mockMvc.perform(put("/api/v1/clients/CL-001/rate-per-kilo")
+                        .header("Authorization", mobileOfficeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(customRatePayload))
+                .andExpect(status().isForbidden());
+        assertNull(clientRepository.findById("CL-001").orElseThrow().getRatePerKilo());
+
+        mockMvc.perform(put("/api/v1/clients/CL-001/rate-per-kilo")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(customRatePayload))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/clients/CL-001")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ratePerKilo").value(75.50))
+                .andExpect(jsonPath("$.globalRatePerKilo").value(100.00))
+                .andExpect(jsonPath("$.effectiveRatePerKilo").value(75.50));
+
+        mockMvc.perform(get("/api/v1/shipments/calculation-settings")
+                        .header("Authorization", mobileOfficeToken)
+                        .param("clientId", "CL-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ratePerKilo").value(75.50));
+
+        mockMvc.perform(put("/api/v1/clients/CL-001/rate-per-kilo")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ratePerKilo\":-1}"))
+                .andExpect(status().isBadRequest());
+        assertEquals(0, new BigDecimal("75.50").compareTo(
+                clientRepository.findById("CL-001").orElseThrow().getRatePerKilo()));
+
+        mockMvc.perform(get("/api/v1/shipments/calculation-settings")
+                        .header("Authorization", fieldToken)
+                        .param("clientId", "CL-001"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/shipments/calculation-settings")
+                        .param("clientId", "CL-001"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(put("/api/v1/clients/CL-001/rate-per-kilo")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ratePerKilo\":null}"))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/shipments/calculation-settings")
+                        .header("Authorization", mobileOfficeToken)
+                        .param("clientId", "CL-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ratePerKilo").value(100.00));
+    }
+
+    @Test
     public void testPaginatedSearchAndZeroNPlusOneAggregations() throws Exception {
         // 1. Create client
         Client client = new Client(

@@ -73,6 +73,12 @@ export async function updateClient(clientId, clientData) {
   return mapClientRecord(data);
 }
 
+export async function updateClientRatePerKilo(clientId, ratePerKilo) {
+  await apiClient.put(`/clients/${clientId}/rate-per-kilo`, {
+    ratePerKilo,
+  });
+}
+
 export async function deleteClient(clientId) {
   const { data } = await apiClient.delete(`/clients/${clientId}`);
   return data;

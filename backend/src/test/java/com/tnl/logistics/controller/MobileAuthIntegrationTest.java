@@ -121,10 +121,10 @@ public class MobileAuthIntegrationTest {
             mobileDeviceBindingRepository.save(createBinding("dev-field-device", fieldUser.getUserId(), FIELD_DEVICE_TOKEN));
         }
 
-        AppUser haulerUser = appUserRepository.findByUsername("hauler1").orElse(null);
+        AppUser haulerUser = appUserRepository.findByUsername("hauler").orElse(null);
         if (haulerUser != null) {
             haulerUser.setPinHash(null);
-            haulerUser.setPasswordHash(passwordEncoder.encode("field123"));
+            haulerUser.setPasswordHash(passwordEncoder.encode("hauler123"));
             haulerUser.setMustChangePassword(false);
             haulerUser.setActive(true);
             haulerUser.setTokenVersion(1);
@@ -184,14 +184,14 @@ public class MobileAuthIntegrationTest {
 
     @Test
     void testMobileLoginFieldStaffWithoutPinRequiresSetup() throws Exception {
-        LoginRequest request = new LoginRequest("hauler1", "field123");
+        LoginRequest request = new LoginRequest("hauler", "hauler123");
 
         mockMvc.perform(post("/api/v1/auth/mobile-login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").isString())
-                .andExpect(jsonPath("$.username").value("hauler1"))
+                .andExpect(jsonPath("$.username").value("hauler"))
                 .andExpect(jsonPath("$.hasPinSet").value(false))
                 .andExpect(jsonPath("$.deviceId").isString())
                 .andExpect(jsonPath("$.deviceToken").isString());
@@ -280,7 +280,7 @@ public class MobileAuthIntegrationTest {
 
     @Test
     void testMobileSetupPinSuccess() throws Exception {
-        AppUser haulerUser = appUserRepository.findByUsername("hauler1").orElseThrow();
+        AppUser haulerUser = appUserRepository.findByUsername("hauler").orElseThrow();
         String token = JwtTokenProvider.generateToken(haulerUser.getUserId(), haulerUser.getRole().name(), haulerUser.getTokenVersion());
 
         MobilePinSetupRequest setupRequest = new MobilePinSetupRequest("7777");
@@ -297,17 +297,17 @@ public class MobileAuthIntegrationTest {
                 .andExpect(jsonPath("$.token").isString());
 
         // Subsequent PIN login should succeed with bound device
-        MobilePinLoginRequest loginRequest = new MobilePinLoginRequest("7777", "hauler1", "dev-hauler-device", HAULER_DEVICE_TOKEN);
+        MobilePinLoginRequest loginRequest = new MobilePinLoginRequest("7777", "hauler", "dev-hauler-device", HAULER_DEVICE_TOKEN);
         mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(loginRequest)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.username").value("hauler1"));
+                .andExpect(jsonPath("$.username").value("hauler"));
     }
 
     @Test
     void testMobileSetupPinIncrementsTokenVersionAndRevokesOldToken() throws Exception {
-        AppUser haulerUser = appUserRepository.findByUsername("hauler1").orElseThrow();
+        AppUser haulerUser = appUserRepository.findByUsername("hauler").orElseThrow();
         String oldToken = JwtTokenProvider.generateToken(haulerUser.getUserId(), haulerUser.getRole().name(), haulerUser.getTokenVersion());
 
         // Pre-check: old token works
@@ -340,12 +340,12 @@ public class MobileAuthIntegrationTest {
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + newToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.username").value("hauler1"));
+                .andExpect(jsonPath("$.username").value("hauler"));
     }
 
     @Test
     void testMobileSetupPinRequiresPasswordChangeFirst() throws Exception {
-        AppUser haulerUser = appUserRepository.findByUsername("hauler1").orElseThrow();
+        AppUser haulerUser = appUserRepository.findByUsername("hauler").orElseThrow();
         haulerUser.setMustChangePassword(true);
         appUserRepository.save(haulerUser);
 
@@ -364,7 +364,7 @@ public class MobileAuthIntegrationTest {
 
     @Test
     void testMobileSetupPinInvalidFormatReturnsBadRequest() throws Exception {
-        AppUser haulerUser = appUserRepository.findByUsername("hauler1").orElseThrow();
+        AppUser haulerUser = appUserRepository.findByUsername("hauler").orElseThrow();
         String token = JwtTokenProvider.generateToken(haulerUser.getUserId(), haulerUser.getRole().name(), haulerUser.getTokenVersion());
 
         MobilePinSetupRequest setupRequest = new MobilePinSetupRequest("12"); // < 4 digits
@@ -721,7 +721,7 @@ public class MobileAuthIntegrationTest {
 
     @Test
     void testMobilePinLoginWhenPinClearedReturnsConflictPinNotSet() throws Exception {
-        MobilePinLoginRequest request = new MobilePinLoginRequest("0000", "hauler1", "dev-hauler-device", HAULER_DEVICE_TOKEN);
+        MobilePinLoginRequest request = new MobilePinLoginRequest("0000", "hauler", "dev-hauler-device", HAULER_DEVICE_TOKEN);
 
         mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -734,7 +734,7 @@ public class MobileAuthIntegrationTest {
 
     @Test
     void testMobilePinLoginWhenPinClearedDoesNotTriggerRateLimitLockout() throws Exception {
-        MobilePinLoginRequest request = new MobilePinLoginRequest("0000", "hauler1", "dev-hauler-device", HAULER_DEVICE_TOKEN);
+        MobilePinLoginRequest request = new MobilePinLoginRequest("0000", "hauler", "dev-hauler-device", HAULER_DEVICE_TOKEN);
 
         for (int i = 0; i < 6; i++) {
             mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
@@ -748,11 +748,11 @@ public class MobileAuthIntegrationTest {
     @Test
     void testMobilePinStatusReturnsHasPinSetFalseWhenCleared() throws Exception {
         mockMvc.perform(get("/api/v1/auth/mobile-pin-status")
-                        .param("username", "hauler1")
+                        .param("username", "hauler")
                         .header("X-Device-Id", "dev-hauler-device")
                         .header("X-Device-Token", HAULER_DEVICE_TOKEN))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.username").value("hauler1"))
+                .andExpect(jsonPath("$.username").value("hauler"))
                 .andExpect(jsonPath("$.hasPinSet").value(false))
                 .andExpect(jsonPath("$.role").doesNotExist())
                 .andExpect(jsonPath("$.fullName").doesNotExist());
@@ -940,7 +940,7 @@ public class MobileAuthIntegrationTest {
 
     @Test
     void testInitialPinRequiresRecentJwtAndBindingWithClockSkewAllowance() throws Exception {
-        AppUser haulerUser = appUserRepository.findByUsername("hauler1").orElseThrow();
+        AppUser haulerUser = appUserRepository.findByUsername("hauler").orElseThrow();
         MobileDeviceBinding binding = mobileDeviceBindingRepository.findByDeviceId("dev-hauler-device").orElseThrow();
         long now = System.currentTimeMillis() / 1000;
 
@@ -957,7 +957,7 @@ public class MobileAuthIntegrationTest {
                         .content("{\"pin\":\"4821\"}"))
                 .andExpect(status().isOk());
 
-        haulerUser = appUserRepository.findByUsername("hauler1").orElseThrow();
+        haulerUser = appUserRepository.findByUsername("hauler").orElseThrow();
         haulerUser.setPinHash(null);
         haulerUser.setTokenVersion(1);
         appUserRepository.saveAndFlush(haulerUser);
@@ -974,7 +974,7 @@ public class MobileAuthIntegrationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("PASSWORD_REAUTH_REQUIRED"));
 
-        AppUser unchangedUser = appUserRepository.findByUsername("hauler1").orElseThrow();
+        AppUser unchangedUser = appUserRepository.findByUsername("hauler").orElseThrow();
         assertNull(unchangedUser.getPinHash());
         assertEquals(1, unchangedUser.getTokenVersion());
     }

@@ -20,6 +20,13 @@ export async function getShipment(shipmentId) {
   return data;
 }
 
+export async function getShipmentCalculationSettings(clientId) {
+  const { data } = await apiClient.get('/shipments/calculation-settings', {
+    params: { clientId },
+  });
+  return data;
+}
+
 export async function getParcelUnit(trackingId) {
   const { data } = await apiClient.get(`/parcel-units/${trackingId}`);
   return data;

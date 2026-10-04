@@ -5,6 +5,8 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
+  Switch,
+  TextInput,
   useWindowDimensions,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -15,6 +17,7 @@ import StatusBadge from '../../components/common/StatusBadge';
 import {
   getClient,
   updateClient,
+  updateClientRatePerKilo,
   deleteClient,
   RegisterClientModal,
   DeactivateClientModal,
@@ -32,6 +35,10 @@ export default function ClientProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [deactivateModalVisible, setDeactivateModalVisible] = useState(false);
+  const [clientRateEnabled, setClientRateEnabled] = useState(false);
+  const [clientRateInput, setClientRateInput] = useState('');
+  const [clientRateSaving, setClientRateSaving] = useState(false);
+  const [clientRateMessage, setClientRateMessage] = useState('');
 
   const loadClientData = useCallback(async (showSpinner = true) => {
     if (!id) return;
@@ -40,6 +47,10 @@ export default function ClientProfileScreen() {
       const data = await getClient(id);
       if (data) {
         setClient(data);
+        setClientRateEnabled(data.ratePerKilo !== null && data.ratePerKilo !== undefined);
+        setClientRateInput(data.ratePerKilo !== null && data.ratePerKilo !== undefined
+          ? String(data.ratePerKilo)
+          : '');
       }
     } catch (err) {
       console.warn('Client profile fetch failed:', err?.message);
@@ -82,6 +93,28 @@ export default function ClientProfileScreen() {
   const handleDeactivateClient = async (clientId) => {
     await deleteClient(clientId);
     router.push('/clients');
+  };
+
+  const handleSaveClientRate = async () => {
+    const parsedRate = Number(clientRateInput);
+    if (clientRateEnabled && (!Number.isFinite(parsedRate) || parsedRate <= 0)) {
+      setClientRateMessage('Enter a valid rate greater than zero.');
+      return;
+    }
+
+    setClientRateSaving(true);
+    setClientRateMessage('');
+    try {
+      await updateClientRatePerKilo(id, clientRateEnabled ? parsedRate : null);
+      await loadClientData(false);
+      setClientRateMessage(clientRateEnabled
+        ? 'Client-specific rate saved.'
+        : 'Client-specific rate disabled. The global rate will be used.');
+    } catch (error) {
+      setClientRateMessage(error.response?.data?.message || 'Unable to save the client rate.');
+    } finally {
+      setClientRateSaving(false);
+    }
   };
 
   if (loading) {
@@ -200,6 +233,62 @@ export default function ClientProfileScreen() {
                 <Text style={styles.metaLabel}>ACCOUNT STATUS</Text>
                 <StatusBadge value={client.active ? 'Active' : 'Inactive'} kind="status" />
               </View>
+            </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.clientRateSection}>
+              <View style={styles.clientRateHeader}>
+                <View style={styles.clientRateCopy}>
+                  <Text style={styles.metaLabel}>CLIENT-SPECIFIC RATE PER KILO</Text>
+                  <Text style={styles.rateHelper}>
+                    Enable this only when this client has a negotiated rate.
+                  </Text>
+                </View>
+                <Switch
+                  accessibilityLabel="Use client-specific rate per kilo"
+                  value={clientRateEnabled}
+                  onValueChange={(enabled) => {
+                    setClientRateEnabled(enabled);
+                    setClientRateMessage('');
+                  }}
+                  disabled={clientRateSaving}
+                  trackColor={{ false: colors.border, true: colors.ink }}
+                />
+              </View>
+
+              {clientRateEnabled ? (
+                <View style={styles.clientRateInputRow}>
+                  <Text style={styles.currencyPrefix}>₱</Text>
+                  <TextInput
+                    accessibilityLabel="Client rate per kilo"
+                    value={clientRateInput}
+                    onChangeText={(value) => {
+                      setClientRateInput(value.replace(/[^0-9.]/g, ''));
+                      setClientRateMessage('');
+                    }}
+                    keyboardType="decimal-pad"
+                    inputMode="decimal"
+                    maxLength={13}
+                    placeholder="0.00"
+                    placeholderTextColor={colors.inkFaint}
+                    style={styles.clientRateInput}
+                  />
+                  <Text style={styles.rateUnit}>per kg</Text>
+                </View>
+              ) : null}
+
+              <Text style={styles.rateHelper}>
+                Global rate: {client.globalRatePerKilo != null ? `₱${Number(client.globalRatePerKilo).toFixed(2)}` : 'Not configured'}
+                {' | '}Current effective rate: {client.effectiveRatePerKilo != null ? `₱${Number(client.effectiveRatePerKilo).toFixed(2)}` : 'Not configured'}
+              </Text>
+              {clientRateMessage ? <Text style={styles.clientRateMessage}>{clientRateMessage}</Text> : null}
+              <Button
+                label={clientRateSaving ? 'Saving...' : 'Save Rate'}
+                variant="secondary"
+                disabled={clientRateSaving}
+                onPress={handleSaveClientRate}
+              />
             </View>
 
             <View style={styles.divider} />
@@ -468,6 +557,56 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
     marginTop: spacing.xs,
+  },
+  clientRateSection: {
+    gap: spacing.sm,
+  },
+  clientRateHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  clientRateCopy: {
+    flex: 1,
+  },
+  clientRateInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: spacing.md,
+  },
+  currencyPrefix: {
+    fontFamily: fonts.mono,
+    fontSize: 15,
+    color: colors.ink,
+  },
+  clientRateInput: {
+    flex: 1,
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
+    fontFamily: fonts.mono,
+    fontSize: 15,
+    color: colors.ink,
+  },
+  rateUnit: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: colors.inkFaint,
+  },
+  rateHelper: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    lineHeight: 16,
+    color: colors.inkFaint,
+  },
+  clientRateMessage: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    lineHeight: 16,
+    color: colors.inkSoft,
   },
   emptyShipments: {
     padding: spacing.xxl,

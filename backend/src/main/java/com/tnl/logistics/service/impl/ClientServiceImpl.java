@@ -11,6 +11,7 @@ import com.tnl.logistics.repository.PaymentRepository;
 import com.tnl.logistics.repository.ShipmentRepository;
 import com.tnl.logistics.service.ClientService;
 import com.tnl.logistics.service.IdentifierCounterService;
+import com.tnl.logistics.service.SystemSettingService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -36,17 +37,20 @@ public class ClientServiceImpl implements ClientService {
     private final PaymentRepository paymentRepository;
     private final ParcelUnitRepository parcelUnitRepository;
     private final IdentifierCounterService identifierCounterService;
+    private final SystemSettingService systemSettingService;
 
     public ClientServiceImpl(ClientRepository clientRepository,
                              ShipmentRepository shipmentRepository,
                              PaymentRepository paymentRepository,
                              ParcelUnitRepository parcelUnitRepository,
-                             IdentifierCounterService identifierCounterService) {
+                             IdentifierCounterService identifierCounterService,
+                             SystemSettingService systemSettingService) {
         this.clientRepository = clientRepository;
         this.shipmentRepository = shipmentRepository;
         this.paymentRepository = paymentRepository;
         this.parcelUnitRepository = parcelUnitRepository;
         this.identifierCounterService = identifierCounterService;
+        this.systemSettingService = systemSettingService;
     }
 
     @Override
@@ -100,7 +104,7 @@ public class ClientServiceImpl implements ClientService {
         List<ShipmentSummaryResponse> shipmentSummaries = new ArrayList<>();
 
         if (shipments.isEmpty()) {
-            return new ClientDetailResponse(
+            ClientDetailResponse response = new ClientDetailResponse(
                     client.getClientId(),
                     client.getName(),
                     client.getAddress(),
@@ -117,6 +121,8 @@ public class ClientServiceImpl implements ClientService {
                     0L,
                     Collections.emptyList()
             );
+            applyRateDetails(response, client);
+            return response;
         }
 
         List<String> shipmentIds = shipments.stream()
@@ -183,7 +189,7 @@ public class ClientServiceImpl implements ClientService {
 
         BigDecimal outstandingBalance = totalCharges.subtract(totalPaid).max(BigDecimal.ZERO);
 
-        return new ClientDetailResponse(
+        ClientDetailResponse response = new ClientDetailResponse(
                 client.getClientId(),
                 client.getName(),
                 client.getAddress(),
@@ -200,6 +206,8 @@ public class ClientServiceImpl implements ClientService {
                 completedDeliveries,
                 shipmentSummaries
         );
+        applyRateDetails(response, client);
+        return response;
     }
 
     @Override
@@ -268,6 +276,14 @@ public class ClientServiceImpl implements ClientService {
         Client saved = clientRepository.save(client);
         List<ClientSummaryResponse> summaries = buildClientSummaries(Collections.singletonList(saved));
         return summaries.get(0);
+    }
+
+    @Override
+    public void updateRatePerKilo(String clientId, BigDecimal ratePerKilo) {
+        Client client = clientRepository.findById(clientId)
+                .orElseThrow(() -> new IllegalArgumentException("Client not found with ID: " + clientId));
+        client.setRatePerKilo(ratePerKilo);
+        clientRepository.save(client);
     }
 
     @Override
@@ -341,6 +357,15 @@ public class ClientServiceImpl implements ClientService {
                     balance
             );
         }).collect(Collectors.toList());
+    }
+
+    private void applyRateDetails(ClientDetailResponse response, Client client) {
+        BigDecimal globalRatePerKilo = systemSettingService.getRatePerKilo();
+        response.setRatePerKilo(client.getRatePerKilo());
+        response.setGlobalRatePerKilo(globalRatePerKilo);
+        response.setEffectiveRatePerKilo(
+                client.getRatePerKilo() != null ? client.getRatePerKilo() : globalRatePerKilo
+        );
     }
 
     private static class RollupStatus {

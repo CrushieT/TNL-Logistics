@@ -22,6 +22,11 @@
   - Backend rating engine enforces `PER_KILO` charge model, mandatory `@NotNull` stale settings guards (`expectedRatePerKilo`, `expectedVolumetricDivisor`), calculation overflow bounds (`DECIMAL(12,2)` / `DECIMAL(10,4)`), decimal-safe `HALF_UP` calculations, and recipient consignee identity derived from active billing client.
   - Web and mobile registration applications updated with compact 10-unit paginated parcel editors, render-aware jump-to-error navigation, modular extracted components (`ParcelUnitsEditor.js`, `ShipmentPricingSummary.js`), read-only rate per kilo, live breakdown summaries, quantity sync with confirmation guards, and 409 stale-settings recovery.
   - Full automated integration and unit test suites passing across backend (343 tests), web (52 tests), and mobile (154 tests).
+- **Phase 1.1 - Client-Specific Rate Override:** [COMPLETED]
+  - Migration `V32__add_client_rate_per_kilo.sql` adds one nullable Admin-managed rate per kilo to each client; null retains global System Settings inheritance.
+  - Backend registration resolves the client rate first, falls back to the global rate, applies stale-rate protection, and stores the effective numeric rate in the existing shipment snapshot.
+  - Web Admin client profiles can enable, update, or disable the custom rate; web and mobile registration reload effective pricing after client selection.
+  - Verification passed across backend (346 tests), web (53 tests), mobile (157 tests), and Expo web/Android production exports.
 - **Phases 2-6 - Implementation and Verification:** [UPCOMING]
   - Delivery sequencing and remaining acceptance criteria are defined in `.review/client-demo-change-plan.md`.
 
