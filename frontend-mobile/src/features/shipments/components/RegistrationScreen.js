@@ -205,6 +205,12 @@ export function RegistrationScreen() {
     const sanitized = value.replace(/[^0-9]/g, '');
     const newQty = parseInt(sanitized, 10);
 
+    if (sanitized === '0') {
+      setForm((prev) => ({ ...prev, quantity: '0' }));
+      setErrors((prev) => ({ ...prev, quantity: 'Enter a whole number from 1 to 1000.' }));
+      return;
+    }
+
     if (isNaN(newQty) || newQty < 1) {
       setForm((prev) => ({ ...prev, quantity: sanitized }));
       return;
@@ -248,6 +254,14 @@ export function RegistrationScreen() {
       }
     } else {
       setForm((prev) => ({ ...prev, quantity: String(targetQty) }));
+      setErrors((prev) => ({ ...prev, quantity: undefined }));
+    }
+  }
+
+  function handleQuantityBlur() {
+    const qtyNum = parseInt(form.quantity, 10);
+    if (isNaN(qtyNum) || qtyNum < 1 || qtyNum > 1000) {
+      setForm((prev) => ({ ...prev, quantity: String(Math.max(1, form.parcels.length)) }));
       setErrors((prev) => ({ ...prev, quantity: undefined }));
     }
   }
@@ -484,6 +498,7 @@ export function RegistrationScreen() {
                     accessibilityLabel="Quantity in parcel units"
                     value={form.quantity}
                     onChangeText={handleQuantityChange}
+                    onBlur={handleQuantityBlur}
                     editable={!isSubmitting}
                     keyboardType="number-pad"
                     inputMode="numeric"

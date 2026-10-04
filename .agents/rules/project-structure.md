@@ -81,7 +81,7 @@ tnl-logistics/
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
 │   │   ├── utils/                   # Shared QR facade
 │   │   └── vendor/qrcodegen/        # Vendored Project Nayuki QR generator
-│   ├── tests/                       # Web unit suites (authSlidingSession.test.mjs, labelPrint.test.mjs, qr.test.mjs, registrationCalculations.test.mjs, reportPrint.test.mjs, sseClient.test.mjs)
+│   ├── tests/                       # Web unit suites (authSlidingSession.test.mjs, clientApiMapping.test.mjs, labelPrint.test.mjs, qr.test.mjs, registrationCalculations.test.mjs, reportPrint.test.mjs, sseClient.test.mjs)
 │   ├── assets/                      # favicon.png, tracking-logo.png
 │   ├── app.json                     # Expo web configuration
 │   ├── package.json

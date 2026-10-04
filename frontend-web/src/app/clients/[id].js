@@ -155,7 +155,20 @@ export default function ClientProfileScreen() {
 
       <View style={styles.headerRow}>
         <View>
-          <Text style={styles.eyebrow}>{client.clientId}</Text>
+          <View style={styles.eyebrowRow}>
+            <Text style={styles.eyebrow}>{client.clientId}</Text>
+            {client.ratePerKilo !== null && client.ratePerKilo !== undefined ? (
+              <View style={styles.vipHeaderBadge}>
+                <Text style={styles.vipHeaderBadgeText}>
+                  VIP CLIENT · ₱{Number(client.ratePerKilo).toFixed(2)}/KG
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.regularHeaderBadge}>
+                <Text style={styles.regularHeaderBadgeText}>REGULAR CLIENT</Text>
+              </View>
+            )}
+          </View>
           <Text style={styles.title}>{(client.name || '').toUpperCase()}</Text>
         </View>
         <View style={styles.headerActions}>
@@ -427,7 +440,42 @@ const styles = StyleSheet.create({
     color: colors.inkFaint,
     fontWeight: '700',
     letterSpacing: 0.8,
+  },
+  eyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     marginBottom: 4,
+  },
+  vipHeaderBadge: {
+    backgroundColor: colors.warningSoft,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    borderRadius: radius.sm,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  vipHeaderBadgeText: {
+    fontFamily: fonts.mono,
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: colors.warning,
+    letterSpacing: 0.4,
+  },
+  regularHeaderBadge: {
+    backgroundColor: colors.canvas,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  regularHeaderBadgeText: {
+    fontFamily: fonts.mono,
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: colors.inkFaint,
+    letterSpacing: 0.4,
   },
   title: {
     fontFamily: fonts.sans,

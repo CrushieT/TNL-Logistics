@@ -141,7 +141,7 @@ public class ClientIntegrationTest {
         assertTrue(body.get("email").isNull());
         java.util.Set<String> fields = new java.util.HashSet<>();
         body.fieldNames().forEachRemaining(fields::add);
-        assertEquals(java.util.Set.of("clientId", "name", "address", "contactNumber", "email", "defaultRateType", "active", "dateRegistered",
+        assertEquals(java.util.Set.of("clientId", "name", "address", "contactNumber", "email", "defaultRateType", "ratePerKilo", "active", "dateRegistered",
                 "totalShipments", "totalParcels", "totalCharges", "totalPaid", "outstandingBalance"), fields);
         assertEquals(1, clientRepository.count());
 
@@ -518,6 +518,24 @@ public class ClientIntegrationTest {
         assertEquals(1, detail.getShipments().size());
         assertEquals("Completed", detail.getShipments().get(0).getStatus());
         assertEquals("2 / 2 Completed", detail.getShipments().get(0).getStatusRollup());
+    }
+
+    @Test
+    public void testGetAllClientsIncludesRatePerKilo() throws Exception {
+        Client vipClient = new Client("CL-001", "VIP Client", "Manila", "09170001111", "vip@tnl.ph", ChargeModel.FLAT, true);
+        vipClient.setRatePerKilo(new BigDecimal("75.00"));
+        clientRepository.saveAndFlush(vipClient);
+
+        Client regClient = new Client("CL-002", "Regular Client", "Cebu", "09170002222", "reg@tnl.ph", ChargeModel.FLAT, true);
+        clientRepository.saveAndFlush(regClient);
+
+        mockMvc.perform(get("/api/v1/clients")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].clientId").value("CL-001"))
+                .andExpect(jsonPath("$.content[0].ratePerKilo").value(75.00))
+                .andExpect(jsonPath("$.content[1].clientId").value("CL-002"))
+                .andExpect(jsonPath("$.content[1].ratePerKilo").doesNotExist());
     }
 }
 

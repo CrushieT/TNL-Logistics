@@ -245,14 +245,15 @@ export default function ClientsScreen() {
           <View style={styles.table}>
             {/* Table Header */}
             <View style={styles.tableHeaderRow}>
-              <Text style={[styles.headerCell, { flex: 1.0 }]}>CLIENT ID</Text>
-              <Text style={[styles.headerCell, { flex: 2.3 }]}>NAME</Text>
-              <Text style={[styles.headerCell, { flex: 1.4 }]}>CONTACT</Text>
-              <Text style={[styles.headerCell, { flex: 1.0, textAlign: 'center' }]}>SHIPMENTS</Text>
-              <Text style={[styles.headerCell, { flex: 1.3, textAlign: 'right' }]}>TOTAL CHARGES</Text>
-              <Text style={[styles.headerCell, { flex: 1.1, textAlign: 'right' }]}>PAID</Text>
-              <Text style={[styles.headerCell, { flex: 1.3, textAlign: 'right' }]}>OUTSTANDING</Text>
-              <Text style={[styles.headerCell, { flex: 1.6, textAlign: 'right' }]}>ACTIONS</Text>
+              <Text style={[styles.headerCell, { flex: 0.9 }]}>CLIENT ID</Text>
+              <Text style={[styles.headerCell, { flex: 2.1 }]}>NAME</Text>
+              <Text style={[styles.headerCell, { flex: 1.3 }]}>TIER</Text>
+              <Text style={[styles.headerCell, { flex: 1.3 }]}>CONTACT</Text>
+              <Text style={[styles.headerCell, { flex: 0.9, textAlign: 'center' }]}>SHIPMENTS</Text>
+              <Text style={[styles.headerCell, { flex: 1.2, textAlign: 'right' }]}>TOTAL CHARGES</Text>
+              <Text style={[styles.headerCell, { flex: 1.0, textAlign: 'right' }]}>PAID</Text>
+              <Text style={[styles.headerCell, { flex: 1.2, textAlign: 'right' }]}>OUTSTANDING</Text>
+              <Text style={[styles.headerCell, { flex: 1.5, textAlign: 'right' }]}>ACTIONS</Text>
             </View>
 
             {/* Table Rows */}
@@ -268,34 +269,46 @@ export default function ClientsScreen() {
                     !c.active && styles.inactiveRow,
                   ]}
                 >
-                  <Text style={[styles.cellMono, { flex: 1.0 }]}>{cid}</Text>
+                  <Text style={[styles.cellMono, { flex: 0.9 }]}>{cid}</Text>
                   
-                  <View style={[styles.nameCol, { flex: 2.3 }]}>
+                  <View style={[styles.nameCol, { flex: 2.1 }]}>
                     <Text style={styles.cellStrong}>{c.name}</Text>
                     <Text style={styles.cellSubtext} numberOfLines={1}>
                       {c.email || c.address || '-'}
                     </Text>
                   </View>
 
-                  <Text style={[styles.cell, { flex: 1.4 }]}>{c.contactNumber || '-'}</Text>
-                  <Text style={[styles.cellCenterMono, { flex: 1.0 }]}>{c.totalShipments || 0}</Text>
-                  <Text style={[styles.cellRightMono, { flex: 1.3 }]}>
+                  <View style={[styles.tierCol, { flex: 1.3 }]}>
+                    {c.ratePerKilo !== null && c.ratePerKilo !== undefined ? (
+                      <View style={styles.vipBadge}>
+                        <Text style={styles.vipBadgeText}>VIP · ₱{Number(c.ratePerKilo).toFixed(2)}/kg</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.regularBadge}>
+                        <Text style={styles.regularBadgeText}>REGULAR</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <Text style={[styles.cell, { flex: 1.3 }]}>{c.contactNumber || '-'}</Text>
+                  <Text style={[styles.cellCenterMono, { flex: 0.9 }]}>{c.totalShipments || 0}</Text>
+                  <Text style={[styles.cellRightMono, { flex: 1.2 }]}>
                     ₱{Number(c.totalCharges || 0).toLocaleString()}
                   </Text>
-                  <Text style={[styles.cellRightMono, { flex: 1.1 }]}>
+                  <Text style={[styles.cellRightMono, { flex: 1.0 }]}>
                     ₱{Number(c.totalPaid || 0).toLocaleString()}
                   </Text>
                   <Text
                     style={[
                       styles.cellRightMono,
                       hasBalance ? styles.outstandingDue : styles.outstandingZero,
-                      { flex: 1.3 },
+                      { flex: 1.2 },
                     ]}
                   >
                     ₱{Number(c.outstandingBalance || 0).toLocaleString()}
                   </Text>
 
-                  <View style={[styles.actionsCell, { flex: 1.6 }]}>
+                  <View style={[styles.actionsCell, { flex: 1.5 }]}>
                     <Pressable
                       onPress={() => {
                         setClientToEdit(c);
@@ -584,7 +597,47 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
   nameCol: {
-    gap: 1,
+    gap: 2,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  tierCol: {
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  vipBadge: {
+    backgroundColor: colors.warningSoft,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    borderRadius: radius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+  },
+  vipBadgeText: {
+    fontFamily: fonts.mono,
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: colors.warning,
+  },
+  regularBadge: {
+    backgroundColor: colors.canvas,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+  },
+  regularBadgeText: {
+    fontFamily: fonts.mono,
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: colors.inkFaint,
   },
   cellStrong: {
     fontFamily: fonts.sans,

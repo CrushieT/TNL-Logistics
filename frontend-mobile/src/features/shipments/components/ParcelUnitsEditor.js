@@ -5,12 +5,12 @@ import { createParcelPaginationModel, getParcelPageIndex } from '../parcelPagina
 
 const MEASUREMENT_ROWS = [
   [
-    { fieldName: 'weightKg', label: 'WEIGHT (KG) *', placeholder: '1.0', accessibilityName: 'weight' },
-    { fieldName: 'lengthCm', label: 'LENGTH (CM) *', placeholder: '20', accessibilityName: 'length' },
+    { fieldName: 'weightKg', label: 'WEIGHT (KG) *', placeholder: '0.00', accessibilityName: 'weight' },
+    { fieldName: 'lengthCm', label: 'LENGTH (CM) *', placeholder: '0', accessibilityName: 'length' },
   ],
   [
-    { fieldName: 'widthCm', label: 'WIDTH (CM) *', placeholder: '10', accessibilityName: 'width' },
-    { fieldName: 'heightCm', label: 'HEIGHT (CM) *', placeholder: '15', accessibilityName: 'height' },
+    { fieldName: 'widthCm', label: 'WIDTH (CM) *', placeholder: '0', accessibilityName: 'width' },
+    { fieldName: 'heightCm', label: 'HEIGHT (CM) *', placeholder: '0', accessibilityName: 'height' },
   ],
 ];
 
