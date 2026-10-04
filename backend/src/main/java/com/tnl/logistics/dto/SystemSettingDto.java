@@ -16,6 +16,7 @@ public class SystemSettingDto {
     private String billingEmail;
     private DayOfWeek collectionDay;
     private Integer volumetricDivisor;
+    private java.math.BigDecimal ratePerKilo;
     private String trackingPrefix;
     private String shipmentPrefix;
     private String trackingIdPrefixPreview;
@@ -29,6 +30,15 @@ public class SystemSettingDto {
                             String companyContact, String billingEmail, DayOfWeek collectionDay,
                             Integer volumetricDivisor, String trackingPrefix, String shipmentPrefix,
                             LocalDateTime updatedAt, String updatedBy) {
+        this(settingId, companyName, companyAddress, companyContact, billingEmail, collectionDay,
+             volumetricDivisor, null, trackingPrefix, shipmentPrefix, updatedAt, updatedBy);
+    }
+
+    public SystemSettingDto(Integer settingId, String companyName, String companyAddress,
+                            String companyContact, String billingEmail, DayOfWeek collectionDay,
+                            Integer volumetricDivisor, java.math.BigDecimal ratePerKilo,
+                            String trackingPrefix, String shipmentPrefix,
+                            LocalDateTime updatedAt, String updatedBy) {
         this.settingId = settingId;
         this.companyName = companyName;
         this.companyAddress = companyAddress;
@@ -36,6 +46,7 @@ public class SystemSettingDto {
         this.billingEmail = billingEmail;
         this.collectionDay = collectionDay;
         this.volumetricDivisor = volumetricDivisor;
+        this.ratePerKilo = ratePerKilo;
         this.trackingPrefix = trackingPrefix;
         this.shipmentPrefix = shipmentPrefix;
         int currentYear = LocalDate.now().getYear();
@@ -65,6 +76,9 @@ public class SystemSettingDto {
 
     public Integer getVolumetricDivisor() { return volumetricDivisor; }
     public void setVolumetricDivisor(Integer volumetricDivisor) { this.volumetricDivisor = volumetricDivisor; }
+
+    public java.math.BigDecimal getRatePerKilo() { return ratePerKilo; }
+    public void setRatePerKilo(java.math.BigDecimal ratePerKilo) { this.ratePerKilo = ratePerKilo; }
 
     public String getTrackingPrefix() { return trackingPrefix; }
     public void setTrackingPrefix(String trackingPrefix) { this.trackingPrefix = trackingPrefix; }

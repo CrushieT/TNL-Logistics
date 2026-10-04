@@ -70,6 +70,20 @@ export default function CollectionWeightTrackingCard({
         </Text>
       </View>
 
+      {/* Rate Per Kilo */}
+      <View style={styles.fieldWrap}>
+        <FormField
+          label="RATE PER KILO (PHP)"
+          required
+          value={String(form.ratePerKilo || '')}
+          onChangeText={(val) => onChangeField('ratePerKilo', val)}
+          placeholder="e.g. 15.00"
+          keyboardType="numeric"
+          error={errors.ratePerKilo}
+          helper="Base rate applied to billable weight (PHP per kg) for new shipment registrations."
+        />
+      </View>
+
       {/* Read-Only Prefixes */}
       <View style={styles.fieldWrap}>
         <FormField

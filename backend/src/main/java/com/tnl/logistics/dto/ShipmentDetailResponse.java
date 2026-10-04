@@ -39,6 +39,13 @@ public class ShipmentDetailResponse {
     private BigDecimal volumetricWeightKg;
     private BigDecimal billableWeightKg;
 
+    // Calculation snapshots
+    private BigDecimal appliedRatePerKilo;
+    private Integer appliedVolumetricDivisor;
+    private BigDecimal totalActualWeight;
+    private BigDecimal totalVolumetricWeight;
+    private BigDecimal billableWeight;
+
     // Waybill Information
     private String waybillStatus;
     private String hauler;
@@ -147,4 +154,19 @@ public class ShipmentDetailResponse {
 
     public List<ParcelUnitResponse> getUnits() { return units; }
     public void setUnits(List<ParcelUnitResponse> units) { this.units = units; }
+
+    public BigDecimal getAppliedRatePerKilo() { return appliedRatePerKilo; }
+    public void setAppliedRatePerKilo(BigDecimal appliedRatePerKilo) { this.appliedRatePerKilo = appliedRatePerKilo; }
+
+    public Integer getAppliedVolumetricDivisor() { return appliedVolumetricDivisor; }
+    public void setAppliedVolumetricDivisor(Integer appliedVolumetricDivisor) { this.appliedVolumetricDivisor = appliedVolumetricDivisor; }
+
+    public BigDecimal getTotalActualWeight() { return totalActualWeight; }
+    public void setTotalActualWeight(BigDecimal totalActualWeight) { this.totalActualWeight = totalActualWeight; }
+
+    public BigDecimal getTotalVolumetricWeight() { return totalVolumetricWeight; }
+    public void setTotalVolumetricWeight(BigDecimal totalVolumetricWeight) { this.totalVolumetricWeight = totalVolumetricWeight; }
+
+    public BigDecimal getBillableWeight() { return billableWeight; }
+    public void setBillableWeight(BigDecimal billableWeight) { this.billableWeight = billableWeight; }
 }

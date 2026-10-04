@@ -35,40 +35,48 @@ export async function printLabels(shipmentId, packageIds, printJobId, printerId 
 }
 
 export async function registerShipment(payload) {
-  const qty = parseInt(payload.quantity, 10) || 1;
-  const weight = parseFloat(payload.weightPerUnit) || 1.0;
-  const length = parseFloat(payload.lengthCm) || 20.0;
-  const width = parseFloat(payload.widthCm) || 10.0;
-  const height = parseFloat(payload.heightCm) || 15.0;
+  const qty = parseInt(payload.quantity, 10) || (Array.isArray(payload.parcels) ? payload.parcels.length : 1);
+  let parcels;
+  if (Array.isArray(payload.parcels) && payload.parcels.length > 0) {
+    parcels = payload.parcels.map((p, idx) => ({
+      seq: p.seq || (idx + 1),
+      weightKg: parseFloat(p.weightKg) || 1.0,
+      lengthCm: parseFloat(p.lengthCm) || 20.0,
+      widthCm: parseFloat(p.widthCm) || 10.0,
+      heightCm: parseFloat(p.heightCm) || 15.0,
+    }));
+  } else {
+    const weight = parseFloat(payload.weightPerUnit) || 1.0;
+    const length = parseFloat(payload.lengthCm) || 20.0;
+    const width = parseFloat(payload.widthCm) || 10.0;
+    const height = parseFloat(payload.heightCm) || 15.0;
 
-  const parcels = Array.from({ length: qty }, (_, i) => ({
-    seq: i + 1,
-    weightKg: weight,
-    lengthCm: length,
-    widthCm: width,
-    heightCm: height,
-  }));
+    parcels = Array.from({ length: qty }, (_, i) => ({
+      seq: i + 1,
+      weightKg: weight,
+      lengthCm: length,
+      widthCm: width,
+      heightCm: height,
+    }));
+  }
 
   const backendRequest = {
     clientId: payload.clientId,
-    recipientName: payload.recipient?.fullName || payload.recipientName || '',
     recipientAddress: payload.recipient?.address || payload.recipientAddress || '',
     recipientContact: payload.recipient?.contactNumber || payload.recipientContact || '',
     description: payload.description || 'General Goods',
     quantity: qty,
-    chargeModel: payload.chargeModel === 'PER_UNIT' ? 'PER_PARCEL' : (payload.chargeModel || 'FLAT'),
-    shippingFee: parseFloat(payload.shippingFee) || 0,
+    chargeModel: 'PER_KILO',
     otherCharges: parseFloat(payload.otherCharges) || 0,
     paidAtRegistration: Boolean(payload.paidAtRegistration),
-    route: payload.route || 'Manila to TNL Baguio',
+    route: payload.route || 'Manila to TNL Labo C.N.',
     registeredVia: 'DESKTOP_OFFICE',
+    expectedRatePerKilo: payload.expectedRatePerKilo ? parseFloat(payload.expectedRatePerKilo) : undefined,
+    expectedVolumetricDivisor: payload.expectedVolumetricDivisor ? parseInt(payload.expectedVolumetricDivisor, 10) : undefined,
     parcels,
   };
 
   const { data } = await apiClient.post('/shipments', backendRequest);
-
-  const unitVolumeCbm = (length * width * height) / 1000000;
-  const totalVolumeCbm = unitVolumeCbm * qty;
 
   return {
     shipmentId: data.shipmentId,
@@ -81,17 +89,18 @@ export async function registerShipment(payload) {
     },
     client: payload.clientName || data.clientId,
     quantity: data.trackingIds ? data.trackingIds.length : qty,
-    chargeModel: backendRequest.chargeModel === 'PER_PARCEL' ? 'Per unit' : 'Flat',
-    shippingFee: backendRequest.shippingFee,
-    otherCharges: backendRequest.otherCharges,
+    chargeModel: 'Per kilo',
+    shippingFee: data.shippingFee,
+    otherCharges: data.otherCharges,
     totalAmount: data.totalAmount,
     paidAtRegistration: data.paidAtRegistration,
     description: backendRequest.description,
     route: backendRequest.route,
-    weightPerUnit: weight,
-    dimensions: { lengthCm: length, widthCm: width, heightCm: height },
-    unitVolumeCbm,
-    totalVolumeCbm,
+    appliedRatePerKilo: data.appliedRatePerKilo,
+    appliedVolumetricDivisor: data.appliedVolumetricDivisor,
+    totalActualWeight: data.totalActualWeight,
+    totalVolumetricWeight: data.totalVolumetricWeight,
+    billableWeight: data.billableWeight,
     units: (data.trackingIds || []).map((tid, idx) => ({
       trackingId: tid,
       packageIndex: idx + 1,

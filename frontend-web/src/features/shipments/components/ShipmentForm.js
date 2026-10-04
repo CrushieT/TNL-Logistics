@@ -23,6 +23,7 @@ export default function ShipmentForm({
   onSubmit,
   submitting,
   volumetricDivisor,
+  ratePerKilo,
   calculationSettingsState = 'loading',
   onRetryCalculationSettings,
 }) {
@@ -38,23 +39,19 @@ export default function ShipmentForm({
   const [newClientContact, setNewClientContact] = useState('');
   const [newClientEmail, setNewClientEmail] = useState('');
 
-  // Recipient Details
-  const [recipientName, setRecipientName] = useState('');
+  // Delivery Details (recipient name is derived from billing client)
   const [address, setAddress] = useState('');
   const [contactNumber, setContactNumber] = useState('');
 
   // Shipment & Parcel Details
   const [description, setDescription] = useState('');
-  const [quantity, setQuantity] = useState('1');
-  const [weightPerUnit, setWeightPerUnit] = useState('1');
-  const [lengthCm, setLengthCm] = useState('20');
-  const [widthCm, setWidthCm] = useState('10');
-  const [heightCm, setHeightCm] = useState('15');
+  const [quantityInput, setQuantityInput] = useState('1');
+  const [parcels, setParcels] = useState([
+    { id: 'unit-1', seq: 1, weightKg: '1', lengthCm: '20', widthCm: '10', heightCm: '15' },
+  ]);
 
   // Charges & Options
   const [route, setRoute] = useState('Manila to TNL Labo C.N.');
-  const [chargeModel, setChargeModel] = useState('FLAT');
-  const [shippingFee, setShippingFee] = useState('500');
   const [otherCharges, setOtherCharges] = useState('0');
   const [paidAtRegistration, setPaidAtRegistration] = useState(false);
 
@@ -74,24 +71,125 @@ export default function ShipmentForm({
     }
   }, [clients, clientId]);
 
-  // Live Total Calculation
-  const totalAmount = useMemo(() => {
-    const fee = parseFloat(shippingFee) || 0;
-    const other = parseFloat(otherCharges) || 0;
-    const qty = parseInt(quantity, 10) || 0;
-    if (chargeModel === 'PER_UNIT') {
-      return fee * qty + other;
-    }
-    return fee + other;
-  }, [shippingFee, otherCharges, chargeModel, quantity]);
+  const selectedClient = useMemo(() => {
+    return (clients || []).find((c) => (c.id || c.clientId) === clientId);
+  }, [clients, clientId]);
 
-  const shipmentMetrics = useMemo(() => calculateShipmentMetrics({
-    quantity,
-    weightPerUnit,
-    lengthCm,
-    widthCm,
-    heightCm,
-  }, volumetricDivisor), [quantity, weightPerUnit, lengthCm, widthCm, heightCm, volumetricDivisor]);
+  const derivedRecipientName = clientMode === 'EXISTING'
+    ? (selectedClient?.name || '')
+    : (newClientName.trim() || '');
+
+  function handleQuantityChange(value) {
+    const cleaned = value.replace(/[^0-9]/g, '');
+    setQuantityInput(cleaned);
+  }
+
+  function handleQuantityBlur() {
+    const qtyNum = parseInt(quantityInput, 10);
+    if (isNaN(qtyNum) || qtyNum < 1 || qtyNum > 1000) {
+      setQuantityInput(String(parcels.length));
+      return;
+    }
+    syncQuantityToParcels(qtyNum);
+  }
+
+  function syncQuantityToParcels(targetQty) {
+    if (targetQty === parcels.length) return;
+
+    if (targetQty > parcels.length) {
+      const added = [];
+      for (let i = parcels.length + 1; i <= targetQty; i++) {
+        added.push({
+          id: `unit-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+          seq: i,
+          weightKg: '',
+          lengthCm: '',
+          widthCm: '',
+          heightCm: '',
+        });
+      }
+      setParcels((prev) => [...prev, ...added]);
+      setQuantityInput(String(targetQty));
+    } else {
+      const discarded = parcels.slice(targetQty);
+      const isPopulated = discarded.some(
+        (p) => Boolean(p.weightKg?.trim() || p.lengthCm?.trim() || p.widthCm?.trim() || p.heightCm?.trim())
+      );
+      if (isPopulated) {
+        const confirmMsg = `Reducing quantity to ${targetQty} will discard measurements for parcel unit(s) ${discarded.map((p) => `#${p.seq}`).join(', ')}. Discard these units?`;
+        const confirmed = typeof window !== 'undefined' && typeof window.confirm === 'function'
+          ? window.confirm(confirmMsg)
+          : true;
+        if (!confirmed) {
+          setQuantityInput(String(parcels.length));
+          return;
+        }
+      }
+      setParcels((prev) => prev.slice(0, targetQty));
+      setQuantityInput(String(targetQty));
+    }
+  }
+
+  function addUnit() {
+    if (parcels.length >= 1000) return;
+    const nextSeq = parcels.length + 1;
+    const newUnit = {
+      id: `unit-${Date.now()}-${nextSeq}-${Math.random().toString(36).slice(2, 6)}`,
+      seq: nextSeq,
+      weightKg: '',
+      lengthCm: '',
+      widthCm: '',
+      heightCm: '',
+    };
+    setParcels((prev) => [...prev, newUnit]);
+    setQuantityInput(String(nextSeq));
+  }
+
+  function removeUnit(indexToRemove) {
+    if (parcels.length <= 1) return;
+    const unitToRemove = parcels[indexToRemove];
+    const isPopulated = Boolean(
+      unitToRemove.weightKg?.trim() || unitToRemove.lengthCm?.trim() ||
+      unitToRemove.widthCm?.trim() || unitToRemove.heightCm?.trim()
+    );
+    if (isPopulated) {
+      const confirmMsg = `Discard measurements for parcel unit #${unitToRemove.seq}?`;
+      const confirmed = typeof window !== 'undefined' && typeof window.confirm === 'function'
+        ? window.confirm(confirmMsg)
+        : true;
+      if (!confirmed) return;
+    }
+    const nextParcels = parcels
+      .filter((_, idx) => idx !== indexToRemove)
+      .map((p, idx) => ({ ...p, seq: idx + 1 }));
+    setParcels(nextParcels);
+    setQuantityInput(String(nextParcels.length));
+  }
+
+  function updateParcelField(index, field, value) {
+    setParcels((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: value };
+      return copy;
+    });
+    if (errors[`parcel_${index}_${field}`]) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[`parcel_${index}_${field}`];
+        return next;
+      });
+    }
+  }
+
+  const shipmentMetrics = useMemo(() => {
+    return calculateShipmentMetrics({ parcels }, volumetricDivisor, ratePerKilo);
+  }, [parcels, volumetricDivisor, ratePerKilo]);
+
+  const totalAmount = useMemo(() => {
+    const fee = shipmentMetrics.shippingFee || 0;
+    const other = parseFloat(otherCharges) || 0;
+    return Math.round((fee + other + Number.EPSILON) * 100) / 100;
+  }, [shipmentMetrics.shippingFee, otherCharges]);
 
   function validateForm() {
     const newErrors = {};
@@ -125,12 +223,6 @@ export default function ShipmentForm({
       }
     }
 
-    if (!recipientName.trim()) {
-      newErrors.recipientName = 'Recipient full name is required.';
-    } else if (recipientName.trim().length > 150) {
-      newErrors.recipientName = 'Recipient full name cannot exceed 150 characters.';
-    }
-
     if (!address.trim()) {
       newErrors.address = 'Complete delivery address is required.';
     } else if (address.trim().length > 255) {
@@ -153,26 +245,34 @@ export default function ShipmentForm({
       newErrors.route = 'Route cannot exceed 150 characters.';
     }
 
-    const qtyNum = parseInt(quantity, 10);
-    if (!quantity || isNaN(qtyNum) || qtyNum < 1 || qtyNum > 1000) {
+    const qtyNum = parseInt(quantityInput, 10);
+    if (!quantityInput || isNaN(qtyNum) || qtyNum < 1 || qtyNum > 1000) {
       newErrors.quantity = 'Quantity must be between 1 and 1,000.';
     }
 
-    const wtNum = parseFloat(weightPerUnit);
-    if (!weightPerUnit || isNaN(wtNum) || wtNum <= 0) {
-      newErrors.weightPerUnit = 'Weight must be greater than 0 kg.';
+    // Per-unit validation
+    parcels.forEach((p, idx) => {
+      const wtNum = parseFloat(p.weightKg);
+      if (!p.weightKg || isNaN(wtNum) || wtNum <= 0) {
+        newErrors[`parcel_${idx}_weightKg`] = 'Required (> 0 kg)';
+      }
+
+      const lNum = parseFloat(p.lengthCm);
+      const wNum = parseFloat(p.widthCm);
+      const hNum = parseFloat(p.heightCm);
+
+      if (!p.lengthCm || isNaN(lNum) || lNum <= 0) newErrors[`parcel_${idx}_lengthCm`] = 'Required (> 0)';
+      if (!p.widthCm || isNaN(wNum) || wNum <= 0) newErrors[`parcel_${idx}_widthCm`] = 'Required (> 0)';
+      if (!p.heightCm || isNaN(hNum) || hNum <= 0) newErrors[`parcel_${idx}_heightCm`] = 'Required (> 0)';
+    });
+
+    const otherNum = parseFloat(otherCharges);
+    if (otherCharges !== '' && (isNaN(otherNum) || otherNum < 0)) {
+      newErrors.otherCharges = 'Charges cannot be negative.';
     }
 
-    const lNum = parseFloat(lengthCm);
-    const wNum = parseFloat(widthCm);
-    const hNum = parseFloat(heightCm);
-    if (isNaN(lNum) || lNum <= 0) newErrors.lengthCm = 'Required';
-    if (isNaN(wNum) || wNum <= 0) newErrors.widthCm = 'Required';
-    if (isNaN(hNum) || hNum <= 0) newErrors.heightCm = 'Required';
-
-    const feeNum = parseFloat(shippingFee);
-    if (shippingFee === '' || isNaN(feeNum) || feeNum < 0) {
-      newErrors.shippingFee = 'Shipping fee is required (cannot be negative).';
+    if (calculationSettingsState !== 'ready' || !Number.isFinite(ratePerKilo) || ratePerKilo <= 0) {
+      newErrors.calculationSettings = 'Rate per kilo is not configured.';
     }
 
     setErrors(newErrors);
@@ -184,22 +284,28 @@ export default function ShipmentForm({
 
     const basePayload = {
       recipient: {
-        fullName: recipientName.trim(),
+        fullName: derivedRecipientName,
         address: address.trim(),
         contactNumber: contactNumber.trim(),
       },
+      recipientAddress: address.trim(),
+      recipientContact: contactNumber.trim(),
       description: description.trim() || 'General Goods',
-      quantity: parseInt(quantity, 10),
-      weightPerUnit: parseFloat(weightPerUnit),
-      lengthCm: parseFloat(lengthCm) || 20.0,
-      widthCm: parseFloat(widthCm) || 10.0,
-      heightCm: parseFloat(heightCm) || 15.0,
+      quantity: parcels.length,
       route: route.trim() || 'Manila to TNL Labo C.N.',
-      chargeModel,
-      shippingFee: parseFloat(shippingFee) || 0,
+      chargeModel: 'PER_KILO',
       otherCharges: parseFloat(otherCharges) || 0,
       paidAtRegistration,
       totalAmount,
+      parcels: parcels.map((p, idx) => ({
+        seq: idx + 1,
+        weightKg: parseFloat(p.weightKg),
+        lengthCm: parseFloat(p.lengthCm),
+        widthCm: parseFloat(p.widthCm),
+        heightCm: parseFloat(p.heightCm),
+      })),
+      expectedRatePerKilo: ratePerKilo,
+      expectedVolumetricDivisor: volumetricDivisor,
     };
 
     if (clientMode === 'EXISTING') {
@@ -220,6 +326,9 @@ export default function ShipmentForm({
       });
     }
   }
+
+  const isRateReady = calculationSettingsState === 'ready' && Number.isFinite(ratePerKilo) && ratePerKilo > 0;
+  const canSubmit = isRateReady && !submitting;
 
   return (
     <View style={styles.container}>
@@ -335,18 +444,17 @@ export default function ShipmentForm({
 
         {/* 2. Recipient Card */}
         <Card title="Recipient" style={[styles.halfCard, isMobile && styles.cardMobile]}>
-          <FormField
-            label="Full Name"
-            required
-            value={recipientName}
-            onChangeText={(val) => {
-              setRecipientName(val);
-              if (errors.recipientName) setErrors((prev) => ({ ...prev, recipientName: null }));
-            }}
-            placeholder="Juan Dela Cruz"
-            maxLength={150}
-            error={errors.recipientName}
-          />
+          <View style={styles.derivedRecipientContainer}>
+            <Text style={type.label}>RECIPIENT / CONSIGNEE</Text>
+            <View style={styles.derivedRecipientBox}>
+              <Text style={styles.derivedRecipientName}>
+                {derivedRecipientName || (clientMode === 'EXISTING' ? 'Select a billing client' : 'Enter client name')}
+              </Text>
+              <Text style={styles.derivedRecipientSub}>
+                Automatically derived from billing client
+              </Text>
+            </View>
+          </View>
           <FormField
             label="Complete Address"
             required
@@ -379,7 +487,7 @@ export default function ShipmentForm({
 
       {/* 3. Shipment & Charges Card */}
       <Card title="Shipment & Charges" style={styles.fullWidthCard}>
-        {/* Row 1: Description, Quantity, Weight, Route */}
+        {/* Row 1: Description, Route, Quantity, Add Unit Button */}
         <View style={styles.gridRow}>
           <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
             <FormField
@@ -393,185 +501,228 @@ export default function ShipmentForm({
 
           <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
             <FormField
+              label="Route"
+              value={route}
+              onChangeText={setRoute}
+              placeholder="Manila to TNL Labo C.N."
+              maxLength={150}
+            />
+          </View>
+
+          <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
+            <FormField
               label="Quantity (Parcel Units)"
               required
-              value={quantity}
-              onChangeText={(val) => {
-                setQuantity(val);
-                if (errors.quantity) setErrors((prev) => ({ ...prev, quantity: null }));
-              }}
+              value={quantityInput}
+              onChangeText={handleQuantityChange}
+              onBlur={handleQuantityBlur}
+              onSubmitEditing={handleQuantityBlur}
               integerOnly
               placeholder="1"
               maxLength={4}
-              helper="One unique QR per unit (max 1,000)"
+              helper="1–1,000 units. One QR per unit."
               error={errors.quantity}
             />
           </View>
 
-          <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
-            <FormField
-              label="Weight per Unit (kg)"
-              required
-              value={weightPerUnit}
-              onChangeText={(val) => {
-                setWeightPerUnit(val);
-                if (errors.weightPerUnit) setErrors((prev) => ({ ...prev, weightPerUnit: null }));
-              }}
-              numericOnly
-              placeholder="1.0"
-              maxLength={9}
-              suffix="kg"
-              error={errors.weightPerUnit}
-            />
-          </View>
-
-          <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
-            <FormField label="Route" value={route} onChangeText={setRoute} placeholder="Manila to TNL Labo C.N." maxLength={150} />
+          <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth, styles.addUnitCol]}>
+            <Text style={type.label}>Add Parcel</Text>
+            <TouchableOpacity
+              style={styles.addUnitButton}
+              onPress={addUnit}
+              disabled={parcels.length >= 1000}
+            >
+              <Text style={styles.addUnitButtonText}>+ Add Unit #{parcels.length + 1}</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* Row 2: Parcel Dimensions & Auto-Calculated Weight and Volume */}
+        {/* Row 2: Per-Unit Measurements Editor */}
         <View style={styles.dimensionsBox}>
-          <Text style={styles.dimensionsHeader}>PARCEL DIMENSIONS & BILLABLE WEIGHT</Text>
-          <View style={styles.dimensionsRow}>
-            <View style={styles.dimField}>
-              <FormField
-                label="Length (cm)"
-                value={lengthCm}
-                onChangeText={(val) => {
-                  setLengthCm(val);
-                  if (errors.lengthCm) setErrors((prev) => ({ ...prev, lengthCm: null }));
-                }}
-                numericOnly
-                placeholder="20"
-                maxLength={9}
-                suffix="cm"
-                error={errors.lengthCm}
-              />
-            </View>
-            <View style={styles.dimField}>
-              <FormField
-                label="Width (cm)"
-                value={widthCm}
-                onChangeText={(val) => {
-                  setWidthCm(val);
-                  if (errors.widthCm) setErrors((prev) => ({ ...prev, widthCm: null }));
-                }}
-                numericOnly
-                placeholder="10"
-                maxLength={9}
-                suffix="cm"
-                error={errors.widthCm}
-              />
-            </View>
-            <View style={styles.dimField}>
-              <FormField
-                label="Height (cm)"
-                value={heightCm}
-                onChangeText={(val) => {
-                  setHeightCm(val);
-                  if (errors.heightCm) setErrors((prev) => ({ ...prev, heightCm: null }));
-                }}
-                numericOnly
-                placeholder="15"
-                maxLength={9}
-                suffix="cm"
-                error={errors.heightCm}
-              />
-            </View>
-            <View style={styles.metricsResultBox}>
-              <Text style={styles.volumeLabel}>WEIGHT / VOLUME · AUTO-COMPUTED</Text>
-              <View style={styles.metricRow}>
-                <Text style={styles.metricLabel}>Volume / unit</Text>
-                <Text style={styles.metricValue}>{formatMeasure(shipmentMetrics.unitVolume, 4, 'm³')}</Text>
-              </View>
-              <View style={styles.metricRow}>
-                <Text style={styles.metricLabel}>Total volume</Text>
-                <Text style={styles.metricValue}>{formatMeasure(shipmentMetrics.totalVolume, 4, 'm³')}</Text>
-              </View>
-              <View style={styles.metricRow}>
-                <Text style={styles.metricLabel}>Total actual weight</Text>
-                <Text style={styles.metricValue}>{formatMeasure(shipmentMetrics.actualWeight, 2, 'kg')}</Text>
-              </View>
-              <View style={styles.metricRow}>
-                <Text style={styles.metricLabel}>Volumetric weight</Text>
-                <Text style={styles.metricValue}>{formatMeasure(shipmentMetrics.volumetricWeight, 2, 'kg')}</Text>
-              </View>
-              <View style={[styles.metricRow, styles.billableRow]}>
-                <Text style={styles.billableLabel}>Billable weight</Text>
-                <Text style={styles.billableValue}>{formatMeasure(shipmentMetrics.billableWeight, 2, 'kg')}</Text>
-              </View>
-              {calculationSettingsState === 'loading' ? (
-                <View style={styles.settingsStatusRow}>
-                  <ActivityIndicator color={colors.inkSoft} size="small" />
-                  <Text style={styles.settingsMessage}>Loading weight calculation settings...</Text>
+          <View style={styles.unitsSectionHeader}>
+            <Text style={styles.dimensionsHeader}>
+              PARCEL UNITS ({parcels.length} {parcels.length === 1 ? 'UNIT' : 'UNITS'}) · PER-UNIT MEASUREMENTS
+            </Text>
+          </View>
+
+          <View style={styles.unitsScrollContainer}>
+            {parcels.map((parcel, index) => {
+              const lNum = parseFloat(parcel.lengthCm);
+              const wNum = parseFloat(parcel.widthCm);
+              const hNum = parseFloat(parcel.heightCm);
+              const hasDims = !isNaN(lNum) && lNum > 0 && !isNaN(wNum) && wNum > 0 && !isNaN(hNum) && hNum > 0;
+              const unitVolume = hasDims ? (lNum * wNum * hNum) / 1000000 : null;
+
+              return (
+                <View key={parcel.id || `parcel-${index}`} style={styles.unitCard}>
+                  <View style={styles.unitCardTop}>
+                    <View style={styles.unitBadge}>
+                      <Text style={styles.unitBadgeText}>UNIT #{parcel.seq}</Text>
+                    </View>
+                    {unitVolume !== null ? (
+                      <Text style={styles.unitVolumeTag}>
+                        {formatMeasure(unitVolume, 4, 'm³')}
+                      </Text>
+                    ) : null}
+                    {parcels.length > 1 ? (
+                      <TouchableOpacity
+                        style={styles.removeUnitBtn}
+                        onPress={() => removeUnit(index)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove unit ${parcel.seq}`}
+                      >
+                        <Text style={styles.removeUnitBtnText}>✕ Remove</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.unitFieldsRow}>
+                    <View style={styles.unitFieldCol}>
+                      <FormField
+                        label="Weight (kg)"
+                        required
+                        value={parcel.weightKg}
+                        onChangeText={(val) => updateParcelField(index, 'weightKg', val)}
+                        numericOnly
+                        placeholder="1.0"
+                        maxLength={9}
+                        suffix="kg"
+                        error={errors[`parcel_${index}_weightKg`]}
+                      />
+                    </View>
+                    <View style={styles.unitFieldCol}>
+                      <FormField
+                        label="Length (cm)"
+                        required
+                        value={parcel.lengthCm}
+                        onChangeText={(val) => updateParcelField(index, 'lengthCm', val)}
+                        numericOnly
+                        placeholder="20"
+                        maxLength={9}
+                        suffix="cm"
+                        error={errors[`parcel_${index}_lengthCm`]}
+                      />
+                    </View>
+                    <View style={styles.unitFieldCol}>
+                      <FormField
+                        label="Width (cm)"
+                        required
+                        value={parcel.widthCm}
+                        onChangeText={(val) => updateParcelField(index, 'widthCm', val)}
+                        numericOnly
+                        placeholder="10"
+                        maxLength={9}
+                        suffix="cm"
+                        error={errors[`parcel_${index}_widthCm`]}
+                      />
+                    </View>
+                    <View style={styles.unitFieldCol}>
+                      <FormField
+                        label="Height (cm)"
+                        required
+                        value={parcel.heightCm}
+                        onChangeText={(val) => updateParcelField(index, 'heightCm', val)}
+                        numericOnly
+                        placeholder="15"
+                        maxLength={9}
+                        suffix="cm"
+                        error={errors[`parcel_${index}_heightCm`]}
+                      />
+                    </View>
+                  </View>
                 </View>
-              ) : null}
-              {calculationSettingsState === 'error' ? (
-                <View style={styles.settingsError}>
-                  <Text style={styles.settingsMessage}>Weight estimates are unavailable. You can still register this shipment.</Text>
-                  <TouchableOpacity accessibilityRole="button" onPress={onRetryCalculationSettings} style={styles.settingsRetry}>
-                    <Text style={styles.settingsRetryText}>Retry weight settings</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-              {calculationSettingsState === 'ready' ? (
-                <Text style={styles.settingsMessage}>Estimates only. Shipping charges use the rate entered below.</Text>
-              ) : null}
-            </View>
+              );
+            })}
           </View>
         </View>
 
-        {/* Row 3: Charge Model, Shipping Fee, Charges, Total Amount */}
-        <View style={styles.gridRow}>
-          <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
-            <SelectField
-              label="Charge Model"
-              value={chargeModel}
-              onValueChange={setChargeModel}
-              options={CHARGE_MODELS}
-              helper={chargeModel === 'FLAT' ? 'Flat rate for entire shipment' : 'Multiplies shipping fee by parcel quantity'}
-            />
+        {/* Row 3: Live Rating & Pricing Breakdown */}
+        <View style={styles.summaryContainer}>
+          <Text style={styles.dimensionsHeader}>LIVE RATING BREAKDOWN & SUMMARY</Text>
+          <View style={styles.summaryGrid}>
+            {/* 1. Rate per Kilo (Read-only) */}
+            <View style={styles.summaryCardCol}>
+              <Text style={type.label}>Rate per Kilo</Text>
+              <View style={styles.readOnlyStatBox}>
+                <Text style={styles.statLargeText}>
+                  {ratePerKilo ? `₱${Number(ratePerKilo).toFixed(2)}` : '—'}
+                </Text>
+                <Text style={styles.statSubText}>Configured by Admin</Text>
+              </View>
+            </View>
+
+            {/* 2. Weight Metrics */}
+            <View style={styles.summaryCardCol}>
+              <Text style={type.label}>Weight Summary</Text>
+              <View style={styles.metricsBox}>
+                <View style={styles.metricRow}>
+                  <Text style={styles.metricLabel}>Total Actual Weight</Text>
+                  <Text style={styles.metricValue}>{formatMeasure(shipmentMetrics.actualWeight, 2, 'kg')}</Text>
+                </View>
+                <View style={styles.metricRow}>
+                  <Text style={styles.metricLabel}>Volumetric Weight (/{volumetricDivisor || 5000})</Text>
+                  <Text style={styles.metricValue}>{formatMeasure(shipmentMetrics.volumetricWeight, 2, 'kg')}</Text>
+                </View>
+                <View style={[styles.metricRow, styles.billableRow]}>
+                  <Text style={styles.billableLabel}>Billable Weight</Text>
+                  <Text style={styles.billableValue}>{formatMeasure(shipmentMetrics.billableWeight, 2, 'kg')}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* 3. Charges & Total */}
+            <View style={styles.summaryCardCol}>
+              <FormField
+                label="Other Charges (₱)"
+                value={otherCharges}
+                onChangeText={setOtherCharges}
+                numericOnly
+                placeholder="0"
+                maxLength={13}
+                helper="Valuation, packaging, etc."
+                error={errors.otherCharges}
+              />
+              <View style={styles.totalBox}>
+                <Text style={styles.totalLabel}>TOTAL AMOUNT</Text>
+                <Text style={styles.totalValue}>
+                  ₱{totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </Text>
+                <Text style={styles.totalFormula}>
+                  {shipmentMetrics.shippingFee !== null ? `₱${shipmentMetrics.shippingFee.toFixed(2)} shipping` : '—'}
+                  {' + ₱'}{(parseFloat(otherCharges) || 0).toFixed(2)} charges
+                </Text>
+              </View>
+            </View>
           </View>
 
-          <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
-            <FormField
-              label="Shipping Fee (₱)"
-              required
-              value={shippingFee}
-              onChangeText={(val) => {
-                setShippingFee(val);
-                if (errors.shippingFee) setErrors((prev) => ({ ...prev, shippingFee: null }));
-              }}
-              numericOnly
-              placeholder="500"
-              maxLength={13}
-              error={errors.shippingFee}
-            />
-          </View>
+          {/* Settings Status Notice */}
+          {calculationSettingsState === 'loading' ? (
+            <View style={styles.settingsStatusRow}>
+              <ActivityIndicator color={colors.inkSoft} size="small" />
+              <Text style={styles.settingsMessage}>Loading rate and weight settings from server...</Text>
+            </View>
+          ) : null}
 
-          <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
-            <FormField
-              label="Charges (₱)"
-              value={otherCharges}
-              onChangeText={setOtherCharges}
-              numericOnly
-              placeholder="0"
-              maxLength={13}
-              helper="Valuation, packaging, etc."
-            />
-          </View>
-
-          <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
-            <Text style={type.label}>Total Amount</Text>
-            <View style={styles.totalBox}>
-              <Text style={styles.totalValue}>₱{totalAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</Text>
-              <Text style={styles.totalFormula}>
-                {chargeModel === 'FLAT' ? 'flat' : `₱${(parseFloat(shippingFee) || 0).toLocaleString()} × ${quantity || 1}`}
-                {' + ₱'}{(parseFloat(otherCharges) || 0).toLocaleString()}
+          {calculationSettingsState === 'unconfigured' ? (
+            <View style={styles.settingsAlertBox}>
+              <Text style={styles.settingsAlertTitle}>Rate per Kilo Not Configured</Text>
+              <Text style={styles.settingsAlertMessage}>
+                Shipment registration is blocked because Rate per Kilo is not configured. An administrator must set the rate in Settings before shipments can be registered.
               </Text>
             </View>
-          </View>
+          ) : null}
+
+          {calculationSettingsState === 'error' ? (
+            <View style={styles.settingsErrorBox}>
+              <Text style={styles.settingsAlertTitle}>Calculation Settings Unavailable</Text>
+              <Text style={styles.settingsAlertMessage}>
+                Unable to load rate and divisor settings from server. Please check connection and retry.
+              </Text>
+              <TouchableOpacity accessibilityRole="button" onPress={onRetryCalculationSettings} style={styles.settingsRetry}>
+                <Text style={styles.settingsRetryText}>Retry Settings</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
 
         {/* Footer Row: Paid at Registration Toggle & Submit Button */}
@@ -593,10 +744,11 @@ export default function ShipmentForm({
 
           <View style={[styles.submitContainer, isMobile && styles.submitContainerMobile]}>
             <Button
-              label={submitting ? 'Registering...' : `Register & Generate ${quantity || 1} QR`}
+              label={submitting ? 'Registering...' : `Register & Generate ${parcels.length} QR`}
               variant="primary"
               onPress={handleSubmit}
               loading={submitting}
+              disabled={!canSubmit}
               fullWidth={isMobile}
             />
           </View>
@@ -816,6 +968,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 70,
   },
+  totalLabel: {
+    fontFamily: fonts.sans,
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.inkFaint,
+    letterSpacing: 0.8,
+  },
   totalValue: {
     fontFamily: fonts.sans,
     fontSize: 24,
@@ -828,6 +987,187 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.inkFaint,
     marginTop: 2,
+  },
+  derivedRecipientContainer: {
+    marginBottom: spacing.md,
+  },
+  derivedRecipientBox: {
+    backgroundColor: '#FAF9F6',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    marginTop: spacing.xs,
+  },
+  derivedRecipientName: {
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  derivedRecipientSub: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    color: colors.inkFaint,
+    marginTop: 2,
+  },
+  addUnitCol: {
+    justifyContent: 'flex-start',
+  },
+  addUnitButton: {
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.ink,
+    borderRadius: radius.sm,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.xs,
+    backgroundColor: '#FFFFFF',
+  },
+  addUnitButtonText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  unitsSectionHeader: {
+    marginBottom: spacing.sm,
+  },
+  unitsScrollContainer: {
+    gap: spacing.md,
+  },
+  unitCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+  },
+  unitCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  unitBadge: {
+    backgroundColor: colors.black,
+    paddingVertical: 2,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm,
+  },
+  unitBadgeText: {
+    fontFamily: fonts.mono,
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  unitVolumeTag: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    color: colors.inkSoft,
+    flex: 1,
+    marginLeft: spacing.sm,
+  },
+  removeUnitBtn: {
+    paddingVertical: 2,
+    paddingHorizontal: spacing.sm,
+  },
+  removeUnitBtnText: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.danger,
+  },
+  unitFieldsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
+  unitFieldCol: {
+    flex: 1,
+    minWidth: 120,
+  },
+  summaryContainer: {
+    backgroundColor: '#FAF9F6',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  summaryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.lg,
+    marginTop: spacing.sm,
+  },
+  summaryCardCol: {
+    flex: 1,
+    minWidth: 240,
+  },
+  readOnlyStatBox: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    backgroundColor: '#FFFFFF',
+    marginTop: spacing.xs,
+    justifyContent: 'center',
+    minHeight: 70,
+  },
+  statLargeText: {
+    fontFamily: fonts.sans,
+    fontSize: 22,
+    fontWeight: '900',
+    color: colors.ink,
+  },
+  statSubText: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    color: colors.inkFaint,
+    marginTop: 2,
+  },
+  metricsBox: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    marginTop: spacing.xs,
+    justifyContent: 'center',
+  },
+  settingsAlertBox: {
+    backgroundColor: colors.warningSoft,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  settingsAlertTitle: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.ink,
+    marginBottom: 2,
+  },
+  settingsAlertMessage: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    color: colors.inkSoft,
+    lineHeight: 16,
+  },
+  settingsErrorBox: {
+    backgroundColor: colors.dangerSoft,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    marginTop: spacing.md,
   },
   footerRow: {
     flexDirection: 'row',

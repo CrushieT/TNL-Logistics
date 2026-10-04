@@ -238,3 +238,83 @@ test('timeouts and server failures require checking previous outcome; validation
   assert.equal(isUncertainWrite({ response: { status: 503 } }), true);
   for (const status of [400, 401, 403, 409]) assert.equal(isUncertainWrite({ response: { status } }), false);
 });
+
+test('per-unit parcel registration calculation computes heterogeneous dimensions and rate-per-kilo shipping fee', () => {
+  const formWithUnits = {
+    quantity: '2',
+    otherCharges: '50.00',
+    parcels: [
+      { id: 'unit-1', seq: 1, weightKg: '5.0', lengthCm: '40', widthCm: '30', heightCm: '20' }, // 24,000 cm3 -> 4.8 kg vol
+      { id: 'unit-2', seq: 2, weightKg: '2.0', lengthCm: '60', widthCm: '50', heightCm: '40' }, // 120,000 cm3 -> 24.0 kg vol
+    ],
+  };
+
+  const totals = calculateRegistration(formWithUnits, 5000, 15.5);
+  // Total actual weight = 7.0 kg
+  // Total volumetric weight = 144,000 / 5000 = 28.8 kg
+  // Billable weight = 28.8 kg
+  // Shipping fee = 28.8 * 15.5 = 446.40
+  // Total amount = 446.40 + 50.00 = 496.40 (49640 cents)
+  assert.equal(totals.actualWeight, 7.0);
+  assert.equal(totals.volumetricWeight, 28.8);
+  assert.equal(totals.billableWeight, 28.8);
+  assert.equal(totals.shippingFee, 446.4);
+  assert.equal(totals.totalAmount, 496.4);
+  assert.equal(totals.totalCents, 49640);
+});
+
+test('per-unit parcel validation isolates indexed errors to failing units', () => {
+  const formWithInvalidUnit = {
+    ...validForm(),
+    quantity: '2',
+    parcels: [
+      { id: 'unit-1', seq: 1, weightKg: '2.0', lengthCm: '30', widthCm: '20', heightCm: '10' },
+      { id: 'unit-2', seq: 2, weightKg: '0', lengthCm: '30', widthCm: '', heightCm: '10' },
+    ],
+  };
+
+  const errors = validateRegistration(formWithInvalidUnit);
+  assert.equal(errors['parcels[0].weightKg'], undefined);
+  assert.ok(errors['parcels[1].weightKg']);
+  assert.ok(errors['parcels[1].widthCm']);
+});
+
+test('buildShipmentRequest includes per-unit parcels, expected rate per kilo and divisor guards', () => {
+  const form = {
+    ...validForm(),
+    quantity: '2',
+    otherCharges: '25.00',
+    paidAtRegistration: true,
+    parcels: [
+      { id: 'unit-1', seq: 1, weightKg: '3.0', lengthCm: '20', widthCm: '15', heightCm: '10' },
+      { id: 'unit-2', seq: 2, weightKg: '4.5', lengthCm: '30', widthCm: '25', heightCm: '20' },
+    ],
+  };
+
+  const payload = buildShipmentRequest(form, 'CL-TEST', { expectedRatePerKilo: 20.0, expectedVolumetricDivisor: 5000 });
+  assert.equal(payload.chargeModel, 'PER_KILO');
+  assert.equal(payload.paidAtRegistration, true);
+  assert.equal(payload.expectedRatePerKilo, 20.0);
+  assert.equal(payload.expectedVolumetricDivisor, 5000);
+  assert.equal(payload.parcels.length, 2);
+  assert.deepEqual(payload.parcels[0], { seq: 1, weightKg: 3.0, lengthCm: 20, widthCm: 15, heightCm: 10 });
+  assert.deepEqual(payload.parcels[1], { seq: 2, weightKg: 4.5, lengthCm: 30, widthCm: 25, heightCm: 20 });
+});
+
+test('mapRegistrationErrors preserves indexed errors when preserveIndexed is true', () => {
+  const error = {
+    response: {
+      data: {
+        fieldErrors: {
+          'parcels[1].weightKg': 'Must be at least 0.01',
+          recipientAddress: 'Required',
+        },
+      },
+    },
+  };
+
+  const preserved = mapRegistrationErrors(error, true);
+  assert.equal(preserved['parcels[1].weightKg'], 'Must be at least 0.01');
+  assert.equal(preserved.recipientAddress, 'Required');
+});
+

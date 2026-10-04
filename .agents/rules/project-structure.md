@@ -2,10 +2,24 @@
 
 **TNL Logistics uses a monorepo layout with three independent codebases sharing a common backend API.**
 
+### Planning Artifacts
+
+- `.review/client-demo-change-plan.md` contains the categorized post-client-demo delivery plan.
+- `.review/client-demo-phase-0-discovery-and-threat-model.md` contains the Phase 0 findings, pending decisions, and required security controls.
+- `.review/client-demo-phase-1-registration-and-rating-plan.md` contains the decision-complete per-unit measurement and settings-based rating plan.
+- `.review/admin-partial-delivery-plan.md` contains the deferred partial-delivery exception plan.
+- `.review/railway-deployment-runbook.md` contains the Railway deployment procedure.
+
 ### Complete Directory Structure
 
 ```
 tnl-logistics/
+├── .review/                          # Planning and review artifacts
+│   ├── admin-partial-delivery-plan.md
+│   ├── client-demo-change-plan.md
+│   ├── client-demo-phase-0-discovery-and-threat-model.md
+│   ├── client-demo-phase-1-registration-and-rating-plan.md
+│   └── railway-deployment-runbook.md
 ├── .agents/
 │   └── rules/
 │       ├── build-plan.md             # Master 6-Phase development roadmap & progress tracking
@@ -13,9 +27,6 @@ tnl-logistics/
 │       ├── hardening-plan.md         # Post-review system hardening & lifecycle remediation plan
 │       ├── karpathy-guidelines.md    # LLM coding best practices
 │       └── project-structure.md      # Project directory layout & philosophies
-├── .review/
-│   ├── admin-partial-delivery-plan.md # Deferred Admin-only partial-delivery implementation plan
-│   └── BRANCH_PLAN.md                # Three-branch punch list and progress tracker
 ├── .github/
 │   ├── pull_request_template.md      # GitHub Pull Request template
 │   ├── PR_DRAFT.md                   # Current shipping-task handoff draft
@@ -36,7 +47,7 @@ tnl-logistics/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
 │   │   │       ├── application-loadtest.properties
-│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V30); V30 is retained as immutable pre-deployment history
+│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V31; V31 adds rate per kilo setting & shipment calculation snapshots)
 │   │   └── test/                        # Integration and unit test suites, including AdminConsoleAuthorizationIntegrationTest and scanner API coverage
 │   └── pom.xml
 │

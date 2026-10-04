@@ -33,6 +33,7 @@ export default function SettingsScreen() {
     billingEmail: 'billing@tnllogistics.ph',
     collectionDay: 'THURSDAY',
     volumetricDivisor: '5000',
+    ratePerKilo: '',
     trackingPrefix: 'TRK',
     shipmentPrefix: 'SHP',
     trackingIdPrefixPreview: 'TRK-2026-',
@@ -60,6 +61,7 @@ export default function SettingsScreen() {
           billingEmail: data.billingEmail || '',
           collectionDay: data.collectionDay || 'THURSDAY',
           volumetricDivisor: String(data.volumetricDivisor || 5000),
+          ratePerKilo: data.ratePerKilo != null ? String(data.ratePerKilo) : '',
           trackingPrefix: data.trackingPrefix || 'TRK',
           shipmentPrefix: data.shipmentPrefix || 'SHP',
           trackingIdPrefixPreview: data.trackingIdPrefixPreview || 'TRK-2026-',
@@ -138,6 +140,13 @@ export default function SettingsScreen() {
       newErrors.volumetricDivisor = 'Divisor must be between 1,000 and 10,000';
     }
 
+    const rateNum = parseFloat(form.ratePerKilo);
+    if (!form.ratePerKilo || isNaN(rateNum) || rateNum < 0.01) {
+      newErrors.ratePerKilo = 'Rate per kilo must be at least 0.01 PHP';
+    } else if (!/^\d{1,10}(\.\d{1,2})?$/.test(String(form.ratePerKilo).trim())) {
+      newErrors.ratePerKilo = 'Rate per kilo must have up to 10 integer digits and 2 decimal places';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -164,6 +173,7 @@ export default function SettingsScreen() {
         billingEmail: form.billingEmail.trim(),
         collectionDay: form.collectionDay,
         volumetricDivisor: parseInt(form.volumetricDivisor, 10),
+        ratePerKilo: parseFloat(form.ratePerKilo),
       };
 
       const updated = await updateSystemSettings(payload);
@@ -176,6 +186,7 @@ export default function SettingsScreen() {
           billingEmail: updated.billingEmail,
           collectionDay: updated.collectionDay,
           volumetricDivisor: String(updated.volumetricDivisor),
+          ratePerKilo: updated.ratePerKilo != null ? String(updated.ratePerKilo) : '',
         }));
       }
 

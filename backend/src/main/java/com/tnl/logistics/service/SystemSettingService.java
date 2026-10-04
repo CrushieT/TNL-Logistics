@@ -36,4 +36,14 @@ public interface SystemSettingService {
      * Retrieve the active configured volumetric weight divisor.
      */
     Integer getVolumetricDivisor();
+
+    /**
+     * Retrieve the active configured rate per kilo for shipment pricing.
+     */
+    java.math.BigDecimal getRatePerKilo();
+
+    /**
+     * Invalidate and reload cached system settings from the database.
+     */
+    void refreshCachedSettings();
 }
