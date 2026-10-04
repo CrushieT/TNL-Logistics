@@ -20,6 +20,13 @@ export async function getShipment(shipmentId) {
   return data;
 }
 
+export async function getShipmentCalculationSettings(clientId) {
+  const { data } = await apiClient.get('/shipments/calculation-settings', {
+    params: { clientId },
+  });
+  return data;
+}
+
 export async function getParcelUnit(trackingId) {
   const { data } = await apiClient.get(`/parcel-units/${trackingId}`);
   return data;
@@ -40,16 +47,16 @@ export async function registerShipment(payload) {
   if (Array.isArray(payload.parcels) && payload.parcels.length > 0) {
     parcels = payload.parcels.map((p, idx) => ({
       seq: p.seq || (idx + 1),
-      weightKg: parseFloat(p.weightKg) || 1.0,
-      lengthCm: parseFloat(p.lengthCm) || 20.0,
-      widthCm: parseFloat(p.widthCm) || 10.0,
-      heightCm: parseFloat(p.heightCm) || 15.0,
+      weightKg: typeof p.weightKg === 'number' ? p.weightKg : (parseFloat(p.weightKg) || 0),
+      lengthCm: typeof p.lengthCm === 'number' ? p.lengthCm : (parseFloat(p.lengthCm) || 0),
+      widthCm: typeof p.widthCm === 'number' ? p.widthCm : (parseFloat(p.widthCm) || 0),
+      heightCm: typeof p.heightCm === 'number' ? p.heightCm : (parseFloat(p.heightCm) || 0),
     }));
   } else {
-    const weight = parseFloat(payload.weightPerUnit) || 1.0;
-    const length = parseFloat(payload.lengthCm) || 20.0;
-    const width = parseFloat(payload.widthCm) || 10.0;
-    const height = parseFloat(payload.heightCm) || 15.0;
+    const weight = parseFloat(payload.weightPerUnit) || 0;
+    const length = parseFloat(payload.lengthCm) || 0;
+    const width = parseFloat(payload.widthCm) || 0;
+    const height = parseFloat(payload.heightCm) || 0;
 
     parcels = Array.from({ length: qty }, (_, i) => ({
       seq: i + 1,

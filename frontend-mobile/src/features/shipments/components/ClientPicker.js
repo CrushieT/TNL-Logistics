@@ -64,7 +64,14 @@ export function ClientPicker({ onClose, onSelect }) {
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
             <Pressable accessibilityRole="button" onPress={() => onSelect(item)} style={styles.client}>
-              <Text style={styles.code}>{item.clientId}</Text>
+              <View style={styles.codeRow}>
+                <Text style={styles.code}>{item.clientId}</Text>
+                {item.ratePerKilo !== null && item.ratePerKilo !== undefined ? (
+                  <View style={styles.vipBadge}>
+                    <Text style={styles.vipBadgeText}>VIP · ₱{Number(item.ratePerKilo).toFixed(2)}/kg</Text>
+                  </View>
+                ) : null}
+              </View>
               <Text style={styles.name}>{item.name}</Text>
               <Text style={styles.address}>{item.address}</Text>
             </Pressable>
@@ -94,7 +101,10 @@ const styles = StyleSheet.create({
   search: { margin: spacing.lg, padding: spacing.md, minHeight: 48, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderStrong, fontSize: 16, color: colors.ink },
   list: { paddingHorizontal: spacing.lg },
   client: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, marginBottom: spacing.sm },
-  code: { ...typography.mono, marginBottom: spacing.xs },
+  codeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.xs },
+  code: { ...typography.mono },
+  vipBadge: { backgroundColor: '#F7EFDA', borderWidth: 1, borderColor: '#A8790F', borderRadius: 2, paddingHorizontal: 5, paddingVertical: 1 },
+  vipBadgeText: { ...typography.mono, fontSize: 10, fontWeight: '700', color: '#A8790F' },
   name: { fontSize: 16, fontWeight: '600', color: colors.ink },
   address: { ...typography.bodySmall, marginTop: spacing.xs },
   empty: { ...typography.body, paddingVertical: spacing.xl },

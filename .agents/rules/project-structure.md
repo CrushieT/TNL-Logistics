@@ -6,6 +6,12 @@
 
 ```
 tnl-logistics/
+├── .review/                          # Planning, discovery, threat-model, and implementation-review artifacts
+│   ├── client-demo-change-plan.md
+│   ├── client-demo-phase-0-discovery-and-threat-model.md
+│   ├── client-demo-phase-1-registration-and-rating-plan.md
+│   ├── client-demo-phase-1.1-client-rate-override-plan.md
+│   └── railway-deployment-runbook.md
 ├── .agents/
 │   └── rules/
 │       ├── build-plan.md             # Master 6-Phase development roadmap & progress tracking
@@ -75,7 +81,7 @@ tnl-logistics/
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
 │   │   ├── utils/                   # Shared QR facade
 │   │   └── vendor/qrcodegen/        # Vendored Project Nayuki QR generator
-│   ├── tests/                       # Web unit suites (authSlidingSession.test.mjs, labelPrint.test.mjs, qr.test.mjs, registrationCalculations.test.mjs, reportPrint.test.mjs, sseClient.test.mjs)
+│   ├── tests/                       # Web unit suites (authSlidingSession.test.mjs, clientApiMapping.test.mjs, labelPrint.test.mjs, qr.test.mjs, registrationCalculations.test.mjs, reportPrint.test.mjs, sseClient.test.mjs)
 │   ├── assets/                      # favicon.png, tracking-logo.png
 │   ├── app.json                     # Expo web configuration
 │   ├── package.json
@@ -163,6 +169,7 @@ tnl-logistics/
 
 ### Workflow & Load Testing
 
+- Flyway migration inventory spans `V1` through `V32`; `V31` adds the global rate and shipment calculation snapshots, and `V32` adds the nullable client rate per kilo.
 - `backend/src/main/resources/application-workflow.properties` selects the isolated `tnl_workflow` database and enables the production-shaped workflow fixtures.
 - `docker-compose.workflow.yml` overrides the default Compose stack for the same isolated workflow profile.
 - `backend/src/main/resources/application-loadtest.properties` selects the isolated `tnl_loadtest` database with configurable HikariCP concurrency tuning (default pool size 10), strict Hibernate `ddl-auto=validate`, and opt-in deterministic seeder (`LoadTestDataSeeder.java`).

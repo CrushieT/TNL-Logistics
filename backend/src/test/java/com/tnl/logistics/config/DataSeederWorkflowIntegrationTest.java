@@ -15,10 +15,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -35,6 +36,8 @@ class DataSeederWorkflowIntegrationTest {
     private Environment environment;
     @Autowired
     private AppUserRepository appUserRepository;
+    @Autowired
+    private BCryptPasswordEncoder passwordEncoder;
     @Autowired
     private ClientRepository clientRepository;
     @Autowired
@@ -55,6 +58,15 @@ class DataSeederWorkflowIntegrationTest {
         assertTrue(environment.getProperty("app.seed.sample-data", Boolean.class, false));
         assertTrue(appUserRepository.findById("U-003").isPresent());
         assertTrue(clientRepository.findById("CL-001").isPresent());
+
+        List<String> staffUserIds = List.of("U-002", "U-003", "U-004", "U-005");
+        for (String staffUserId : staffUserIds) {
+            String pinHash = appUserRepository.findById(staffUserId).orElseThrow().getPinHash();
+            assertTrue(passwordEncoder.matches("1111", pinHash));
+        }
+        var haulerUser = appUserRepository.findById("U-004").orElseThrow();
+        assertEquals("hauler", haulerUser.getUsername());
+        assertTrue(passwordEncoder.matches("hauler123", haulerUser.getPasswordHash()));
 
         int year = LocalDate.now(ZoneOffset.UTC).getYear();
         List<ParcelStatus> expectedFinalStatuses = List.of(

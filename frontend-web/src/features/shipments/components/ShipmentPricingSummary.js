@@ -29,7 +29,7 @@ export default function ShipmentPricingSummary({
             <Text style={styles.statLargeText}>
               {ratePerKilo ? `₱${Number(ratePerKilo).toFixed(2)}` : '—'}
             </Text>
-            <Text style={styles.statSubText}>Configured by Admin</Text>
+            <Text style={styles.statSubText}>Rate for selected client</Text>
           </View>
         </View>
 
@@ -97,7 +97,7 @@ export default function ShipmentPricingSummary({
         <View style={styles.settingsAlertBox}>
           <Text style={styles.settingsAlertTitle}>Rate per Kilo Not Configured</Text>
           <Text style={styles.settingsAlertMessage}>
-            Shipment registration is blocked because Rate per Kilo is not configured. An administrator must set the rate in Settings before shipments can be registered.
+            Shipment registration is blocked because neither this client nor the system has a configured rate per kilo.
           </Text>
         </View>
       ) : null}

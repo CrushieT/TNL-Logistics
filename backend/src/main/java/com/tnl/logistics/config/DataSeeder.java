@@ -23,6 +23,12 @@ import java.util.UUID;
 /** Seeds an opt-in, production-shaped development fixture set. */
 @Component
 public class DataSeeder implements CommandLineRunner {
+    private static final String SEEDED_STAFF_MOBILE_PIN = "1111";
+    private static final String LEGACY_HAULER_USERNAME = "hauler1";
+    private static final String LEGACY_HAULER_PASSWORD = "field123";
+    private static final String SEEDED_HAULER_USERNAME = "hauler";
+    private static final String SEEDED_HAULER_PASSWORD = "hauler123";
+
     private final AppUserRepository appUserRepository;
     private final ClientRepository clientRepository;
     private final VehicleRepository vehicleRepository;
@@ -81,12 +87,13 @@ public class DataSeeder implements CommandLineRunner {
             return;
         }
         if (!seedSampleData) return;
-        if (seedAdmin) seedUser("U-001", "admin", "admin123", "Maria Santos", UserRole.ADMIN, null, null, seedMobilePins ? "1111" : null);
+        if (seedAdmin) seedUser("U-001", "admin", "admin123", "Maria Santos", UserRole.ADMIN, null, null, null);
 
-        AppUser office = seedUser("U-002", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF, null, null, seedMobilePins ? "2222" : null);
-        AppUser courier = seedUser("U-003", "field", "field123", "Carlos Mendoza", UserRole.FIELD_STAFF, StaffType.INTERNAL_TRUCK, null, seedMobilePins ? "0001" : null);
-        AppUser hauler = seedUser("U-004", "hauler1", "field123", "Rogelio Aquino", UserRole.FIELD_STAFF, StaffType.HAULER_STAFF, "Northbound Hauling", null);
-        seedUser("U-005", "hauler2", "field123", "Danilo Cruz", UserRole.FIELD_STAFF, StaffType.HAULER_STAFF, "Cordillera Freight", null);
+        String staffMobilePin = seedMobilePins ? SEEDED_STAFF_MOBILE_PIN : null;
+        AppUser office = seedUser("U-002", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF, null, null, staffMobilePin);
+        AppUser courier = seedUser("U-003", "field", "field123", "Carlos Mendoza", UserRole.FIELD_STAFF, StaffType.INTERNAL_TRUCK, null, staffMobilePin);
+        AppUser hauler = seedHaulerUser("U-004", "Rogelio Aquino", "Northbound Hauling", staffMobilePin);
+        seedUser("U-005", "hauler2", "field123", "Danilo Cruz", UserRole.FIELD_STAFF, StaffType.HAULER_STAFF, "Cordillera Freight", staffMobilePin);
 
         List<Client> clients = List.of(
                 seedClient("CL-001", "Northbridge Trading", "Unit 402, Trade Tower, Binondo, Manila", "0917-555-0148", "orders@northbridge.ph"),
@@ -116,11 +123,12 @@ public class DataSeeder implements CommandLineRunner {
     private void seedTestProfileFoundation() {
         if (!environment.acceptsProfiles(Profiles.of("test")) || !seedSampleData) return;
 
-        seedUser("USR-ADMIN", "admin", "admin123", "Admin User", UserRole.ADMIN, null, null, seedMobilePins ? "1111" : null);
-        seedUser("USR-OFFICE", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF, null, null, seedMobilePins ? "2222" : null);
-        seedUser("USR-FIELD", "field", "field123", "Carlos Mendoza", UserRole.FIELD_STAFF, StaffType.INTERNAL_TRUCK, null, seedMobilePins ? "0001" : null);
-        seedUser("USR-HAULER", "hauler1", "field123", "Rogelio Aquino", UserRole.FIELD_STAFF, StaffType.HAULER_STAFF, "Northbound Hauling", null);
-        seedUser("USR-HAULER2", "hauler2", "field123", "Danilo Cruz", UserRole.FIELD_STAFF, StaffType.HAULER_STAFF, "Cordillera Freight", null);
+        seedUser("USR-ADMIN", "admin", "admin123", "Admin User", UserRole.ADMIN, null, null, null);
+        String staffMobilePin = seedMobilePins ? SEEDED_STAFF_MOBILE_PIN : null;
+        seedUser("USR-OFFICE", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF, null, null, staffMobilePin);
+        seedUser("USR-FIELD", "field", "field123", "Carlos Mendoza", UserRole.FIELD_STAFF, StaffType.INTERNAL_TRUCK, null, staffMobilePin);
+        seedHaulerUser("USR-HAULER", "Rogelio Aquino", "Northbound Hauling", staffMobilePin);
+        seedUser("USR-HAULER2", "hauler2", "field123", "Danilo Cruz", UserRole.FIELD_STAFF, StaffType.HAULER_STAFF, "Cordillera Freight", staffMobilePin);
         seedClient("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com");
         seedVehicle("VH-001", "NCP-2401", "TNL line-haul vehicle");
         seedVehicle("VH-002", "NCP-2402", "TNL reserve vehicle");
@@ -145,6 +153,21 @@ public class DataSeeder implements CommandLineRunner {
             if (pin != null) user.setPinHash(passwordEncoder.encode(pin));
             return appUserRepository.save(user);
         });
+    }
+
+    private AppUser seedHaulerUser(String id, String fullName, String haulerCompany, String pin) {
+        AppUser haulerUser = seedUser(id, SEEDED_HAULER_USERNAME, SEEDED_HAULER_PASSWORD, fullName,
+                UserRole.FIELD_STAFF, StaffType.HAULER_STAFF, haulerCompany, pin);
+        boolean hasUpdatedLegacyCredentials = false;
+        if (LEGACY_HAULER_USERNAME.equals(haulerUser.getUsername())) {
+            haulerUser.setUsername(SEEDED_HAULER_USERNAME);
+            hasUpdatedLegacyCredentials = true;
+        }
+        if (passwordEncoder.matches(LEGACY_HAULER_PASSWORD, haulerUser.getPasswordHash())) {
+            haulerUser.setPasswordHash(passwordEncoder.encode(SEEDED_HAULER_PASSWORD));
+            hasUpdatedLegacyCredentials = true;
+        }
+        return hasUpdatedLegacyCredentials ? appUserRepository.save(haulerUser) : haulerUser;
     }
 
     private Client seedClient(String id, String name, String address, String contact, String email) {

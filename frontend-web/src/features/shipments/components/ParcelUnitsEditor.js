@@ -124,7 +124,7 @@ export default function ParcelUnitsEditor({
                     value={parcel.weightKg}
                     onChangeText={(val) => onUpdateParcelField?.(globalIndex, 'weightKg', val)}
                     numericOnly
-                    placeholder="1.0"
+                    placeholder="0.00"
                     maxLength={9}
                     suffix="kg"
                     error={errors[`parcel_${globalIndex}_weightKg`]}
@@ -137,7 +137,7 @@ export default function ParcelUnitsEditor({
                     value={parcel.lengthCm}
                     onChangeText={(val) => onUpdateParcelField?.(globalIndex, 'lengthCm', val)}
                     numericOnly
-                    placeholder="20"
+                    placeholder="0"
                     maxLength={9}
                     suffix="cm"
                     error={errors[`parcel_${globalIndex}_lengthCm`]}
@@ -150,7 +150,7 @@ export default function ParcelUnitsEditor({
                     value={parcel.widthCm}
                     onChangeText={(val) => onUpdateParcelField?.(globalIndex, 'widthCm', val)}
                     numericOnly
-                    placeholder="10"
+                    placeholder="0"
                     maxLength={9}
                     suffix="cm"
                     error={errors[`parcel_${globalIndex}_widthCm`]}
@@ -163,7 +163,7 @@ export default function ParcelUnitsEditor({
                     value={parcel.heightCm}
                     onChangeText={(val) => onUpdateParcelField?.(globalIndex, 'heightCm', val)}
                     numericOnly
-                    placeholder="15"
+                    placeholder="0"
                     maxLength={9}
                     suffix="cm"
                     error={errors[`parcel_${globalIndex}_heightCm`]}

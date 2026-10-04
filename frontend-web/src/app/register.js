@@ -4,7 +4,14 @@ import { useRouter } from 'expo-router';
 import AppShell from '../components/layout/AppShell';
 import PageHeader from '../components/layout/PageHeader';
 import Toast from '../components/common/Toast';
-import { ShipmentForm, ShipmentResultView, PrintLabelsModal, getShipment, registerShipment } from '../features/shipments';
+import {
+  ShipmentForm,
+  ShipmentResultView,
+  PrintLabelsModal,
+  getShipment,
+  getShipmentCalculationSettings,
+  registerShipment,
+} from '../features/shipments';
 import { listClients, createClient } from '../features/clients';
 import { getCompanyBranding } from '../features/settings';
 import { colors, fonts, spacing, radius } from '../theme';
@@ -22,6 +29,7 @@ export default function RegisterShipmentScreen() {
   const [ratePerKilo, setRatePerKilo] = useState(null);
   const [calculationSettingsState, setCalculationSettingsState] = useState('loading');
   const [calculationSettingsAttempt, setCalculationSettingsAttempt] = useState(0);
+  const [pricingClientId, setPricingClientId] = useState(null);
 
   const loadCanonicalResult = useCallback(async (shipmentId) => {
     setDetailLoadError(null);
@@ -39,7 +47,11 @@ export default function RegisterShipmentScreen() {
     let isMounted = true;
     setCalculationSettingsState('loading');
 
-    getCompanyBranding(calculationSettingsAttempt > 0)
+    const calculationSettingsRequest = pricingClientId
+      ? getShipmentCalculationSettings(pricingClientId)
+      : getCompanyBranding(calculationSettingsAttempt > 0);
+
+    calculationSettingsRequest
       .then((settings) => {
         const divisor = Number(settings?.volumetricDivisor);
         if (!Number.isFinite(divisor) || divisor <= 0) {
@@ -67,7 +79,7 @@ export default function RegisterShipmentScreen() {
     return () => {
       isMounted = false;
     };
-  }, [calculationSettingsAttempt]);
+  }, [calculationSettingsAttempt, pricingClientId]);
 
   // Load active clients from backend GET /api/v1/clients?active=true
   useEffect(() => {
@@ -227,6 +239,7 @@ export default function RegisterShipmentScreen() {
         volumetricDivisor={volumetricDivisor}
         ratePerKilo={ratePerKilo}
         calculationSettingsState={calculationSettingsState}
+        onPricingClientChange={setPricingClientId}
         onRetryCalculationSettings={() => setCalculationSettingsAttempt((attempt) => attempt + 1)}
       />
     </AppShell>

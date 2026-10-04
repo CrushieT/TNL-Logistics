@@ -80,6 +80,27 @@ public class ShipmentServiceImpl implements ShipmentService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public ShipmentCalculationSettingsResponse getCalculationSettings(String clientId) {
+        Client client = clientRepository.findById(clientId)
+                .orElseThrow(() -> new IllegalArgumentException("Client not found with ID: " + clientId));
+        if (Boolean.FALSE.equals(client.getActive())) {
+            throw new IllegalArgumentException("Cannot calculate shipment charges for inactive client: " + client.getName());
+        }
+
+        Integer volumetricDivisor = systemSettingService.getVolumetricDivisor();
+        if (volumetricDivisor == null || volumetricDivisor <= 0) {
+            volumetricDivisor = 5000;
+        }
+
+        return new ShipmentCalculationSettingsResponse(
+                client.getClientId(),
+                resolveRatePerKilo(client),
+                volumetricDivisor
+        );
+    }
+
+    @Override
     public ShipmentResponse registerShipment(ShipmentRegistrationRequest request, String actingStaffUserId) {
         Client client = clientRepository.findById(request.getClientId())
                 .orElseThrow(() -> new IllegalArgumentException("Client not found with ID: " + request.getClientId()));
@@ -91,11 +112,10 @@ public class ShipmentServiceImpl implements ShipmentService {
         AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
                 .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
 
-        // Validate rate per kilo configuration
-        BigDecimal configuredRate = systemSettingService.getRatePerKilo();
-        if (configuredRate == null) {
+        BigDecimal effectiveRatePerKilo = resolveRatePerKilo(client);
+        if (effectiveRatePerKilo == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "RATE_PER_KILO_NOT_CONFIGURED: Rate per kilo is not configured. An administrator must set the rate per kilo before registering shipments.");
+                    "RATE_PER_KILO_NOT_CONFIGURED: Neither a client rate nor the global rate per kilo is configured.");
         }
 
         Integer configuredDivisor = systemSettingService.getVolumetricDivisor();
@@ -104,7 +124,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
 
         // Stale-settings guards: reject if expected settings are missing or do not match active settings
-        if (request.getExpectedRatePerKilo() == null || request.getExpectedRatePerKilo().compareTo(configuredRate) != 0) {
+        if (request.getExpectedRatePerKilo() == null || request.getExpectedRatePerKilo().compareTo(effectiveRatePerKilo) != 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "STALE_SETTINGS: Calculation settings have changed. Please refresh and review the updated calculation before submitting.");
         }
@@ -167,7 +187,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         BigDecimal roundedActualWeight = totalActualWeight.setScale(2, RoundingMode.HALF_UP);
         BigDecimal totalVolumetricWeight = totalVolumeCm3.divide(divisorBd, 2, RoundingMode.HALF_UP);
         BigDecimal billableWeight = roundedActualWeight.max(totalVolumetricWeight);
-        BigDecimal shippingFee = billableWeight.multiply(configuredRate).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal shippingFee = billableWeight.multiply(effectiveRatePerKilo).setScale(2, RoundingMode.HALF_UP);
         BigDecimal otherCharges = request.getOtherCharges() != null ? request.getOtherCharges() : BigDecimal.ZERO;
         BigDecimal totalAmount = shippingFee.add(otherCharges);
 
@@ -205,7 +225,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         );
         shipment.setDescription(request.getDescription());
         shipment.setRoute(request.getRoute());
-        shipment.setAppliedRatePerKilo(configuredRate);
+        shipment.setAppliedRatePerKilo(effectiveRatePerKilo);
         shipment.setAppliedVolumetricDivisor(configuredDivisor);
         shipment.setTotalActualWeight(roundedActualWeight);
         shipment.setTotalVolumetricWeight(totalVolumetricWeight);
@@ -289,7 +309,7 @@ public class ShipmentServiceImpl implements ShipmentService {
                 totalAmount,
                 shipment.getPaidAtRegistration(),
                 trackingIds,
-                configuredRate,
+                effectiveRatePerKilo,
                 configuredDivisor,
                 roundedActualWeight,
                 totalVolumetricWeight,
@@ -740,6 +760,12 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
         parcels.sort(Comparator.comparing(ParcelUnit::getSeq));
         return parcels;
+    }
+
+    private BigDecimal resolveRatePerKilo(Client client) {
+        return client.getRatePerKilo() != null
+                ? client.getRatePerKilo()
+                : systemSettingService.getRatePerKilo();
     }
 
     private String normalizePrinterId(String printerId) {

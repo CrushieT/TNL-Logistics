@@ -5,13 +5,13 @@ import Button from '../../../components/common/Button';
 import { colors, fonts, spacing, radius } from '../../../theme';
 
 const COLUMNS = [
-  { key: 'shipment', label: 'Shipment', flex: 1.6 },
-  { key: 'recipient', label: 'Recipient', flex: 1.4 },
-  { key: 'client', label: 'Client', flex: 1.4 },
-  { key: 'qty', label: 'Qty', flex: 0.6 },
-  { key: 'status', label: 'Status', flex: 1.6 },
-  { key: 'payment', label: 'Payment', flex: 1 },
-  { key: 'balance', label: 'Balance', flex: 1 },
+  { key: 'shipment', label: 'SHIPMENT', flex: 1.6 },
+  { key: 'recipient', label: 'RECIPIENT', flex: 1.4 },
+  { key: 'client', label: 'CLIENT', flex: 1.4 },
+  { key: 'qty', label: 'QTY', flex: 0.6 },
+  { key: 'status', label: 'STATUS', flex: 1.6 },
+  { key: 'payment', label: 'PAYMENT', flex: 1 },
+  { key: 'balance', label: 'BALANCE', flex: 1 },
   { key: 'action', label: '', flex: 0.7 },
 ];
 
@@ -145,12 +145,12 @@ export default function ShipmentsTable({
 
 const webSelectStyle = {
   fontFamily: fonts.mono,
-  fontSize: 11.5,
-  color: colors.ink,
+  fontSize: 12.5,
+  color: colors.inkSoft,
+  backgroundColor: '#FAF9F5',
   border: `1px solid ${colors.border}`,
-  backgroundColor: '#FFFFFF',
-  padding: '6px 8px',
-  borderRadius: 3,
+  borderRadius: radius.sm,
+  padding: '6px 10px',
   outline: 'none',
   cursor: 'pointer',
 };
@@ -165,19 +165,20 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
-    backgroundColor: colors.canvas,
-    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: '#FAF9F5',
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   headerCell: {
-    fontFamily: fonts.sans,
-    fontSize: 11,
+    fontFamily: fonts.mono,
+    fontSize: 11.5,
+    fontWeight: '700',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     color: colors.inkFaint,
-    fontWeight: '700',
   },
   loadingBox: {
     paddingVertical: spacing.xxl,
@@ -186,9 +187,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   loadingText: {
-    fontFamily: fonts.mono,
-    fontSize: 12,
-    color: colors.inkFaint,
+    fontFamily: fonts.sans,
+    fontSize: 12.5,
+    color: colors.inkSoft,
   },
   emptyBox: {
     paddingVertical: spacing.xxl,
@@ -210,8 +211,9 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    paddingVertical: 14,
     paddingHorizontal: spacing.lg,
+    backgroundColor: colors.surface,
   },
   rowDivider: {
     borderBottomWidth: 1,
@@ -222,54 +224,54 @@ const styles = StyleSheet.create({
   },
   shipmentId: {
     fontFamily: fonts.mono,
-    fontSize: 13.5,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: '700',
     color: colors.ink,
   },
   dateLabel: {
     fontFamily: fonts.mono,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.inkFaint,
     marginTop: 2,
   },
   primaryText: {
     fontFamily: fonts.sans,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.ink,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   secondaryText: {
-    fontFamily: fonts.sans,
-    fontSize: 11.5,
+    fontFamily: fonts.mono,
+    fontSize: 12,
     color: colors.inkFaint,
     marginTop: 2,
   },
   rollupText: {
     fontFamily: fonts.sans,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.inkFaint,
     marginTop: 3,
   },
   vehicleText: {
     fontFamily: fonts.mono,
-    fontSize: 10.5,
+    fontSize: 12,
     color: colors.inkFaint,
     marginTop: 2,
   },
   viewLink: {
     fontFamily: fonts.sans,
-    fontSize: 12.5,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.accent,
   },
   paginationFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: colors.canvas,
+    backgroundColor: '#FAF9F5',
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingVertical: 10,
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     flexWrap: 'wrap',
     gap: spacing.md,
@@ -279,8 +281,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   paginationText: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
+    fontFamily: fonts.mono,
+    fontSize: 12.5,
     color: colors.inkSoft,
   },
   paginationStrong: {
@@ -299,6 +301,5 @@ const styles = StyleSheet.create({
   pageBtn: {
     paddingVertical: 6,
     paddingHorizontal: 12,
-    minHeight: 32,
   },
 });

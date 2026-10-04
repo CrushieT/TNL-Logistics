@@ -110,8 +110,9 @@ public class ShipmentIntegrationTest {
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {
             clientRepository.save(new Client("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com", ChargeModel.FLAT, true));
-        } else if (!Boolean.TRUE.equals(client.getActive())) {
+        } else {
             client.setActive(true);
+            client.setRatePerKilo(null);
             clientRepository.save(client);
         }
 
@@ -1350,5 +1351,84 @@ public class ShipmentIntegrationTest {
             jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
             systemSettingService.refreshCachedSettings();
         }
+    }
+
+    @Test
+    public void testClientRateOverridesGlobalAndExistingShipmentKeepsSnapshot() throws Exception {
+        Client client = clientRepository.findById("CL-001").orElseThrow();
+        client.setRatePerKilo(new BigDecimal("75.00"));
+        clientRepository.saveAndFlush(client);
+
+        mockMvc.perform(get("/api/v1/shipments/calculation-settings")
+                        .header("Authorization", officeToken)
+                        .param("clientId", "CL-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ratePerKilo").value(75.00));
+
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setQuantity(1);
+        request.setParcels(List.of(new ParcelUnitRequest(
+                1,
+                new BigDecimal("10.00"),
+                new BigDecimal("10"),
+                new BigDecimal("10"),
+                new BigDecimal("10")
+        )));
+        request.setOtherCharges(BigDecimal.ZERO);
+        request.setPaidAtRegistration(false);
+        request.setExpectedRatePerKilo(new BigDecimal("75.00"));
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse response = objectMapper.readValue(
+                result.getResponse().getContentAsString(), ShipmentResponse.class);
+        assertEquals(0, new BigDecimal("75.00").compareTo(response.getAppliedRatePerKilo()));
+        assertEquals(0, new BigDecimal("750.00").compareTo(response.getShippingFee()));
+        assertEquals(0, new BigDecimal("750.00").compareTo(response.getTotalAmount()));
+
+        client.setRatePerKilo(new BigDecimal("60.00"));
+        clientRepository.saveAndFlush(client);
+
+        mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("STALE_SETTINGS"));
+        assertEquals(1, shipmentRepository.count());
+
+        MvcResult detailResult = mockMvc.perform(get("/api/v1/shipments/" + response.getShipmentId())
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        ShipmentDetailResponse detail = objectMapper.readValue(
+                detailResult.getResponse().getContentAsString(), ShipmentDetailResponse.class);
+        assertEquals(0, new BigDecimal("75.00").compareTo(detail.getAppliedRatePerKilo()));
+        assertEquals(0, new BigDecimal("750.00").compareTo(detail.getTotalAmount()));
+    }
+
+    @Test
+    public void testClientRateWorksWhenGlobalRateIsNotConfigured() throws Exception {
+        Client client = clientRepository.findById("CL-001").orElseThrow();
+        client.setRatePerKilo(new BigDecimal("80.00"));
+        clientRepository.saveAndFlush(client);
+
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = NULL WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setExpectedRatePerKilo(new BigDecimal("80.00"));
+
+        mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.appliedRatePerKilo").value(80.00));
     }
 }

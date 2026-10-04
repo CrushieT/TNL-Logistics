@@ -24,6 +24,7 @@ export default function ShipmentForm({
   volumetricDivisor,
   ratePerKilo,
   calculationSettingsState = 'loading',
+  onPricingClientChange,
   onRetryCalculationSettings,
 }) {
   const { width } = useWindowDimensions();
@@ -46,7 +47,7 @@ export default function ShipmentForm({
   const [description, setDescription] = useState('');
   const [quantityInput, setQuantityInput] = useState('1');
   const [parcels, setParcels] = useState([
-    { id: 'unit-1', seq: 1, weightKg: '1', lengthCm: '20', widthCm: '10', heightCm: '15' },
+    { id: 'unit-1', seq: 1, weightKg: '', lengthCm: '', widthCm: '', heightCm: '' },
   ]);
   const [parcelPage, setParcelPage] = useState(0);
 
@@ -97,12 +98,21 @@ export default function ShipmentForm({
     ? (selectedClient?.name || '')
     : (newClientName.trim() || '');
 
+  useEffect(() => {
+    onPricingClientChange?.(clientMode === 'EXISTING' ? clientId : null);
+  }, [clientId, clientMode, onPricingClientChange]);
+
   function handleQuantityChange(value) {
     const cleaned = value.replace(/[^0-9]/g, '');
     setQuantityInput(cleaned);
 
+    if (cleaned === '0') {
+      setErrors((prev) => ({ ...prev, quantity: 'Quantity must be between 1 and 1,000.' }));
+      return;
+    }
     const qtyNum = parseInt(cleaned, 10);
     if (!isNaN(qtyNum) && qtyNum >= 1 && qtyNum <= 1000) {
+      setErrors((prev) => ({ ...prev, quantity: null }));
       if (qtyNum > parcels.length) {
         syncQuantityToParcels(qtyNum, false);
       } else if (qtyNum < parcels.length) {
@@ -120,7 +130,8 @@ export default function ShipmentForm({
   function handleQuantityBlur() {
     const qtyNum = parseInt(quantityInput, 10);
     if (isNaN(qtyNum) || qtyNum < 1 || qtyNum > 1000) {
-      setQuantityInput(String(parcels.length));
+      setQuantityInput(String(Math.max(1, parcels.length)));
+      setErrors((prev) => ({ ...prev, quantity: null }));
       return;
     }
     syncQuantityToParcels(qtyNum, true);
@@ -332,8 +343,10 @@ export default function ShipmentForm({
     }
 
     const qtyNum = parseInt(quantityInput, 10);
-    if (!quantityInput || isNaN(qtyNum) || qtyNum < 1 || qtyNum > 1000) {
+    if (!quantityInput || isNaN(qtyNum) || qtyNum < 1 || qtyNum > 1000 || parcels.length < 1) {
       newErrors.quantity = 'Quantity must be between 1 and 1,000.';
+    } else if (parcels.length !== qtyNum) {
+      newErrors.quantity = `Parcel count (${parcels.length}) must match quantity (${qtyNum}).`;
     }
 
     // Per-unit validation

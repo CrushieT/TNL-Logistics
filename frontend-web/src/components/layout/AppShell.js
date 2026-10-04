@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
     minHeight: 'auto',
   },
   sidebarWrap: {
-    width: 252,
+    width: 260,
     height: '100%',
     backgroundColor: '#FFFFFF',
   },

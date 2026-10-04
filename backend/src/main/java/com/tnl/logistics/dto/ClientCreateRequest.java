@@ -1,12 +1,16 @@
 package com.tnl.logistics.dto;
 
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 
 /**
- * Request payload for creating a new client.
+ * Request payload for creating or updating a client.
  */
 public class ClientCreateRequest {
 
@@ -29,6 +33,11 @@ public class ClientCreateRequest {
 
     private String defaultRateType;
 
+    @DecimalMin(value = "0.01", message = "Client rate per kilo must be greater than zero")
+    @DecimalMax(value = "99999.99", message = "Client rate per kilo cannot exceed 99,999.99")
+    @Digits(integer = 5, fraction = 2, message = "Client rate per kilo must have at most 2 decimal places")
+    private BigDecimal ratePerKilo;
+
     private Boolean active;
 
     public ClientCreateRequest() {}
@@ -49,6 +58,16 @@ public class ClientCreateRequest {
         this.active = active;
     }
 
+    public ClientCreateRequest(String name, String address, String contactNumber, String email, String defaultRateType, BigDecimal ratePerKilo, Boolean active) {
+        this.name = name;
+        this.address = address;
+        this.contactNumber = contactNumber;
+        this.email = email;
+        this.defaultRateType = defaultRateType;
+        this.ratePerKilo = ratePerKilo;
+        this.active = active;
+    }
+
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
 
@@ -63,6 +82,9 @@ public class ClientCreateRequest {
 
     public String getDefaultRateType() { return defaultRateType; }
     public void setDefaultRateType(String defaultRateType) { this.defaultRateType = defaultRateType; }
+
+    public BigDecimal getRatePerKilo() { return ratePerKilo; }
+    public void setRatePerKilo(BigDecimal ratePerKilo) { this.ratePerKilo = ratePerKilo; }
 
     public Boolean getActive() { return active; }
     public void setActive(Boolean active) { this.active = active; }
