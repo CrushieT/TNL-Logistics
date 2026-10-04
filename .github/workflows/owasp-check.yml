@@ -12,7 +12,7 @@ on:
       - 'backend/Dockerfile'
       - '.github/workflows/owasp-check.yml'
   pull_request:
-    branches: [ main, dev ]
+    branches: [ main, dev, 'web/**', 'mobile/**', 'backend/**', 'core/**' ]
     paths:
       - 'backend/pom.xml'
       - '.mvn/**'

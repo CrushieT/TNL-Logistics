@@ -17,6 +17,7 @@ tnl-logistics/
 │   ├── pull_request_template.md      # GitHub Pull Request template
 │   ├── PR_DRAFT.md                   # Current shipping-task handoff draft
 │   └── workflows/                    # GitHub Actions CI/CD workflows
+│       ├── ci.yml                    # Monorepo CI Pipeline (Backend, Web, Mobile)
 │       ├── dependency-review.yml     # Fast PR dependency vulnerability checks
 │       └── owasp-check.yml           # Scheduled and on-demand OWASP backend vulnerability scan
 ├── backend/                          # Spring Boot API (Java 21)
