@@ -72,25 +72,27 @@ export function validateRegistration(form) {
     if (email && (email.length > 150 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
       errors.newClientEmail = 'Enter a valid email address (up to 150 characters).';
     }
-  } else if (!form.clientId) {
-    errors.clientId = 'Select a billing client.';
-  }
+  } else {
+    if (!form.clientId) {
+      errors.clientId = 'Select a billing client.';
+    }
 
-  // 2. Recipient details
-  if (!form.recipientAddress || !form.recipientAddress.trim()) {
-    errors.recipientAddress = 'Complete address is required.';
-  } else if (form.recipientAddress.trim().length > 255) {
-    errors.recipientAddress = 'Complete address cannot exceed 255 characters.';
-  }
+    // 2. Recipient details
+    if (!form.recipientAddress || !form.recipientAddress.trim()) {
+      errors.recipientAddress = 'Complete address is required.';
+    } else if (form.recipientAddress.trim().length > 255) {
+      errors.recipientAddress = 'Complete address cannot exceed 255 characters.';
+    }
 
-  if (!form.recipientContact || !form.recipientContact.trim()) {
-    errors.recipientContact = 'Contact number is required.';
-  } else if (!/^\d+$/.test(form.recipientContact.trim())) {
-    errors.recipientContact = 'Contact number must contain digits only.';
-  } else if (form.recipientContact.trim().length < 7) {
-    errors.recipientContact = 'Enter a contact number with at least 7 characters.';
-  } else if (form.recipientContact.trim().length > 11) {
-    errors.recipientContact = 'Contact number cannot exceed 11 characters.';
+    if (!form.recipientContact || !form.recipientContact.trim()) {
+      errors.recipientContact = 'Contact number is required.';
+    } else if (!/^\d+$/.test(form.recipientContact.trim())) {
+      errors.recipientContact = 'Contact number must contain digits only.';
+    } else if (form.recipientContact.trim().length < 7) {
+      errors.recipientContact = 'Enter a contact number with at least 7 characters.';
+    } else if (form.recipientContact.trim().length > 11) {
+      errors.recipientContact = 'Contact number cannot exceed 11 characters.';
+    }
   }
 
   // 3. Shipment metadata
@@ -290,10 +292,18 @@ export function calculateRegistration(form, divisor, ratePerKilo = null) {
 }
 
 export function buildShipmentRequest(form, clientId = form.clientId, guards = {}) {
-  const errors = validateRegistration({ ...form, clientMode: 'EXISTING', clientId });
-  if (Object.keys(errors).length) throw new Error('Shipment fields are invalid.');
-
+  const recipientAddress = (form.clientMode === 'NEW' ? form.newClientAddress : (form.recipientAddress || form.newClientAddress || '')).trim();
+  const recipientContact = (form.clientMode === 'NEW' ? form.newClientContact : (form.recipientContact || form.newClientContact || '')).trim();
   const recipientName = (form.recipientName || form.clientName || form.newClientName || '').trim();
+
+  const errors = validateRegistration({
+    ...form,
+    clientMode: 'EXISTING',
+    clientId,
+    recipientAddress,
+    recipientContact,
+  });
+  if (Object.keys(errors).length) throw new Error('Shipment fields are invalid.');
 
   const parcels = hasPerUnitParcels(form)
     ? form.parcels.map((parcel, index) => ({
@@ -314,8 +324,8 @@ export function buildShipmentRequest(form, clientId = form.clientId, guards = {}
   const request = {
     clientId,
     recipientName: recipientName || undefined,
-    recipientAddress: form.recipientAddress.trim(),
-    recipientContact: form.recipientContact.trim(),
+    recipientAddress,
+    recipientContact,
     description: (form.description || '').trim() || 'General Goods',
     quantity: Number(form.quantity),
     route: (form.route || '').trim() || 'Manila to TNL Baguio',

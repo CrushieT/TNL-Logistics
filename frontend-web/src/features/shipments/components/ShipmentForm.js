@@ -74,9 +74,17 @@ export default function ShipmentForm({
     if (activeClients.length > 0) {
       const isCurrentActive = activeClients.some((c) => (c.id || c.clientId) === clientId);
       if (!clientId || !isCurrentActive) {
-        const defaultId = activeClients[0].id || activeClients[0].clientId || '';
+        const defaultClient = activeClients[0];
+        const defaultId = defaultClient.id || defaultClient.clientId || '';
         setClientId(defaultId);
         setErrors((prev) => ({ ...prev, clientId: null }));
+        if (!address.trim() && defaultClient.address) {
+          setAddress(defaultClient.address);
+        }
+        const defaultContact = defaultClient.contactNumber || defaultClient.contact || '';
+        if (!contactNumber.trim() && defaultContact) {
+          setContactNumber(String(defaultContact).replace(/[^0-9]/g, ''));
+        }
       }
     }
   }, [clients, clientId]);
@@ -275,6 +283,20 @@ export default function ShipmentForm({
     if (clientMode === 'EXISTING') {
       const activeClientId = clientId || (clients.length > 0 ? (clients[0].id || clients[0].clientId) : '');
       if (!activeClientId) newErrors.clientId = 'Please select a billing client.';
+
+      if (!address.trim()) {
+        newErrors.address = 'Complete delivery address is required.';
+      } else if (address.trim().length > 255) {
+        newErrors.address = 'Complete delivery address cannot exceed 255 characters.';
+      }
+
+      if (!contactNumber.trim() || contactNumber.trim().length < 7) {
+        newErrors.contactNumber = 'Valid contact number is required (min 7 digits).';
+      } else if (contactNumber.trim().length > 11) {
+        newErrors.contactNumber = 'Contact number cannot exceed 11 characters.';
+      } else if (!/^\d+$/.test(contactNumber.trim())) {
+        newErrors.contactNumber = 'Contact number must contain digits only.';
+      }
     } else {
       if (!newClientName.trim()) {
         newErrors.newClientName = 'Client / Company name is required.';
@@ -299,20 +321,6 @@ export default function ShipmentForm({
       if (newClientEmail.trim() && newClientEmail.trim().length > 150) {
         newErrors.newClientEmail = 'Email address cannot exceed 150 characters.';
       }
-    }
-
-    if (!address.trim()) {
-      newErrors.address = 'Complete delivery address is required.';
-    } else if (address.trim().length > 255) {
-      newErrors.address = 'Complete delivery address cannot exceed 255 characters.';
-    }
-
-    if (!contactNumber.trim() || contactNumber.trim().length < 7) {
-      newErrors.contactNumber = 'Valid contact number is required (min 7 digits).';
-    } else if (contactNumber.trim().length > 11) {
-      newErrors.contactNumber = 'Contact number cannot exceed 11 characters.';
-    } else if (!/^\d+$/.test(contactNumber.trim())) {
-      newErrors.contactNumber = 'Contact number must contain digits only.';
     }
 
     if (description.trim().length > 255) {
@@ -370,14 +378,17 @@ export default function ShipmentForm({
   function handleSubmit() {
     if (!validateForm()) return;
 
+    const deliveryAddress = (clientMode === 'NEW' ? newClientAddress : address).trim();
+    const deliveryContact = (clientMode === 'NEW' ? newClientContact : contactNumber).trim();
+
     const basePayload = {
       recipient: {
         fullName: derivedRecipientName,
-        address: address.trim(),
-        contactNumber: contactNumber.trim(),
+        address: deliveryAddress,
+        contactNumber: deliveryContact,
       },
-      recipientAddress: address.trim(),
-      recipientContact: contactNumber.trim(),
+      recipientAddress: deliveryAddress,
+      recipientContact: deliveryContact,
       description: description.trim() || 'General Goods',
       quantity: parcels.length,
       route: route.trim() || 'Manila to TNL Labo C.N.',
@@ -437,6 +448,17 @@ export default function ShipmentForm({
                     newClientAddress: null,
                     newClientContact: null,
                   }));
+                  if (selectedClient) {
+                    if (!address || address === newClientAddress) {
+                      setAddress(selectedClient.address || '');
+                      if (selectedClient.address) setErrors((prev) => ({ ...prev, address: null }));
+                    }
+                    const selectedContact = (selectedClient.contactNumber || selectedClient.contact || '').replace(/[^0-9]/g, '');
+                    if (!contactNumber || contactNumber === newClientContact) {
+                      setContactNumber(selectedContact);
+                      if (selectedContact) setErrors((prev) => ({ ...prev, contactNumber: null }));
+                    }
+                  }
                 }}
               >
                 <Text style={[styles.pillBtnText, clientMode === 'EXISTING' && styles.pillBtnTextActive]}>
@@ -447,7 +469,12 @@ export default function ShipmentForm({
                 style={[styles.pillBtn, clientMode === 'NEW' && styles.pillBtnActive]}
                 onPress={() => {
                   setClientMode('NEW');
-                  setErrors((prev) => ({ ...prev, clientId: null }));
+                  setErrors((prev) => ({
+                    ...prev,
+                    clientId: null,
+                    address: null,
+                    contactNumber: null,
+                  }));
                 }}
               >
                 <Text style={[styles.pillBtnText, clientMode === 'NEW' && styles.pillBtnTextActive]}>
@@ -456,7 +483,11 @@ export default function ShipmentForm({
               </TouchableOpacity>
             </View>
           }
-          style={[styles.halfCard, isMobile && styles.cardMobile, styles.clientCard]}
+          style={[
+            clientMode === 'EXISTING' ? styles.halfCard : styles.fullWidthCard,
+            isMobile && styles.cardMobile,
+            styles.clientCard,
+          ]}
           bodyStyle={styles.clientCardBody}
         >
           {clientMode === 'EXISTING' ? (
@@ -465,6 +496,20 @@ export default function ShipmentForm({
                 label="Select Client"
                 required
                 value={clientId}
+                onSelectClient={(client) => {
+                  if (client) {
+                    if (client.address) {
+                      setAddress(client.address);
+                      setErrors((prev) => ({ ...prev, address: null }));
+                    }
+                    const rawContact = client.contactNumber || client.contact || '';
+                    if (rawContact) {
+                      const sanitized = String(rawContact).replace(/[^0-9]/g, '');
+                      setContactNumber(sanitized);
+                      setErrors((prev) => ({ ...prev, contactNumber: null }));
+                    }
+                  }
+                }}
                 onValueChange={(val) => {
                   setClientId(val);
                   if (errors.clientId) setErrors((prev) => ({ ...prev, clientId: null }));
@@ -530,47 +575,49 @@ export default function ShipmentForm({
           )}
         </Card>
 
-        {/* 2. Recipient Card */}
-        <Card title="Recipient" style={[styles.halfCard, isMobile && styles.cardMobile]}>
-          <View style={styles.derivedRecipientContainer}>
-            <Text style={type.label}>RECIPIENT / CONSIGNEE</Text>
-            <View style={styles.derivedRecipientBox}>
-              <Text style={styles.derivedRecipientName}>
-                {derivedRecipientName || (clientMode === 'EXISTING' ? 'Select a billing client' : 'Enter client name')}
-              </Text>
-              <Text style={styles.derivedRecipientSub}>
-                Automatically derived from billing client
-              </Text>
+        {/* 2. Recipient Card (shown only when selecting an EXISTING client) */}
+        {clientMode === 'EXISTING' ? (
+          <Card title="Recipient" style={[styles.halfCard, isMobile && styles.cardMobile]}>
+            <View style={styles.derivedRecipientContainer}>
+              <Text style={type.label}>RECIPIENT / CONSIGNEE</Text>
+              <View style={styles.derivedRecipientBox}>
+                <Text style={styles.derivedRecipientName}>
+                  {derivedRecipientName || 'Select a billing client'}
+                </Text>
+                <Text style={styles.derivedRecipientSub}>
+                  Automatically derived from billing client
+                </Text>
+              </View>
             </View>
-          </View>
-          <FormField
-            label="Complete Address"
-            required
-            value={address}
-            onChangeText={(val) => {
-              setAddress(val);
-              if (errors.address) setErrors((prev) => ({ ...prev, address: null }));
-            }}
-            placeholder="Unit, Street, Barangay, City, Province"
-            maxLength={255}
-            error={errors.address}
-          />
-          <FormField
-            label="Contact Number"
-            required
-            value={contactNumber}
-            onChangeText={(val) => {
-              const sanitized = val.replace(/[^0-9]/g, '');
-              setContactNumber(sanitized);
-              if (errors.contactNumber) setErrors((prev) => ({ ...prev, contactNumber: null }));
-            }}
-            placeholder="09170000000"
-            keyboardType="phone-pad"
-            integerOnly
-            maxLength={11}
-            error={errors.contactNumber}
-          />
-        </Card>
+            <FormField
+              label="Complete Address"
+              required
+              value={address}
+              onChangeText={(val) => {
+                setAddress(val);
+                if (errors.address) setErrors((prev) => ({ ...prev, address: null }));
+              }}
+              placeholder="Unit, Street, Barangay, City, Province"
+              maxLength={255}
+              error={errors.address}
+            />
+            <FormField
+              label="Contact Number"
+              required
+              value={contactNumber}
+              onChangeText={(val) => {
+                const sanitized = val.replace(/[^0-9]/g, '');
+                setContactNumber(sanitized);
+                if (errors.contactNumber) setErrors((prev) => ({ ...prev, contactNumber: null }));
+              }}
+              placeholder="09170000000"
+              keyboardType="phone-pad"
+              integerOnly
+              maxLength={11}
+              error={errors.contactNumber}
+            />
+          </Card>
+        ) : null}
       </View>
 
       {/* 3. Shipment & Charges Card */}

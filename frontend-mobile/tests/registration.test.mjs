@@ -492,3 +492,60 @@ test('generatePaginationItems produces windowed pagination with at most 7 pills 
   assert.equal(model.paginationItems.length, 7);
   assert.deepEqual(model.paginationItems.map((item) => item.label), ['1', '...', '36', '37', '38', '...', '100']);
 });
+
+test('client selection and new client inputs auto-fill recipient delivery fields while preserving manual edits', () => {
+  // 1. Initial form state
+  const form = createRegistrationForm();
+  assert.equal(form.recipientAddress, '');
+  assert.equal(form.recipientContact, '');
+
+  // 2. Client selection auto-populates address and contact
+  const mockClient = {
+    clientId: 'CL-001',
+    name: 'Acme Logistics',
+    address: '123 Main St, Quezon City',
+    contactNumber: '09171234567',
+  };
+
+  const populatedFromClient = {
+    ...form,
+    clientId: mockClient.clientId,
+    clientName: mockClient.name,
+    recipientAddress: mockClient.address,
+    recipientContact: mockClient.contactNumber,
+  };
+  assert.equal(populatedFromClient.recipientAddress, '123 Main St, Quezon City');
+  assert.equal(populatedFromClient.recipientContact, '09171234567');
+
+  // 3. User can manually override recipient delivery details (editable)
+  const userOverridden = {
+    ...populatedFromClient,
+    recipientAddress: '456 Delivery Hub, Pasig City',
+    recipientContact: '09189998877',
+  };
+  assert.equal(userOverridden.recipientAddress, '456 Delivery Hub, Pasig City');
+  assert.equal(userOverridden.recipientContact, '09189998877');
+  // Client identity remains intact
+  assert.equal(userOverridden.clientId, 'CL-001');
+  assert.equal(userOverridden.clientName, 'Acme Logistics');
+
+  // 4. In NEW mode, separate recipient fields are not required and derive from new client
+  const newModeForm = {
+    ...createRegistrationForm(),
+    clientMode: 'NEW',
+    newClientName: 'Brand New Client',
+    newClientAddress: '789 Industrial Ave, Taguig',
+    newClientContact: '09191112233',
+    newClientEmail: 'client@taguig.com',
+    parcels: [{ id: 'u-1', seq: 1, weightKg: '2.0', lengthCm: '10', widthCm: '10', heightCm: '10' }],
+  };
+  const newModeErrors = validateRegistration(newModeForm);
+  assert.deepEqual(newModeErrors, {});
+
+  const newModeRequest = buildShipmentRequest(newModeForm, 'CL-GENERATED');
+  assert.equal(newModeRequest.recipientAddress, '789 Industrial Ave, Taguig');
+  assert.equal(newModeRequest.recipientContact, '09191112233');
+  assert.equal(newModeRequest.recipientName, 'Brand New Client');
+});
+
+

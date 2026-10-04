@@ -178,8 +178,25 @@ export function RegistrationScreen() {
     const nextValue = (name === 'recipientContact' || name === 'newClientContact')
       ? value.replace(/[^0-9]/g, '')
       : value;
-    setForm((previous) => ({ ...previous, [name]: nextValue }));
-    setErrors((previous) => ({ ...previous, [name]: undefined }));
+    setForm((previous) => {
+      const updated = { ...previous, [name]: nextValue };
+      if (name === 'newClientAddress') {
+        if (!previous.recipientAddress || previous.recipientAddress === previous.newClientAddress) {
+          updated.recipientAddress = nextValue;
+        }
+      } else if (name === 'newClientContact') {
+        if (!previous.recipientContact || previous.recipientContact === previous.newClientContact) {
+          updated.recipientContact = nextValue;
+        }
+      }
+      return updated;
+    });
+    setErrors((previous) => {
+      const updatedErrors = { ...previous, [name]: undefined };
+      if (name === 'newClientAddress' && nextValue) updatedErrors.recipientAddress = undefined;
+      if (name === 'newClientContact' && nextValue) updatedErrors.recipientContact = undefined;
+      return updatedErrors;
+    });
   }
 
   function handleQuantityChange(value) {
@@ -431,19 +448,21 @@ export function RegistrationScreen() {
               </>}
             </View>
 
-            {/* 2. Recipient Card (Derived Recipient Name, Editable Address & Contact) */}
-            <View style={styles.section}>
-              <Text accessibilityRole="header" style={styles.sectionTitle}>Recipient</Text>
-              <View style={styles.derivedRecipientContainer}>
-                <Text style={styles.label}>RECIPIENT / CONSIGNEE</Text>
-                <View style={styles.derivedRecipientBox}>
-                  <Text style={styles.derivedRecipientName}>{derivedRecipientName}</Text>
-                  <Text style={styles.helper}>Automatically derived from billing client.</Text>
+            {/* 2. Recipient Card (shown only when selecting an EXISTING client) */}
+            {form.clientMode === 'EXISTING' ? (
+              <View style={styles.section}>
+                <Text accessibilityRole="header" style={styles.sectionTitle}>Recipient</Text>
+                <View style={styles.derivedRecipientContainer}>
+                  <Text style={styles.label}>RECIPIENT / CONSIGNEE</Text>
+                  <View style={styles.derivedRecipientBox}>
+                    <Text style={styles.derivedRecipientName}>{derivedRecipientName}</Text>
+                    <Text style={styles.helper}>Automatically derived from billing client.</Text>
+                  </View>
                 </View>
+                {field('recipientAddress', 'COMPLETE ADDRESS *', { placeholder: 'Unit, street, barangay, city, province', multiline: true, maxLength: 255 })}
+                {field('recipientContact', 'CONTACT NUMBER *', { keyboardType: 'phone-pad', inputMode: 'numeric', maxLength: 11, placeholder: '09XXXXXXXXX' })}
               </View>
-              {field('recipientAddress', 'COMPLETE ADDRESS *', { placeholder: 'Unit, street, barangay, city, province', multiline: true, maxLength: 255 })}
-              {field('recipientContact', 'CONTACT NUMBER *', { keyboardType: 'phone-pad', inputMode: 'numeric', maxLength: 11, placeholder: '09XXXXXXXXX' })}
-            </View>
+            ) : null}
 
             {/* 3. Parcel Details & Per-Unit Editor */}
             <View style={styles.section}>
@@ -610,8 +629,20 @@ export function RegistrationScreen() {
         </View>
       </KeyboardAvoidingView>}
       {isPickerOpen ? <ClientPicker onClose={() => setIsPickerOpen(false)} onSelect={(client) => {
-        setForm((previous) => ({ ...previous, clientId: client.clientId, clientName: client.name }));
-        setErrors((previous) => ({ ...previous, clientId: undefined }));
+        const clientContact = (client.contactNumber || client.contact || '').replace(/[^0-9]/g, '');
+        setForm((previous) => ({
+          ...previous,
+          clientId: client.clientId,
+          clientName: client.name,
+          recipientAddress: client.address || previous.recipientAddress,
+          recipientContact: clientContact || previous.recipientContact,
+        }));
+        setErrors((previous) => ({
+          ...previous,
+          clientId: undefined,
+          ...(client.address ? { recipientAddress: undefined } : {}),
+          ...(clientContact ? { recipientContact: undefined } : {}),
+        }));
         if (uncertainStage === 'client') { setUncertainStage(null); setErrorMessage(''); }
         setIsPickerOpen(false);
       }} /> : null}

@@ -2,24 +2,10 @@
 
 **TNL Logistics uses a monorepo layout with three independent codebases sharing a common backend API.**
 
-### Planning Artifacts
-
-- `.review/client-demo-change-plan.md` contains the categorized post-client-demo delivery plan.
-- `.review/client-demo-phase-0-discovery-and-threat-model.md` contains the Phase 0 findings, pending decisions, and required security controls.
-- `.review/client-demo-phase-1-registration-and-rating-plan.md` contains the decision-complete per-unit measurement and settings-based rating plan.
-- `.review/admin-partial-delivery-plan.md` contains the deferred partial-delivery exception plan.
-- `.review/railway-deployment-runbook.md` contains the Railway deployment procedure.
-
 ### Complete Directory Structure
 
 ```
 tnl-logistics/
-├── .review/                          # Planning and review artifacts
-│   ├── admin-partial-delivery-plan.md
-│   ├── client-demo-change-plan.md
-│   ├── client-demo-phase-0-discovery-and-threat-model.md
-│   ├── client-demo-phase-1-registration-and-rating-plan.md
-│   └── railway-deployment-runbook.md
 ├── .agents/
 │   └── rules/
 │       ├── build-plan.md             # Master 6-Phase development roadmap & progress tracking
