@@ -42,7 +42,7 @@ public class SystemSetting {
     private Integer volumetricDivisor = 5000;
 
     @Column(name = "rate_per_kilo", precision = 12, scale = 2)
-    private java.math.BigDecimal ratePerKilo;
+    private java.math.BigDecimal ratePerKilo = new java.math.BigDecimal("100.00");
 
     @Column(name = "tracking_prefix", length = 20, nullable = false)
     private String trackingPrefix = "TRK";
@@ -63,7 +63,7 @@ public class SystemSetting {
                          String companyContact, String billingEmail, DayOfWeek collectionDay,
                          Integer volumetricDivisor, String trackingPrefix, String shipmentPrefix) {
         this(settingId, companyName, companyAddress, companyContact, billingEmail, collectionDay,
-             volumetricDivisor, null, trackingPrefix, shipmentPrefix);
+             volumetricDivisor, new java.math.BigDecimal("100.00"), trackingPrefix, shipmentPrefix);
     }
 
     public SystemSetting(Integer settingId, String companyName, String companyAddress,

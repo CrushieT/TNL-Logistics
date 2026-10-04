@@ -11,6 +11,7 @@ import com.tnl.logistics.dto.ShipmentRegistrationRequest;
 import com.tnl.logistics.dto.ShipmentResponse;
 import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.*;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -115,6 +116,12 @@ public class ShipmentIntegrationTest {
         }
 
         currentYear = String.valueOf(LocalDate.now().getYear());
+    }
+
+    @AfterEach
+    public void tearDown() {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
     }
 
     @Test
@@ -1026,29 +1033,34 @@ public class ShipmentIntegrationTest {
 
     @Test
     public void testRegistrationFailsWhenRatePerKiloNotConfigured() throws Exception {
-        SystemSetting setting = systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID).orElseThrow();
-        setting.setRatePerKilo(null);
-        systemSettingRepository.saveAndFlush(setting);
-        systemSettingService.refreshCachedSettings();
+        try {
+            SystemSetting setting = systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID).orElseThrow();
+            setting.setRatePerKilo(null);
+            systemSettingRepository.saveAndFlush(setting);
+            systemSettingService.refreshCachedSettings();
 
-        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"));
-        ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
-        request.setClientId("CL-001");
-        request.setRecipientAddress("Manila");
-        request.setRecipientContact("09180001111");
-        request.setQuantity(1);
-        request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
-        request.setParcels(List.of(p1));
+            ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"));
+            ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
+            request.setClientId("CL-001");
+            request.setRecipientAddress("Manila");
+            request.setRecipientContact("09180001111");
+            request.setQuantity(1);
+            request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+            request.setParcels(List.of(p1));
 
-        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
-                        .header("Authorization", officeToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isConflict())
-                .andReturn();
+            MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                            .header("Authorization", officeToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isConflict())
+                    .andReturn();
 
-        JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
-        assertEquals("RATE_PER_KILO_NOT_CONFIGURED", json.get("code").asText());
+            JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
+            assertEquals("RATE_PER_KILO_NOT_CONFIGURED", json.get("code").asText());
+        } finally {
+            jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+            systemSettingService.refreshCachedSettings();
+        }
     }
 
     @Test
@@ -1172,19 +1184,24 @@ public class ShipmentIntegrationTest {
         assertEquals(new BigDecimal("100.00"), response.getAppliedRatePerKilo());
         assertEquals(new BigDecimal("1000.00"), response.getTotalAmount());
 
-        // Later settings change rate to 350.00
-        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 350.00 WHERE setting_id = 1");
-        systemSettingService.refreshCachedSettings();
+        try {
+            // Later settings change rate to 350.00
+            jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 350.00 WHERE setting_id = 1");
+            systemSettingService.refreshCachedSettings();
 
-        // Existing shipment detail must retain snapshot rate 100.00 and original total 1000.00
-        MvcResult detailResult = mockMvc.perform(get("/api/v1/shipments/" + shipmentId)
-                        .header("Authorization", officeToken))
-                .andExpect(status().isOk())
-                .andReturn();
+            // Existing shipment detail must retain snapshot rate 100.00 and original total 1000.00
+            MvcResult detailResult = mockMvc.perform(get("/api/v1/shipments/" + shipmentId)
+                            .header("Authorization", officeToken))
+                    .andExpect(status().isOk())
+                    .andReturn();
 
-        com.tnl.logistics.dto.ShipmentDetailResponse detail = objectMapper.readValue(
-                detailResult.getResponse().getContentAsString(), com.tnl.logistics.dto.ShipmentDetailResponse.class);
-        assertEquals(new BigDecimal("100.00"), detail.getAppliedRatePerKilo());
-        assertEquals(new BigDecimal("1000.00"), detail.getTotalAmount());
+            com.tnl.logistics.dto.ShipmentDetailResponse detail = objectMapper.readValue(
+                    detailResult.getResponse().getContentAsString(), com.tnl.logistics.dto.ShipmentDetailResponse.class);
+            assertEquals(new BigDecimal("100.00"), detail.getAppliedRatePerKilo());
+            assertEquals(new BigDecimal("1000.00"), detail.getTotalAmount());
+        } finally {
+            jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+            systemSettingService.refreshCachedSettings();
+        }
     }
 }

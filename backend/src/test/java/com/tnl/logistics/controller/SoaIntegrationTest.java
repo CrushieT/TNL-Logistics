@@ -57,8 +57,17 @@ public class SoaIntegrationTest {
     @Autowired
     private SoaRepository soaRepository;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
     @BeforeEach
     void setUp() {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client != null) {
             client.setActive(true);
@@ -111,7 +120,7 @@ public class SoaIntegrationTest {
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
         shipmentReq.setParcels(List.of(
-                new ParcelUnitRequest(1, new BigDecimal("3.0"), new BigDecimal("20"), new BigDecimal("20"), new BigDecimal("20"))
+                new ParcelUnitRequest(1, new BigDecimal("12.0"), new BigDecimal("20"), new BigDecimal("20"), new BigDecimal("20"))
         ));
 
         mockMvc.perform(post("/api/v1/shipments")
@@ -296,7 +305,7 @@ public class SoaIntegrationTest {
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
         shipmentReq.setParcels(List.of(
-                new ParcelUnitRequest(1, new BigDecimal("2.5"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))
+                new ParcelUnitRequest(1, new BigDecimal("12.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))
         ));
 
         mockMvc.perform(post("/api/v1/shipments")
@@ -338,7 +347,7 @@ public class SoaIntegrationTest {
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
         shipmentReq.setParcels(List.of(
-                new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))
+                new ParcelUnitRequest(1, new BigDecimal("5.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))
         ));
 
         var registration = mockMvc.perform(post("/api/v1/shipments")
@@ -478,7 +487,7 @@ public class SoaIntegrationTest {
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
         shipmentReq.setParcels(List.of(
-                new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("15"), new BigDecimal("15"), new BigDecimal("15"))
+                new ParcelUnitRequest(1, new BigDecimal("10.0"), new BigDecimal("15"), new BigDecimal("15"), new BigDecimal("15"))
         ));
 
         var regRes = mockMvc.perform(post("/api/v1/shipments")

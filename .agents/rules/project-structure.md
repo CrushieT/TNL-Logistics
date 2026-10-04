@@ -47,7 +47,7 @@ tnl-logistics/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
 │   │   │       ├── application-loadtest.properties
-│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V31; V31 adds rate per kilo setting & shipment calculation snapshots)
+│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V32; V31 adds rate per kilo & snapshots, V32 sets default rate per kilo)
 │   │   └── test/                        # Integration and unit test suites, including AdminConsoleAuthorizationIntegrationTest and scanner API coverage
 │   └── pom.xml
 │
