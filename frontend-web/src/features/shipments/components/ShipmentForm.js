@@ -4,6 +4,7 @@ import Card from '../../../components/common/Card';
 import FormField from '../../../components/common/FormField';
 import SelectField from '../../../components/common/SelectField';
 import Button from '../../../components/common/Button';
+import StatusModal from '../../../components/common/StatusModal';
 import ClientSelectDropdown from './ClientSelectDropdown';
 import ParcelUnitsEditor from './ParcelUnitsEditor';
 import ShipmentPricingSummary from './ShipmentPricingSummary';
@@ -56,6 +57,16 @@ export default function ShipmentForm({
 
   // Field Validation Errors
   const [errors, setErrors] = useState({});
+
+  // Discard Confirmation Modal State
+  const [discardModal, setDiscardModal] = useState({
+    visible: false,
+    type: null, // 'remove_unit' | 'reduce_quantity'
+    targetIndex: null,
+    targetQty: null,
+    unitSeq: null,
+    discardedSeqs: [],
+  });
 
   // Automatically sync client selection to first active client when clients list loads
   useEffect(() => {
@@ -131,35 +142,41 @@ export default function ShipmentForm({
         (p) => Boolean(p.weightKg?.trim() || p.lengthCm?.trim() || p.widthCm?.trim() || p.heightCm?.trim())
       );
       if (isPopulated && confirmIfPopulated) {
-        const confirmMsg = `Reducing quantity to ${targetQty} will discard measurements for parcel unit(s) ${discarded.map((p) => `#${p.seq}`).join(', ')}. Discard these units?`;
-        const confirmed = typeof window !== 'undefined' && typeof window.confirm === 'function'
-          ? window.confirm(confirmMsg)
-          : true;
-        if (!confirmed) {
-          setQuantityInput(String(parcels.length));
-          return;
-        }
+        setDiscardModal({
+          visible: true,
+          type: 'reduce_quantity',
+          targetIndex: null,
+          targetQty,
+          unitSeq: null,
+          discardedSeqs: discarded.map((p) => p.seq),
+        });
+        return;
       } else if (isPopulated && !confirmIfPopulated) {
         return;
       }
-      setParcels((prev) => prev.slice(0, targetQty));
-      setQuantityInput(String(targetQty));
-      setErrors((prev) => ({ ...prev, quantity: null }));
-      const maxPage = Math.max(0, Math.ceil(targetQty / 10) - 1);
-      setParcelPage((prev) => Math.min(prev, maxPage));
+      performReduceQuantity(targetQty);
     }
+  }
+
+  function performReduceQuantity(targetQty) {
+    setParcels((prev) => prev.slice(0, targetQty));
+    setQuantityInput(String(targetQty));
+    setErrors((prev) => ({ ...prev, quantity: null }));
+    const maxPage = Math.max(0, Math.ceil(targetQty / 10) - 1);
+    setParcelPage((prev) => Math.min(prev, maxPage));
   }
 
   function addUnit() {
     if (parcels.length >= 1000) return;
     const nextSeq = parcels.length + 1;
+    const lastUnit = parcels[parcels.length - 1];
     const newUnit = {
       id: `unit-${Date.now()}-${nextSeq}-${Math.random().toString(36).slice(2, 6)}`,
       seq: nextSeq,
-      weightKg: '',
-      lengthCm: '',
-      widthCm: '',
-      heightCm: '',
+      weightKg: lastUnit ? lastUnit.weightKg || '' : '',
+      lengthCm: lastUnit ? lastUnit.lengthCm || '' : '',
+      widthCm: lastUnit ? lastUnit.widthCm || '' : '',
+      heightCm: lastUnit ? lastUnit.heightCm || '' : '',
     };
     setParcels((prev) => [...prev, newUnit]);
     setQuantityInput(String(nextSeq));
@@ -174,12 +191,20 @@ export default function ShipmentForm({
       unitToRemove.widthCm?.trim() || unitToRemove.heightCm?.trim()
     );
     if (isPopulated) {
-      const confirmMsg = `Discard measurements for parcel unit #${unitToRemove.seq}?`;
-      const confirmed = typeof window !== 'undefined' && typeof window.confirm === 'function'
-        ? window.confirm(confirmMsg)
-        : true;
-      if (!confirmed) return;
+      setDiscardModal({
+        visible: true,
+        type: 'remove_unit',
+        targetIndex: indexToRemove,
+        targetQty: null,
+        unitSeq: unitToRemove.seq,
+        discardedSeqs: [],
+      });
+      return;
     }
+    performRemoveUnit(indexToRemove);
+  }
+
+  function performRemoveUnit(indexToRemove) {
     const nextParcels = parcels
       .filter((_, idx) => idx !== indexToRemove)
       .map((p, idx) => ({ ...p, seq: idx + 1 }));
@@ -187,6 +212,36 @@ export default function ShipmentForm({
     setQuantityInput(String(nextParcels.length));
     const maxPage = Math.max(0, Math.ceil(nextParcels.length / 10) - 1);
     setParcelPage((prev) => Math.min(prev, maxPage));
+  }
+
+  function handleConfirmDiscardModal() {
+    if (discardModal.type === 'remove_unit' && discardModal.targetIndex !== null) {
+      performRemoveUnit(discardModal.targetIndex);
+    } else if (discardModal.type === 'reduce_quantity' && discardModal.targetQty !== null) {
+      performReduceQuantity(discardModal.targetQty);
+    }
+    setDiscardModal({
+      visible: false,
+      type: null,
+      targetIndex: null,
+      targetQty: null,
+      unitSeq: null,
+      discardedSeqs: [],
+    });
+  }
+
+  function handleCancelDiscardModal() {
+    if (discardModal.type === 'reduce_quantity') {
+      setQuantityInput(String(parcels.length));
+    }
+    setDiscardModal({
+      visible: false,
+      type: null,
+      targetIndex: null,
+      targetQty: null,
+      unitSeq: null,
+      discardedSeqs: [],
+    });
   }
 
   function updateParcelField(index, field, value) {
@@ -623,6 +678,26 @@ export default function ShipmentForm({
           </View>
         </View>
       </Card>
+
+      <StatusModal
+        visible={discardModal.visible}
+        eyebrow="SHIPMENT REGISTRATION"
+        title={
+          discardModal.type === 'remove_unit'
+            ? `Discard measurements for parcel unit #${discardModal.unitSeq}?`
+            : 'Discard excess parcel units?'
+        }
+        message={
+          discardModal.type === 'remove_unit'
+            ? 'This unit contains entered measurements that will be removed.'
+            : `Reducing quantity to ${discardModal.targetQty} will discard measurements for parcel unit(s) ${discardModal.discardedSeqs.map((s) => `#${s}`).join(', ')}.`
+        }
+        confirmText={discardModal.type === 'remove_unit' ? 'Discard' : 'Discard Units'}
+        cancelText="Cancel"
+        confirmVariant="danger"
+        onConfirm={handleConfirmDiscardModal}
+        onCancel={handleCancelDiscardModal}
+      />
     </View>
   );
 }

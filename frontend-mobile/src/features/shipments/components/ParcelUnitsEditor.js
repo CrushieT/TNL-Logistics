@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, spacing, typography } from '../../../theme';
 import { createParcelPaginationModel, getParcelPageIndex } from '../parcelPagination.mjs';
 
@@ -59,7 +59,14 @@ function ParcelMeasurementField({
   );
 }
 
-function PaginationControls({ activePage, errorPageIndices, isBottom = false, onPageChange, totalPages }) {
+function PaginationControls({
+  activePage,
+  errorPageIndices,
+  isBottom = false,
+  onPageChange,
+  paginationItems = [],
+  totalPages,
+}) {
   if (totalPages <= 1) return null;
 
   const isFirstPage = activePage === 0;
@@ -80,33 +87,41 @@ function PaginationControls({ activePage, errorPageIndices, isBottom = false, on
       {isBottom ? (
         <Text style={styles.pageIndicatorText}>Page {activePage + 1} of {totalPages}</Text>
       ) : (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pagePillsContainer}>
-          {Array.from({ length: totalPages }, (_, pageIndex) => {
-            const isCurrent = pageIndex === activePage;
-            const hasErrors = errorPageIndices.has(pageIndex);
+        <View style={styles.pagePillsContainer}>
+          {paginationItems.map((item) => {
+            const hasErrors = item.isEllipsis
+              ? (item.coveredPageIndices || []).some((idx) => errorPageIndices.has(idx))
+              : errorPageIndices.has(item.pageIndex);
+
             return (
               <Pressable
-                key={`page-pill-${pageIndex}`}
+                key={item.key}
                 accessibilityRole="button"
-                accessibilityLabel={`Go to parcel page ${pageIndex + 1}`}
-                onPress={() => onPageChange(pageIndex)}
+                accessibilityLabel={
+                  item.isEllipsis
+                    ? `Jump ${item.ellipsisDirection === 'left' ? 'back' : 'forward'} to parcel page ${item.pageIndex + 1}`
+                    : `Go to parcel page ${item.pageIndex + 1}`
+                }
+                onPress={() => onPageChange(item.pageIndex)}
                 style={[
                   styles.pagePill,
-                  isCurrent && styles.pagePillActive,
-                  hasErrors && !isCurrent && styles.pagePillError,
+                  item.isCurrent && styles.pagePillActive,
+                  hasErrors && !item.isCurrent && styles.pagePillError,
                 ]}
               >
-                <Text style={[
-                  styles.pagePillText,
-                  isCurrent && styles.pagePillTextActive,
-                  hasErrors && !isCurrent && styles.pagePillTextError,
-                ]}>
-                  {pageIndex + 1}
+                <Text
+                  style={[
+                    styles.pagePillText,
+                    item.isCurrent && styles.pagePillTextActive,
+                    hasErrors && !item.isCurrent && styles.pagePillTextError,
+                  ]}
+                >
+                  {item.label}
                 </Text>
               </Pressable>
             );
           })}
-        </ScrollView>
+        </View>
       )}
 
       <Pressable
@@ -171,6 +186,7 @@ export function ParcelUnitsEditor({
         activePage={pageModel.activePage}
         errorPageIndices={pageModel.errorPageIndices}
         onPageChange={onPageChange}
+        paginationItems={pageModel.paginationItems}
         totalPages={pageModel.totalPages}
       />
 
@@ -232,6 +248,7 @@ export function ParcelUnitsEditor({
         errorPageIndices={pageModel.errorPageIndices}
         isBottom
         onPageChange={onPageChange}
+        paginationItems={pageModel.paginationItems}
         totalPages={pageModel.totalPages}
       />
     </View>
@@ -284,16 +301,25 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
+    borderColor: colors.border,
+    borderRadius: 4,
     backgroundColor: colors.surface,
   },
   pageNavBtnDisabled: { opacity: 0.35, borderColor: colors.border },
-  pageNavBtnText: { fontSize: 11, fontWeight: '700', color: colors.ink },
+  pageNavBtnText: { fontSize: 11, fontWeight: '600', color: colors.ink },
   pageNavBtnTextDisabled: { color: colors.inkFaint },
-  pagePillsContainer: { flexDirection: 'row', gap: 4, alignItems: 'center', paddingHorizontal: spacing.xs },
+  pagePillsContainer: {
+    flexDirection: 'row',
+    gap: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
+    flexWrap: 'nowrap',
+  },
   pagePill: {
     minWidth: 26,
     height: 26,
+    borderRadius: 4,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
@@ -303,7 +329,7 @@ const styles = StyleSheet.create({
   },
   pagePillActive: { backgroundColor: colors.black, borderColor: colors.black },
   pagePillError: { borderColor: colors.danger, backgroundColor: colors.dangerSoft },
-  pagePillText: { ...typography.mono, fontSize: 11, color: colors.ink },
+  pagePillText: { ...typography.mono, fontSize: 11, color: colors.inkSoft, fontWeight: '600' },
   pagePillTextActive: { color: colors.surface, fontWeight: '700' },
   pagePillTextError: { color: colors.danger, fontWeight: '700' },
   unitCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginBottom: spacing.md },

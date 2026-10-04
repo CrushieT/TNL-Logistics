@@ -81,7 +81,7 @@ tnl-logistics/
 │   │   │   └── settings.js          # Screen 28 System Settings
 │   │   ├── components/              # Shared design system (common/ atoms, layout/ AppShell)
 │   │   ├── features/                # Domain modules
-│   │   │   ├── shipments/           # ClientSelectDropdown, ParcelUnitsEditor, ShipmentPricingSummary, registrationCalculations.mjs, PrintLabelsModal, LabelPreview, durable outbox & isolated thermal print service
+│   │   │   ├── shipments/           # ClientSelectDropdown, ParcelUnitsEditor, ShipmentPricingSummary, parcelPagination.mjs, registrationCalculations.mjs, PrintLabelsModal, LabelPreview, durable outbox & isolated thermal print service
 │   │   │   ├── reports/             # Operational & financial report cards, PrintableReportDocument, reportPrintModel.mjs
 │   │   │   └── settings/            # AdminSecurityCard, ConfirmPasswordModal, settings components
 │   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sessionCore.mjs, sseClient.js, sseClientCore.mjs)

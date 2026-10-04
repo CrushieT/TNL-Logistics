@@ -236,13 +236,14 @@ export function RegistrationScreen() {
   function handleAddUnit() {
     if (form.parcels.length >= 1000) return;
     const nextSeq = form.parcels.length + 1;
+    const lastUnit = form.parcels[form.parcels.length - 1];
     const newUnit = {
       id: `unit-${Date.now()}-${nextSeq}`,
       seq: nextSeq,
-      weightKg: '',
-      lengthCm: '',
-      widthCm: '',
-      heightCm: '',
+      weightKg: lastUnit ? lastUnit.weightKg || '' : '',
+      lengthCm: lastUnit ? lastUnit.lengthCm || '' : '',
+      widthCm: lastUnit ? lastUnit.widthCm || '' : '',
+      heightCm: lastUnit ? lastUnit.heightCm || '' : '',
     };
     setForm((prev) => ({
       ...prev,
@@ -619,7 +620,7 @@ export function RegistrationScreen() {
         title={
           dialog === 'discard' ? 'Discard this shipment?'
           : dialog === 'discard_units' ? 'Discard excess units?'
-          : dialog === 'remove_unit' ? `Remove Unit #${(unitToRemove.current ?? 0) + 1}?`
+          : dialog === 'remove_unit' ? `Discard measurements for parcel unit #${form.parcels[unitToRemove.current]?.seq || (unitToRemove.current ?? 0) + 1}?`
           : 'Check before retrying'
         }
         message={
@@ -636,7 +637,7 @@ export function RegistrationScreen() {
         confirmText={
           dialog === 'discard' ? 'Discard'
           : dialog === 'discard_units' ? 'Discard Units'
-          : dialog === 'remove_unit' ? 'Remove'
+          : dialog === 'remove_unit' ? 'Discard'
           : 'Checked; retry'
         }
         cancelText={dialog === 'discard' || dialog === 'discard_units' || dialog === 'remove_unit' ? 'Cancel' : 'Cancel'}

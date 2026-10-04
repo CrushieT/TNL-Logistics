@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import FormField from '../../../components/common/FormField';
+import { generatePaginationItems } from '../parcelPagination.mjs';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
 
 const PAGE_SIZE = 10;
@@ -190,29 +191,37 @@ export default function ParcelUnitsEditor({
           </TouchableOpacity>
 
           <View style={styles.pagePillsRow}>
-            {Array.from({ length: totalPages }, (_, pIdx) => {
-              const isCurrent = pIdx === activePage;
-              const pageHasError = offPageErrorUnits.some((e) => e.pageIndex === pIdx);
+            {generatePaginationItems(activePage, totalPages).map((item) => {
+              const hasErrors = item.isEllipsis
+                ? (item.coveredPageIndices || []).some((pIdx) =>
+                    offPageErrorUnits.some((e) => e.pageIndex === pIdx)
+                  )
+                : offPageErrorUnits.some((e) => e.pageIndex === item.pageIndex);
+
               return (
                 <TouchableOpacity
-                  key={`page-pill-${pIdx}`}
+                  key={item.key}
                   style={[
                     styles.pagePill,
-                    isCurrent && styles.pagePillActive,
-                    pageHasError && !isCurrent && styles.pagePillError,
+                    item.isCurrent && styles.pagePillActive,
+                    hasErrors && !item.isCurrent && styles.pagePillError,
                   ]}
-                  onPress={() => onPageChange?.(pIdx)}
+                  onPress={() => onPageChange?.(item.pageIndex)}
                   accessibilityRole="button"
-                  accessibilityLabel={`Go to page ${pIdx + 1}`}
+                  accessibilityLabel={
+                    item.isEllipsis
+                      ? `Jump ${item.ellipsisDirection === 'left' ? 'back' : 'forward'} to page ${item.pageIndex + 1}`
+                      : `Go to page ${item.pageIndex + 1}`
+                  }
                 >
                   <Text
                     style={[
                       styles.pagePillText,
-                      isCurrent && styles.pagePillTextActive,
-                      pageHasError && !isCurrent && styles.pagePillTextError,
+                      item.isCurrent && styles.pagePillTextActive,
+                      hasErrors && !item.isCurrent && styles.pagePillTextError,
                     ]}
                   >
-                    {pIdx + 1}
+                    {item.label}
                   </Text>
                 </TouchableOpacity>
               );
@@ -362,19 +371,19 @@ const styles = StyleSheet.create({
   pageNavBtn: {
     paddingVertical: 6,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.sm,
+    borderRadius: 4,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
+    borderColor: colors.border,
     backgroundColor: '#FFFFFF',
   },
   pageNavBtnDisabled: {
-    opacity: 0.4,
+    opacity: 0.35,
     borderColor: colors.border,
   },
   pageNavBtnText: {
     fontFamily: fonts.sans,
     fontSize: 11.5,
-    fontWeight: '700',
+    fontWeight: '600',
     color: colors.ink,
   },
   pageNavBtnTextDisabled: {
@@ -382,16 +391,17 @@ const styles = StyleSheet.create({
   },
   pagePillsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     gap: 4,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   pagePill: {
     minWidth: 28,
     height: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radius.sm,
+    borderRadius: 4,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: '#FFFFFF',
@@ -407,14 +417,16 @@ const styles = StyleSheet.create({
   },
   pagePillText: {
     fontFamily: fonts.mono,
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 11.5,
+    fontWeight: '600',
     color: colors.inkSoft,
   },
   pagePillTextActive: {
     color: '#FFFFFF',
+    fontWeight: '700',
   },
   pagePillTextError: {
     color: colors.danger,
+    fontWeight: '700',
   },
 });

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateShipmentMetrics } from '../src/features/shipments/registrationCalculations.mjs';
+import { generatePaginationItems } from '../src/features/shipments/parcelPagination.mjs';
 
 const baseShipment = {
   quantity: '2',
@@ -118,3 +119,24 @@ test('returns null shipping fee when ratePerKilo is not provided or zero', () =>
   assert.equal(metricsZeroRate.shippingFee, null);
 });
 
+test('generatePaginationItems produces windowed pagination with max 7 items and ellipsis jump ranges for web', () => {
+  // Small total: 4 pages
+  const small = generatePaginationItems(1, 4);
+  assert.equal(small.length, 4);
+  assert.deepEqual(small.map((i) => i.label), ['1', '2', '3', '4']);
+  assert.equal(small[1].isCurrent, true);
+
+  // Large total: page 37 of 100
+  const middle = generatePaginationItems(36, 100);
+  assert.equal(middle.length, 7);
+  assert.deepEqual(middle.map((i) => i.label), ['1', '...', '36', '37', '38', '...', '100']);
+  assert.equal(middle[3].isCurrent, true);
+  assert.equal(middle[1].pageIndex, 31);
+  assert.equal(middle[5].pageIndex, 41);
+
+  // Start & End
+  const start = generatePaginationItems(0, 100);
+  assert.deepEqual(start.map((i) => i.label), ['1', '2', '3', '4', '5', '...', '100']);
+  const end = generatePaginationItems(99, 100);
+  assert.deepEqual(end.map((i) => i.label), ['1', '...', '96', '97', '98', '99', '100']);
+});

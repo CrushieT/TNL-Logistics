@@ -5,7 +5,7 @@ import {
   isUncertainWrite, mapRegistrationErrors, MAX_PARCELS, toCents, validateRegistration,
 } from '../src/features/shipments/registration.mjs';
 import {
-  clampParcelPage, createParcelPaginationModel, getParcelPageCount, getParcelPageIndex,
+  clampParcelPage, createParcelPaginationModel, generatePaginationItems, getParcelPageCount, getParcelPageIndex,
   PARCEL_PAGE_SIZE,
 } from '../src/features/shipments/parcelPagination.mjs';
 
@@ -399,3 +399,96 @@ test('pagination slicing, page clamping, and off-page error detection logic', ()
   assert.equal(clampParcelPage(10, 25), 2);
 });
 
+test('adding a unit copies previous unit measurements while quantity input leaves new units empty', () => {
+  const existingParcels = [
+    { id: 'unit-1', seq: 1, weightKg: '2.5', lengthCm: '30', widthCm: '20', heightCm: '15' },
+  ];
+
+  const lastUnit = existingParcels[existingParcels.length - 1];
+  const addedUnit = {
+    id: 'unit-2',
+    seq: 2,
+    weightKg: lastUnit ? lastUnit.weightKg || '' : '',
+    lengthCm: lastUnit ? lastUnit.lengthCm || '' : '',
+    widthCm: lastUnit ? lastUnit.widthCm || '' : '',
+    heightCm: lastUnit ? lastUnit.heightCm || '' : '',
+  };
+  assert.equal(addedUnit.weightKg, '2.5');
+  assert.equal(addedUnit.lengthCm, '30');
+  assert.equal(addedUnit.widthCm, '20');
+  assert.equal(addedUnit.heightCm, '15');
+
+  const typedQty = 3;
+  const typedAdded = Array.from({ length: typedQty - existingParcels.length }, (_, i) => ({
+    id: `unit-${i + 2}`,
+    seq: i + 2,
+    weightKg: '',
+    lengthCm: '',
+    widthCm: '',
+    heightCm: '',
+  }));
+  assert.equal(typedAdded.length, 2);
+  assert.deepEqual(typedAdded[0], { id: 'unit-2', seq: 2, weightKg: '', lengthCm: '', widthCm: '', heightCm: '' });
+  assert.deepEqual(typedAdded[1], { id: 'unit-3', seq: 3, weightKg: '', lengthCm: '', widthCm: '', heightCm: '' });
+});
+
+test('generatePaginationItems produces windowed pagination with at most 7 pills and ellipsis jump ranges', () => {
+  // <= 7 pages: all pages returned directly without ellipsis
+  const smallItems = generatePaginationItems(2, 5);
+  assert.equal(smallItems.length, 5);
+  assert.deepEqual(smallItems.map((item) => item.label), ['1', '2', '3', '4', '5']);
+  assert.equal(smallItems[2].isCurrent, true);
+  assert.equal(smallItems.every((item) => !item.isEllipsis), true);
+
+  // Near start: page 1 of 100
+  const startItems = generatePaginationItems(0, 100);
+  assert.equal(startItems.length, 7);
+  assert.deepEqual(startItems.map((item) => item.label), ['1', '2', '3', '4', '5', '...', '100']);
+  assert.equal(startItems[0].isCurrent, true);
+  assert.equal(startItems[5].isEllipsis, true);
+  assert.equal(startItems[5].ellipsisDirection, 'right');
+  assert.equal(startItems[5].pageIndex, 5); // jumps to page 6
+  assert.equal(startItems[5].coveredPageIndices[0], 5);
+  assert.equal(startItems[5].coveredPageIndices[startItems[5].coveredPageIndices.length - 1], 98);
+
+  // Middle: page 37 of 100 (activePage = 36)
+  const middleItems = generatePaginationItems(36, 100);
+  assert.equal(middleItems.length, 7);
+  assert.deepEqual(middleItems.map((item) => item.label), ['1', '...', '36', '37', '38', '...', '100']);
+  assert.equal(middleItems[3].pageNumber, 37);
+  assert.equal(middleItems[3].isCurrent, true);
+  assert.equal(middleItems[1].isEllipsis, true);
+  assert.equal(middleItems[1].ellipsisDirection, 'left');
+  assert.equal(middleItems[1].pageIndex, 31); // 36 - 5 = 31 (page 32)
+  assert.equal(middleItems[1].coveredPageIndices[0], 1);
+  assert.equal(middleItems[1].coveredPageIndices[middleItems[1].coveredPageIndices.length - 1], 34);
+  assert.equal(middleItems[5].isEllipsis, true);
+  assert.equal(middleItems[5].ellipsisDirection, 'right');
+  assert.equal(middleItems[5].pageIndex, 41); // 36 + 5 = 41 (page 42)
+  assert.equal(middleItems[5].coveredPageIndices[0], 38);
+  assert.equal(middleItems[5].coveredPageIndices[middleItems[5].coveredPageIndices.length - 1], 98);
+
+  // Near end: page 100 of 100 (activePage = 99)
+  const endItems = generatePaginationItems(99, 100);
+  assert.equal(endItems.length, 7);
+  assert.deepEqual(endItems.map((item) => item.label), ['1', '...', '96', '97', '98', '99', '100']);
+  assert.equal(endItems[6].pageNumber, 100);
+  assert.equal(endItems[6].isCurrent, true);
+  assert.equal(endItems[1].isEllipsis, true);
+  assert.equal(endItems[1].ellipsisDirection, 'left');
+  assert.equal(endItems[1].pageIndex, 94); // 99 - 5 = 94 (page 95)
+  assert.equal(endItems[1].coveredPageIndices[0], 1);
+  assert.equal(endItems[1].coveredPageIndices[endItems[1].coveredPageIndices.length - 1], 94);
+
+  // Boundary check at totalPages = 8
+  const eightStart = generatePaginationItems(2, 8);
+  assert.deepEqual(eightStart.map((item) => item.label), ['1', '2', '3', '4', '5', '...', '8']);
+  const eightEnd = generatePaginationItems(5, 8);
+  assert.deepEqual(eightEnd.map((item) => item.label), ['1', '...', '4', '5', '6', '7', '8']);
+
+  // createParcelPaginationModel includes paginationItems
+  const dummyParcels = Array.from({ length: 1000 }, (_, i) => ({ id: `p-${i}`, seq: i + 1 }));
+  const model = createParcelPaginationModel(dummyParcels, {}, 36);
+  assert.equal(model.paginationItems.length, 7);
+  assert.deepEqual(model.paginationItems.map((item) => item.label), ['1', '...', '36', '37', '38', '...', '100']);
+});
