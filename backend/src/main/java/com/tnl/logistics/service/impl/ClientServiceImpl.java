@@ -234,6 +234,7 @@ public class ClientServiceImpl implements ClientService {
                 active
         );
 
+        client.setRatePerKilo(request.getRatePerKilo());
         Client saved = clientRepository.save(client);
 
         return new ClientSummaryResponse(
@@ -243,6 +244,7 @@ public class ClientServiceImpl implements ClientService {
                 saved.getContactNumber(),
                 saved.getEmail(),
                 saved.getDefaultRateType(),
+                saved.getRatePerKilo(),
                 saved.getActive(),
                 saved.getDateRegistered() != null ? saved.getDateRegistered() : saved.getCreatedAt(),
                 0L,
@@ -273,6 +275,7 @@ public class ClientServiceImpl implements ClientService {
             client.setActive(request.getActive());
         }
 
+        client.setRatePerKilo(request.getRatePerKilo());
         Client saved = clientRepository.save(client);
         List<ClientSummaryResponse> summaries = buildClientSummaries(Collections.singletonList(saved));
         return summaries.get(0);
@@ -348,6 +351,7 @@ public class ClientServiceImpl implements ClientService {
                     c.getContactNumber(),
                     c.getEmail(),
                     c.getDefaultRateType(),
+                    c.getRatePerKilo(),
                     c.getActive(),
                     c.getDateRegistered() != null ? c.getDateRegistered() : c.getCreatedAt(),
                     count,
