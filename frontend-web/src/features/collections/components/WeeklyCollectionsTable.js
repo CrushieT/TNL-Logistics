@@ -285,23 +285,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 18,
-    paddingVertical: 11,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    backgroundColor: '#FCFBFA',
+    backgroundColor: '#FAF9F5',
   },
   thCell: {
     fontFamily: fonts.mono,
-    fontSize: 10,
+    fontSize: 11.5,
     fontWeight: '700',
     color: colors.inkFaint,
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 18,
-    paddingVertical: 12,
+    paddingVertical: 14,
+    backgroundColor: colors.surface,
   },
   rowDivider: {
     borderBottomWidth: 1,
@@ -314,8 +316,8 @@ const styles = StyleSheet.create({
   },
   clientNameText: {
     fontFamily: fonts.sans,
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.ink,
   },
   codeBadge: {
@@ -328,13 +330,13 @@ const styles = StyleSheet.create({
   },
   codeBadgeText: {
     fontFamily: fonts.mono,
-    fontSize: 10.5,
+    fontSize: 11.5,
     fontWeight: '700',
     color: colors.inkSoft,
   },
   clientContactText: {
-    fontFamily: fonts.sans,
-    fontSize: 11,
+    fontFamily: fonts.mono,
+    fontSize: 12,
     color: colors.inkFaint,
     marginTop: 2,
   },
@@ -348,13 +350,14 @@ const styles = StyleSheet.create({
   },
   unbilledBadgeText: {
     fontFamily: fonts.mono,
-    fontSize: 11.5,
+    fontSize: 13,
     fontWeight: '700',
     color: colors.ink,
   },
   tdCell: {
-    fontFamily: fonts.sans,
-    fontSize: 12.5,
+    fontFamily: fonts.mono,
+    fontSize: 14,
+    fontWeight: '700',
     color: colors.ink,
   },
   monoCell: {
@@ -379,12 +382,12 @@ const styles = StyleSheet.create({
   },
   statusPillText: {
     fontFamily: fonts.sans,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
   },
   statementTag: {
     fontFamily: fonts.mono,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#1D4ED8',
     marginTop: 2,
@@ -396,7 +399,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   reviewBtn: {
-    paddingVertical: 5,
+    paddingVertical: 4,
     paddingHorizontal: 10,
     borderRadius: radius.sm,
     borderWidth: 1,
@@ -409,12 +412,12 @@ const styles = StyleSheet.create({
   },
   reviewBtnText: {
     fontFamily: fonts.sans,
-    fontSize: 11.5,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.ink,
   },
   viewSoaBtn: {
-    paddingVertical: 5,
+    paddingVertical: 4,
     paddingHorizontal: 12,
     borderRadius: radius.sm,
     borderWidth: 1,
@@ -427,8 +430,8 @@ const styles = StyleSheet.create({
   },
   viewSoaBtnText: {
     fontFamily: fonts.sans,
-    fontSize: 11.5,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: '#1D4ED8',
   },
 });

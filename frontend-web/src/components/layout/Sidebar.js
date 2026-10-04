@@ -107,7 +107,11 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
                   <Pressable
                     key={item.href}
                     onPress={() => router.push(item.href)}
-                    style={[styles.navItem, active && styles.navItemActive]}
+                    style={({ hovered }) => [
+                      styles.navItem,
+                      hovered && !active && styles.navItemHovered,
+                      active && styles.navItemActive,
+                    ]}
                   >
                     {active ? <View style={styles.activeBar} /> : null}
                     <Text style={[styles.navLabel, active && styles.navLabelActive]}>
@@ -177,17 +181,19 @@ const styles = StyleSheet.create({
   },
   badgeWrap: {
     paddingHorizontal: 8,
-    paddingVertical: 2.5,
-    backgroundColor: '#EBE9E0',
+    paddingVertical: 3,
+    backgroundColor: '#FAF9F5',
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: radius.sm,
     alignSelf: 'flex-start',
   },
   brandBadge: {
     fontFamily: fonts.mono,
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: '700',
-    color: colors.inkSoft,
-    letterSpacing: 1.1,
+    color: colors.inkFaint,
+    letterSpacing: 1.0,
     textTransform: 'uppercase',
   },
   section: {
@@ -195,7 +201,7 @@ const styles = StyleSheet.create({
   },
   sectionDivider: {
     borderTopWidth: 1,
-    borderTopColor: '#E4E2D8',
+    borderTopColor: '#EBE9E0',
     paddingTop: spacing.md + 4,
     marginTop: spacing.xs + 2,
   },
@@ -208,7 +214,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#6E6C65',
-    letterSpacing: 1.2,
+    letterSpacing: 1.1,
     textTransform: 'uppercase',
   },
   navGroup: {
@@ -217,14 +223,17 @@ const styles = StyleSheet.create({
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 9.5,
-    paddingHorizontal: spacing.md + 2,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md + 3,
     position: 'relative',
     borderRadius: radius.sm,
-    marginVertical: 1,
+    marginVertical: 1.5,
+  },
+  navItemHovered: {
+    backgroundColor: '#FAF9F5',
   },
   navItemActive: {
-    backgroundColor: '#EBE9E0',
+    backgroundColor: '#FAF9F5',
   },
   activeBar: {
     position: 'absolute',
@@ -237,10 +246,10 @@ const styles = StyleSheet.create({
   },
   navLabel: {
     fontFamily: fonts.sans,
-    fontSize: 13.5,
+    fontSize: 14.5,
     color: '#3F3D38',
     fontWeight: '600',
-    letterSpacing: 0.1,
+    letterSpacing: 0,
   },
   navLabelActive: {
     color: colors.ink,
@@ -248,7 +257,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     borderTopWidth: 1,
-    borderTopColor: '#E2E0D6',
+    borderTopColor: '#EBE9E0',
     paddingTop: spacing.lg,
     paddingHorizontal: spacing.xl,
   },
@@ -259,8 +268,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   avatar: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     borderRadius: radius.pill,
     backgroundColor: colors.accentSoft,
     alignItems: 'center',
@@ -268,29 +277,32 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     fontFamily: fonts.sans,
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '800',
     color: colors.accent,
   },
   userName: {
     fontFamily: fonts.sans,
-    fontSize: 13.5,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.ink,
   },
   userRole: {
-    fontFamily: fonts.sans,
-    fontSize: 11.5,
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    fontWeight: '600',
     color: colors.inkFaint,
     marginTop: 1,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   signOutBtn: {
     borderWidth: 1,
-    borderColor: colors.borderStrong,
+    borderColor: colors.border,
     borderRadius: radius.sm,
     paddingVertical: 8,
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FAF9F5',
     cursor: 'pointer',
   },
   signOutBtnText: {
