@@ -119,6 +119,8 @@ public class SoaIntegrationTest {
         shipmentReq.setOtherCharges(BigDecimal.ZERO);
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipmentReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipmentReq.setExpectedVolumetricDivisor(5000);
         shipmentReq.setParcels(List.of(
                 new ParcelUnitRequest(1, new BigDecimal("12.0"), new BigDecimal("20"), new BigDecimal("20"), new BigDecimal("20"))
         ));
@@ -304,6 +306,8 @@ public class SoaIntegrationTest {
         shipmentReq.setOtherCharges(BigDecimal.ZERO);
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipmentReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipmentReq.setExpectedVolumetricDivisor(5000);
         shipmentReq.setParcels(List.of(
                 new ParcelUnitRequest(1, new BigDecimal("12.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))
         ));
@@ -346,6 +350,8 @@ public class SoaIntegrationTest {
         shipmentReq.setOtherCharges(BigDecimal.ZERO);
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipmentReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipmentReq.setExpectedVolumetricDivisor(5000);
         shipmentReq.setParcels(List.of(
                 new ParcelUnitRequest(1, new BigDecimal("5.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))
         ));
@@ -486,6 +492,8 @@ public class SoaIntegrationTest {
         shipmentReq.setOtherCharges(BigDecimal.ZERO);
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipmentReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipmentReq.setExpectedVolumetricDivisor(5000);
         shipmentReq.setParcels(List.of(
                 new ParcelUnitRequest(1, new BigDecimal("10.0"), new BigDecimal("15"), new BigDecimal("15"), new BigDecimal("15"))
         ));

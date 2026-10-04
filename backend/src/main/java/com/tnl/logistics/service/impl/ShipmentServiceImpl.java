@@ -33,6 +33,9 @@ public class ShipmentServiceImpl implements ShipmentService {
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("MMM d, yyyy");
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("h:mm a");
+    private static final BigDecimal MAX_DECIMAL_12_2 = new BigDecimal("9999999999.99");
+    private static final BigDecimal MAX_CBM_10_4 = new BigDecimal("999999.9999");
+    private static final BigDecimal ONE_MILLION = new BigDecimal("1000000");
 
     private final ShipmentRepository shipmentRepository;
     private final ParcelUnitRepository parcelUnitRepository;
@@ -100,12 +103,12 @@ public class ShipmentServiceImpl implements ShipmentService {
             configuredDivisor = 5000;
         }
 
-        // Stale-settings guards: reject if expected settings do not match active settings
-        if (request.getExpectedRatePerKilo() != null && request.getExpectedRatePerKilo().compareTo(configuredRate) != 0) {
+        // Stale-settings guards: reject if expected settings are missing or do not match active settings
+        if (request.getExpectedRatePerKilo() == null || request.getExpectedRatePerKilo().compareTo(configuredRate) != 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "STALE_SETTINGS: Calculation settings have changed. Please refresh and review the updated calculation before submitting.");
         }
-        if (request.getExpectedVolumetricDivisor() != null && !request.getExpectedVolumetricDivisor().equals(configuredDivisor)) {
+        if (request.getExpectedVolumetricDivisor() == null || !request.getExpectedVolumetricDivisor().equals(configuredDivisor)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "STALE_SETTINGS: Calculation settings have changed. Please refresh and review the updated calculation before submitting.");
         }
@@ -148,10 +151,15 @@ public class ShipmentServiceImpl implements ShipmentService {
                     || parcelReq.getHeightCm() == null || parcelReq.getWidthCm() == null) {
                 throw new IllegalArgumentException("Weight, length, width, and height are required for each parcel unit.");
             }
-            totalActualWeight = totalActualWeight.add(parcelReq.getWeightKg());
             BigDecimal unitVolume = parcelReq.getLengthCm()
                     .multiply(parcelReq.getWidthCm())
                     .multiply(parcelReq.getHeightCm());
+            BigDecimal unitVolumeCbm = unitVolume.divide(ONE_MILLION, 4, RoundingMode.HALF_UP);
+            if (unitVolumeCbm.compareTo(MAX_CBM_10_4) > 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        String.format("CALCULATION_OVERFLOW: Unit #%d volume (%s m³) exceeds maximum allowed storage capacity.", parcelReq.getSeq(), unitVolumeCbm));
+            }
+            totalActualWeight = totalActualWeight.add(parcelReq.getWeightKg());
             totalVolumeCm3 = totalVolumeCm3.add(unitVolume);
         }
 
@@ -162,6 +170,17 @@ public class ShipmentServiceImpl implements ShipmentService {
         BigDecimal shippingFee = billableWeight.multiply(configuredRate).setScale(2, RoundingMode.HALF_UP);
         BigDecimal otherCharges = request.getOtherCharges() != null ? request.getOtherCharges() : BigDecimal.ZERO;
         BigDecimal totalAmount = shippingFee.add(otherCharges);
+
+        if (roundedActualWeight.compareTo(MAX_DECIMAL_12_2) > 0 ||
+                totalVolumetricWeight.compareTo(MAX_DECIMAL_12_2) > 0 ||
+                billableWeight.compareTo(MAX_DECIMAL_12_2) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "CALCULATION_OVERFLOW: Calculated shipment weight exceeds maximum allowed capacity.");
+        }
+        if (shippingFee.compareTo(MAX_DECIMAL_12_2) > 0 || totalAmount.compareTo(MAX_DECIMAL_12_2) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "CALCULATION_OVERFLOW: Calculated shipping fee or total amount exceeds maximum allowed capacity.");
+        }
 
         // 2. Generate Sequential Shipment ID: SHP-YYYY-XXX
         String currentYear = String.valueOf(LocalDate.now().getYear());

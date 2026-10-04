@@ -125,7 +125,7 @@ public class SystemSettingIntegrationTest {
     @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
     void testUpdateSettingsAsOfficeStaffReturns403Forbidden() throws Exception {
         UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
-                "New Name", "New Addr", "09170001111", "test@test.com", DayOfWeek.MONDAY, 5000
+                "New Name", "New Addr", "09170001111", "test@test.com", DayOfWeek.MONDAY, 5000, new BigDecimal("100.00")
         );
 
         mockMvc.perform(put("/api/v1/settings")
@@ -138,7 +138,7 @@ public class SystemSettingIntegrationTest {
     @WithMockUser(username = "admin", roles = {"ADMIN"})
     void testUpdateSettingsValidationFailureInvalidDivisor() throws Exception {
         UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
-                "TNL", "Addr", "09171234567", "a@b.com", DayOfWeek.THURSDAY, 500
+                "TNL", "Addr", "09171234567", "a@b.com", DayOfWeek.THURSDAY, 500, new BigDecimal("100.00")
         );
 
         mockMvc.perform(put("/api/v1/settings")
@@ -368,7 +368,8 @@ public class SystemSettingIntegrationTest {
                     "09175550000",
                     "billing@tnllogistics.ph",
                     DayOfWeek.MONDAY,
-                    5000
+                    5000,
+                    new BigDecimal("100.00")
             );
 
             mockMvc.perform(put("/api/v1/settings")
@@ -398,7 +399,8 @@ public class SystemSettingIntegrationTest {
                     "09175550000",
                     "billing@tnllogistics.ph",
                     DayOfWeek.THURSDAY,
-                    5000
+                    5000,
+                    new BigDecimal("100.00")
             );
             mockMvc.perform(put("/api/v1/settings")
                     .contentType(MediaType.APPLICATION_JSON)
@@ -449,7 +451,8 @@ public class SystemSettingIntegrationTest {
                     "09175550000",
                     "billing@tnllogistics.ph",
                     DayOfWeek.WEDNESDAY,
-                    5000
+                    5000,
+                    new BigDecimal("100.00")
             );
             mockMvc.perform(put("/api/v1/settings")
                     .contentType(MediaType.APPLICATION_JSON)
@@ -471,7 +474,8 @@ public class SystemSettingIntegrationTest {
                     "09175550000",
                     "billing@tnllogistics.ph",
                     DayOfWeek.MONDAY,
-                    5000
+                    5000,
+                    new BigDecimal("100.00")
             );
             mockMvc.perform(put("/api/v1/settings")
                     .contentType(MediaType.APPLICATION_JSON)
@@ -493,7 +497,8 @@ public class SystemSettingIntegrationTest {
                     "09175550000",
                     "billing@tnllogistics.ph",
                     DayOfWeek.THURSDAY,
-                    5000
+                    5000,
+                    new BigDecimal("100.00")
             );
             mockMvc.perform(put("/api/v1/settings")
                     .contentType(MediaType.APPLICATION_JSON)

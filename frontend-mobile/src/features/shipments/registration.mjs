@@ -9,7 +9,6 @@ export function createRegistrationForm() {
     newClientAddress: '',
     newClientContact: '',
     newClientEmail: '',
-    recipientName: '',
     recipientAddress: '',
     recipientContact: '',
     description: '',
@@ -19,8 +18,7 @@ export function createRegistrationForm() {
     widthCm: '',
     heightCm: '',
     route: 'Manila to TNL Labo C.N.',
-    chargeModel: 'FLAT',
-    shippingFee: '',
+    chargeModel: 'PER_KILO',
     otherCharges: '0',
     paidAtRegistration: false,
     parcels: [
@@ -79,14 +77,6 @@ export function validateRegistration(form) {
   }
 
   // 2. Recipient details
-  if (form.recipientName !== undefined && form.recipientName !== null) {
-    if (!form.recipientName.trim()) {
-      errors.recipientName = 'Recipient name is required.';
-    } else if (form.recipientName.trim().length > 150) {
-      errors.recipientName = 'Recipient name cannot exceed 150 characters.';
-    }
-  }
-
   if (!form.recipientAddress || !form.recipientAddress.trim()) {
     errors.recipientAddress = 'Complete address is required.';
   } else if (form.recipientAddress.trim().length > 255) {
@@ -150,12 +140,6 @@ export function validateRegistration(form) {
   }
 
   // 6. Charges
-  if (form.shippingFee !== undefined && form.shippingFee !== null) {
-    if (!isDecimal(form.shippingFee, 0, 10)) {
-      errors.shippingFee = 'Enter a nonnegative amount, up to 10 digits and 2 decimal places.';
-    }
-  }
-
   if (form.otherCharges !== undefined && form.otherCharges !== null) {
     if (!isDecimal(form.otherCharges, 0, 10)) {
       errors.otherCharges = 'Enter a nonnegative amount, up to 10 digits and 2 decimal places.';
@@ -309,7 +293,7 @@ export function buildShipmentRequest(form, clientId = form.clientId, guards = {}
   const errors = validateRegistration({ ...form, clientMode: 'EXISTING', clientId });
   if (Object.keys(errors).length) throw new Error('Shipment fields are invalid.');
 
-  const recipientName = (form.recipientName || form.clientName || '').trim();
+  const recipientName = (form.recipientName || form.clientName || form.newClientName || '').trim();
 
   const parcels = hasPerUnitParcels(form)
     ? form.parcels.map((parcel, index) => ({
@@ -350,10 +334,6 @@ export function buildShipmentRequest(form, clientId = form.clientId, guards = {}
   const expectedDivisor = guards.expectedVolumetricDivisor !== undefined ? guards.expectedVolumetricDivisor : form.expectedVolumetricDivisor;
   if (expectedDivisor !== undefined && expectedDivisor !== null) {
     request.expectedVolumetricDivisor = Number(expectedDivisor);
-  }
-
-  if (form.shippingFee !== undefined && form.shippingFee !== '') {
-    request.shippingFee = toCents(form.shippingFee) / 100;
   }
 
   return request;

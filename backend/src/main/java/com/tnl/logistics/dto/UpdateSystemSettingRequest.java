@@ -43,7 +43,7 @@ public class UpdateSystemSettingRequest {
 
     public UpdateSystemSettingRequest(String companyName, String companyAddress, String companyContact,
                                       String billingEmail, DayOfWeek collectionDay, Integer volumetricDivisor) {
-        this(companyName, companyAddress, companyContact, billingEmail, collectionDay, volumetricDivisor, new java.math.BigDecimal("150.00"));
+        this(companyName, companyAddress, companyContact, billingEmail, collectionDay, volumetricDivisor, null);
     }
 
     public UpdateSystemSettingRequest(String companyName, String companyAddress, String companyContact,

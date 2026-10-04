@@ -54,10 +54,12 @@ public class ShipmentRegistrationRequest {
 
     private Boolean paidAtRegistration = false;
 
+    @NotNull(message = "Expected rate per kilo is required")
     @jakarta.validation.constraints.DecimalMin(value = "0.01", message = "Expected rate per kilo must be positive")
     @Digits(integer = 10, fraction = 2, message = "Expected rate per kilo must have up to 10 integer digits and 2 decimal places")
     private BigDecimal expectedRatePerKilo;
 
+    @NotNull(message = "Expected volumetric divisor is required")
     @jakarta.validation.constraints.Min(value = 1000, message = "Expected volumetric divisor must be at least 1000")
     @jakarta.validation.constraints.Max(value = 10000, message = "Expected volumetric divisor must not exceed 10000")
     private Integer expectedVolumetricDivisor;

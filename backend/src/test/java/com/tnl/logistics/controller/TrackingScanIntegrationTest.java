@@ -84,6 +84,12 @@ public class TrackingScanIntegrationTest {
     @Autowired
     private BCryptPasswordEncoder passwordEncoder;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
     @SpyBean
     private SseService sseService;
 
@@ -95,6 +101,9 @@ public class TrackingScanIntegrationTest {
 
     @BeforeEach
     public void setup() throws Exception {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
         vehicleRepository.deleteById("VH-SCAN-001");
         vehicleRepository.deleteById("VH-SCAN-002");
         vehicleRepository.deleteById("VH-INACTIVE");
@@ -168,6 +177,8 @@ public class TrackingScanIntegrationTest {
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("350.00"));
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
 
         List<ParcelUnitRequest> parcels = new ArrayList<>();
         for (int i = 1; i <= quantity; i++) {
@@ -189,6 +200,8 @@ public class TrackingScanIntegrationTest {
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("500.00"));
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
 
         List<ParcelUnitRequest> parcels = new ArrayList<>();
         for (int i = 1; i <= quantity; i++) {

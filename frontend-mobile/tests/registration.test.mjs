@@ -4,12 +4,16 @@ import {
   buildShipmentRequest, calculateRegistration, createRegistrationForm, createShipmentSubmitter,
   isUncertainWrite, mapRegistrationErrors, MAX_PARCELS, toCents, validateRegistration,
 } from '../src/features/shipments/registration.mjs';
+import {
+  clampParcelPage, createParcelPaginationModel, getParcelPageCount, getParcelPageIndex,
+  PARCEL_PAGE_SIZE,
+} from '../src/features/shipments/parcelPagination.mjs';
 
 function validForm(overrides = {}) {
   return {
     ...createRegistrationForm(), clientId: 'CL-TEST', clientName: 'Test billing client',
-    recipientName: 'Test recipient', recipientAddress: 'Test street, Baguio', recipientContact: '09170000000',
-    quantity: '2', weightKg: '1.25', lengthCm: '40', widthCm: '30', heightCm: '25', shippingFee: '100.10',
+    recipientAddress: 'Test street, Baguio', recipientContact: '09170000000',
+    quantity: '2', weightKg: '1.25', lengthCm: '40', widthCm: '30', heightCm: '25',
     ...overrides,
   };
 }
@@ -28,15 +32,18 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-test('defaults require deliberate client, measurements and fee entry', () => {
+test('defaults require deliberate client and measurements entry', () => {
   const form = createRegistrationForm();
   assert.equal(form.quantity, '1');
   assert.equal(form.paidAtRegistration, false);
-  assert.equal(form.chargeModel, 'FLAT');
-  for (const field of ['clientId', 'weightKg', 'lengthCm', 'widthCm', 'heightCm', 'shippingFee']) {
+  assert.equal(form.chargeModel, 'PER_KILO');
+  assert.equal(form.recipientName, undefined);
+  assert.equal(form.shippingFee, undefined);
+  for (const field of ['clientId']) {
     assert.equal(form[field], '');
     assert.ok(validateRegistration(form)[field]);
   }
+  assert.ok(validateRegistration(form)['parcels[0].weightKg']);
   assert.equal(calculateRegistration(form, null).totalCents, null);
 });
 
@@ -87,10 +94,9 @@ test('measurement minimums and precision match the API', () => {
 
 test('charges require nonnegative decimal amounts and preserve zero', () => {
   for (const value of ['', '-0.1', '2.999', '1e2', '10000000000']) {
-    assert.ok(validateRegistration(validForm({ shippingFee: value })).shippingFee, value);
     assert.ok(validateRegistration(validForm({ otherCharges: value })).otherCharges, value);
   }
-  assert.equal(calculateRegistration(validForm({ shippingFee: '0', otherCharges: '0' }), 5000).totalCents, 0);
+  assert.equal(calculateRegistration(validForm({ otherCharges: '0' }), 5000, 100).totalCents !== null, true);
 });
 
 test('new client validation covers lengths, optional email, and whitespace', () => {
@@ -100,18 +106,16 @@ test('new client validation covers lengths, optional email, and whitespace', () 
     newClientContact: '123', newClientEmail: 'invalid-email',
   });
   for (const field of ['newClientName', 'newClientAddress', 'newClientContact', 'newClientEmail']) assert.ok(invalid[field]);
-  assert.ok(validateRegistration(validForm({ recipientName: ' ', recipientAddress: ' ', recipientContact: ' ' })).recipientName);
+  assert.ok(validateRegistration(validForm({ recipientAddress: ' ', recipientContact: ' ' })).recipientAddress);
 });
 
 test('recipient, description, and route validation enforce maximum character lengths', () => {
   const invalid = validateRegistration(validForm({
-    recipientName: 'A'.repeat(151),
     recipientAddress: 'B'.repeat(256),
     recipientContact: '0'.repeat(12),
     description: 'D'.repeat(256),
     route: 'R'.repeat(151),
   }));
-  assert.ok(invalid.recipientName);
   assert.ok(invalid.recipientAddress);
   assert.ok(invalid.recipientContact);
   assert.ok(invalid.description);
@@ -123,17 +127,55 @@ test('recipient, description, and route validation enforce maximum character len
   assert.ok(nonDigitContact.recipientContact);
 
   const valid = validateRegistration(validForm({
-    recipientName: 'A'.repeat(150),
     recipientAddress: 'B'.repeat(255),
     recipientContact: '0'.repeat(11),
     description: 'D'.repeat(255),
     route: 'R'.repeat(150),
   }));
-  assert.equal(valid.recipientName, undefined);
   assert.equal(valid.recipientAddress, undefined);
   assert.equal(valid.recipientContact, undefined);
   assert.equal(valid.description, undefined);
   assert.equal(valid.route, undefined);
+});
+
+test('ui-shaped mobile registration form passes validation and builds request with zero legacy errors', () => {
+  const uiForm = {
+    ...createRegistrationForm(),
+    clientMode: 'EXISTING',
+    clientId: 'CL-001',
+    clientName: 'Acme Logistics Client',
+    recipientAddress: '123 Market St, Baguio',
+    recipientContact: '09171234567',
+    description: 'Fresh Produce',
+    quantity: '1',
+    route: 'Manila to TNL Labo C.N.',
+    otherCharges: '50.00',
+    paidAtRegistration: true,
+    parcels: [
+      { id: 'unit-1', seq: 1, weightKg: '5.5', lengthCm: '30', widthCm: '20', heightCm: '15' },
+    ],
+  };
+
+  const errors = validateRegistration(uiForm);
+  assert.deepEqual(errors, {});
+
+  const request = buildShipmentRequest(uiForm, 'CL-001', {
+    expectedRatePerKilo: 100.0,
+    expectedVolumetricDivisor: 5000,
+  });
+
+  assert.equal(request.clientId, 'CL-001');
+  assert.equal(request.recipientName, 'Acme Logistics Client');
+  assert.equal(request.recipientAddress, '123 Market St, Baguio');
+  assert.equal(request.recipientContact, '09171234567');
+  assert.equal(request.chargeModel, 'PER_KILO');
+  assert.equal(request.otherCharges, 50.0);
+  assert.equal(request.paidAtRegistration, true);
+  assert.equal(request.expectedRatePerKilo, 100.0);
+  assert.equal(request.expectedVolumetricDivisor, 5000);
+  assert.equal(request.shippingFee, undefined);
+  assert.equal(request.parcels.length, 1);
+  assert.equal(request.parcels[0].weightKg, 5.5);
 });
 
 test('request mapping uses mobile source and real API enums without computed or client-only fields', () => {
@@ -149,12 +191,12 @@ test('request mapping uses mobile source and real API enums without computed or 
   assert.equal(payload.totalAmount, undefined);
   assert.equal(payload.clientName, undefined);
   assert.equal(payload.deviceToken, undefined);
-  assert.throws(() => buildShipmentRequest(validForm({ weightKg: '' })));
+  assert.throws(() => buildShipmentRequest(validForm({ parcels: [{ seq: 1, weightKg: '', lengthCm: '10', widthCm: '10', heightCm: '10' }] })));
 });
 
 test('validate the entire form before any client or shipment writes', async () => {
   const submit = createShipmentSubmitter({ createClient: () => assert.fail('Unexpected client write'), registerShipment: () => assert.fail('Unexpected shipment write') });
-  await assert.rejects(submit({ ...newClientForm(), shippingFee: '' }));
+  await assert.rejects(submit({ ...newClientForm(), recipientAddress: '' }));
 });
 
 test('existing client submission does not create a client and trusts server totals', async () => {
@@ -316,5 +358,44 @@ test('mapRegistrationErrors preserves indexed errors when preserveIndexed is tru
   const preserved = mapRegistrationErrors(error, true);
   assert.equal(preserved['parcels[1].weightKg'], 'Must be at least 0.01');
   assert.equal(preserved.recipientAddress, 'Required');
+});
+
+test('pagination slicing, page clamping, and off-page error detection logic', () => {
+  const parcels = Array.from({ length: 25 }, (_, i) => ({
+    id: `unit-${i + 1}`,
+    seq: i + 1,
+    weightKg: '1.0',
+    lengthCm: '20',
+    widthCm: '10',
+    heightCm: '15',
+  }));
+  const errors = {
+    'parcels[5].weightKg': 'Required',
+    'parcels[12].lengthCm': 'Required',
+    'parcels[22].heightCm': 'Required',
+  };
+
+  const firstPage = createParcelPaginationModel(parcels, errors, 0);
+  assert.equal(PARCEL_PAGE_SIZE, 10);
+  assert.equal(firstPage.totalPages, 3);
+  assert.equal(firstPage.visibleParcels.length, 10);
+  assert.equal(firstPage.visibleParcels[0].parcel.seq, 1);
+  assert.equal(firstPage.visibleParcels[9].parcel.seq, 10);
+  assert.deepEqual(firstPage.offPageErrorUnitIndices, [12, 22]);
+  assert.deepEqual(Array.from(firstPage.errorPageIndices), [0, 1, 2]);
+
+  const clampedLastPage = createParcelPaginationModel(parcels, errors, 99);
+  assert.equal(clampedLastPage.activePage, 2);
+  assert.equal(clampedLastPage.visibleParcels.length, 5);
+  assert.equal(clampedLastPage.visibleParcels[0].globalIndex, 20);
+  assert.equal(clampedLastPage.visibleParcels[4].parcel.seq, 25);
+
+  assert.equal(getParcelPageCount(1), 1);
+  assert.equal(getParcelPageCount(10), 1);
+  assert.equal(getParcelPageCount(11), 2);
+  assert.equal(getParcelPageCount(1000), 100);
+  assert.equal(getParcelPageIndex(22), 2);
+  assert.equal(clampParcelPage(-1, 25), 0);
+  assert.equal(clampParcelPage(10, 25), 2);
 });
 

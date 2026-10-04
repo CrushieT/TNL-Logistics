@@ -41,6 +41,18 @@ public class TrackingLogIntegrationTest {
     @Autowired
     private com.tnl.logistics.repository.TrackingEventRepository trackingEventRepository;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setup() {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+    }
+
     @Test
     @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testGetTrackingLogsAsAdminReturns200AndPageStructure() throws Exception {
@@ -137,6 +149,8 @@ public class TrackingLogIntegrationTest {
         regReq.setQuantity(1);
         regReq.setChargeModel(com.tnl.logistics.model.ChargeModel.FLAT);
         regReq.setShippingFee(new java.math.BigDecimal("350.00"));
+        regReq.setExpectedRatePerKilo(new java.math.BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setRegisteredVia(com.tnl.logistics.model.RegisteredVia.DESKTOP_OFFICE);
         regReq.setParcels(java.util.List.of(new com.tnl.logistics.dto.ParcelUnitRequest(1, new java.math.BigDecimal("2.5"), new java.math.BigDecimal("20"), new java.math.BigDecimal("15"), new java.math.BigDecimal("10"))));
 

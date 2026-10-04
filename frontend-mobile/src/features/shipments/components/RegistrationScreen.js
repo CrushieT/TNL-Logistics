@@ -9,8 +9,10 @@ import { StatusModal } from '../../../components/common/StatusModal';
 import { BackButton } from '../../../components/common/BackButton';
 import { colors, spacing, typography } from '../../../theme';
 import { ClientPicker } from './ClientPicker';
+import { ParcelUnitsEditor } from './ParcelUnitsEditor';
 import { RegistrationResult } from './RegistrationResult';
 import { shipmentApi } from '../services/shipmentApi';
+import { clampParcelPage, getParcelPageIndex } from '../parcelPagination.mjs';
 import {
   calculateRegistration, createRegistrationForm, createShipmentSubmitter,
   isUncertainWrite, mapRegistrationErrors, validateRegistration,
@@ -47,6 +49,7 @@ export function RegistrationScreen() {
   const shouldStack = width < 360 || fontScale > 1.25;
 
   const [form, setForm] = useState(createRegistrationForm);
+  const [parcelPage, setParcelPage] = useState(0);
   const [errors, setErrors] = useState({});
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -72,6 +75,7 @@ export function RegistrationScreen() {
   const contentRef = useRef(null);
   const fieldRefs = useRef({});
   const inputRefs = useRef({});
+  const pendingFocusField = useRef(null);
   const submitter = useRef(null);
 
   if (!submitter.current) submitter.current = createShipmentSubmitter(shipmentApi, () => isActive.current);
@@ -119,6 +123,24 @@ export function RegistrationScreen() {
     });
     return () => controller.abort();
   }, [settingsAttempt]);
+
+  useEffect(() => {
+    const fieldName = pendingFocusField.current;
+    if (!fieldName) return undefined;
+
+    const animationFrame = requestAnimationFrame(() => {
+      if (!isActive.current) return;
+      const fieldNode = fieldRefs.current[fieldName];
+      pendingFocusField.current = null;
+      if (!fieldNode) return;
+      fieldNode.measureLayout(contentRef.current, (_left, top) => {
+        scrollRef.current?.scrollTo({ y: Math.max(0, top - 16), animated: true });
+      }, () => {});
+      inputRefs.current[fieldName]?.focus();
+    });
+
+    return () => cancelAnimationFrame(animationFrame);
+  }, [errors, parcelPage]);
 
   const navigateHome = () => {
     canLeave.current = true;
@@ -203,6 +225,7 @@ export function RegistrationScreen() {
           parcels: prev.parcels.slice(0, targetQty),
         }));
         setErrors((prev) => ({ ...prev, quantity: undefined }));
+        setParcelPage((prev) => clampParcelPage(prev, targetQty));
       }
     } else {
       setForm((prev) => ({ ...prev, quantity: String(targetQty) }));
@@ -227,6 +250,7 @@ export function RegistrationScreen() {
       parcels: [...prev.parcels, newUnit],
     }));
     setErrors((prev) => ({ ...prev, quantity: undefined }));
+    setParcelPage(getParcelPageIndex(nextSeq - 1));
   }
 
   function handleRequestRemoveUnit(index) {
@@ -250,6 +274,7 @@ export function RegistrationScreen() {
       quantity: String(updated.length),
       parcels: updated,
     }));
+    setParcelPage((prev) => clampParcelPage(prev, updated.length));
     setErrors((prev) => {
       const next = { ...prev };
       Object.keys(next).forEach((k) => {
@@ -275,13 +300,13 @@ export function RegistrationScreen() {
 
   function focusFirstError(fieldErrors) {
     const name = Object.keys(fieldErrors)[0];
-    requestAnimationFrame(() => {
-      if (!isActive.current) return;
-      fieldRefs.current[name]?.measureLayout(contentRef.current, (_left, top) => {
-        scrollRef.current?.scrollTo({ y: Math.max(0, top - 16), animated: true });
-      }, () => {});
-      inputRefs.current[name]?.focus();
-    });
+    if (!name) return;
+    pendingFocusField.current = name;
+    const parcelMatch = name.match(/^parcels\[(\d+)\]\./);
+    if (parcelMatch) {
+      const unitIndex = parseInt(parcelMatch[1], 10);
+      setParcelPage(getParcelPageIndex(unitIndex));
+    }
   }
 
   async function handleSubmit(hasCheckedPreviousAttempt = false) {
@@ -311,6 +336,7 @@ export function RegistrationScreen() {
       if (shipment && isActive.current) {
         setResult(shipment);
         setForm(createRegistrationForm());
+        setParcelPage(0);
       }
     } catch (error) {
       if (!isActive.current || error.response?.status === 401) return;
@@ -353,7 +379,6 @@ export function RegistrationScreen() {
       {...props}
     />
   );
-  const rowStyle = [styles.row, shouldStack && styles.stacked];
   const numericProps = { keyboardType: 'decimal-pad', inputMode: 'decimal', maxLength: 9 };
 
   const derivedRecipientName = form.clientMode === 'EXISTING'
@@ -426,9 +451,14 @@ export function RegistrationScreen() {
               {field('route', 'ROUTE', { placeholder: 'Manila to TNL Labo C.N.', maxLength: 150 })}
 
               <View style={styles.quantityRow}>
-                <View style={styles.quantityFieldWrapper}>
+                <View
+                  ref={(node) => { fieldRefs.current.quantity = node; }}
+                  collapsable={false}
+                  style={styles.quantityFieldWrapper}
+                >
                   <Text style={styles.label}>QUANTITY (PARCEL UNITS) *</Text>
                   <TextInput
+                    ref={(node) => { inputRefs.current.quantity = node; }}
                     accessibilityLabel="Quantity in parcel units"
                     value={form.quantity}
                     onChangeText={handleQuantityChange}
@@ -455,115 +485,18 @@ export function RegistrationScreen() {
               </View>
 
               {/* Per-Unit Cards */}
-              <View style={styles.unitsSection}>
-                <Text style={styles.unitsHeaderTitle}>
-                  PARCEL UNITS ({form.parcels.length} {form.parcels.length === 1 ? 'UNIT' : 'UNITS'}) · PER-UNIT MEASUREMENTS
-                </Text>
-
-                {form.parcels.map((parcel, index) => {
-                  const l = parseFloat(parcel.lengthCm);
-                  const w = parseFloat(parcel.widthCm);
-                  const h = parseFloat(parcel.heightCm);
-                  const hasDims = !isNaN(l) && l > 0 && !isNaN(w) && w > 0 && !isNaN(h) && h > 0;
-                  const unitVol = hasDims ? (l * w * h) / 1000000 : null;
-
-                  return (
-                    <View key={parcel.id || `parcel-${index}`} style={styles.unitCard}>
-                      <View style={styles.unitCardHeader}>
-                        <View style={styles.unitBadge}>
-                          <Text style={styles.unitBadgeText}>UNIT #{parcel.seq}</Text>
-                        </View>
-                        {unitVol !== null ? (
-                          <Text style={styles.unitVolumeTag}>{formatMeasure(unitVol, 4, 'm³')}</Text>
-                        ) : null}
-                        {form.parcels.length > 1 ? (
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={`Remove unit ${parcel.seq}`}
-                            disabled={isSubmitting}
-                            onPress={() => handleRequestRemoveUnit(index)}
-                            style={styles.removeUnitBtn}
-                          >
-                            <Text style={styles.removeUnitBtnText}>✕ Remove</Text>
-                          </Pressable>
-                        ) : null}
-                      </View>
-
-                      <View style={rowStyle}>
-                        <View style={styles.unitFieldCol}>
-                          <Text style={styles.label}>WEIGHT (KG) *</Text>
-                          <TextInput
-                            accessibilityLabel={`Unit ${parcel.seq} weight`}
-                            value={parcel.weightKg}
-                            onChangeText={(val) => updateParcelField(index, 'weightKg', val)}
-                            editable={!isSubmitting}
-                            placeholder="1.0"
-                            placeholderTextColor={colors.inkFaint}
-                            style={[styles.input, errors[`parcels[${index}].weightKg`] && styles.inputError]}
-                            {...numericProps}
-                          />
-                          {errors[`parcels[${index}].weightKg`] ? (
-                            <Text accessibilityRole="alert" style={styles.error}>{errors[`parcels[${index}].weightKg`]}</Text>
-                          ) : null}
-                        </View>
-
-                        <View style={styles.unitFieldCol}>
-                          <Text style={styles.label}>LENGTH (CM) *</Text>
-                          <TextInput
-                            accessibilityLabel={`Unit ${parcel.seq} length`}
-                            value={parcel.lengthCm}
-                            onChangeText={(val) => updateParcelField(index, 'lengthCm', val)}
-                            editable={!isSubmitting}
-                            placeholder="20"
-                            placeholderTextColor={colors.inkFaint}
-                            style={[styles.input, errors[`parcels[${index}].lengthCm`] && styles.inputError]}
-                            {...numericProps}
-                          />
-                          {errors[`parcels[${index}].lengthCm`] ? (
-                            <Text accessibilityRole="alert" style={styles.error}>{errors[`parcels[${index}].lengthCm`]}</Text>
-                          ) : null}
-                        </View>
-                      </View>
-
-                      <View style={rowStyle}>
-                        <View style={styles.unitFieldCol}>
-                          <Text style={styles.label}>WIDTH (CM) *</Text>
-                          <TextInput
-                            accessibilityLabel={`Unit ${parcel.seq} width`}
-                            value={parcel.widthCm}
-                            onChangeText={(val) => updateParcelField(index, 'widthCm', val)}
-                            editable={!isSubmitting}
-                            placeholder="10"
-                            placeholderTextColor={colors.inkFaint}
-                            style={[styles.input, errors[`parcels[${index}].widthCm`] && styles.inputError]}
-                            {...numericProps}
-                          />
-                          {errors[`parcels[${index}].widthCm`] ? (
-                            <Text accessibilityRole="alert" style={styles.error}>{errors[`parcels[${index}].widthCm`]}</Text>
-                          ) : null}
-                        </View>
-
-                        <View style={styles.unitFieldCol}>
-                          <Text style={styles.label}>HEIGHT (CM) *</Text>
-                          <TextInput
-                            accessibilityLabel={`Unit ${parcel.seq} height`}
-                            value={parcel.heightCm}
-                            onChangeText={(val) => updateParcelField(index, 'heightCm', val)}
-                            editable={!isSubmitting}
-                            placeholder="15"
-                            placeholderTextColor={colors.inkFaint}
-                            style={[styles.input, errors[`parcels[${index}].heightCm`] && styles.inputError]}
-                            {...numericProps}
-                          />
-                          {errors[`parcels[${index}].heightCm`] ? (
-                            <Text accessibilityRole="alert" style={styles.error}>{errors[`parcels[${index}].heightCm`]}</Text>
-                          ) : null}
-                        </View>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
+              <ParcelUnitsEditor
+                currentPage={parcelPage}
+                errors={errors}
+                fieldRefs={fieldRefs}
+                inputRefs={inputRefs}
+                isSubmitting={isSubmitting}
+                onPageChange={setParcelPage}
+                onRequestRemoveUnit={handleRequestRemoveUnit}
+                onUpdateParcelField={updateParcelField}
+                parcels={form.parcels}
+                shouldStack={shouldStack}
+              />
             </View>
 
             {/* 4. Live Rating & Summary */}
@@ -732,6 +665,7 @@ export function RegistrationScreen() {
                 parcels: prev.parcels.slice(0, target),
               }));
               setErrors((prev) => ({ ...prev, quantity: undefined }));
+              setParcelPage((prev) => clampParcelPage(prev, target));
             }
           } else if (currentDialog === 'remove_unit') {
             const idx = unitToRemove.current;
@@ -764,8 +698,6 @@ const styles = StyleSheet.create({
   error: { fontSize: 12, lineHeight: 17, color: colors.danger, marginTop: spacing.xs },
   errorBanner: { ...typography.body, backgroundColor: colors.dangerSoft, color: colors.danger, padding: spacing.md, marginBottom: spacing.lg },
   helper: { ...typography.bodySmall, marginTop: spacing.xs, marginBottom: spacing.sm },
-  row: { flexDirection: 'row', gap: spacing.md },
-  stacked: { flexDirection: 'column', gap: 0 },
   toggle: { flexDirection: 'row', flexWrap: 'wrap', borderWidth: 1, borderColor: colors.borderStrong, marginBottom: spacing.lg },
   toggleButton: { flex: 1, minHeight: 44, padding: spacing.sm, justifyContent: 'center', alignItems: 'center' },
   toggleActive: { backgroundColor: colors.black },
@@ -781,16 +713,6 @@ const styles = StyleSheet.create({
   quantityFieldWrapper: { flex: 1 },
   addUnitButton: { minHeight: 48, marginTop: 22, paddingHorizontal: spacing.md, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.ink, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
   addUnitButtonText: { fontSize: 12, fontWeight: '700', color: colors.ink },
-  unitsSection: { marginTop: spacing.sm },
-  unitsHeaderTitle: { ...typography.eyebrow, fontSize: 10.5, letterSpacing: 0.8, color: colors.inkFaint, marginBottom: spacing.sm },
-  unitCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginBottom: spacing.md },
-  unitCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
-  unitBadge: { backgroundColor: colors.black, paddingHorizontal: spacing.sm, paddingVertical: 2 },
-  unitBadgeText: { ...typography.mono, color: colors.surface, fontSize: 11, fontWeight: '700' },
-  unitVolumeTag: { ...typography.mono, fontSize: 11, color: colors.inkSoft, flex: 1, marginLeft: spacing.sm },
-  removeUnitBtn: { paddingVertical: spacing.xs, paddingHorizontal: spacing.sm },
-  removeUnitBtnText: { fontSize: 12, fontWeight: '700', color: colors.danger },
-  unitFieldCol: { flex: 1, minWidth: 100, marginBottom: spacing.sm },
   rateCard: { padding: spacing.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.md },
   rateLarge: { ...typography.h1, fontSize: 22, color: colors.ink },
   calculations: { padding: spacing.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, marginBottom: spacing.md },

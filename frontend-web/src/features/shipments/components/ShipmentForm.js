@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, View, Text, StyleSheet, Switch, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Switch, TouchableOpacity, useWindowDimensions } from 'react-native';
 import Card from '../../../components/common/Card';
 import FormField from '../../../components/common/FormField';
 import SelectField from '../../../components/common/SelectField';
 import Button from '../../../components/common/Button';
 import ClientSelectDropdown from './ClientSelectDropdown';
+import ParcelUnitsEditor from './ParcelUnitsEditor';
+import ShipmentPricingSummary from './ShipmentPricingSummary';
 import { calculateShipmentMetrics } from '../registrationCalculations.mjs';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
 
@@ -12,10 +14,6 @@ const CHARGE_MODELS = [
   { value: 'FLAT', label: 'Flat (shipment-level)' },
   { value: 'PER_UNIT', label: 'Per unit' },
 ];
-
-function formatMeasure(value, digits, suffix) {
-  return value === null ? 'Unavailable' : `${value.toFixed(digits)} ${suffix}`;
-}
 
 export default function ShipmentForm({
   clients = [],
@@ -49,6 +47,7 @@ export default function ShipmentForm({
   const [parcels, setParcels] = useState([
     { id: 'unit-1', seq: 1, weightKg: '1', lengthCm: '20', widthCm: '10', heightCm: '15' },
   ]);
+  const [parcelPage, setParcelPage] = useState(0);
 
   // Charges & Options
   const [route, setRoute] = useState('Manila to TNL Labo C.N.');
@@ -82,6 +81,21 @@ export default function ShipmentForm({
   function handleQuantityChange(value) {
     const cleaned = value.replace(/[^0-9]/g, '');
     setQuantityInput(cleaned);
+
+    const qtyNum = parseInt(cleaned, 10);
+    if (!isNaN(qtyNum) && qtyNum >= 1 && qtyNum <= 1000) {
+      if (qtyNum > parcels.length) {
+        syncQuantityToParcels(qtyNum, false);
+      } else if (qtyNum < parcels.length) {
+        const discarded = parcels.slice(qtyNum);
+        const isPopulated = discarded.some(
+          (p) => Boolean(p.weightKg?.trim() || p.lengthCm?.trim() || p.widthCm?.trim() || p.heightCm?.trim())
+        );
+        if (!isPopulated) {
+          syncQuantityToParcels(qtyNum, false);
+        }
+      }
+    }
   }
 
   function handleQuantityBlur() {
@@ -90,10 +104,10 @@ export default function ShipmentForm({
       setQuantityInput(String(parcels.length));
       return;
     }
-    syncQuantityToParcels(qtyNum);
+    syncQuantityToParcels(qtyNum, true);
   }
 
-  function syncQuantityToParcels(targetQty) {
+  function syncQuantityToParcels(targetQty, confirmIfPopulated = true) {
     if (targetQty === parcels.length) return;
 
     if (targetQty > parcels.length) {
@@ -110,12 +124,13 @@ export default function ShipmentForm({
       }
       setParcels((prev) => [...prev, ...added]);
       setQuantityInput(String(targetQty));
+      setErrors((prev) => ({ ...prev, quantity: null }));
     } else {
       const discarded = parcels.slice(targetQty);
       const isPopulated = discarded.some(
         (p) => Boolean(p.weightKg?.trim() || p.lengthCm?.trim() || p.widthCm?.trim() || p.heightCm?.trim())
       );
-      if (isPopulated) {
+      if (isPopulated && confirmIfPopulated) {
         const confirmMsg = `Reducing quantity to ${targetQty} will discard measurements for parcel unit(s) ${discarded.map((p) => `#${p.seq}`).join(', ')}. Discard these units?`;
         const confirmed = typeof window !== 'undefined' && typeof window.confirm === 'function'
           ? window.confirm(confirmMsg)
@@ -124,9 +139,14 @@ export default function ShipmentForm({
           setQuantityInput(String(parcels.length));
           return;
         }
+      } else if (isPopulated && !confirmIfPopulated) {
+        return;
       }
       setParcels((prev) => prev.slice(0, targetQty));
       setQuantityInput(String(targetQty));
+      setErrors((prev) => ({ ...prev, quantity: null }));
+      const maxPage = Math.max(0, Math.ceil(targetQty / 10) - 1);
+      setParcelPage((prev) => Math.min(prev, maxPage));
     }
   }
 
@@ -143,6 +163,7 @@ export default function ShipmentForm({
     };
     setParcels((prev) => [...prev, newUnit]);
     setQuantityInput(String(nextSeq));
+    setParcelPage(Math.floor((nextSeq - 1) / 10));
   }
 
   function removeUnit(indexToRemove) {
@@ -164,6 +185,8 @@ export default function ShipmentForm({
       .map((p, idx) => ({ ...p, seq: idx + 1 }));
     setParcels(nextParcels);
     setQuantityInput(String(nextParcels.length));
+    const maxPage = Math.max(0, Math.ceil(nextParcels.length / 10) - 1);
+    setParcelPage((prev) => Math.min(prev, maxPage));
   }
 
   function updateParcelField(index, field, value) {
@@ -276,6 +299,16 @@ export default function ShipmentForm({
     }
 
     setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) {
+      const firstParcelErrorKey = Object.keys(newErrors).find((k) => k.startsWith('parcel_'));
+      if (firstParcelErrorKey) {
+        const match = firstParcelErrorKey.match(/^parcel_(\d+)_/);
+        if (match) {
+          const errorUnitIndex = parseInt(match[1], 10);
+          setParcelPage(Math.floor(errorUnitIndex / 10));
+        }
+      }
+    }
     return Object.keys(newErrors).length === 0;
   }
 
@@ -537,193 +570,29 @@ export default function ShipmentForm({
           </View>
         </View>
 
-        {/* Row 2: Per-Unit Measurements Editor */}
-        <View style={styles.dimensionsBox}>
-          <View style={styles.unitsSectionHeader}>
-            <Text style={styles.dimensionsHeader}>
-              PARCEL UNITS ({parcels.length} {parcels.length === 1 ? 'UNIT' : 'UNITS'}) · PER-UNIT MEASUREMENTS
-            </Text>
-          </View>
+        {/* Row 2: Per-Unit Measurements Editor (Paginated) */}
+        <ParcelUnitsEditor
+          parcels={parcels}
+          errors={errors}
+          currentPage={parcelPage}
+          onPageChange={setParcelPage}
+          onUpdateParcelField={updateParcelField}
+          onRemoveUnit={removeUnit}
+          pageSize={10}
+        />
 
-          <View style={styles.unitsScrollContainer}>
-            {parcels.map((parcel, index) => {
-              const lNum = parseFloat(parcel.lengthCm);
-              const wNum = parseFloat(parcel.widthCm);
-              const hNum = parseFloat(parcel.heightCm);
-              const hasDims = !isNaN(lNum) && lNum > 0 && !isNaN(wNum) && wNum > 0 && !isNaN(hNum) && hNum > 0;
-              const unitVolume = hasDims ? (lNum * wNum * hNum) / 1000000 : null;
-
-              return (
-                <View key={parcel.id || `parcel-${index}`} style={styles.unitCard}>
-                  <View style={styles.unitCardTop}>
-                    <View style={styles.unitBadge}>
-                      <Text style={styles.unitBadgeText}>UNIT #{parcel.seq}</Text>
-                    </View>
-                    {unitVolume !== null ? (
-                      <Text style={styles.unitVolumeTag}>
-                        {formatMeasure(unitVolume, 4, 'm³')}
-                      </Text>
-                    ) : null}
-                    {parcels.length > 1 ? (
-                      <TouchableOpacity
-                        style={styles.removeUnitBtn}
-                        onPress={() => removeUnit(index)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Remove unit ${parcel.seq}`}
-                      >
-                        <Text style={styles.removeUnitBtnText}>✕ Remove</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-
-                  <View style={styles.unitFieldsRow}>
-                    <View style={styles.unitFieldCol}>
-                      <FormField
-                        label="Weight (kg)"
-                        required
-                        value={parcel.weightKg}
-                        onChangeText={(val) => updateParcelField(index, 'weightKg', val)}
-                        numericOnly
-                        placeholder="1.0"
-                        maxLength={9}
-                        suffix="kg"
-                        error={errors[`parcel_${index}_weightKg`]}
-                      />
-                    </View>
-                    <View style={styles.unitFieldCol}>
-                      <FormField
-                        label="Length (cm)"
-                        required
-                        value={parcel.lengthCm}
-                        onChangeText={(val) => updateParcelField(index, 'lengthCm', val)}
-                        numericOnly
-                        placeholder="20"
-                        maxLength={9}
-                        suffix="cm"
-                        error={errors[`parcel_${index}_lengthCm`]}
-                      />
-                    </View>
-                    <View style={styles.unitFieldCol}>
-                      <FormField
-                        label="Width (cm)"
-                        required
-                        value={parcel.widthCm}
-                        onChangeText={(val) => updateParcelField(index, 'widthCm', val)}
-                        numericOnly
-                        placeholder="10"
-                        maxLength={9}
-                        suffix="cm"
-                        error={errors[`parcel_${index}_widthCm`]}
-                      />
-                    </View>
-                    <View style={styles.unitFieldCol}>
-                      <FormField
-                        label="Height (cm)"
-                        required
-                        value={parcel.heightCm}
-                        onChangeText={(val) => updateParcelField(index, 'heightCm', val)}
-                        numericOnly
-                        placeholder="15"
-                        maxLength={9}
-                        suffix="cm"
-                        error={errors[`parcel_${index}_heightCm`]}
-                      />
-                    </View>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Row 3: Live Rating & Pricing Breakdown */}
-        <View style={styles.summaryContainer}>
-          <Text style={styles.dimensionsHeader}>LIVE RATING BREAKDOWN & SUMMARY</Text>
-          <View style={styles.summaryGrid}>
-            {/* 1. Rate per Kilo (Read-only) */}
-            <View style={styles.summaryCardCol}>
-              <Text style={type.label}>Rate per Kilo</Text>
-              <View style={styles.readOnlyStatBox}>
-                <Text style={styles.statLargeText}>
-                  {ratePerKilo ? `₱${Number(ratePerKilo).toFixed(2)}` : '—'}
-                </Text>
-                <Text style={styles.statSubText}>Configured by Admin</Text>
-              </View>
-            </View>
-
-            {/* 2. Weight Metrics */}
-            <View style={styles.summaryCardCol}>
-              <Text style={type.label}>Weight Summary</Text>
-              <View style={styles.metricsBox}>
-                <View style={styles.metricRow}>
-                  <Text style={styles.metricLabel}>Total Actual Weight</Text>
-                  <Text style={styles.metricValue}>{formatMeasure(shipmentMetrics.actualWeight, 2, 'kg')}</Text>
-                </View>
-                <View style={styles.metricRow}>
-                  <Text style={styles.metricLabel}>Volumetric Weight (/{volumetricDivisor || 5000})</Text>
-                  <Text style={styles.metricValue}>{formatMeasure(shipmentMetrics.volumetricWeight, 2, 'kg')}</Text>
-                </View>
-                <View style={[styles.metricRow, styles.billableRow]}>
-                  <Text style={styles.billableLabel}>Billable Weight</Text>
-                  <Text style={styles.billableValue}>{formatMeasure(shipmentMetrics.billableWeight, 2, 'kg')}</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* 3. Charges & Total */}
-            <View style={styles.summaryCardCol}>
-              <FormField
-                label="Other Charges (₱)"
-                value={otherCharges}
-                onChangeText={setOtherCharges}
-                numericOnly
-                placeholder="0"
-                maxLength={13}
-                helper="Valuation, packaging, etc."
-                error={errors.otherCharges}
-              />
-              <View style={styles.totalBox}>
-                <Text style={styles.totalLabel}>TOTAL AMOUNT</Text>
-                <Text style={styles.totalValue}>
-                  ₱{totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </Text>
-                <Text style={styles.totalFormula}>
-                  {shipmentMetrics.shippingFee !== null ? `₱${shipmentMetrics.shippingFee.toFixed(2)} shipping` : '—'}
-                  {' + ₱'}{(parseFloat(otherCharges) || 0).toFixed(2)} charges
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Settings Status Notice */}
-          {calculationSettingsState === 'loading' ? (
-            <View style={styles.settingsStatusRow}>
-              <ActivityIndicator color={colors.inkSoft} size="small" />
-              <Text style={styles.settingsMessage}>Loading rate and weight settings from server...</Text>
-            </View>
-          ) : null}
-
-          {calculationSettingsState === 'unconfigured' ? (
-            <View style={styles.settingsAlertBox}>
-              <Text style={styles.settingsAlertTitle}>Rate per Kilo Not Configured</Text>
-              <Text style={styles.settingsAlertMessage}>
-                Shipment registration is blocked because Rate per Kilo is not configured. An administrator must set the rate in Settings before shipments can be registered.
-              </Text>
-            </View>
-          ) : null}
-
-          {calculationSettingsState === 'error' ? (
-            <View style={styles.settingsErrorBox}>
-              <Text style={styles.settingsAlertTitle}>Calculation Settings Unavailable</Text>
-              <Text style={styles.settingsAlertMessage}>
-                Unable to load rate and divisor settings from server. Please check connection and retry.
-              </Text>
-              <TouchableOpacity accessibilityRole="button" onPress={onRetryCalculationSettings} style={styles.settingsRetry}>
-                <Text style={styles.settingsRetryText}>Retry Settings</Text>
-              </TouchableOpacity>
-            </View>
-          ) : null}
-        </View>
+        {/* Row 3: Live Rating Breakdown & Summary */}
+        <ShipmentPricingSummary
+          ratePerKilo={ratePerKilo}
+          volumetricDivisor={volumetricDivisor}
+          shipmentMetrics={shipmentMetrics}
+          otherCharges={otherCharges}
+          onOtherChargesChange={setOtherCharges}
+          totalAmount={totalAmount}
+          errors={errors}
+          calculationSettingsState={calculationSettingsState}
+          onRetryCalculationSettings={onRetryCalculationSettings}
+        />
 
         {/* Footer Row: Paid at Registration Toggle & Submit Button */}
         <View style={[styles.footerRow, isMobile && styles.footerRowMobile]}>
@@ -1031,143 +900,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: colors.ink,
-  },
-  unitsSectionHeader: {
-    marginBottom: spacing.sm,
-  },
-  unitsScrollContainer: {
-    gap: spacing.md,
-  },
-  unitCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-  },
-  unitCardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  unitBadge: {
-    backgroundColor: colors.black,
-    paddingVertical: 2,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.sm,
-  },
-  unitBadgeText: {
-    fontFamily: fonts.mono,
-    fontSize: 10.5,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-  },
-  unitVolumeTag: {
-    fontFamily: fonts.mono,
-    fontSize: 11,
-    color: colors.inkSoft,
-    flex: 1,
-    marginLeft: spacing.sm,
-  },
-  removeUnitBtn: {
-    paddingVertical: 2,
-    paddingHorizontal: spacing.sm,
-  },
-  removeUnitBtnText: {
-    fontFamily: fonts.sans,
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.danger,
-  },
-  unitFieldsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  unitFieldCol: {
-    flex: 1,
-    minWidth: 120,
-  },
-  summaryContainer: {
-    backgroundColor: '#FAF9F6',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    marginTop: spacing.md,
-  },
-  summaryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.lg,
-    marginTop: spacing.sm,
-  },
-  summaryCardCol: {
-    flex: 1,
-    minWidth: 240,
-  },
-  readOnlyStatBox: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    backgroundColor: '#FFFFFF',
-    marginTop: spacing.xs,
-    justifyContent: 'center',
-    minHeight: 70,
-  },
-  statLargeText: {
-    fontFamily: fonts.sans,
-    fontSize: 22,
-    fontWeight: '900',
-    color: colors.ink,
-  },
-  statSubText: {
-    fontFamily: fonts.sans,
-    fontSize: 11,
-    color: colors.inkFaint,
-    marginTop: 2,
-  },
-  metricsBox: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    marginTop: spacing.xs,
-    justifyContent: 'center',
-  },
-  settingsAlertBox: {
-    backgroundColor: colors.warningSoft,
-    borderWidth: 1,
-    borderColor: colors.warning,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    marginTop: spacing.md,
-  },
-  settingsAlertTitle: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.ink,
-    marginBottom: 2,
-  },
-  settingsAlertMessage: {
-    fontFamily: fonts.sans,
-    fontSize: 11,
-    color: colors.inkSoft,
-    lineHeight: 16,
-  },
-  settingsErrorBox: {
-    backgroundColor: colors.dangerSoft,
-    borderWidth: 1,
-    borderColor: colors.danger,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    marginTop: spacing.md,
   },
   footerRow: {
     flexDirection: 'row',

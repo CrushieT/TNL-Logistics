@@ -80,6 +80,12 @@ public class PersonalTrackingHistoryIntegrationTest {
     @Autowired
     private jakarta.persistence.EntityManager entityManager;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
     private String field1Token;
     private String field2Token;
     private String officeToken;
@@ -90,6 +96,9 @@ public class PersonalTrackingHistoryIntegrationTest {
 
     @BeforeEach
     public void setup() throws Exception {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
         if (shipmentRepository.count() == 0) {
             dataSeeder.run();
         }
@@ -155,6 +164,8 @@ public class PersonalTrackingHistoryIntegrationTest {
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("350.00"));
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
 
         List<ParcelUnitRequest> parcels = new ArrayList<>();
         for (int i = 1; i <= quantity; i++) {
