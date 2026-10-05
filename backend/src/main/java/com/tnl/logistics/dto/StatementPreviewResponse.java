@@ -16,6 +16,14 @@ public class StatementPreviewResponse {
     private String clientContact;
     private String clientEmail;
 
+    private String companyName;
+    private String companyAddress;
+    private String companyContact;
+    private String billingEmail;
+    private String soaBankName;
+    private String soaAccountName;
+    private String soaAccountNumber;
+
     private LocalDate cycleThursday;
     private String cycleRangeLabel;
     private Integer weekNumber;
@@ -53,6 +61,27 @@ public class StatementPreviewResponse {
 
     public String getClientEmail() { return clientEmail; }
     public void setClientEmail(String clientEmail) { this.clientEmail = clientEmail; }
+
+    public String getCompanyName() { return companyName; }
+    public void setCompanyName(String companyName) { this.companyName = companyName; }
+
+    public String getCompanyAddress() { return companyAddress; }
+    public void setCompanyAddress(String companyAddress) { this.companyAddress = companyAddress; }
+
+    public String getCompanyContact() { return companyContact; }
+    public void setCompanyContact(String companyContact) { this.companyContact = companyContact; }
+
+    public String getBillingEmail() { return billingEmail; }
+    public void setBillingEmail(String billingEmail) { this.billingEmail = billingEmail; }
+
+    public String getSoaBankName() { return soaBankName; }
+    public void setSoaBankName(String soaBankName) { this.soaBankName = soaBankName; }
+
+    public String getSoaAccountName() { return soaAccountName; }
+    public void setSoaAccountName(String soaAccountName) { this.soaAccountName = soaAccountName; }
+
+    public String getSoaAccountNumber() { return soaAccountNumber; }
+    public void setSoaAccountNumber(String soaAccountNumber) { this.soaAccountNumber = soaAccountNumber; }
 
     public LocalDate getCycleThursday() { return cycleThursday; }
     public void setCycleThursday(LocalDate cycleThursday) { this.cycleThursday = cycleThursday; }

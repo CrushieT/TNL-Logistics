@@ -18,6 +18,11 @@ import {
   formatCurrency,
 } from '../features/collections';
 import { colors, fonts, spacing, radius } from '../theme';
+import {
+  buildStatementPrintUrl,
+  getStatementPrintBlockReason,
+  hasUnsavedStatementAdjustments,
+} from '../features/collections/utils/statementPrintModel.mjs';
 
 export default function StatementsScreen() {
   const router = useRouter();
@@ -69,6 +74,22 @@ export default function StatementsScreen() {
   const [deductionNote, setDeductionNote] = useState('');
   const [collectedBy, setCollectedBy] = useState('');
   const [collectors, setCollectors] = useState([]);
+
+  const hasUnsavedAdjustments = statementData
+    ? hasUnsavedStatementAdjustments(statementData, {
+        deductionAmount,
+        deductionNote,
+        collectedBy,
+      })
+    : false;
+  const persistedPrintBlockReason = statementData ? getStatementPrintBlockReason(statementData) : null;
+  const printBlockReason = hasUnsavedAdjustments
+    ? 'Save statement adjustments before printing.'
+    : persistedPrintBlockReason;
+  const isPrintDisabled = !statementData
+    || statementData.items?.length === 0
+    || saving
+    || Boolean(printBlockReason);
 
   // Load generated clients for the selected cycle
   useEffect(() => {
@@ -231,16 +252,17 @@ export default function StatementsScreen() {
   // Open dedicated printable view
   const handleDirectPrint = () => {
     if (!selectedClientId) return;
-    const numDeduction = Number(deductionAmount) || 0;
-    const totalCharges = Number(statementData?.totalCharges || 0);
-    const totalPaid = Number(statementData?.totalPaid || 0);
-    const remainingBeforeDeduction = Math.max(0, totalCharges - totalPaid);
-    if (numDeduction > remainingBeforeDeduction) {
-      setErrorMessage(`Deduction amount cannot exceed the remaining statement balance (₱${remainingBeforeDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).`);
+    if (hasUnsavedAdjustments) {
+      setErrorMessage('Save statement adjustments before printing. Print output only uses persisted values.');
+      return;
+    }
+    const blockReason = getStatementPrintBlockReason(statementData);
+    if (blockReason) {
+      setErrorMessage(blockReason);
       return;
     }
 
-    const printUrl = `/statements/print?clientId=${encodeURIComponent(selectedClientId)}&cycle=${encodeURIComponent(selectedCycle || '')}&deduction=${encodeURIComponent(deductionAmount || 0)}&note=${encodeURIComponent(deductionNote || '')}&collector=${encodeURIComponent(collectedBy || '')}`;
+    const printUrl = buildStatementPrintUrl(selectedClientId, selectedCycle);
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       window.open(printUrl, '_blank');
     } else {
@@ -313,10 +335,10 @@ export default function StatementsScreen() {
             <TouchableOpacity
               style={[
                 styles.printButton,
-                (!statementData || statementData.items?.length === 0) && styles.printButtonDisabled,
+                isPrintDisabled && styles.printButtonDisabled,
               ]}
               onPress={handleDirectPrint}
-              disabled={!statementData || statementData.items?.length === 0}
+              disabled={isPrintDisabled}
               activeOpacity={0.8}
             >
               <Text style={styles.printButtonText}>Print / Export PDF</Text>
@@ -362,6 +384,16 @@ export default function StatementsScreen() {
             <CheckIcon size={14} color="#166534" /><Text style={styles.successBannerText}>{successToast}</Text>
           </View>
         )}
+        {printBlockReason && statementData ? (
+          <View style={styles.printGuardBanner}>
+            <Text style={styles.printGuardText}>{printBlockReason}</Text>
+            {persistedPrintBlockReason?.includes('System Settings') ? (
+              <TouchableOpacity onPress={() => router.push('/settings')}>
+                <Text style={styles.printGuardLink}>Open System Settings</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
 
         {/* Deductions & Collector Input Card (no-print) */}
         <View style={styles.deductionsBarWrap}>
@@ -558,6 +590,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#166534',
     fontWeight: '600',
+  },
+  printGuardBanner: {
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FDBA74',
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  printGuardText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: '#9A3412',
+    fontWeight: '600',
+  },
+  printGuardLink: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: '#9A3412',
+    fontWeight: '800',
+    textDecorationLine: 'underline',
+    marginTop: 6,
   },
   emptyCard: {
     backgroundColor: '#FFFFFF',

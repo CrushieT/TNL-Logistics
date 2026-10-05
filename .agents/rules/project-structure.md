@@ -40,7 +40,7 @@ tnl-logistics/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
 │   │   │       ├── application-loadtest.properties
-│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V31; V31 adds nullable rate per kilo and shipment calculation snapshots)
+│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V33; V33 adds nullable SOA bank-payment settings)
 │   │   └── test/                        # Integration and unit test suites, including AdminConsoleAuthorizationIntegrationTest and scanner API coverage
 │   └── pom.xml
 │
@@ -76,12 +76,13 @@ tnl-logistics/
 │   │   ├── features/                # Domain modules
 │   │   │   ├── shipments/           # ClientSelectDropdown, ParcelUnitsEditor, ShipmentPricingSummary, parcelPagination.mjs, registrationCalculations.mjs, PrintLabelsModal, LabelPreview, durable outbox & isolated thermal print service
 │   │   │   ├── reports/             # Operational & financial report cards, PrintableReportDocument, reportPrintModel.mjs
-│   │   │   └── settings/            # AdminSecurityCard, ConfirmPasswordModal, settings components
+│   │   │   ├── collections/         # SOA components, API services, pagination, and hardened two-copy statementPrintModel.mjs
+│   │   │   └── settings/            # Settings components plus shared SOA bank-detail normalization and validation
 │   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sessionCore.mjs, sseClient.js, sseClientCore.mjs)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
 │   │   ├── utils/                   # Shared QR facade
 │   │   └── vendor/qrcodegen/        # Vendored Project Nayuki QR generator
-│   ├── tests/                       # Web unit suites (authSlidingSession.test.mjs, clientApiMapping.test.mjs, labelPrint.test.mjs, qr.test.mjs, registrationCalculations.test.mjs, reportPrint.test.mjs, sseClient.test.mjs)
+│   ├── tests/                       # Web unit suites, including statementPrint.test.mjs for bank validation, print guards, logo readiness, and two-copy pagination
 │   ├── assets/                      # favicon.png, tracking-logo.png
 │   ├── app.json                     # Expo web configuration
 │   ├── package.json
@@ -169,7 +170,7 @@ tnl-logistics/
 
 ### Workflow & Load Testing
 
-- Flyway migration inventory spans `V1` through `V32`; `V31` adds the global rate and shipment calculation snapshots, and `V32` adds the nullable client rate per kilo.
+- Flyway migration inventory spans `V1` through `V33`; `V31` adds global rating snapshots, `V32` adds the nullable client rate, and `V33` adds nullable SOA bank-payment settings without seeded account data.
 - `backend/src/main/resources/application-workflow.properties` selects the isolated `tnl_workflow` database and enables the production-shaped workflow fixtures.
 - `docker-compose.workflow.yml` overrides the default Compose stack for the same isolated workflow profile.
 - `backend/src/main/resources/application-loadtest.properties` selects the isolated `tnl_loadtest` database with configurable HikariCP concurrency tuning (default pool size 10), strict Hibernate `ddl-auto=validate`, and opt-in deterministic seeder (`LoadTestDataSeeder.java`).

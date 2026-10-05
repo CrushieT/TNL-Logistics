@@ -21,6 +21,10 @@ import {
 import { verifyPassword } from '../services/api/client';
 import { subscribeRealtimeEvents } from '../features/shipments';
 import { colors, fonts, spacing, radius, type } from '../theme';
+import {
+  getSoaBankDetailsErrors,
+  normalizeSoaBankDetails,
+} from '../features/settings/utils/soaBankDetails.mjs';
 
 export default function SettingsScreen() {
   const { width } = useWindowDimensions();
@@ -34,6 +38,9 @@ export default function SettingsScreen() {
     collectionDay: 'THURSDAY',
     volumetricDivisor: '5000',
     ratePerKilo: '',
+    soaBankName: '',
+    soaAccountName: '',
+    soaAccountNumber: '',
     trackingPrefix: 'TRK',
     shipmentPrefix: 'SHP',
     trackingIdPrefixPreview: 'TRK-2026-',
@@ -62,6 +69,9 @@ export default function SettingsScreen() {
           collectionDay: data.collectionDay || 'THURSDAY',
           volumetricDivisor: String(data.volumetricDivisor || 5000),
           ratePerKilo: data.ratePerKilo != null ? String(data.ratePerKilo) : '',
+          soaBankName: data.soaBankName || '',
+          soaAccountName: data.soaAccountName || '',
+          soaAccountNumber: data.soaAccountNumber || '',
           trackingPrefix: data.trackingPrefix || 'TRK',
           shipmentPrefix: data.shipmentPrefix || 'SHP',
           trackingIdPrefixPreview: data.trackingIdPrefixPreview || 'TRK-2026-',
@@ -147,6 +157,8 @@ export default function SettingsScreen() {
       newErrors.ratePerKilo = 'Rate per kilo must have up to 10 integer digits and 2 decimal places';
     }
 
+    Object.assign(newErrors, getSoaBankDetailsErrors(form));
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -174,6 +186,7 @@ export default function SettingsScreen() {
         collectionDay: form.collectionDay,
         volumetricDivisor: parseInt(form.volumetricDivisor, 10),
         ratePerKilo: parseFloat(form.ratePerKilo),
+        ...normalizeSoaBankDetails(form),
       };
 
       const updated = await updateSystemSettings(payload);
@@ -187,6 +200,9 @@ export default function SettingsScreen() {
           collectionDay: updated.collectionDay,
           volumetricDivisor: String(updated.volumetricDivisor),
           ratePerKilo: updated.ratePerKilo != null ? String(updated.ratePerKilo) : '',
+          soaBankName: updated.soaBankName || '',
+          soaAccountName: updated.soaAccountName || '',
+          soaAccountNumber: updated.soaAccountNumber || '',
         }));
       }
 

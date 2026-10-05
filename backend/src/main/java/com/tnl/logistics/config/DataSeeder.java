@@ -41,6 +41,7 @@ public class DataSeeder implements CommandLineRunner {
     private final WaybillRepository waybillRepository;
     private final WeeklyCollectionRepository weeklyCollectionRepository;
     private final SoaRepository soaRepository;
+    private final SystemSettingRepository systemSettingRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final Environment environment;
 
@@ -59,6 +60,7 @@ public class DataSeeder implements CommandLineRunner {
                       PaymentRepository paymentRepository, PrintAuditJobRepository printAuditJobRepository,
                       PrintEventRepository printEventRepository, WaybillRepository waybillRepository,
                       WeeklyCollectionRepository weeklyCollectionRepository, SoaRepository soaRepository,
+                      SystemSettingRepository systemSettingRepository,
                       BCryptPasswordEncoder passwordEncoder, Environment environment) {
         this.appUserRepository = appUserRepository;
         this.clientRepository = clientRepository;
@@ -72,6 +74,7 @@ public class DataSeeder implements CommandLineRunner {
         this.waybillRepository = waybillRepository;
         this.weeklyCollectionRepository = weeklyCollectionRepository;
         this.soaRepository = soaRepository;
+        this.systemSettingRepository = systemSettingRepository;
         this.passwordEncoder = passwordEncoder;
         this.environment = environment;
     }
@@ -82,10 +85,14 @@ public class DataSeeder implements CommandLineRunner {
         if (seedMobilePins && environment.acceptsProfiles(Profiles.of("prod"))) {
             throw new IllegalStateException("app.seed.mobile-pins must not be enabled in production");
         }
+        if (seedWorkflowFixtures && environment.acceptsProfiles(Profiles.of("prod"))) {
+            throw new IllegalStateException("app.seed.workflow-fixtures must not be enabled in production");
+        }
         if (!seedWorkflowFixtures) {
             seedTestProfileFoundation();
             return;
         }
+        seedWorkflowSoaBankDetails();
         if (!seedSampleData) return;
         if (seedAdmin) seedUser("U-001", "admin", "admin123", "Maria Santos", UserRole.ADMIN, null, null, null);
 
@@ -118,6 +125,29 @@ public class DataSeeder implements CommandLineRunner {
             if (fixture.sequence() == 4) collectionShipment = shipment;
         }
         if (collectionShipment != null) seedCollectionFixture(collectionShipment, office);
+    }
+
+    private void seedWorkflowSoaBankDetails() {
+        var existingSetting = systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID);
+        SystemSetting setting = existingSetting.orElseGet(SystemSetting::new);
+        boolean hasChanges = existingSetting.isEmpty();
+
+        if (setting.getSoaBankName() == null || setting.getSoaBankName().isBlank()) {
+            setting.setSoaBankName("BDO Unibank");
+            hasChanges = true;
+        }
+        if (setting.getSoaAccountName() == null || setting.getSoaAccountName().isBlank()) {
+            setting.setSoaAccountName("TNL Workflow Demo");
+            hasChanges = true;
+        }
+        if (setting.getSoaAccountNumber() == null || setting.getSoaAccountNumber().isBlank()) {
+            setting.setSoaAccountNumber("000000000000");
+            hasChanges = true;
+        }
+
+        if (hasChanges) {
+            systemSettingRepository.save(setting);
+        }
     }
 
     private void seedTestProfileFoundation() {

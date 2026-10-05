@@ -81,6 +81,9 @@ public class SystemSettingServiceImpl implements SystemSettingService {
         setting.setCollectionDay(request.getCollectionDay());
         setting.setVolumetricDivisor(request.getVolumetricDivisor());
         setting.setRatePerKilo(request.getRatePerKilo());
+        setting.setSoaBankName(request.getSoaBankName().trim());
+        setting.setSoaAccountName(request.getSoaAccountName().trim());
+        setting.setSoaAccountNumber(request.getSoaAccountNumber().trim());
         setting.setUpdatedBy(actingUserId != null ? actingUserId : "ADMIN");
 
         SystemSetting saved = systemSettingRepository.save(setting);
@@ -91,7 +94,7 @@ public class SystemSettingServiceImpl implements SystemSettingService {
                 actingUserId, dto.getCollectionDay(), dto.getVolumetricDivisor(), dto.getRatePerKilo());
 
         try {
-            sseService.broadcastEvent("SETTINGS_UPDATED", dto);
+            sseService.broadcastEvent("SETTINGS_UPDATED", toCompanyBrandingDto(dto));
         } catch (Exception e) {
             log.warn("Failed to broadcast SETTINGS_UPDATED SSE event: {}", e.getMessage());
         }
@@ -142,10 +145,25 @@ public class SystemSettingServiceImpl implements SystemSettingService {
                 setting.getCollectionDay() != null ? setting.getCollectionDay() : DayOfWeek.THURSDAY,
                 setting.getVolumetricDivisor() != null ? setting.getVolumetricDivisor() : 5000,
                 setting.getRatePerKilo(),
+                setting.getSoaBankName(),
+                setting.getSoaAccountName(),
+                setting.getSoaAccountNumber(),
                 setting.getTrackingPrefix() != null ? setting.getTrackingPrefix() : "TRK",
                 setting.getShipmentPrefix() != null ? setting.getShipmentPrefix() : "SHP",
                 setting.getUpdatedAt(),
                 setting.getUpdatedBy()
+        );
+    }
+
+    private CompanyBrandingDto toCompanyBrandingDto(SystemSettingDto settings) {
+        return new CompanyBrandingDto(
+                settings.getCompanyName(),
+                settings.getCompanyAddress(),
+                settings.getCompanyContact(),
+                settings.getBillingEmail(),
+                settings.getCollectionDay(),
+                settings.getVolumetricDivisor(),
+                settings.getRatePerKilo()
         );
     }
 }

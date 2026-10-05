@@ -3,7 +3,14 @@ import { View, Text, StyleSheet, Platform, ActivityIndicator, TouchableOpacity, 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors, fonts, spacing, radius } from '../../theme';
 import { getStatementPreview } from '../../features/collections/services/collectionsApi';
-import StatementPaperCard from '../../features/collections/components/StatementPaperCard';
+import StatementPaperCard, {
+  STATEMENT_LOGO_SOURCE,
+} from '../../features/collections/components/StatementPaperCard';
+import {
+  getStatementPrintBlockReason,
+  STATEMENT_PRINT_COPY_COUNT,
+  waitForImageReady,
+} from '../../features/collections/utils/statementPrintModel.mjs';
 
 export default function StatementPrintScreen() {
   const router = useRouter();
@@ -11,13 +18,12 @@ export default function StatementPrintScreen() {
 
   const clientId = params.clientId || '';
   const cycle = params.cycle || '';
-  const liveDeduction = params.deduction ? Number(params.deduction) : 0;
-  const liveDeductionNote = params.note || '';
-  const liveCollectedBy = params.collector || '';
 
   const [statementData, setStatementData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
+  const canPrint = !loading && Boolean(statementData) && !errorMessage;
 
   useEffect(() => {
     let isMounted = true;
@@ -33,7 +39,7 @@ export default function StatementPrintScreen() {
         const data = await getStatementPreview(clientId, cycle || null);
         if (isMounted) {
           setStatementData(data);
-          setErrorMessage(null);
+          setErrorMessage(getStatementPrintBlockReason(data));
         }
       } catch (err) {
         if (isMounted) {
@@ -52,18 +58,41 @@ export default function StatementPrintScreen() {
     };
   }, [clientId, cycle]);
 
-  // Trigger browser print once data is loaded and rendered
+  // Trigger browser print once data is loaded, rendered, and logo is ready
   useEffect(() => {
-    if (!loading && statementData && Platform.OS === 'web' && typeof window !== 'undefined') {
-      const timer = setTimeout(() => {
-        window.print();
-      }, 500);
-      return () => clearTimeout(timer);
+    let isMounted = true;
+    if (!loading && statementData && !errorMessage && Platform.OS === 'web' && typeof window !== 'undefined') {
+      const logoUri = typeof STATEMENT_LOGO_SOURCE === 'string'
+        ? STATEMENT_LOGO_SOURCE
+        : (STATEMENT_LOGO_SOURCE?.uri || STATEMENT_LOGO_SOURCE?.default || '');
+
+      const triggerPrint = () => {
+        const timer = setTimeout(() => {
+          if (isMounted) {
+            window.print();
+          }
+        }, 400);
+        return () => clearTimeout(timer);
+      };
+
+      if (logoUri && typeof window.Image === 'function') {
+        waitForImageReady(logoUri, () => new window.Image()).then((status) => {
+          if (isMounted) {
+            setLogoLoadFailed(status === 'failed');
+            triggerPrint();
+          }
+        });
+      } else {
+        triggerPrint();
+      }
     }
-  }, [loading, statementData]);
+    return () => {
+      isMounted = false;
+    };
+  }, [loading, statementData, errorMessage]);
 
   const handlePrintNow = () => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    if (canPrint && Platform.OS === 'web' && typeof window !== 'undefined') {
       window.print();
     }
   };
@@ -105,6 +134,14 @@ export default function StatementPrintScreen() {
                   visibility: hidden !important;
                 }
 
+                img {
+                  -webkit-print-color-adjust: exact !important;
+                  print-color-adjust: exact !important;
+                  display: block !important;
+                  visibility: visible !important;
+                  max-width: 100% !important;
+                }
+
                 /* 2. Unconstrain all containers so browser can paginate across multiple A4 pages */
                 html, body, #root, #__next,
                 #print-screen-root,
@@ -121,6 +158,9 @@ export default function StatementPrintScreen() {
                 }
 
                 /* 3. Strip outer wrapper padding and margins */
+                #print-screen-root,
+                #print-scroll-container,
+                #print-scroll-container > div,
                 #print-canvas-wrap,
                 div[id="print-canvas-wrap"] {
                   padding: 0 !important;
@@ -129,12 +169,12 @@ export default function StatementPrintScreen() {
                   max-width: 100% !important;
                 }
 
-                /* 4. Format each sheet with internal margins, stripping borders/shadows */
+                /* 4. Format each sheet with uniform internal margins across all pages, stripping borders/shadows */
                 div[id^="soa-printable-sheet-"] {
                   box-shadow: none !important;
                   border: none !important;
                   margin: 0 auto !important;
-                  padding: 12mm 14mm 12mm 14mm !important;
+                  padding: 10mm 12mm 4mm 12mm !important;
                   box-sizing: border-box !important;
                   width: 100% !important;
                   max-width: 100% !important;
@@ -172,7 +212,11 @@ export default function StatementPrintScreen() {
           ) : null}
         </View>
 
-        <TouchableOpacity style={styles.printBtn} onPress={handlePrintNow}>
+        <TouchableOpacity
+          style={[styles.printBtn, !canPrint && styles.printBtnDisabled]}
+          onPress={handlePrintNow}
+          disabled={!canPrint}
+        >
           <Text style={styles.printBtnText}>Print / Save as PDF</Text>
         </TouchableOpacity>
       </View>
@@ -191,17 +235,24 @@ export default function StatementPrintScreen() {
         ) : errorMessage ? (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>{errorMessage}</Text>
-            <TouchableOpacity style={styles.retryBtn} onPress={handleBack}>
-              <Text style={styles.retryBtnText}>Return to Statements</Text>
-            </TouchableOpacity>
+            <View style={styles.errorActions}>
+              {errorMessage.includes('System Settings') ? (
+                <TouchableOpacity style={styles.settingsBtn} onPress={() => router.push('/settings')}>
+                  <Text style={styles.settingsBtnText}>Open System Settings</Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity style={styles.retryBtn} onPress={handleBack}>
+                <Text style={styles.retryBtnText}>Return to Statements</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : (
           <View nativeID="print-canvas-wrap" style={styles.paperWrap}>
             <StatementPaperCard
               data={statementData}
-              liveDeduction={liveDeduction}
-              liveDeductionNote={liveDeductionNote}
-              liveCollectedBy={liveCollectedBy}
+              copies={STATEMENT_PRINT_COPY_COUNT}
+              showLogo={true}
+              logoLoadFailed={logoLoadFailed}
             />
           </View>
         )}
@@ -310,6 +361,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     backgroundColor: '#111110',
     borderRadius: radius.sm,
+  },
+  printBtnDisabled: {
+    opacity: 0.45,
+  },
+  errorActions: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  settingsBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#C2410C',
+    borderRadius: radius.sm,
+  },
+  settingsBtnText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   retryBtnText: {
     fontFamily: fonts.sans,

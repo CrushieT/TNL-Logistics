@@ -35,6 +35,7 @@ public class SoaServiceImpl implements SoaService {
     private final WeeklyCollectionRepository weeklyCollectionRepository;
     private final SoaBatchRepository soaBatchRepository;
     private final AppUserRepository appUserRepository;
+    private final SystemSettingRepository systemSettingRepository;
     private final CollectionsService collectionsService;
     private final SseService sseService;
 
@@ -45,6 +46,7 @@ public class SoaServiceImpl implements SoaService {
                           WeeklyCollectionRepository weeklyCollectionRepository,
                           SoaBatchRepository soaBatchRepository,
                           AppUserRepository appUserRepository,
+                          SystemSettingRepository systemSettingRepository,
                           CollectionsService collectionsService,
                           SseService sseService) {
         this.clientRepository = clientRepository;
@@ -54,6 +56,7 @@ public class SoaServiceImpl implements SoaService {
         this.weeklyCollectionRepository = weeklyCollectionRepository;
         this.soaBatchRepository = soaBatchRepository;
         this.appUserRepository = appUserRepository;
+        this.systemSettingRepository = systemSettingRepository;
         this.collectionsService = collectionsService;
         this.sseService = sseService;
     }
@@ -168,6 +171,16 @@ public class SoaServiceImpl implements SoaService {
         response.setClientAddress(client.getAddress());
         response.setClientContact(client.getContactNumber());
         response.setClientEmail(client.getEmail());
+
+        SystemSetting settings = systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID)
+                .orElseGet(SystemSetting::new);
+        response.setCompanyName(settings.getCompanyName());
+        response.setCompanyAddress(settings.getCompanyAddress());
+        response.setCompanyContact(settings.getCompanyContact());
+        response.setBillingEmail(settings.getBillingEmail());
+        response.setSoaBankName(settings.getSoaBankName());
+        response.setSoaAccountName(settings.getSoaAccountName());
+        response.setSoaAccountNumber(settings.getSoaAccountNumber());
 
         response.setCycleThursday(targetThursday);
         response.setCycleRangeLabel(cycleRangeLabel);

@@ -53,6 +53,37 @@ export default function CompanyBrandingCard({
         error={errors.billingEmail}
         style={styles.field}
       />
+      <FormField
+        label="SOA BANK NAME"
+        required
+        value={form.soaBankName}
+        onChangeText={(val) => onChangeField('soaBankName', val)}
+        placeholder="Bank name"
+        maxLength={100}
+        error={errors.soaBankName}
+        style={styles.field}
+      />
+      <FormField
+        label="SOA ACCOUNT NAME"
+        required
+        value={form.soaAccountName}
+        onChangeText={(val) => onChangeField('soaAccountName', val)}
+        placeholder="Account name"
+        maxLength={150}
+        error={errors.soaAccountName}
+        style={styles.field}
+      />
+      <FormField
+        label="SOA ACCOUNT NUMBER"
+        required
+        value={form.soaAccountNumber}
+        onChangeText={(val) => onChangeField('soaAccountNumber', val)}
+        placeholder="6 to 20 digits"
+        maxLength={20}
+        keyboardType="number-pad"
+        error={errors.soaAccountNumber}
+        style={styles.field}
+      />
     </Card>
   );
 }
