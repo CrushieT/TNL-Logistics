@@ -5,11 +5,13 @@ import com.tnl.logistics.repository.ClientRepository;
 import com.tnl.logistics.model.LabelStatus;
 import com.tnl.logistics.model.ParcelStatus;
 import com.tnl.logistics.model.WaybillStatus;
+import com.tnl.logistics.model.SystemSetting;
 import com.tnl.logistics.repository.ParcelUnitRepository;
 import com.tnl.logistics.repository.PaymentRepository;
 import com.tnl.logistics.repository.TrackingEventRepository;
 import com.tnl.logistics.repository.VehicleRepository;
 import com.tnl.logistics.repository.WaybillRepository;
+import com.tnl.logistics.repository.SystemSettingRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -50,6 +52,10 @@ class DataSeederWorkflowIntegrationTest {
     private VehicleRepository vehicleRepository;
     @Autowired
     private WaybillRepository waybillRepository;
+    @Autowired
+    private SystemSettingRepository systemSettingRepository;
+    @Autowired
+    private DataSeeder dataSeeder;
 
     @Test
     void seedsProductionShapedWorkflowFixturesWithConsistentLifecycleHistory() {
@@ -92,5 +98,36 @@ class DataSeederWorkflowIntegrationTest {
         assertEquals(1, paymentRepository.findByShipment_ShipmentId(String.format("SHP-%d-002", year)).size());
         assertEquals(WaybillStatus.SENT_TO_HAULER, waybillRepository.findByShipment_ShipmentId(String.format("SHP-%d-005", year)).orElseThrow().getStatus());
         assertEquals(WaybillStatus.SIGNED_COMPLETED, waybillRepository.findByShipment_ShipmentId(String.format("SHP-%d-006", year)).orElseThrow().getStatus());
+
+        SystemSetting workflowSettings = systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID).orElseThrow();
+        workflowSettings.setSoaBankName(null);
+        workflowSettings.setSoaAccountName("   ");
+        workflowSettings.setSoaAccountNumber(null);
+        systemSettingRepository.saveAndFlush(workflowSettings);
+        dataSeeder.run();
+        workflowSettings = systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID).orElseThrow();
+        assertEquals("BDO Unibank", workflowSettings.getSoaBankName());
+        assertEquals("TNL Workflow Demo", workflowSettings.getSoaAccountName());
+        assertEquals("000000000000", workflowSettings.getSoaAccountNumber());
+
+        long settingsCount = systemSettingRepository.count();
+        dataSeeder.run();
+        assertEquals(settingsCount, systemSettingRepository.count());
+
+        workflowSettings.setSoaBankName("Custom Workflow Bank");
+        workflowSettings.setSoaAccountName("Custom Workflow Account");
+        workflowSettings.setSoaAccountNumber("001122334455");
+        systemSettingRepository.saveAndFlush(workflowSettings);
+
+        dataSeeder.run();
+        SystemSetting preservedSettings = systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID).orElseThrow();
+        assertEquals("Custom Workflow Bank", preservedSettings.getSoaBankName());
+        assertEquals("Custom Workflow Account", preservedSettings.getSoaAccountName());
+        assertEquals("001122334455", preservedSettings.getSoaAccountNumber());
+
+        preservedSettings.setSoaBankName("BDO Unibank");
+        preservedSettings.setSoaAccountName("TNL Workflow Demo");
+        preservedSettings.setSoaAccountNumber("000000000000");
+        systemSettingRepository.saveAndFlush(preservedSettings);
     }
 }

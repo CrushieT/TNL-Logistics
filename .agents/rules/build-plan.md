@@ -27,7 +27,13 @@
   - Backend registration resolves the client rate first, falls back to the global rate, applies stale-rate protection, and stores the effective numeric rate in the existing shipment snapshot.
   - Web Admin client profiles can enable, update, or disable the custom rate; web and mobile registration reload effective pricing after client selection.
   - Verification passed across backend (346 tests), web (53 tests), mobile (157 tests), and Expo web/Android production exports.
-- **Phases 2-6 - Implementation and Verification:** [UPCOMING]
+- **Phase 2 - Configurable SOA Bank Details and Printing:** [COMPLETED]
+  - Migration `V33__add_soa_bank_details.sql` adds nullable SOA bank name, account name, and text account number settings without embedding real account data.
+  - Admin settings validate and persist the three fields; staff branding, SSE payloads, and logs exclude them.
+  - Workflow fixtures seed fictional BDO demonstration values only for blank fields and preserve custom configuration.
+  - SOA preview and print use current persisted financial/company/bank data, block invalid configuration and unsaved adjustments, use the approved logo, and render two complete A4 copies with restarted page numbering.
+  - Verification passed across the backend suite (350 tests), web suite (63 tests), workflow integration coverage, Flyway fresh/upgrade paths, and Expo web production export.
+- **Phases 3-6 - Implementation and Verification:** [UPCOMING]
   - Delivery sequencing and remaining acceptance criteria are defined in `.review/client-demo-change-plan.md`.
 
 ## Progress Overview
@@ -218,7 +224,10 @@
 - **Detailed Statement View (Screen 21) — [COMPLETED]:**
   - `/statements` full digital multi-page Statement of Account with client info header, sequential `SOA-YYYY-XXX-WXX` number, multi-page continuation headers, page numbering (`Page X of Y`), deduction rollup directly below Total Paid, and authorized collector assignment.
 - **Printable SOA & Batch Export (Screen 22) — [COMPLETED]:**
-  - Dedicated isolated print route at `/statements/print` with `@page { margin: 0; }` browser header suppression, crisp vector borderTop rules, signature blocks (Prepared by, Collected by, Date collected), and smart batch generation on `/weekly-collections`.
+  - Dedicated isolated print route at `/statements/print` with `@page { margin: 0; }` browser header suppression, uniform `10mm` sheet padding across pages, signature blocks (Prepared by, Collected by, Date collected), and smart batch generation on `/weekly-collections`.
+  - Hardened two-copy multi-page sequence (`statementPrintModel.mjs`) repeating every physical sheet with independent page counters (`Page X of Y`).
+  - Configurable SOA settlement bank details (bank name, account name, account number) managed under System Settings (`V33__add_soa_bank_details.sql`) with print preflight validation.
+  - Optimized wide aspect ratio company letterhead and refined itemized shipments table layout with combined charges display.
 
 ---
 

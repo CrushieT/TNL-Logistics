@@ -105,6 +105,7 @@ public class SystemSettingIntegrationTest {
                 6000,
                 new BigDecimal("125.50")
         );
+        withValidSoaBankDetails(request);
 
         mockMvc.perform(put("/api/v1/settings")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -116,7 +117,16 @@ public class SystemSettingIntegrationTest {
                 .andExpect(jsonPath("$.billingEmail").value("finance@tnllogistics.ph"))
                 .andExpect(jsonPath("$.collectionDay").value("FRIDAY"))
                 .andExpect(jsonPath("$.volumetricDivisor").value(6000))
-                .andExpect(jsonPath("$.ratePerKilo").value(125.50));
+                .andExpect(jsonPath("$.ratePerKilo").value(125.50))
+                .andExpect(jsonPath("$.soaBankName").value("Test Bank"))
+                .andExpect(jsonPath("$.soaAccountName").value("TNL Test Account"))
+                .andExpect(jsonPath("$.soaAccountNumber").value("000012345678"));
+
+        mockMvc.perform(get("/api/v1/settings"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.soaBankName").value("Test Bank"))
+                .andExpect(jsonPath("$.soaAccountName").value("TNL Test Account"))
+                .andExpect(jsonPath("$.soaAccountNumber").value("000012345678"));
 
         assertEquals(DayOfWeek.FRIDAY, collectionsService.getCollectionDayOfWeek());
     }
@@ -127,6 +137,7 @@ public class SystemSettingIntegrationTest {
         UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
                 "New Name", "New Addr", "09170001111", "test@test.com", DayOfWeek.MONDAY, 5000, new BigDecimal("100.00")
         );
+        withValidSoaBankDetails(request);
 
         mockMvc.perform(put("/api/v1/settings")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -311,7 +322,64 @@ public class SystemSettingIntegrationTest {
                 .andExpect(jsonPath("$.companyContact").exists())
                 .andExpect(jsonPath("$.billingEmail").exists())
                 .andExpect(jsonPath("$.collectionDay").exists())
-                .andExpect(jsonPath("$.volumetricDivisor").exists());
+                .andExpect(jsonPath("$.volumetricDivisor").exists())
+                .andExpect(jsonPath("$.soaBankName").doesNotExist())
+                .andExpect(jsonPath("$.soaAccountName").doesNotExist())
+                .andExpect(jsonPath("$.soaAccountNumber").doesNotExist());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testUpdateSettingsRejectsInvalidSoaBankDetails() throws Exception {
+        UpdateSystemSettingRequest request = createValidSettingsRequest();
+
+        request.setSoaBankName("   ");
+        expectBankValidationFailure(request, "soaBankName");
+
+        request = createValidSettingsRequest();
+        request.setSoaBankName("A".repeat(101));
+        expectBankValidationFailure(request, "soaBankName");
+
+        request = createValidSettingsRequest();
+        request.setSoaBankName("Bank\nInjected");
+        expectBankValidationFailure(request, "soaBankName");
+
+        request = createValidSettingsRequest();
+        request.setSoaAccountName("Account\u0007Name");
+        expectBankValidationFailure(request, "soaAccountName");
+
+        request = createValidSettingsRequest();
+        request.setSoaAccountName("A".repeat(151));
+        expectBankValidationFailure(request, "soaAccountName");
+
+        for (String invalidAccountNumber : new String[] {"", "12345", "123456789012345678901", "12345A", "1234-5678", "123456\n"}) {
+            request = createValidSettingsRequest();
+            request.setSoaAccountNumber(invalidAccountNumber);
+            expectBankValidationFailure(request, "soaAccountNumber");
+        }
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testSoaPreviewUsesLatestPersistedCompanyAndBankDetails() throws Exception {
+        UpdateSystemSettingRequest request = createValidSettingsRequest();
+        request.setCompanyName("Latest SOA Company");
+        request.setSoaBankName("Latest Test Bank");
+        request.setSoaAccountName("Latest Test Account");
+        request.setSoaAccountNumber("000000654321");
+
+        mockMvc.perform(put("/api/v1/settings")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/soa/preview")
+                        .param("clientId", "CL-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.companyName").value("Latest SOA Company"))
+                .andExpect(jsonPath("$.soaBankName").value("Latest Test Bank"))
+                .andExpect(jsonPath("$.soaAccountName").value("Latest Test Account"))
+                .andExpect(jsonPath("$.soaAccountNumber").value("000000654321"));
     }
 
     @Test
@@ -371,6 +439,7 @@ public class SystemSettingIntegrationTest {
                     5000,
                     new BigDecimal("100.00")
             );
+            withValidSoaBankDetails(updateReq);
 
             mockMvc.perform(put("/api/v1/settings")
                     .contentType(MediaType.APPLICATION_JSON)
@@ -402,6 +471,7 @@ public class SystemSettingIntegrationTest {
                     5000,
                     new BigDecimal("100.00")
             );
+            withValidSoaBankDetails(restoreReq);
             mockMvc.perform(put("/api/v1/settings")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(objectMapper.writeValueAsString(restoreReq)));
@@ -454,6 +524,7 @@ public class SystemSettingIntegrationTest {
                     5000,
                     new BigDecimal("100.00")
             );
+            withValidSoaBankDetails(wedReq);
             mockMvc.perform(put("/api/v1/settings")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(objectMapper.writeValueAsString(wedReq)))
@@ -477,6 +548,7 @@ public class SystemSettingIntegrationTest {
                     5000,
                     new BigDecimal("100.00")
             );
+            withValidSoaBankDetails(monReq);
             mockMvc.perform(put("/api/v1/settings")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(objectMapper.writeValueAsString(monReq)))
@@ -500,9 +572,38 @@ public class SystemSettingIntegrationTest {
                     5000,
                     new BigDecimal("100.00")
             );
+            withValidSoaBankDetails(restoreReq);
             mockMvc.perform(put("/api/v1/settings")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(objectMapper.writeValueAsString(restoreReq)));
         }
+    }
+
+    private UpdateSystemSettingRequest createValidSettingsRequest() {
+        UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
+                "TNL Logistics",
+                "Manila Central Hub",
+                "09175550000",
+                "billing@tnllogistics.ph",
+                DayOfWeek.THURSDAY,
+                5000,
+                new BigDecimal("100.00")
+        );
+        return withValidSoaBankDetails(request);
+    }
+
+    private UpdateSystemSettingRequest withValidSoaBankDetails(UpdateSystemSettingRequest request) {
+        request.setSoaBankName("Test Bank");
+        request.setSoaAccountName("TNL Test Account");
+        request.setSoaAccountNumber("000012345678");
+        return request;
+    }
+
+    private void expectBankValidationFailure(UpdateSystemSettingRequest request, String fieldName) throws Exception {
+        mockMvc.perform(put("/api/v1/settings")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors." + fieldName).exists());
     }
 }

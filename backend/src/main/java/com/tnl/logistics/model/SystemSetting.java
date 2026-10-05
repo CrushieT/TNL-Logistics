@@ -44,6 +44,15 @@ public class SystemSetting {
     @Column(name = "rate_per_kilo", precision = 12, scale = 2)
     private java.math.BigDecimal ratePerKilo;
 
+    @Column(name = "soa_bank_name", length = 100)
+    private String soaBankName;
+
+    @Column(name = "soa_account_name", length = 150)
+    private String soaAccountName;
+
+    @Column(name = "soa_account_number", length = 20)
+    private String soaAccountNumber;
+
     @Column(name = "tracking_prefix", length = 20, nullable = false)
     private String trackingPrefix = "TRK";
 
@@ -105,6 +114,15 @@ public class SystemSetting {
 
     public java.math.BigDecimal getRatePerKilo() { return ratePerKilo; }
     public void setRatePerKilo(java.math.BigDecimal ratePerKilo) { this.ratePerKilo = ratePerKilo; }
+
+    public String getSoaBankName() { return soaBankName; }
+    public void setSoaBankName(String soaBankName) { this.soaBankName = soaBankName; }
+
+    public String getSoaAccountName() { return soaAccountName; }
+    public void setSoaAccountName(String soaAccountName) { this.soaAccountName = soaAccountName; }
+
+    public String getSoaAccountNumber() { return soaAccountNumber; }
+    public void setSoaAccountNumber(String soaAccountNumber) { this.soaAccountNumber = soaAccountNumber; }
 
     public String getTrackingPrefix() { return trackingPrefix; }
     public void setTrackingPrefix(String trackingPrefix) { this.trackingPrefix = trackingPrefix; }
