@@ -277,8 +277,16 @@ public class DataSeeder implements CommandLineRunner {
 
     private void seedWaybill(int year, int sequence, Shipment shipment, AppUser office, WaybillStatus status, LocalDateTime timestamp) {
         String waybillId = String.format("WYB-%d-%04d", year, sequence);
-        if (waybillRepository.existsById(waybillId)) return;
-        Waybill waybill = new Waybill(waybillId, shipment, office, "Northbound Hauling");
+        Waybill waybill = waybillRepository.findById(waybillId).orElse(null);
+        if (waybill != null) {
+            List<ParcelUnit> existingUnits = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipment.getShipmentId());
+            for (ParcelUnit unit : existingUnits) {
+                if (unit.getWaybill() == null) unit.setWaybill(waybill);
+            }
+            parcelUnitRepository.saveAll(existingUnits);
+            return;
+        }
+        waybill = new Waybill(waybillId, shipment, office, "Northbound Hauling");
         waybill.setDriverName("Rogelio Aquino");
         waybill.setDriverContact("0917-555-1004");
         waybill.setVehiclePlate("NCP-2401");
@@ -289,6 +297,11 @@ public class DataSeeder implements CommandLineRunner {
             waybill.setSignedAt(timestamp.plusDays(1));
         }
         waybillRepository.save(waybill);
+        List<ParcelUnit> manifestUnits = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipment.getShipmentId());
+        for (ParcelUnit unit : manifestUnits) {
+            if (unit.getWaybill() == null) unit.setWaybill(waybill);
+        }
+        parcelUnitRepository.saveAll(manifestUnits);
     }
 
     private void seedCollectionFixture(Shipment shipment, AppUser office) {

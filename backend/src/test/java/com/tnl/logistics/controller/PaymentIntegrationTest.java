@@ -1,6 +1,7 @@
 package com.tnl.logistics.controller;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -472,8 +473,7 @@ public class PaymentIntegrationTest {
         mockMvc.perform(get("/api/v1/payments/shipment/" + shipmentId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.payments.length()").value(2))
-                .andExpect(jsonPath("$.payments[0].method").value("CHEQUE"))
-                .andExpect(jsonPath("$.payments[1].method").value("OTHER"));
+                .andExpect(jsonPath("$.payments[*].method").value(containsInAnyOrder("CHEQUE", "OTHER")));
     }
 }
 

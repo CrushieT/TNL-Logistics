@@ -51,6 +51,21 @@ export function AuthProvider({ children }) {
     setIsLocked(false);
   }, []);
 
+  const refreshAuthenticatedUser = useCallback(async (authenticatedUser) => {
+    try {
+      const profile = await authService.fetchCurrentUser();
+      const refreshedUser = { ...authenticatedUser, ...profile };
+      await saveUser(refreshedUser);
+      setUser(refreshedUser);
+      const refreshedBoundUser = toBoundUser(refreshedUser);
+      await saveBoundUser(refreshedBoundUser);
+      setBoundUser(refreshedBoundUser);
+      return refreshedUser;
+    } catch {
+      return authenticatedUser;
+    }
+  }, []);
+
   const clearAccessSessionPreservingBinding = useCallback(async () => {
     await clearStoredAccessSession();
     setToken(null);
@@ -225,11 +240,11 @@ export function AuthProvider({ children }) {
       await saveBoundUser(nextBoundUser);
       await installSession(receivedToken, userData);
       setBoundUser(nextBoundUser);
-      return userData;
+      return refreshAuthenticatedUser(userData);
     } finally {
       setIsLoading(false);
     }
-  }, [installSession]);
+  }, [installSession, refreshAuthenticatedUser]);
 
   const completeRequiredPasswordChange = useCallback(async (currentPassword, newPassword) => {
     setIsLoading(true);
@@ -292,11 +307,11 @@ export function AuthProvider({ children }) {
       const nextBoundUser = toBoundUser(userData);
       await saveBoundUser(nextBoundUser);
       setBoundUser(nextBoundUser);
-      return userData;
+      return refreshAuthenticatedUser(userData);
     } finally {
       setIsLoading(false);
     }
-  }, [boundUser?.username, clearInvalidDeviceSession, installSession, user?.username]);
+  }, [boundUser?.username, clearInvalidDeviceSession, installSession, refreshAuthenticatedUser, user?.username]);
 
   const lockSession = useCallback(async () => {
     setIsLocked(true);

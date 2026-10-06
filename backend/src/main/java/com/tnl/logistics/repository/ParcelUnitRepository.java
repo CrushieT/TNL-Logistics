@@ -24,6 +24,8 @@ public interface ParcelUnitRepository extends JpaRepository<ParcelUnit, String> 
 
     List<ParcelUnit> findByShipment_ShipmentIdOrderBySeqAsc(String shipmentId);
 
+    List<ParcelUnit> findByWaybill_WaybillIdOrderBySeqAsc(String waybillId);
+
     List<ParcelUnit> findByShipment_ShipmentIdAndTrackingIdIn(String shipmentId, Collection<String> trackingIds);
 
     @Query("SELECT p FROM ParcelUnit p LEFT JOIN FETCH p.currentVehicle WHERE p.shipment.shipmentId IN :shipmentIds ORDER BY p.seq ASC")

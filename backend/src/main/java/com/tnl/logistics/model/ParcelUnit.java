@@ -20,6 +20,10 @@ public class ParcelUnit implements Persistable<String> {
     @JoinColumn(name = "shipment_id", nullable = false)
     private Shipment shipment;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "waybill_id")
+    private Waybill waybill;
+
     @Column(name = "seq", nullable = false)
     private Integer seq;
 
@@ -92,6 +96,8 @@ public class ParcelUnit implements Persistable<String> {
 
     public Shipment getShipment() { return shipment; }
     public void setShipment(Shipment shipment) { this.shipment = shipment; }
+    public Waybill getWaybill() { return waybill; }
+    public void setWaybill(Waybill waybill) { this.waybill = waybill; }
 
     public Integer getSeq() { return seq; }
     public void setSeq(Integer seq) { this.seq = seq; }

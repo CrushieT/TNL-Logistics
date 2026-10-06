@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, Image, StyleSheet } from 'react-native';
+import QRCodeGenerator from '../../../components/common/QRCodeGenerator';
 import { colors, fonts, spacing, radius } from '../../../theme';
 import { getCompanyBranding } from '../../settings/services/settingsApi';
+import { getWaybillQrPayload } from '../services/waybillPrint.mjs';
 
 /**
  * Waybill Manifest Card component strictly matching prototype waybills page.png
  */
 export default function WaybillManifestCard({ manifest, selectedHauler }) {
   const [branding, setBranding] = useState(null);
+  const [logoFailed, setLogoFailed] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -49,6 +52,7 @@ export default function WaybillManifestCard({ manifest, selectedHauler }) {
   } = manifest;
 
   const displayDocNumber = waybillId ? `${waybillId} | ${shipmentId}` : shipmentId;
+  const returnQrPayload = waybillId ? getWaybillQrPayload(waybillId) : null;
 
   const todayFormatted = new Date().toLocaleDateString('en-US', {
     month: 'short',
@@ -61,67 +65,15 @@ export default function WaybillManifestCard({ manifest, selectedHauler }) {
 
   return (
     <View style={styles.manifestCard} id="printable-waybill-manifest" nativeID="printable-waybill-manifest">
-      {Platform.OS === 'web' && (
-        <style
-          dangerouslySetInnerHTML={{
-            __html: `
-              @media print {
-                @page {
-                  size: landscape;
-                  margin: 0;
-                }
-
-                html, body {
-                  background-color: #FFFFFF !important;
-                  margin: 0 !important;
-                  padding: 0 !important;
-                  width: 100% !important;
-                  height: 100% !important;
-                  -webkit-print-color-adjust: exact !important;
-                  print-color-adjust: exact !important;
-                }
-
-                /* Hide all screen application layout chrome */
-                body * {
-                  visibility: hidden !important;
-                }
-
-                /* Ensure strictly printable manifest and its contents are visible */
-                #printable-waybill-manifest,
-                #printable-waybill-manifest * {
-                  visibility: visible !important;
-                }
-
-                #printable-waybill-manifest {
-                  position: fixed !important;
-                  left: 0 !important;
-                  top: 0 !important;
-                  right: 0 !important;
-                  bottom: 0 !important;
-                  width: 100vw !important;
-                  height: 100vh !important;
-                  box-sizing: border-box !important;
-                  margin: 0 !important;
-                  padding: 12mm 16mm !important;
-                  border: none !important;
-                  border-width: 0 !important;
-                  border-radius: 0 !important;
-                  box-shadow: none !important;
-                  background-color: #FFFFFF !important;
-                  page-break-inside: avoid !important;
-                  break-inside: avoid !important;
-                }
-              }
-            `,
-          }}
-        />
-      )}
       {/* Header Block */}
       <View style={styles.headerRow}>
         <View style={styles.brandCol}>
-          <View style={styles.logoMark}>
-            <Text style={styles.logoMarkText}>T</Text>
-          </View>
+          {logoFailed ? (
+            <View style={styles.logoMark}><Text style={styles.logoMarkText}>TNL</Text></View>
+          ) : (
+            <Image source={require('../../../../assets/tracking-logo.png')} style={styles.brandLogo}
+              accessibilityLabel="TNL Logistics" resizeMode="contain" onError={() => setLogoFailed(true)} />
+          )}
           <View style={styles.brandInfo}>
             <Text style={styles.brandTitle}>{(branding?.companyName || 'TNL LOGISTICS').toUpperCase()}</Text>
             <Text style={styles.brandSub}>
@@ -135,6 +87,19 @@ export default function WaybillManifestCard({ manifest, selectedHauler }) {
           <Text style={styles.docNumber}>{displayDocNumber}</Text>
           <Text style={styles.docDate}>{displayDocDate}</Text>
         </View>
+
+        {returnQrPayload ? (
+          <View
+            style={styles.returnQrCol}
+            accessible
+            accessibilityRole="image"
+            accessibilityLabel={returnQrPayload}
+          >
+            <Text style={styles.returnQrLabel}>RETURN CONFIRMATION QR</Text>
+            <QRCodeGenerator value={returnQrPayload} size={96} quietZone={4} />
+            <Text style={styles.returnQrPayload}>{returnQrPayload}</Text>
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.divider} />
@@ -207,7 +172,7 @@ export default function WaybillManifestCard({ manifest, selectedHauler }) {
         </Text>
         <Text style={styles.summaryItem}>
           <Text style={styles.summaryLabel}>Truck: </Text>
-          <Text style={styles.summaryValue}>{vehiclePlate || 'ABC-1234'}</Text>
+          <Text style={styles.summaryValue}>{vehiclePlate || '-'}</Text>
         </Text>
       </View>
 
@@ -217,7 +182,7 @@ export default function WaybillManifestCard({ manifest, selectedHauler }) {
         <View style={styles.sigCol}>
           <Text style={styles.sigEyebrow}>RELEASED BY</Text>
           <View style={styles.sigLineContainer}>
-            <Text style={styles.sigAdminName}>{releasedByAdminName || 'Maria Santos'}</Text>
+            <Text style={styles.sigAdminName}>{releasedByAdminName || 'Hauler Staff'}</Text>
             <View style={styles.sigLine} />
           </View>
           <Text style={styles.sigSubLabel}>Signature</Text>
@@ -282,15 +247,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: spacing.lg,
     paddingBottom: spacing.md,
   },
   brandCol: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+    flex: 1,
+    minWidth: 280,
   },
+  brandLogo: { width: 96, height: 44 },
   logoMark: {
-    width: 44,
+    width: 60,
     height: 44,
     backgroundColor: colors.black,
     alignItems: 'center',
@@ -321,6 +291,7 @@ const styles = StyleSheet.create({
   docCol: {
     alignItems: 'flex-end',
     gap: 2,
+    minWidth: 170,
   },
   docTitle: {
     fontFamily: fonts.sans,
@@ -339,6 +310,26 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sans,
     fontSize: 11.5,
     color: colors.inkFaint,
+  },
+  returnQrCol: {
+    alignItems: 'center',
+    gap: 4,
+    minWidth: 132,
+  },
+  returnQrLabel: {
+    fontFamily: fonts.mono,
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.ink,
+    letterSpacing: 0.5,
+  },
+  returnQrPayload: {
+    fontFamily: fonts.mono,
+    fontSize: 7,
+    fontWeight: '600',
+    color: colors.inkSoft,
+    maxWidth: 132,
+    textAlign: 'center',
   },
   divider: {
     borderBottomWidth: 1,

@@ -15,17 +15,12 @@ export async function getHaulerStaffOptions() {
 }
 
 export async function getWaybillManifest(shipmentId) {
-  const { data } = await apiClient.get(`/waybills/manifest/${shipmentId}`);
-  return data;
+  const { data } = await apiClient.get(`/waybills/shipments/${encodeURIComponent(shipmentId)}`);
+  return Array.isArray(data) ? data : [];
 }
 
-export async function sendToHauler(payload) {
-  const { data } = await apiClient.post('/waybills/send-to-hauler', payload);
-  return data;
-}
-
-export async function completeWaybill(shipmentId, payload = {}) {
-  const { data } = await apiClient.post(`/waybills/complete/${shipmentId}`, payload);
+export async function getWaybillByNumber(waybillId) {
+  const { data } = await apiClient.get(`/waybills/${encodeURIComponent(waybillId)}`);
   return data;
 }
 

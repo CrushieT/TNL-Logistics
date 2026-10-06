@@ -23,7 +23,7 @@ export const authService = {
    * @param {string} username
    * @param {string} password
    * @param {string} [deviceId] Existing device identifier when re-authenticating.
-   * @returns {Promise<{ token: string, deviceId: string, deviceToken: string, userId: string, username: string, fullName: string, role: string, mustChangePassword: boolean, hasPinSet: boolean }>}
+   * @returns {Promise<{ token: string, deviceId: string, deviceToken: string, userId: string, username: string, fullName: string, role: string, staffType: string|null, mustChangePassword: boolean, hasPinSet: boolean }>}
    */
   async loginWithPassword(username, password, deviceId) {
     const headers = deviceId ? { 'X-Device-Id': deviceId } : undefined;
@@ -40,7 +40,7 @@ export const authService = {
    * @param {string} username
    * @param {string} pin
    * @param {{ deviceId: string, deviceToken: string }} deviceCredentials
-   * @returns {Promise<{ token: string, deviceId: string, deviceToken: string, userId: string, username: string, fullName: string, role: string, mustChangePassword: boolean, hasPinSet: boolean }>}
+   * @returns {Promise<{ token: string, deviceId: string, deviceToken: string, userId: string, username: string, fullName: string, role: string, staffType: string|null, mustChangePassword: boolean, hasPinSet: boolean }>}
    */
   async loginWithPin(username, pin, deviceCredentials) {
     const response = await apiClient.post('/auth/mobile-pin-login', {

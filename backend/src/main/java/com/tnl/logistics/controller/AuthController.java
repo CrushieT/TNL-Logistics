@@ -235,7 +235,7 @@ public class AuthController {
                     user.getUserId(), user.getRole(), clientIp);
 
             String token = JwtTokenProvider.generateToken(user.getUserId(), user.getRole().name(), user.getTokenVersion());
-            return ResponseEntity.ok(new LoginResponse(
+            LoginResponse response = new LoginResponse(
                     token,
                     user.getUserId(),
                     user.getUsername(),
@@ -243,7 +243,9 @@ public class AuthController {
                     user.getRole().name(),
                     true,
                     hasPin
-            ));
+            );
+            response.setStaffType(user.getStaffType() != null ? user.getStaffType().name() : null);
+            return ResponseEntity.ok(response);
         }
 
         String deviceId = servletRequest.getHeader("X-Device-Id");
@@ -283,6 +285,7 @@ public class AuthController {
                 deviceId,
                 rawDeviceToken
         );
+        response.setStaffType(user.getStaffType() != null ? user.getStaffType().name() : null);
 
         return ResponseEntity.ok(response);
     }
@@ -428,6 +431,7 @@ public class AuthController {
                 request.getDeviceId(),
                 request.getDeviceToken()
         );
+        response.setStaffType(target.getStaffType() != null ? target.getStaffType().name() : null);
 
         return ResponseEntity.ok(response);
     }

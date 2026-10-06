@@ -33,8 +33,11 @@
   - Workflow fixtures seed fictional BDO demonstration values only for blank fields and preserve custom configuration.
   - SOA preview and print use current persisted financial/company/bank data, block invalid configuration and unsaved adjustments, use the approved logo, and render two complete A4 copies with restarted page numbering.
   - Verification passed across the backend suite (350 tests), web suite (63 tests), workflow integration coverage, Flyway fresh/upgrade paths, and Expo web production export.
-- **Phases 3-6 - Implementation and Verification:** [UPCOMING]
-  - Delivery sequencing and remaining acceptance criteria are defined in `.review/client-demo-change-plan.md`.
+- **Phases 3-4 - Split Waybills and Hauler Staff Handoff:** [COMPLETED]
+  - `V34__split_waybill_manifests.sql` supports multiple waybills per shipment and explicit manifest persistence. The existing V35 `waybill_return_scan` table and records remain unchanged for history.
+  - Backend generation and handoff remain atomic. Completion requires a matching `confirmedWaybillId`, is Hauler Staff-only, locks the persisted manifest, completes only its units, and is retry-safe. The parcel return-scan endpoint is retired.
+  - Mobile and web print two landscape A4 copies with the same scannable `TNL-WAYBILL:<waybillId>` return-confirmation QR, exact persisted manifest, logo fallback, and long-table pagination. The web selected-manifest preview displays the same return QR and printable header format before printing.
+  - Mobile manual lookup remains available for review and reprinting but cannot enable completion. Only scanning the matching QR for a `SENT_TO_HAULER` waybill enables the separate confirmation action.
 
 ## Progress Overview
 
@@ -47,7 +50,7 @@
 | **Phase 2.3** | Real-Time Live Auto-Updates (Server-Sent Events streaming pipeline `GET /api/v1/events/stream`) | [COMPLETED] |
 | **Phase 2.4** | Web: Vehicle Fleet Management UI (`/vehicles` list & register modal — Desktop Screens 13/14) | [COMPLETED] |
 | **Phase 2.5** | Web & Backend: Client Management Directory & Profile View (`/clients`, `/clients/[id]` — Screens 15/16) | [COMPLETED] |
-| **Phase 3** | Waybills: `WYB-YYYY-XXXX` Generator, 4-State Lifecycle, Printable Manifest & Signature (Desktop Screens 23–25) | [COMPLETED] |
+| **Phase 3** | Split waybill manifests and Hauler Staff handoff | [COMPLETED] |
 | **Phase 4.1** | Backend: Payments & Collections Engine (`POST /api/v1/payments`, Balance Recalculation, Multi-Search & Audit) | [COMPLETED] |
 | **Phase 4.2** | Backend: Thursday Weekly Collections Consolidation & SOA Generator (3 Deductions, Net Remittance) | [COMPLETED] |
 | **Phase 4.3** | Web: Billing, Collections & Printable SOA (Desktop Screens 18–22) | [COMPLETED] |
@@ -144,33 +147,18 @@
 
 ---
 
-## Phase 3 — Waybill Generation & Printable Manifest (Desktop Screens 23–25) — **[COMPLETED]**
-*Document handover and legal proof of delivery.*
+## Phase 3 — Waybill Manifest and Hauler Staff Handoff — **[COMPLETED]**
 
-**3.1 — Backend: Waybill Engine & 4-State Lifecycle** — **[COMPLETED]**
-- Exactly ONE waybill per shipment (`1 → 1 Waybill` — Rule 21).
-- 4-State Lifecycle: `Not Generated` → `Generated` → `Sent to Hauler` → `Signed / Completed`.
-- Sequential Waybill ID generator: `WYB-YYYY-XXXX` (e.g. `WYB-2026-0001`).
-- Field Staff discriminator: `staff_type` (`INTERNAL_TRUCK` vs `HAULER_STAFF`) and `hauler_company` in `app_user` (Flyway `V10`).
-- Endpoints:
-  - `GET /api/v1/waybills/shipments` — Shipment options for top selector.
-  - `GET /api/v1/waybills/haulers` — Categorized hauler field staff and carrier options.
-  - `GET /api/v1/waybills/manifest/{shipmentId}` — Detailed waybill manifest payload with client and parcel breakdown.
-  - `POST /api/v1/waybills/send-to-hauler` — Dispatches waybill to designated hauler.
-  - `POST /api/v1/waybills/complete/{shipmentId}` — Records returned client signature metadata and completes POD.
-  - `GET /api/v1/waybills` — Paginated list of waybills with search, status, and hauler filters.
+**Current Status:** [COMPLETED]
 
-**3.2 — Web: Waybill Management & Printable View (Desktop Screens 23, 24, 25)** — **[COMPLETED]**
-- **Waybills Screen (`src/app/waybills/index.js` matching `prototype waybills page.png`):**
-  - Top dropdown selector (`[ SHP-2026-005 · Mario Bautista · Not Generated v ]`), dynamic status pill, and `Open shipment →` link.
-  - 3-Stage Waybill Workflow Bar:
-    - `Not Generated`: `HAULER` dropdown (field staff haulers) + `Mark as Sent to Hauler →`.
-    - `Sent to Hauler`: `SIGNED BY` input text (pre-filled with client/recipient name) + `Mark as Signed / Completed →`.
-    - `Signed / Completed`: `✓ Completed` badge with signatory metadata and completion date.
-  - High-contrast A4 printable logistics manifest card with TNL header, hauler box, consignee box, itemized parcel tracking list, and 3 physical signature blocks.
-  - Top-right `Print / Export PDF` action triggering web print dialog.
-
----
+- `V34__split_waybill_manifests.sql` supports multiple waybills per shipment and stores fixed parcel membership. Existing waybills are backfilled with all shipment units; inconsistent historical counts fail migration. The V35 return-scan table remains intact for historical records but is no longer part of the active workflow.
+- Hauler Staff retains the `HAULER_STAFF` account type and label. Drivers carry physical paper without an account. The Dispatch Staff rename is deferred.
+- Online tracking scans record `LOADED_TO_HAULER` before generation. Generation selects loaded, unassigned units and uses an idempotency key; it does not change parcel status.
+- Generated, sent, and signed-completed waybill states are separate. Sending records the authenticated paper handoff actor. Completion requires the matching printed waybill QR and a separate confirmation press; client signatory data remains optional. Only persisted manifest parcels become `COMPLETED`.
+- Admin web users can list shipment waybills, search by exact number, review, and print the selected persisted manifest. Admin cannot generate, send, or complete.
+- Mobile Hauler Staff can load units with Single Scan or Rapid Batch. Staff review the accepted units, generate a waybill, print two landscape A4 copies with identical return QRs, mark handoff sent, and later scan the printed waybill QR before explicit completion.
+- Automated tests cover exact QR payloads, manual-lookup locking, strict QR parsing, manifest-only completion, rollback, role denial, and retry safety. Native Android camera scanning of an actual printed copy remains a device acceptance check.
+- Verification passed for `SplitWaybillIntegrationTest` (7 tests), the mobile suite (162 tests), the web suite (70 tests), and the web and Android production exports. Web printing resolves the bundled logo from the rendered manifest and retains the text-brand fallback.
 
 ## Phase 4 — Billing, Weekly Collections & Statement of Account (Desktop Screens 18–22)
 *Financial accounting and client billing.*
@@ -496,4 +484,11 @@
 - Safety guards (`LoadTestEnvironmentGuard.java`) enforcing database name validation (`app.loadtest.expected-database=tnl_loadtest`), exact target equality skip checking (`existingShipments == shipmentTarget`), and immediate startup failure (`IllegalStateException`) on partial (`0 < count < target`) or over-target (`count > target`) datasets.
 - k6 performance testing suite in `load-tests/` (`smoke.js`, `baseline.js`, `realistic-simulation.js`, `README.md`) with automated JWT credential sanitization and git artifact exclusion (`.gitignore`), achieving 100% success rate across 1,451 live hybrid operations (1 Admin + 20 Couriers) under 512 MB RAM / 0.5 vCPU limits.
 - Unit and integration coverage: `LoadTestEnvironmentGuardTest` (6 tests), `LoadTestDataSeederTest` (5 tests covering disabled, partial, exact-target, over-target, and missing password states), and `LoadTestSchemaValidationIntegrationTest` validating all 17 entity mappings against Flyway migrations (V1–V30).
+
+**6.11 — Mobile Recent Shipment Pagination & Number Recommendations** — **[COMPLETED]**
+- Added Hauler Staff-only `GET /api/v1/waybills/shipment-options` with bounded server pagination, case-insensitive shipment-ID fragment search, deterministic registration-date and shipment-ID ordering, explicit page metadata, and page-local waybill/parcel enrichment. The existing web shipment-option endpoint remains unchanged.
+- Replaced the mobile 15-item recent shipment cap with a 20-item horizontal `FlatList` that deduplicates appended pages, blocks concurrent end events, and preserves loaded results across retryable failures.
+- Added 250 ms debounced shipment-number recommendations after two non-space characters, capped at eight vertical results with stale-response cancellation. Exact manual selection remains available outside loaded pages.
+- Shipment-option requests are cancelled and invalidated on selection, mode changes, sign-out, connectivity loss, and unmount while existing online-only waybill generation and return flows remain intact.
+- Verification: 11/11 affected backend integration tests, 169/169 mobile Node tests, and Android Hermes production export passed.
 

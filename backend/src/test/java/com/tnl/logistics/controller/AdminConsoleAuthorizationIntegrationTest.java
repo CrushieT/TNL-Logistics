@@ -64,11 +64,14 @@ class AdminConsoleAuthorizationIntegrationTest {
         mockMvc.perform(get("/api/v1/waybills")).andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/waybills/shipments")).andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/waybills/haulers")).andExpect(status().isForbidden());
-        mockMvc.perform(post("/api/v1/waybills/send-to-hauler")
+        mockMvc.perform(post("/api/v1/waybills/generate")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"shipmentId\":\"SHP-001\",\"haulerName\":\"Test Hauler\"}"))
+                        .content("{\"shipmentId\":\"SHP-001\",\"trackingIds\":[\"TNL-001\"],\"idempotencyKey\":\"auth-check\"}"))
                 .andExpect(status().isForbidden());
-        mockMvc.perform(post("/api/v1/waybills/complete/SHP-001")).andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/waybills/WYB-001/complete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"signedBy\":\"Client Signatory\",\"scannedTrackingIds\":[\"TNL-001\"]}"))
+                .andExpect(status().isForbidden());
     }
 
     @Test

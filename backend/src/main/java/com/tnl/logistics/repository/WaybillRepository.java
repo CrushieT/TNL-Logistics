@@ -9,6 +9,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -18,7 +20,17 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface WaybillRepository extends JpaRepository<Waybill, String> {
 
-    Optional<Waybill> findByShipment_ShipmentId(String shipmentId);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT w FROM Waybill w WHERE w.waybillId = :waybillId")
+    Optional<Waybill> findByIdForUpdate(@Param("waybillId") String waybillId);
+
+    List<Waybill> findByShipment_ShipmentIdOrderByGeneratedAtDesc(String shipmentId);
+
+    default Optional<Waybill> findByShipment_ShipmentId(String shipmentId) {
+        return findByShipment_ShipmentIdOrderByGeneratedAtDesc(shipmentId).stream().findFirst();
+    }
+
+    Optional<Waybill> findByGenerationKey(String generationKey);
 
     @Query("SELECT w FROM Waybill w WHERE w.shipment.shipmentId IN :shipmentIds")
     List<Waybill> findByShipment_ShipmentIdIn(@Param("shipmentIds") Collection<String> shipmentIds);
