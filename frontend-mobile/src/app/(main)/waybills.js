@@ -603,13 +603,18 @@ export default function HaulerWaybillsScreen() {
 
       if (!isLoaded && !isArrived) {
         safeHaptics.error();
-        setError(`${cleanId} is currently ${context.currentStatus}. Must be arrived at TNL Hub.`);
+        const displayStatus = context.currentStatusLabel || context.currentStatusCode || 'in transit';
+        setError(`${cleanId} is currently ${displayStatus}. Must be arrived at TNL Hub.`);
         return;
       }
 
       if (isLoaded) {
-        // If already loaded, ensure it is not already assigned to another waybill
-        const isStillUnassigned = availableUnits.some((u) => u.trackingId === cleanId);
+        if (context.canScan === false) {
+          safeHaptics.error();
+          setError(`${cleanId} is already assigned to a waybill.`);
+          return;
+        }
+        const isStillUnassigned = availableUnits.length === 0 || availableUnits.some((u) => u.trackingId === cleanId);
         if (!isStillUnassigned) {
           safeHaptics.error();
           setError(`${cleanId} is already assigned to a waybill.`);
@@ -689,7 +694,7 @@ export default function HaulerWaybillsScreen() {
     const toAdd = unqueued.slice(0, remainingSlots);
     setBatchQueue((prev) => [...prev, ...toAdd]);
     safeHaptics.selection();
-    setNotice(`Added ${toAdd.length} loaded units to the manifest queue.`);
+    setNotice(`Added ${toAdd.length} units to the manifest queue.`);
   };
 
   const handleRemoveQueueItem = (targetId) => {
@@ -1191,7 +1196,7 @@ export default function HaulerWaybillsScreen() {
                   <View style={styles.helperCard}>
                     <View style={styles.sectionHeaderRow}>
                       <Text style={styles.sectionEyebrow}>
-                        ALREADY LOADED IN HUB ({availableUnits.length})
+                        AVAILABLE IN HUB ({availableUnits.length})
                       </Text>
                       <TouchableOpacity onPress={handleAddAllAvailableToQueue} disabled={busy}>
                         <Text style={styles.helperActionText}>+ ADD ALL TO QUEUE</Text>

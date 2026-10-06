@@ -65,10 +65,14 @@ export default function ScanScreen() {
   const allowLeaveRef = useRef(false);
   const abortControllerRef = useRef(null);
 
-  // Restrict screen strictly to FIELD_STAFF
+  // Restrict screen strictly to non-hauler FIELD_STAFF
   useEffect(() => {
-    if (!authLoading && user && user.role !== 'FIELD_STAFF') {
-      router.replace('/(main)');
+    if (!authLoading && user) {
+      if (user.role !== 'FIELD_STAFF') {
+        router.replace('/(main)');
+      } else if (user.staffType === 'HAULER_STAFF') {
+        router.replace('/(main)/waybills');
+      }
     }
   }, [user, authLoading, router]);
 

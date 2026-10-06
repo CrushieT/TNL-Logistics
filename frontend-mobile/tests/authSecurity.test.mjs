@@ -254,3 +254,14 @@ test('password and PIN rotations replace JWT without clearing device credentials
   const rotationBlock = source.slice(source.indexOf('const rotatePasswordInSession'), source.indexOf('const unlockWithPin'));
   assert.equal(rotationBlock.includes('removeDeviceCredentials'), false);
 });
+
+test('hauler staff role exchanges scan qr card with waybills console and scan.js redirects', async () => {
+  const [fieldDashboard, scanScreen] = await Promise.all([
+    readFile(new URL('../src/features/field/components/FieldDashboard.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/(main)/scan.js', import.meta.url), 'utf8'),
+  ]);
+  assert.match(fieldDashboard, /isHaulerStaff\s*\?\s*\(\s*<ActionCard[\s\S]*title="WAYBILLS"/);
+  assert.match(fieldDashboard, /:\s*\(\s*<ActionCard[\s\S]*title="SCAN QR"/);
+  assert.match(fieldDashboard, /router\.push\(isHaulerStaff \? '\/\(main\)\/waybills' : '\/\(main\)\/scan'\)/);
+  assert.match(scanScreen, /user\.staffType === 'HAULER_STAFF'[\s\S]*router\.replace\('\/\(main\)\/waybills'\)/);
+});

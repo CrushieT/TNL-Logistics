@@ -183,7 +183,9 @@ public class WaybillServiceImpl implements WaybillService {
         Shipment shipment = shipmentRepository.findById(shipmentId)
                 .orElseThrow(() -> new IllegalArgumentException("Shipment not found: " + shipmentId));
         return parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId).stream()
-                .filter(parcel -> parcel.getWaybill() == null && parcel.getCurrentStatus() == ParcelStatus.LOADED_TO_HAULER)
+                .filter(parcel -> parcel.getWaybill() == null
+                        && (parcel.getCurrentStatus() == ParcelStatus.LOADED_TO_HAULER
+                        || parcel.getCurrentStatus() == ParcelStatus.ARRIVED_AT_TNL))
                 .map(parcel -> toParcelResponse(parcel, shipment.getQuantity())).toList();
     }
 

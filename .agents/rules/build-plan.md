@@ -67,6 +67,9 @@
 | ↳ **Phase 6.8** | Public Staff Android APK Download from Web Login | [COMPLETED] |
 | ↳ **Phase 6.9** | Admin-Only Web Console Access and Staff Mobile API Preservation | [COMPLETED] |
 | ↳ **Phase 6.10** | High-Volume Load-Testing Profile, Synthetic Seeder & Strict Schema Validation | [COMPLETED] |
+| ↳ **Phase 6.11** | Mobile Recent Shipment Pagination & Number Recommendations | [COMPLETED] |
+| ↳ **Phase 6.12** | Mobile Returned Waybill Pagination & Recommendations | [COMPLETED] |
+| ↳ **Phase 6.13** | Development Data Seeder & Workflow Test Fixtures Expansion | [COMPLETED] |
 
 ---
 
@@ -500,4 +503,25 @@
 - Preserved existing exact manual lookup and printed-waybill QR return confirmation requirement; selecting a recommendation opens the waybill for inspection without bypassing the completion scan gate.
 - Reused cancellable request coordinator to abort stale requests on input changes, selection, mode changes, sign-out, connectivity loss, and unmount.
 - Verification: 6/6 `WaybillShipmentOptionsIntegrationTest` backend tests, 175/175 mobile Node tests, and clean production exports passed.
+
+**6.13 — Development Data Seeder & Workflow Test Fixtures Expansion** — **[COMPLETED]**
+- Synchronized `application-dev.properties` to opt into workflow data initialization (`app.seed.workflow-fixtures=true`) matching the `workflow` profile.
+- Extended `DataSeeder.java` to support both historical fixtures (1–6) and 6 rich test scenarios (7–12) for mobile and web feature verification:
+  - Fixture 7 (`SHP-YYYY-007`): Multi-unit registered shipment (3 parcels) with heterogeneous weights/dimensions, unprinted labels (`NOT_PRINTED`), and unpaid balance for Office Staff label printing and parcel inspection testing.
+  - Fixture 8 (`SHP-YYYY-008`): Multi-unit shipment (5 parcels) with 3 unassigned `LOADED_TO_HAULER` units and 2 `ARRIVED_AT_TNL` units for mobile Hauler Staff Rapid Batch loading and manifest creation testing.
+  - Fixture 9 (`SHP-YYYY-009`): Multi-unit shipment (4 parcels) assigned to `WYB-YYYY-0007` in `GENERATED` status with driver and vehicle metadata for 2-copy landscape A4 printing on mobile (`expo-print`) and web.
+  - Fixture 10 (`SHP-YYYY-010`): Multi-unit shipment (3 parcels) assigned to `WYB-YYYY-0008` in `SENT_TO_HAULER` status for returned waybill scanning and recommendation matching.
+  - Fixture 11 (`SHP-YYYY-011`): Shipment (2 parcels) assigned to `WYB-YYYY-0009` in `SENT_TO_HAULER` status populating the Returned Waybill horizontal recent options rail.
+  - Fixture 12 (`SHP-YYYY-012`): Split waybill shipment (4 parcels) split between `WYB-YYYY-0010` (2 units, `SIGNED_COMPLETED`, signed by "Juan Dela Cruz") and `WYB-YYYY-0011` (2 units, `SENT_TO_HAULER`), demonstrating `"2 / 4 Completed"` partial completion rollup status.
+- Added VIP client pricing (`CL-001` at 35.00/kg, `CL-003` at 40.00/kg, `CL-005` Cordillera Highlands Produce at 38.00/kg) with default charge model configurations.
+- Enriched system settings seeding (`ratePerKilo = 45.00`, `volumetricDivisor = 3500` for dev/workflow profiles, company branding, and SOA bank details).
+- Automated test verification: `DataSeederWorkflowIntegrationTest` expanded with 2/2 passing tests covering all new fixtures and backward compatibility.
+
+**6.14 — Hauler Staff Dedicated Console & Hub Loading Status Alignment** — **[COMPLETED]**
+- Replaced the generic `SCAN QR` card with `WAYBILLS` on `FieldDashboard` for `HAULER_STAFF` users, providing a clean 2-card grid (`WAYBILLS` and `TRACKING HISTORY`) and redirecting top banner navigation directly to `/(main)/waybills`.
+- Hardened `scan.js` route protection to immediately redirect `HAULER_STAFF` to `/(main)/waybills`, preventing accidental access to non-manifest transit scanning.
+- Expanded `GET /api/v1/waybills/shipments/{shipmentId}/available` in `WaybillServiceImpl` to return unassigned units in both `ARRIVED_AT_TNL` and `LOADED_TO_HAULER` statuses so hauler staff can view and batch-queue all units awaiting dispatch at the hub.
+- Hardened mobile `waybills.js` `processQueueScan` to validate unassigned status using canonical `canScan` and status labels, displaying `AVAILABLE IN HUB (N)` with "+ ADD ALL TO QUEUE" and one-tap unit chips.
+- Preserved the atomic two-step manifest generation pipeline: batch scan transitions queued `ARRIVED_AT_TNL` units to `LOADED_TO_HAULER`, followed immediately by atomic waybill generation.
+- Verification: 16/16 backend tests (`WaybillShipmentOptionsIntegrationTest`, `SplitWaybillIntegrationTest`, `DataSeederWorkflowIntegrationTest`) and 174/174 mobile Node tests passed.
 

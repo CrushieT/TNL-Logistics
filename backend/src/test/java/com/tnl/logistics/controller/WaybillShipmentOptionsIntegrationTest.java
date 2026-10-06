@@ -15,7 +15,10 @@ import com.tnl.logistics.model.Client;
 import com.tnl.logistics.model.RegisteredVia;
 import com.tnl.logistics.model.Shipment;
 import com.tnl.logistics.model.Waybill;
+import com.tnl.logistics.model.ParcelStatus;
+import com.tnl.logistics.model.ParcelUnit;
 import com.tnl.logistics.model.WaybillStatus;
+import com.tnl.logistics.repository.ParcelUnitRepository;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.repository.ClientRepository;
 import com.tnl.logistics.repository.ShipmentRepository;
@@ -24,7 +27,9 @@ import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,6 +51,7 @@ class WaybillShipmentOptionsIntegrationTest {
     @Autowired ClientRepository clientRepository;
     @Autowired ShipmentRepository shipmentRepository;
     @Autowired WaybillRepository waybillRepository;
+    @Autowired ParcelUnitRepository parcelUnitRepository;
     @Autowired AppUserRepository appUserRepository;
     @Autowired EntityManager entityManager;
     @Autowired org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
@@ -238,6 +244,48 @@ class WaybillShipmentOptionsIntegrationTest {
                         ? option.path("waybillId").asText()
                         : option.path("shipmentId").asText()));
         return ids;
+    }
+
+    @Test
+    void availableUnitsEndpointReturnsArrivedAtTnlAndLoadedToHaulerUnits() throws Exception {
+        Shipment shipment = saveShipment("SHP-AVAIL-TEST", LocalDateTime.of(2026, 10, 6, 12, 0));
+        var hauler = appUserRepository.findById("USR-HAULER").orElseThrow();
+
+        // Unit 1: ARRIVED_AT_TNL, unassigned
+        ParcelUnit u1 = new ParcelUnit("TRK-AVAIL-0001", shipment, 1, new BigDecimal("2.50"),
+                new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("0.001000"));
+        u1.setCurrentStatus(ParcelStatus.ARRIVED_AT_TNL);
+
+        // Unit 2: LOADED_TO_HAULER, unassigned
+        ParcelUnit u2 = new ParcelUnit("TRK-AVAIL-0002", shipment, 2, new BigDecimal("2.50"),
+                new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("0.001000"));
+        u2.setCurrentStatus(ParcelStatus.LOADED_TO_HAULER);
+
+        // Unit 3: LOADED_TO_HAULER, but already assigned to waybill
+        Waybill waybill = new Waybill("WYB-2026-9998", shipment, hauler, "Hauler Test");
+        waybill.setGenerationKey(UUID.randomUUID().toString());
+        waybillRepository.save(waybill);
+        ParcelUnit u3 = new ParcelUnit("TRK-AVAIL-0003", shipment, 3, new BigDecimal("2.50"),
+                new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("0.001000"));
+        u3.setCurrentStatus(ParcelStatus.LOADED_TO_HAULER);
+        u3.setWaybill(waybill);
+
+        // Unit 4: REGISTERED (not yet arrived)
+        ParcelUnit u4 = new ParcelUnit("TRK-AVAIL-0004", shipment, 4, new BigDecimal("2.50"),
+                new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("0.001000"));
+        u4.setCurrentStatus(ParcelStatus.REGISTERED);
+
+        parcelUnitRepository.saveAll(List.of(u1, u2, u3, u4));
+        parcelUnitRepository.flush();
+
+        mockMvc.perform(get("/api/v1/waybills/shipments/" + shipment.getShipmentId() + "/available")
+                        .with(user("USR-HAULER").roles("FIELD_STAFF")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].trackingId").value("TRK-AVAIL-0001"))
+                .andExpect(jsonPath("$[0].status").value("ARRIVED_AT_TNL"))
+                .andExpect(jsonPath("$[1].trackingId").value("TRK-AVAIL-0002"))
+                .andExpect(jsonPath("$[1].status").value("LOADED_TO_HAULER"));
     }
 
     private Shipment saveShipment(String shipmentId, LocalDateTime registeredAt) {
