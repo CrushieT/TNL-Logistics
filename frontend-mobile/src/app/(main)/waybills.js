@@ -26,6 +26,7 @@ import { safeHaptics } from '../../features/scanner/utils/haptics';
 import { MAX_BATCH_SIZE, normalizeTrackingId } from '../../features/scanner/scannerFlow.mjs';
 import {
   listShipmentOptions,
+  listWaybillOptions,
   listShipmentWaybills,
   listAvailableUnits,
   getWaybill,
@@ -44,6 +45,16 @@ import {
   hasNextShipmentOptionPage,
   normalizeShipmentSearch
 } from '../../features/waybills/shipmentOptionsFlow.mjs';
+import {
+  WAYBILL_OPTION_PAGE_SIZE,
+  WAYBILL_RECOMMENDATION_SIZE,
+  WAYBILL_SEARCH_DEBOUNCE_MS,
+  WAYBILL_SEARCH_MIN_LENGTH,
+  appendUniqueWaybillOptions,
+  createWaybillOptionRequestCoordinator,
+  hasNextWaybillOptionPage,
+  normalizeWaybillSearch
+} from '../../features/waybills/waybillOptionsFlow.mjs';
 import {
   doesWaybillQrMatchOpenManifest,
   isWaybillCompletionUnlocked,
@@ -84,6 +95,17 @@ export default function HaulerWaybillsScreen() {
 
   // Waybill and return confirmation state
   const [waybillInput, setWaybillInput] = useState('');
+  const [waybillOptions, setWaybillOptions] = useState([]);
+  const [waybillOptionPage, setWaybillOptionPage] = useState(0);
+  const [hasMoreWaybillOptions, setHasMoreWaybillOptions] = useState(false);
+  const [isLoadingWaybillOptions, setIsLoadingWaybillOptions] = useState(false);
+  const [isLoadingMoreWaybillOptions, setIsLoadingMoreWaybillOptions] = useState(false);
+  const [waybillOptionLoadError, setWaybillOptionLoadError] = useState('');
+  const [waybillOptionPageError, setWaybillOptionPageError] = useState('');
+  const [waybillRecommendations, setWaybillRecommendations] = useState([]);
+  const [isLoadingWaybillRecommendations, setIsLoadingWaybillRecommendations] = useState(false);
+  const [waybillRecommendationError, setWaybillRecommendationError] = useState('');
+  const [waybillRecommendationRetryVersion, setWaybillRecommendationRetryVersion] = useState(0);
   const [manifest, setManifest] = useState(null);
   const [confirmedWaybillId, setConfirmedWaybillId] = useState(null);
 
@@ -98,6 +120,10 @@ export default function HaulerWaybillsScreen() {
   const shipmentOptionCoordinatorRef = useRef(null);
   if (shipmentOptionCoordinatorRef.current === null) {
     shipmentOptionCoordinatorRef.current = createShipmentOptionRequestCoordinator();
+  }
+  const waybillOptionCoordinatorRef = useRef(null);
+  if (waybillOptionCoordinatorRef.current === null) {
+    waybillOptionCoordinatorRef.current = createWaybillOptionRequestCoordinator();
   }
 
   // Role restriction: FIELD_STAFF with HAULER_STAFF staff type
@@ -125,13 +151,19 @@ export default function HaulerWaybillsScreen() {
   useEffect(() => {
     if (!user) {
       shipmentOptionCoordinatorRef.current.cancelAll();
+      waybillOptionCoordinatorRef.current.cancelAll();
       setIsLoadingShipments(false);
       setIsLoadingMoreShipments(false);
       setIsLoadingRecommendations(false);
+      setIsLoadingWaybillOptions(false);
+      setIsLoadingMoreWaybillOptions(false);
+      setIsLoadingWaybillRecommendations(false);
       returnContextVersionRef.current += 1;
       setConfirmedWaybillId(null);
       setManifest(null);
       setWaybillInput('');
+      setWaybillOptions([]);
+      setWaybillRecommendations([]);
       setBatchQueue([]);
     }
   }, [user]);
@@ -202,13 +234,18 @@ export default function HaulerWaybillsScreen() {
   useEffect(() => {
     if (isOnline) return;
     shipmentOptionCoordinatorRef.current.cancelAll();
+    waybillOptionCoordinatorRef.current.cancelAll();
     setIsLoadingShipments(false);
     setIsLoadingMoreShipments(false);
     setIsLoadingRecommendations(false);
+    setIsLoadingWaybillOptions(false);
+    setIsLoadingMoreWaybillOptions(false);
+    setIsLoadingWaybillRecommendations(false);
   }, [isOnline]);
 
   useEffect(() => () => {
     shipmentOptionCoordinatorRef.current.cancelAll();
+    waybillOptionCoordinatorRef.current.cancelAll();
   }, []);
 
   const normalizedShipmentSearch = normalizeShipmentSearch(shipmentIdInput);
@@ -260,6 +297,124 @@ export default function HaulerWaybillsScreen() {
     normalizedShipmentSearch,
     recommendationRetryVersion,
     shipmentId
+  ]);
+
+  const loadRecentWaybillOptions = useCallback(async () => {
+    if (!isOnline || user?.staffType !== 'HAULER_STAFF' || mode !== 'return' || manifest) return;
+    const coordinator = waybillOptionCoordinatorRef.current;
+    const requestToken = coordinator.beginFirstPage();
+    setIsLoadingWaybillOptions(true);
+    setWaybillOptionLoadError('');
+    setWaybillOptionPageError('');
+    try {
+      const page = await listWaybillOptions({
+        page: 0,
+        size: WAYBILL_OPTION_PAGE_SIZE,
+        status: 'SENT_TO_HAULER',
+        signal: requestToken.signal
+      });
+      if (!coordinator.isCurrent(requestToken)) return;
+      const incoming = Array.isArray(page?.content) ? page.content : [];
+      setWaybillOptions(appendUniqueWaybillOptions([], incoming));
+      setWaybillOptionPage(Number.isInteger(page?.number) ? page.number : 0);
+      setHasMoreWaybillOptions(hasNextWaybillOptionPage(page));
+    } catch {
+      if (!coordinator.isCurrent(requestToken)) return;
+      setWaybillOptionLoadError('Unable to load recent returned waybills.');
+    } finally {
+      if (coordinator.finish(requestToken)) {
+        setIsLoadingWaybillOptions(false);
+      }
+    }
+  }, [isOnline, manifest, mode, user?.staffType]);
+
+  const loadNextWaybillOptions = useCallback(async () => {
+    if (!isOnline || mode !== 'return' || manifest || !hasMoreWaybillOptions) return;
+    const coordinator = waybillOptionCoordinatorRef.current;
+    const requestToken = coordinator.beginNextPage();
+    if (!requestToken) return;
+    const nextPage = waybillOptionPage + 1;
+    setIsLoadingMoreWaybillOptions(true);
+    setWaybillOptionPageError('');
+    try {
+      const page = await listWaybillOptions({
+        page: nextPage,
+        size: WAYBILL_OPTION_PAGE_SIZE,
+        status: 'SENT_TO_HAULER',
+        signal: requestToken.signal
+      });
+      if (!coordinator.isCurrent(requestToken)) return;
+      const incoming = Array.isArray(page?.content) ? page.content : [];
+      setWaybillOptions((current) => appendUniqueWaybillOptions(current, incoming));
+      setWaybillOptionPage(Number.isInteger(page?.number) ? page.number : nextPage);
+      setHasMoreWaybillOptions(hasNextWaybillOptionPage(page));
+    } catch {
+      if (!coordinator.isCurrent(requestToken)) return;
+      setWaybillOptionPageError('Could not load more returned waybills.');
+    } finally {
+      if (coordinator.finish(requestToken)) {
+        setIsLoadingMoreWaybillOptions(false);
+      }
+    }
+  }, [hasMoreWaybillOptions, isOnline, manifest, mode, waybillOptionPage]);
+
+  useEffect(() => {
+    if (mode === 'return' && !manifest) {
+      loadRecentWaybillOptions();
+    }
+  }, [loadRecentWaybillOptions, manifest, mode]);
+
+  const normalizedWaybillSearch = normalizeWaybillSearch(waybillInput);
+  const isWaybillRecommendationSearchActive = !manifest
+    && normalizedWaybillSearch.length >= WAYBILL_SEARCH_MIN_LENGTH;
+
+  useEffect(() => {
+    const coordinator = waybillOptionCoordinatorRef.current;
+    if (!isOnline || mode !== 'return' || manifest || !isWaybillRecommendationSearchActive) {
+      coordinator.cancelRecommendations();
+      setWaybillRecommendations([]);
+      setWaybillRecommendationError('');
+      setIsLoadingWaybillRecommendations(false);
+      return undefined;
+    }
+
+    const debounceTimer = setTimeout(async () => {
+      const requestToken = coordinator.beginRecommendation(normalizedWaybillSearch);
+      setWaybillRecommendations([]);
+      setWaybillRecommendationError('');
+      setIsLoadingWaybillRecommendations(true);
+      try {
+        const page = await listWaybillOptions({
+          page: 0,
+          size: WAYBILL_RECOMMENDATION_SIZE,
+          search: normalizedWaybillSearch,
+          status: 'SENT_TO_HAULER',
+          signal: requestToken.signal
+        });
+        if (!coordinator.isCurrent(requestToken)) return;
+        const content = Array.isArray(page?.content) ? page.content : [];
+        setWaybillRecommendations(content.slice(0, WAYBILL_RECOMMENDATION_SIZE));
+      } catch {
+        if (!coordinator.isCurrent(requestToken)) return;
+        setWaybillRecommendationError('Unable to search waybill numbers.');
+      } finally {
+        if (coordinator.finish(requestToken)) {
+          setIsLoadingWaybillRecommendations(false);
+        }
+      }
+    }, WAYBILL_SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(debounceTimer);
+      coordinator.cancelRecommendations();
+    };
+  }, [
+    isOnline,
+    isWaybillRecommendationSearchActive,
+    manifest,
+    mode,
+    normalizedWaybillSearch,
+    waybillRecommendationRetryVersion
   ]);
 
   // Refresh data for selected shipment
@@ -331,11 +486,17 @@ export default function HaulerWaybillsScreen() {
   const handleModeChange = (nextMode) => {
     if (nextMode === mode) return;
     shipmentOptionCoordinatorRef.current.cancelAll();
+    waybillOptionCoordinatorRef.current.cancelAll();
     setIsLoadingShipments(false);
     setIsLoadingMoreShipments(false);
     setIsLoadingRecommendations(false);
     setShipmentRecommendations([]);
     setRecommendationError('');
+    setIsLoadingWaybillOptions(false);
+    setIsLoadingMoreWaybillOptions(false);
+    setIsLoadingWaybillRecommendations(false);
+    setWaybillRecommendations([]);
+    setWaybillRecommendationError('');
     returnContextVersionRef.current += 1;
     setMode(nextMode);
     setManifest(null);
@@ -350,6 +511,12 @@ export default function HaulerWaybillsScreen() {
   const handleOpenWaybill = async (targetWaybillId) => {
     const cleanNumber = String(targetWaybillId || '').trim().toUpperCase();
     if (!cleanNumber) return;
+    waybillOptionCoordinatorRef.current.cancelAll();
+    setIsLoadingWaybillOptions(false);
+    setIsLoadingMoreWaybillOptions(false);
+    setIsLoadingWaybillRecommendations(false);
+    setWaybillRecommendations([]);
+    setWaybillRecommendationError('');
     const requestVersion = returnContextVersionRef.current + 1;
     returnContextVersionRef.current = requestVersion;
     setConfirmedWaybillId(null);
@@ -366,6 +533,7 @@ export default function HaulerWaybillsScreen() {
       setIsLoadingShipments(false);
       setIsLoadingMoreShipments(false);
       setIsLoadingRecommendations(false);
+      waybillOptionCoordinatorRef.current.cancelAll();
       setMode('return');
       setNotice(`Waybill ${record.waybillId} opened for review. Scan its printed return QR to enable completion.`);
     } catch (err) {
@@ -471,6 +639,11 @@ export default function HaulerWaybillsScreen() {
       setError(`The scanned QR does not match open waybill ${manifest.waybillId}.`);
       return;
     }
+
+    waybillOptionCoordinatorRef.current.cancelAll();
+    setIsLoadingWaybillOptions(false);
+    setIsLoadingMoreWaybillOptions(false);
+    setIsLoadingWaybillRecommendations(false);
 
     const requestVersion = returnContextVersionRef.current + 1;
     returnContextVersionRef.current = requestVersion;
@@ -754,6 +927,7 @@ export default function HaulerWaybillsScreen() {
             style={styles.panelScrollView}
             contentContainerStyle={styles.panelContent}
             keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
           >
             {mode === 'load' ? (
               <>
@@ -944,7 +1118,13 @@ export default function HaulerWaybillsScreen() {
                         </Text>
                       </View>
                     ) : (
-                      <View style={styles.queueItemsList}>
+                      <ScrollView
+                        style={styles.queueItemsList}
+                        contentContainerStyle={styles.queueItemsContent}
+                        keyboardShouldPersistTaps="handled"
+                        nestedScrollEnabled
+                        showsVerticalScrollIndicator
+                      >
                         {batchQueue.map((id, index) => (
                           <View key={id} style={styles.queueItemRow}>
                             <Text style={styles.queueIndex}>#{index + 1}</Text>
@@ -958,7 +1138,7 @@ export default function HaulerWaybillsScreen() {
                             </TouchableOpacity>
                           </View>
                         ))}
-                      </View>
+                      </ScrollView>
                     )}
 
                     {/* Manual Tracking ID Entry Fallback */}
@@ -1079,6 +1259,7 @@ export default function HaulerWaybillsScreen() {
                       value={waybillInput}
                       onChangeText={setWaybillInput}
                       autoCapitalize="characters"
+                      maxLength={20}
                       onSubmitEditing={() => handleOpenWaybill(waybillInput)}
                       editable={isOnline && !busy}
                     />
@@ -1093,6 +1274,108 @@ export default function HaulerWaybillsScreen() {
                       <Text style={styles.actionButtonText}>LOOKUP</Text>
                     </TouchableOpacity>
                   </View>
+
+                  {!manifest && (isWaybillRecommendationSearchActive ? (
+                    <View style={styles.recommendationPanel}>
+                      <Text style={[styles.subtleLabel, styles.recommendationLabel]}>
+                        Waybill Recommendations
+                      </Text>
+                      {isLoadingWaybillRecommendations ? (
+                        <View style={styles.inlineStateRow}>
+                          <ActivityIndicator size="small" color={colors.accent} />
+                          <Text style={styles.inlineStateText}>Searching waybill numbers...</Text>
+                        </View>
+                      ) : waybillRecommendationError ? (
+                        <View style={styles.inlineStateRow}>
+                          <Text style={styles.inlineStateText}>{waybillRecommendationError}</Text>
+                          <TouchableOpacity
+                            onPress={() => setWaybillRecommendationRetryVersion((version) => version + 1)}
+                            disabled={!isOnline}
+                          >
+                            <Text style={styles.inlineRetryText}>RETRY</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : waybillRecommendations.length === 0 ? (
+                        <Text style={styles.inlineStateText}>No matching returned waybills.</Text>
+                      ) : (
+                        waybillRecommendations.map((option) => (
+                          <TouchableOpacity
+                            key={option.waybillId}
+                            style={styles.recommendationRow}
+                            onPress={() => handleOpenWaybill(option.waybillId)}
+                            disabled={!isOnline || busy}
+                          >
+                            <View style={styles.recommendationTextGroup}>
+                              <Text style={styles.shipmentChipId}>{option.waybillId}</Text>
+                              <Text style={[styles.shipmentChipSub, styles.waybillOptionMeta]} numberOfLines={1}>
+                                {option.shipmentId} · {option.parcelCount} units · {option.statusLabel}
+                              </Text>
+                            </View>
+                            <Icon source="chevron-right" size={18} color={colors.inkFaint} />
+                          </TouchableOpacity>
+                        ))
+                      )}
+                    </View>
+                  ) : (
+                    <View style={styles.chipListContainer}>
+                      <Text style={styles.subtleLabel}>Recent Returned Waybills</Text>
+                      {isLoadingWaybillOptions && waybillOptions.length === 0 ? (
+                        <View style={styles.inlineStateRow}>
+                          <ActivityIndicator size="small" color={colors.accent} />
+                          <Text style={styles.inlineStateText}>Loading recent returned waybills...</Text>
+                        </View>
+                      ) : waybillOptionLoadError && waybillOptions.length === 0 ? (
+                        <View style={styles.inlineStateRow}>
+                          <Text style={styles.inlineStateText}>{waybillOptionLoadError}</Text>
+                          <TouchableOpacity onPress={loadRecentWaybillOptions} disabled={!isOnline}>
+                            <Text style={styles.inlineRetryText}>RETRY</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : waybillOptions.length === 0 ? (
+                        <Text style={styles.inlineStateText}>No waybills are awaiting return.</Text>
+                      ) : (
+                        <FlatList
+                          horizontal
+                          data={waybillOptions}
+                          keyExtractor={(option) => option.waybillId}
+                          renderItem={({ item: option }) => (
+                            <TouchableOpacity
+                              style={styles.shipmentChip}
+                              onPress={() => handleOpenWaybill(option.waybillId)}
+                              disabled={!isOnline || busy}
+                            >
+                              <Text style={styles.shipmentChipId}>{option.waybillId}</Text>
+                              <Text style={styles.shipmentChipSub} numberOfLines={1}>
+                                {option.shipmentId} · {option.parcelCount} units
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                          showsHorizontalScrollIndicator={false}
+                          onEndReached={loadNextWaybillOptions}
+                          onEndReachedThreshold={0.4}
+                          contentContainerStyle={styles.chipListContent}
+                          ListFooterComponent={(
+                            <View style={styles.railFooter}>
+                              {isLoadingMoreWaybillOptions
+                                || (isLoadingWaybillOptions && waybillOptions.length > 0) ? (
+                                <ActivityIndicator size="small" color={colors.accent} />
+                              ) : waybillOptionPageError ? (
+                                <TouchableOpacity onPress={loadNextWaybillOptions} disabled={!isOnline}>
+                                  <Text style={styles.inlineRetryText}>RETRY MORE</Text>
+                                </TouchableOpacity>
+                              ) : waybillOptionLoadError ? (
+                                <TouchableOpacity onPress={loadRecentWaybillOptions} disabled={!isOnline}>
+                                  <Text style={styles.inlineRetryText}>RETRY REFRESH</Text>
+                                </TouchableOpacity>
+                              ) : !hasMoreWaybillOptions ? (
+                                <Text style={styles.railEndText}>END</Text>
+                              ) : null}
+                            </View>
+                          )}
+                        />
+                      )}
+                    </View>
+                  ))}
                 </View>
 
               </>
@@ -1408,6 +1691,9 @@ const styles = StyleSheet.create({
     color: colors.inkSoft,
     maxWidth: 100
   },
+  waybillOptionMeta: {
+    maxWidth: 240
+  },
   railFooter: {
     minWidth: 52,
     minHeight: 44,
@@ -1531,8 +1817,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md
   },
   queueItemsList: {
-    gap: 4,
     maxHeight: 180
+  },
+  queueItemsContent: {
+    gap: 4,
+    paddingRight: 2
   },
   queueItemRow: {
     flexDirection: 'row',

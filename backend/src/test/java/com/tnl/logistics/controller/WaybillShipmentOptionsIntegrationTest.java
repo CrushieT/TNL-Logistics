@@ -14,8 +14,13 @@ import com.tnl.logistics.model.ChargeModel;
 import com.tnl.logistics.model.Client;
 import com.tnl.logistics.model.RegisteredVia;
 import com.tnl.logistics.model.Shipment;
+import com.tnl.logistics.model.Waybill;
+import com.tnl.logistics.model.WaybillStatus;
+import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.repository.ClientRepository;
 import com.tnl.logistics.repository.ShipmentRepository;
+import com.tnl.logistics.repository.WaybillRepository;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashSet;
@@ -40,6 +45,10 @@ class WaybillShipmentOptionsIntegrationTest {
     @Autowired ObjectMapper objectMapper;
     @Autowired ClientRepository clientRepository;
     @Autowired ShipmentRepository shipmentRepository;
+    @Autowired WaybillRepository waybillRepository;
+    @Autowired AppUserRepository appUserRepository;
+    @Autowired EntityManager entityManager;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     private Client client;
 
@@ -145,6 +154,57 @@ class WaybillShipmentOptionsIntegrationTest {
                 .andExpect(jsonPath("$").isArray());
     }
 
+    @Test
+    void paginatesAndSearchesReturnedWaybillOptionsForHaulerStaff() throws Exception {
+        Shipment shipment = saveShipment("SHP-WOPT-BASE", LocalDateTime.of(2026, 10, 6, 7, 0));
+        var hauler = appUserRepository.findById("USR-HAULER").orElseThrow();
+        for (int index = 1; index <= 25; index++) {
+            Waybill waybill = new Waybill(String.format("WYB-OPT-%04d", index), shipment, hauler, "Test Hauler");
+            waybill.setStatus(WaybillStatus.SENT_TO_HAULER);
+            waybillRepository.save(waybill);
+        }
+        Waybill excluded = new Waybill("WYB-OPT-GENERATED", shipment, hauler, "Test Hauler");
+        waybillRepository.save(excluded);
+        waybillRepository.flush();
+        jdbcTemplate.update(
+                "UPDATE waybill SET generated_at = ? WHERE waybill_id LIKE 'WYB-OPT-%'",
+                java.sql.Timestamp.valueOf(LocalDateTime.of(2026, 10, 6, 13, 0)));
+        entityManager.clear();
+
+        JsonNode firstPage = getWaybillOptionPage(0, 20, "WYB-OPT-", "SENT_TO_HAULER");
+        JsonNode secondPage = getWaybillOptionPage(1, 20, "WYB-OPT-", "SENT_TO_HAULER");
+        assertEquals(25, firstPage.path("totalElements").asInt());
+        assertEquals(20, firstPage.path("content").size());
+        assertEquals(5, secondPage.path("content").size());
+        assertEquals("WYB-OPT-0025", firstPage.path("content").get(0).path("waybillId").asText());
+        assertEquals("SHP-WOPT-BASE", firstPage.path("content").get(0).path("shipmentId").asText());
+        assertEquals("SENT_TO_HAULER", firstPage.path("content").get(0).path("status").asText());
+        assertTrue(shipmentIds(firstPage).stream().noneMatch(shipmentIds(secondPage)::contains));
+
+        JsonNode caseInsensitive = getWaybillOptionPage(0, 8, "opt-0003", "SENT_TO_HAULER");
+        assertEquals(1, caseInsensitive.path("totalElements").asInt());
+        assertEquals("WYB-OPT-0003", caseInsensitive.path("content").get(0).path("waybillId").asText());
+
+        JsonNode empty = getWaybillOptionPage(0, 8, "NOT-A-WAYBILL", "SENT_TO_HAULER");
+        assertTrue(empty.path("empty").asBoolean());
+    }
+
+    @Test
+    void restrictsWaybillOptionsToAuthenticatedHaulerStaff() throws Exception {
+        mockMvc.perform(get("/api/v1/waybills/options"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/waybills/options")
+                        .with(user("USR-ADMIN").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/waybills/options")
+                        .with(user("USR-FIELD").roles("FIELD_STAFF")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/waybills/options")
+                        .with(user("USR-HAULER").roles("FIELD_STAFF")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.size").value(20));
+    }
+
     private JsonNode getPage(int page, int size, String search) throws Exception {
         var request = get("/api/v1/waybills/shipment-options")
                 .param("page", String.valueOf(page))
@@ -159,13 +219,28 @@ class WaybillShipmentOptionsIntegrationTest {
         return objectMapper.readTree(result.getResponse().getContentAsString());
     }
 
+    private JsonNode getWaybillOptionPage(int page, int size, String search, String statusFilter) throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/waybills/options")
+                        .param("page", String.valueOf(page))
+                        .param("size", String.valueOf(size))
+                        .param("search", search)
+                        .param("status", statusFilter)
+                        .with(user("USR-HAULER").roles("FIELD_STAFF")))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
     private Set<String> shipmentIds(JsonNode page) {
         Set<String> ids = new HashSet<>();
-        page.path("content").forEach(option -> ids.add(option.path("shipmentId").asText()));
+        page.path("content").forEach(option -> ids.add(
+                option.hasNonNull("waybillId")
+                        ? option.path("waybillId").asText()
+                        : option.path("shipmentId").asText()));
         return ids;
     }
 
-    private void saveShipment(String shipmentId, LocalDateTime registeredAt) {
+    private Shipment saveShipment(String shipmentId, LocalDateTime registeredAt) {
         Shipment shipment = new Shipment(
                 shipmentId,
                 client,
@@ -180,6 +255,6 @@ class WaybillShipmentOptionsIntegrationTest {
                 false,
                 RegisteredVia.DESKTOP_OFFICE);
         shipment.setDateRegistered(registeredAt);
-        shipmentRepository.save(shipment);
+        return shipmentRepository.save(shipment);
     }
 }

@@ -490,5 +490,14 @@
 - Replaced the mobile 15-item recent shipment cap with a 20-item horizontal `FlatList` that deduplicates appended pages, blocks concurrent end events, and preserves loaded results across retryable failures.
 - Added 250 ms debounced shipment-number recommendations after two non-space characters, capped at eight vertical results with stale-response cancellation. Exact manual selection remains available outside loaded pages.
 - Shipment-option requests are cancelled and invalidated on selection, mode changes, sign-out, connectivity loss, and unmount while existing online-only waybill generation and return flows remain intact.
+- Load & Generate uses coordinated nested scrolling: gestures inside the bounded manifest queue scroll its entries, while gestures elsewhere scroll the outer panel so lower shipment and waybill sections remain reachable.
 - Verification: 11/11 affected backend integration tests, 169/169 mobile Node tests, and Android Hermes production export passed.
+
+**6.12 — Mobile Returned Waybill Pagination & Recommendations** — **[COMPLETED]**
+- Added Hauler Staff-only `GET /api/v1/waybills/options` with bounded server pagination (`page`, `size` [1..100]), optional waybill number search, optional status filtering (defaulting to `SENT_TO_HAULER`), stable generation date and waybill ID descending ordering, and batch parcel count enrichment.
+- Added a 20-item recent returned waybill horizontal `FlatList` rail on the mobile Returned Waybill screen with deduplication, retry triggers, and end-of-list detection.
+- Added 250 ms debounced waybill-number search recommendations after two non-space characters, capped at eight results displaying waybill ID, shipment ID, parcel count, and status.
+- Preserved existing exact manual lookup and printed-waybill QR return confirmation requirement; selecting a recommendation opens the waybill for inspection without bypassing the completion scan gate.
+- Reused cancellable request coordinator to abort stale requests on input changes, selection, mode changes, sign-out, connectivity loss, and unmount.
+- Verification: 6/6 `WaybillShipmentOptionsIntegrationTest` backend tests, 175/175 mobile Node tests, and clean production exports passed.
 

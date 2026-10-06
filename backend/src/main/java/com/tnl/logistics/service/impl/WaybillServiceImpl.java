@@ -326,6 +326,35 @@ public class WaybillServiceImpl implements WaybillService {
         return new PageImpl<>(summaries, pageable, page.getTotalElements());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Page<WaybillOptionResponse> getWaybillOptions(String search, WaybillStatus status, Pageable pageable) {
+        String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
+        Page<Waybill> waybillPage = waybillRepository.findWaybillOptions(normalizedSearch, status, pageable);
+        List<String> waybillIds = waybillPage.getContent().stream()
+                .map(Waybill::getWaybillId)
+                .toList();
+        Map<String, Long> parcelCounts = waybillIds.isEmpty()
+                ? Collections.emptyMap()
+                : parcelUnitRepository.countByWaybillIds(waybillIds).stream()
+                        .collect(Collectors.toMap(row -> (String) row[0], row -> (Long) row[1]));
+
+        List<WaybillOptionResponse> options = waybillPage.getContent().stream()
+                .map(waybill -> new WaybillOptionResponse(
+                        waybill.getWaybillId(),
+                        waybill.getShipment().getShipmentId(),
+                        parcelCounts.getOrDefault(waybill.getWaybillId(), 0L),
+                        waybill.getStatus(),
+                        waybill.getStatus() == WaybillStatus.SIGNED_COMPLETED
+                                ? "Signed / Completed"
+                                : waybill.getStatus() == WaybillStatus.SENT_TO_HAULER
+                                        ? "Sent to Hauler"
+                                        : "Generated",
+                        waybill.getGeneratedAt()))
+                .toList();
+        return new PageImpl<>(options, pageable, waybillPage.getTotalElements());
+    }
+
     private Waybill requireWaybill(String waybillId) {
         return waybillRepository.findById(waybillId)
                 .orElseThrow(() -> new IllegalArgumentException("Waybill not found: " + waybillId));

@@ -198,3 +198,9 @@ tnl-logistics/
 - `backend/src/test/java/com/tnl/logistics/controller/WaybillShipmentOptionsIntegrationTest.java`: pagination, ordering, search, bounds, empty-result, and authorization coverage.
 - `frontend-mobile/src/features/waybills/shipmentOptionsFlow.mjs`: pure page merging, query normalization, end detection, and cancellable request coordination.
 - `frontend-mobile/tests/shipmentOptions.test.mjs`: regression coverage for shipment-option pagination and stale-response protection.
+
+### Mobile returned waybill option pagination additions
+
+- `backend/src/main/java/com/tnl/logistics/dto/WaybillOptionResponse.java`: lightweight projection for returned waybill options (waybill ID, shipment ID, parcel count, status, status label, generated timestamp).
+- `frontend-mobile/src/features/waybills/waybillOptionsFlow.mjs`: pure option parameter construction, page merging, recommendation bounds, and cancellable request coordination.
+- `frontend-mobile/tests/waybillOptions.test.mjs`: unit tests for returned waybill pagination, recommendation capping, and cancellation.

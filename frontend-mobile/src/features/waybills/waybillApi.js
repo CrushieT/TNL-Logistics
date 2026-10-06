@@ -8,6 +8,14 @@ export async function listShipmentOptions({ page = 0, size = 20, search, signal 
   return data;
 }
 
+export async function listWaybillOptions({ page = 0, size = 20, search, status, signal } = {}) {
+  const { data } = await apiClient.get('/waybills/options', {
+    params: { page, size, ...(search ? { search } : {}), ...(status ? { status } : {}) },
+    signal
+  });
+  return data;
+}
+
 export async function listShipmentWaybills(shipmentId) {
   const { data } = await apiClient.get(`/waybills/shipments/${encodeURIComponent(shipmentId)}`);
   return data;

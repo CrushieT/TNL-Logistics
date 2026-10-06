@@ -52,6 +52,23 @@ public class WaybillController {
         return ResponseEntity.ok(PageResponse.from(waybillService.getShipmentOptions(search, pageRequest)));
     }
 
+    @GetMapping("/options")
+    @PreAuthorize("hasRole('FIELD_STAFF')")
+    public ResponseEntity<PageResponse<WaybillOptionResponse>> getWaybillOptions(
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size,
+            @RequestParam(value = "search", required = false) String search,
+            @RequestParam(value = "status", required = false) WaybillStatus status,
+            Principal principal) {
+        waybillService.assertViewer(actor(principal));
+        int boundedSize = Math.min(MAX_SHIPMENT_OPTION_PAGE_SIZE, Math.max(1, size));
+        PageRequest pageRequest = PageRequest.of(
+                Math.max(0, page),
+                boundedSize,
+                Sort.by(Sort.Order.desc("generatedAt"), Sort.Order.desc("waybillId")));
+        return ResponseEntity.ok(PageResponse.from(waybillService.getWaybillOptions(search, status, pageRequest)));
+    }
+
     @GetMapping("/haulers")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<HaulerStaffOptionResponse>> getHaulerStaffOptions() {

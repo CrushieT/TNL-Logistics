@@ -56,6 +56,16 @@ public interface WaybillRepository extends JpaRepository<Waybill, String> {
                                  @Param("hauler") String hauler,
                                  Pageable pageable);
 
+    @Query(value = "SELECT w FROM Waybill w JOIN FETCH w.shipment s WHERE " +
+           "(:search IS NULL OR LOWER(w.waybillId) LIKE LOWER(CONCAT('%', :search, '%'))) AND " +
+           "(:status IS NULL OR w.status = :status)",
+           countQuery = "SELECT COUNT(w) FROM Waybill w WHERE " +
+           "(:search IS NULL OR LOWER(w.waybillId) LIKE LOWER(CONCAT('%', :search, '%'))) AND " +
+           "(:status IS NULL OR w.status = :status)")
+    Page<Waybill> findWaybillOptions(@Param("search") String search,
+                                     @Param("status") WaybillStatus status,
+                                     Pageable pageable);
+
     long countByStatus(WaybillStatus status);
 
     List<Waybill> findAllByOrderByGeneratedAtDesc();

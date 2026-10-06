@@ -14,6 +14,8 @@ public interface WaybillService {
 
     Page<WaybillShipmentOptionResponse> getShipmentOptions(String search, Pageable pageable);
 
+    Page<WaybillOptionResponse> getWaybillOptions(String search, WaybillStatus status, Pageable pageable);
+
     List<HaulerStaffOptionResponse> getHaulerStaffOptions();
 
     WaybillManifestResponse getManifestById(String waybillId);
