@@ -260,8 +260,8 @@ test('hauler staff role exchanges scan qr card with waybills console and scan.js
     readFile(new URL('../src/features/field/components/FieldDashboard.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/app/(main)/scan.js', import.meta.url), 'utf8'),
   ]);
-  assert.match(fieldDashboard, /isHaulerStaff\s*\?\s*\(\s*<ActionCard[\s\S]*title="WAYBILLS"/);
-  assert.match(fieldDashboard, /:\s*\(\s*<ActionCard[\s\S]*title="SCAN QR"/);
+  assert.match(fieldDashboard, /isHaulerStaff\s*\?\s*\(\s*<ActionCard[\s\S]*title="SCAN QR"[\s\S]*subtitle="Hauler waybill/);
+  assert.match(fieldDashboard, /:\s*\(\s*<ActionCard[\s\S]*title="SCAN QR"[\s\S]*subtitle="Advance parcel/);
   assert.match(fieldDashboard, /router\.push\(isHaulerStaff \? '\/\(main\)\/waybills' : '\/\(main\)\/scan'\)/);
   assert.match(scanScreen, /user\.staffType === 'HAULER_STAFF'[\s\S]*router\.replace\('\/\(main\)\/waybills'\)/);
 });

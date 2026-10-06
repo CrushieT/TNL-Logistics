@@ -29,7 +29,7 @@ export function FieldDashboard({ user, onAccount, onLock }) {
         >
           <View style={styles.statusDot} />
           <Text style={styles.statusText}>
-            {isHaulerStaff ? 'Waybill dispatch active · Ready for manifests' : 'Camera scanner active · Ready for scans'}
+            {isHaulerStaff ? 'Camera scanner active · Ready for waybills' : 'Camera scanner active · Ready for scans'}
           </Text>
           <Icon source="chevron-right" size={16} color={colors.inkFaint} />
         </PressableScale>
@@ -37,9 +37,9 @@ export function FieldDashboard({ user, onAccount, onLock }) {
       <View style={styles.gridRow}>
         {isHaulerStaff ? (
           <ActionCard
-            iconName="file-document-outline"
-            title="WAYBILLS"
-            subtitle="Load, print, send, and confirm"
+            iconName="qrcode-scan"
+            title="SCAN QR"
+            subtitle="Hauler waybill & manifest dispatch"
             onPress={() => router.push('/(main)/waybills')}
           />
         ) : (
