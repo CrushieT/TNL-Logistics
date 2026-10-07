@@ -1,13 +1,22 @@
-export const WAYBILL_QR_PREFIX = 'TNL-WAYBILL:';
+export const WAYBILL_QR_PREFIX = 'WAYBILL:';
+export const LEGACY_WAYBILL_QR_PREFIX = 'TNL-WAYBILL:';
 
 const WAYBILL_ID_PATTERN = /^WYB-[0-9]{4}-[0-9]{4,11}$/;
 
 export function parseWaybillQrPayload(rawValue) {
-  if (typeof rawValue !== 'string' || !rawValue.startsWith(WAYBILL_QR_PREFIX)) {
+  if (typeof rawValue !== 'string') {
     return { isValid: false, waybillId: null };
   }
 
-  const waybillId = rawValue.slice(WAYBILL_QR_PREFIX.length);
+  let waybillId = null;
+  if (rawValue.startsWith(WAYBILL_QR_PREFIX)) {
+    waybillId = rawValue.slice(WAYBILL_QR_PREFIX.length);
+  } else if (rawValue.startsWith(LEGACY_WAYBILL_QR_PREFIX)) {
+    waybillId = rawValue.slice(LEGACY_WAYBILL_QR_PREFIX.length);
+  } else {
+    return { isValid: false, waybillId: null };
+  }
+
   if (!WAYBILL_ID_PATTERN.test(waybillId)) {
     return { isValid: false, waybillId: null };
   }

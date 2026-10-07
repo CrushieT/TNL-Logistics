@@ -127,7 +127,7 @@ tnl-logistics/
 │   │   │   ├── shipments/            # Shipment registration with ParcelUnitsEditor and parcelPagination helpers, explorer, detail screens, and barcode scanner modal
 │   │   │   ├── printer/              # Driver isolation, audit outbox, ESC/POS formatter, and serialized PrinterContext
 │   │   │   ├── scanner/              # Field camera scanner (ScanViewfinder, SingleScanReview, BatchScanPanel, ScanResultPanel, scannerFlow.mjs, trackingScanApi.js, haptics.js, hapticsCore.mjs)
-│   │   │   ├── waybills/             # Split waybill client (waybillApi.js) and 2-copy landscape A4 print generator (printWaybill.mjs)
+│   │   │   ├── waybills/             # Split waybill client (waybillApi.js) and 2-copy portrait A4 print generator (printWaybill.mjs)
 │   │   │   ├── tracking-history/     # Field personal scan feed, metrics, parcel summary, personal timeline, pure flow logic (trackingHistoryFlow.mjs), request coordinator (trackingHistoryRequestCoordinator.mjs), and API client (trackingHistoryApi.js)
 │   │   ├── services/
 │   │   │   ├── api/                  # Axios client plus sessionHandling.mjs retry and redaction helpers

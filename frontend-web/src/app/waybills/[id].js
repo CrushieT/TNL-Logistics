@@ -6,6 +6,7 @@ import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import StatusBadge from '../../components/common/StatusBadge';
 import { getWaybillByNumber, WaybillManifestCard } from '../../features/waybills';
+import { getCompanyBranding } from '../../features/settings/services/settingsApi';
 import {
   buildWaybillPrintHtml,
   getRenderedWaybillLogoUri,
@@ -17,6 +18,7 @@ export default function WaybillDetailScreen() {
   const params = useLocalSearchParams();
   const waybillId = Array.isArray(params.id) ? params.id[0] : params.id;
   const [manifest, setManifest] = useState(null);
+  const [branding, setBranding] = useState(null);
   const [state, setState] = useState('loading');
 
   const loadManifest = useCallback(async () => {
@@ -26,8 +28,12 @@ export default function WaybillDetailScreen() {
     }
     setState('loading');
     try {
-      const result = await getWaybillByNumber(waybillId);
+      const [result, brandingResult] = await Promise.all([
+        getWaybillByNumber(waybillId),
+        getCompanyBranding().catch(() => null),
+      ]);
       setManifest(result);
+      if (brandingResult) setBranding(brandingResult);
       setState('ready');
     } catch (error) {
       const message = error?.response?.data?.message || '';
@@ -49,7 +55,7 @@ export default function WaybillDetailScreen() {
     const printDocument = frame.contentDocument;
     printDocument.open();
     const logoUri = getRenderedWaybillLogoUri(document);
-    printDocument.write(buildWaybillPrintHtml(manifest, logoUri));
+    printDocument.write(buildWaybillPrintHtml(manifest, logoUri, branding));
     printDocument.close();
     setTimeout(() => {
       frame.contentWindow.focus();
@@ -98,7 +104,7 @@ export default function WaybillDetailScreen() {
               <Button label="Print two A4 copies" onPress={printManifest} />
             </View>
           </View>
-          <WaybillManifestCard manifest={manifest} />
+          <WaybillManifestCard manifest={manifest} companyBranding={branding} />
         </>
       )}
     </AppShell>

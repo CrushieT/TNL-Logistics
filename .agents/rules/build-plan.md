@@ -36,7 +36,7 @@
 - **Phases 3-4 - Split Waybills and Hauler Staff Handoff:** [COMPLETED]
   - `V34__split_waybill_manifests.sql` supports multiple waybills per shipment and explicit manifest persistence. The existing V35 `waybill_return_scan` table and records remain unchanged for history.
   - Backend generation and handoff remain atomic. Completion requires a matching `confirmedWaybillId`, is Hauler Staff-only, locks the persisted manifest, completes only its units, and is retry-safe. The parcel return-scan endpoint is retired.
-  - Mobile and web print two landscape A4 copies with the same scannable `TNL-WAYBILL:<waybillId>` return-confirmation QR, exact persisted manifest, logo fallback, and long-table pagination. The web selected-manifest preview displays the same return QR and printable header format before printing.
+  - Mobile and web print two portrait A4 copies with the same scannable `WAYBILL:<waybillId>` return-confirmation QR, exact persisted manifest, logo fallback, and long-table pagination. The web selected-manifest preview displays the same return QR and printable header format before printing.
   - Mobile manual lookup remains available for review and reprinting but cannot enable completion. Only scanning the matching QR for a `SENT_TO_HAULER` waybill enables the separate confirmation action.
 
 ## Progress Overview

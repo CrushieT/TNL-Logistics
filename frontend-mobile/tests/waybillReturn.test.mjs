@@ -7,23 +7,28 @@ import {
 } from '../src/features/waybills/waybillReturnFlow.mjs';
 
 test('accepts only the exact printed waybill QR payload', () => {
+  assert.deepEqual(parseWaybillQrPayload('WAYBILL:WYB-2026-0001'), {
+    isValid: true,
+    waybillId: 'WYB-2026-0001'
+  });
+  assert.deepEqual(parseWaybillQrPayload('WAYBILL:WYB-2026-10000'), {
+    isValid: true,
+    waybillId: 'WYB-2026-10000'
+  });
   assert.deepEqual(parseWaybillQrPayload('TNL-WAYBILL:WYB-2026-0001'), {
     isValid: true,
     waybillId: 'WYB-2026-0001'
   });
-  assert.deepEqual(parseWaybillQrPayload('TNL-WAYBILL:WYB-2026-10000'), {
-    isValid: true,
-    waybillId: 'WYB-2026-10000'
-  });
 
   for (const value of [
     'TRK-2026-000001',
+    'WAYBILL:TRK-2026-000001',
+    'waybill:WYB-2026-0001',
+    ' WAYBILL:WYB-2026-0001',
+    'WAYBILL:WYB-2026-0001 ',
+    'WAYBILL:WYB-26-1',
+    'WAYBILL:',
     'TNL-WAYBILL:TRK-2026-000001',
-    'tnl-waybill:WYB-2026-0001',
-    ' TNL-WAYBILL:WYB-2026-0001',
-    'TNL-WAYBILL:WYB-2026-0001 ',
-    'TNL-WAYBILL:WYB-26-1',
-    'TNL-WAYBILL:',
     null
   ]) {
     assert.deepEqual(parseWaybillQrPayload(value), { isValid: false, waybillId: null });

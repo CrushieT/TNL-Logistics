@@ -26,23 +26,25 @@ function decodeMatrix(matrix) {
   return jsQR(pixels, size, size)?.data;
 }
 
-test('prints exactly two complete copies of the selected manifest with pagination styles', () => {
+test('prints exactly two complete copies of the selected manifest with 15-item pagination and multi-page headers', () => {
   const manifest = {
     waybillId: 'WYB-A', shipmentId: 'SHP-1', totalQuantity: 45,
     parcels: Array.from({ length: 45 }, (_, index) => ({ trackingId: `UNIT-${index + 1}`, seq: index + 1 })),
   };
   const html = buildWaybillPrintHtml(manifest, '/tracking-logo.png');
-  assert.equal(html.match(/<section class="copy">/g).length, 2);
+  assert.equal(html.match(/<section class="copy">/g).length, 6);
   assert.equal(html.match(/UNIT-45/g).length, 2);
-  assert.equal(html.match(/<thead>/g).length, 2);
+  assert.equal(html.match(/<thead>/g).length, 6);
   assert.match(html, /display: table-header-group/);
-  assert.match(html, /size: A4 landscape/);
+  assert.match(html, /size: A4 portrait/);
   assert.doesNotMatch(html, /UNIT-46/);
-  assert.equal(html.match(/class="return-qr"/g).length, 2);
-  assert.equal(html.match(/aria-label="TNL-WAYBILL:WYB-A"/g).length, 2);
+  assert.equal(html.match(/class="return-qr"/g).length, 6);
+  assert.equal(html.match(/aria-label="WAYBILL:WYB-A"/g).length, 6);
   const qrPaths = [...html.matchAll(/<path d="([^"]+)"/g)].map((match) => match[1]);
-  assert.equal(qrPaths.length, 2);
+  assert.equal(qrPaths.length, 6);
   assert.equal(qrPaths[0], qrPaths[1]);
+  assert.match(html, /Page 1 of 3/);
+  assert.match(html, /Page 3 of 3/);
   const payload = getWaybillQrPayload(manifest.waybillId);
   assert.equal(decodeMatrix(generateQRMatrix(payload)), payload);
 });
@@ -50,7 +52,7 @@ test('prints exactly two complete copies of the selected manifest with paginatio
 test('escapes document data and retains the text logo fallback', () => {
   const html = buildWaybillPrintHtml({ waybillId: 'WYB-1', parcels: [{ trackingId: '<UNIT>' }] });
   assert.match(html, /&lt;UNIT&gt;/);
-  assert.match(html, /TNL LOGISTICS/);
+  assert.match(html, /TC &amp; CT INTEGRATED LOGISTICS/);
   assert.match(html, /RETURN CONFIRMATION QR/);
   assert.doesNotMatch(html, /<img/);
 });
@@ -66,15 +68,30 @@ test('web waybill preview displays the same return confirmation QR payload as pr
   assert.match(componentSource, /<QRCodeGenerator value=\{returnQrPayload\}/);
   assert.match(componentSource, /RETURN CONFIRMATION QR/);
   assert.match(componentSource, /accessibilityLabel=\{returnQrPayload\}/);
-  assert.match(componentSource, /accessibilityLabel="TNL Logistics"/);
+  assert.match(componentSource, /accessibilityLabel=\{brandName\}/);
   assert.match(pageSource, /Print two A4 copies/);
   assert.match(pageSource, /WaybillManifestCard manifest=\{manifest\}/);
   assert.match(pageSource, /getRenderedWaybillLogoUri\(document\)/);
   assert.doesNotMatch(pageSource, /resolveAssetSource/);
 });
 
+test('applies dynamic company branding in printed HTML', () => {
+  const manifest = { waybillId: 'WYB-1', parcels: [{ trackingId: 'UNIT-1' }] };
+  const branding = {
+    companyName: 'TC & CT Integrated Logistics',
+    companyAddress: 'Central Warehouse, Manila',
+    companyContact: '09175550000',
+    billingEmail: 'billing@tcct.ph',
+  };
+  const html = buildWaybillPrintHtml(manifest, null, branding);
+  assert.match(html, /TC &amp; CT INTEGRATED LOGISTICS/);
+  assert.match(html, /Central Warehouse, Manila/);
+  assert.match(html, /09175550000/);
+  assert.match(html, /billing@tcct\.ph/);
+});
+
 test('web printing resolves the rendered logo URI with a safe text-logo fallback', () => {
-  const selector = '#printable-waybill-manifest img[alt="TNL Logistics"]';
+  const selector = '#printable-waybill-manifest img';
   assert.equal(getRenderedWaybillLogoUri({
     querySelector: (candidate) => {
       assert.equal(candidate, selector);
@@ -87,3 +104,4 @@ test('web printing resolves the rendered logo URI with a safe text-logo fallback
   assert.equal(getRenderedWaybillLogoUri({ querySelector: () => null }), null);
   assert.equal(getRenderedWaybillLogoUri(null), null);
 });
+
