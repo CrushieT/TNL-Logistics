@@ -60,15 +60,15 @@ test('web waybill preview displays the same return confirmation QR payload as pr
     new URL('../src/features/waybills/components/WaybillManifestCard.js', import.meta.url),
     'utf8'
   );
-  const pageSource = readFileSync(new URL('../src/app/waybills/index.js', import.meta.url), 'utf8');
+  const pageSource = readFileSync(new URL('../src/app/waybills/[id].js', import.meta.url), 'utf8');
 
   assert.match(componentSource, /getWaybillQrPayload\(waybillId\)/);
   assert.match(componentSource, /<QRCodeGenerator value=\{returnQrPayload\}/);
   assert.match(componentSource, /RETURN CONFIRMATION QR/);
   assert.match(componentSource, /accessibilityLabel=\{returnQrPayload\}/);
   assert.match(componentSource, /accessibilityLabel="TNL Logistics"/);
-  assert.match(pageSource, /Printable waybill preview/);
-  assert.match(pageSource, /two identical landscape A4 copies/);
+  assert.match(pageSource, /Print two A4 copies/);
+  assert.match(pageSource, /WaybillManifestCard manifest=\{manifest\}/);
   assert.match(pageSource, /getRenderedWaybillLogoUri\(document\)/);
   assert.doesNotMatch(pageSource, /resolveAssetSource/);
 });

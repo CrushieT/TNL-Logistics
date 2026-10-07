@@ -42,7 +42,7 @@ public interface WaybillRepository extends JpaRepository<Waybill, String> {
            "LOWER(s.recipientName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
            "LOWER(w.haulerName) LIKE LOWER(CONCAT('%', :search, '%'))) AND " +
            "(:status IS NULL OR w.status = :status) AND " +
-           "(:hauler IS NULL OR LOWER(w.haulerName) = LOWER(:hauler))",
+           "(:client IS NULL OR LOWER(c.clientId) = LOWER(:client) OR LOWER(c.name) = LOWER(:client))",
            countQuery = "SELECT COUNT(w) FROM Waybill w JOIN w.shipment s LEFT JOIN s.client c WHERE " +
            "(:search IS NULL OR LOWER(w.waybillId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
            "LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
@@ -50,10 +50,10 @@ public interface WaybillRepository extends JpaRepository<Waybill, String> {
            "LOWER(s.recipientName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
            "LOWER(w.haulerName) LIKE LOWER(CONCAT('%', :search, '%'))) AND " +
            "(:status IS NULL OR w.status = :status) AND " +
-           "(:hauler IS NULL OR LOWER(w.haulerName) = LOWER(:hauler))")
+           "(:client IS NULL OR LOWER(c.clientId) = LOWER(:client) OR LOWER(c.name) = LOWER(:client))")
     Page<Waybill> searchWaybills(@Param("search") String search,
                                  @Param("status") WaybillStatus status,
-                                 @Param("hauler") String hauler,
+                                 @Param("client") String client,
                                  Pageable pageable);
 
     @Query(value = "SELECT w FROM Waybill w JOIN FETCH w.shipment s WHERE " +

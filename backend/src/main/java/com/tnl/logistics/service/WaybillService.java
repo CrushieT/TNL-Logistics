@@ -30,5 +30,5 @@ public interface WaybillService {
 
     WaybillManifestResponse markSignedCompleted(String waybillId, WaybillStatusUpdateRequest request, String actingStaffUserId);
 
-    Page<WaybillSummaryResponse> getWaybills(String search, WaybillStatus status, String hauler, Pageable pageable);
+    Page<WaybillSummaryResponse> getWaybills(String search, WaybillStatus status, String client, Pageable pageable);
 }

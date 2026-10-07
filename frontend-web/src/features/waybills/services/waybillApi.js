@@ -1,4 +1,5 @@
 import apiClient from '../../../services/api/client';
+import { buildWaybillListQuery } from '../waybillDirectory.mjs';
 
 /**
  * Waybill Management API Client
@@ -25,17 +26,7 @@ export async function getWaybillByNumber(waybillId) {
 }
 
 export async function listWaybills(params = {}) {
-  const queryParams = new URLSearchParams();
-
-  if (params.page !== undefined) queryParams.append('page', params.page);
-  if (params.size !== undefined) queryParams.append('size', params.size);
-  if (params.search && params.search.trim()) queryParams.append('search', params.search.trim());
-  if (params.status && params.status !== 'ALL') queryParams.append('status', params.status);
-  if (params.hauler && params.hauler !== 'ALL') queryParams.append('hauler', params.hauler);
-
-  const queryString = queryParams.toString();
-  const url = `/waybills${queryString ? `?${queryString}` : ''}`;
-
-  const { data } = await apiClient.get(url);
+  const queryString = buildWaybillListQuery(params);
+  const { data } = await apiClient.get(`/waybills?${queryString}`);
   return data;
 }

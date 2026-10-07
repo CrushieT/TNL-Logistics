@@ -525,3 +525,9 @@
 - Preserved the atomic two-step manifest generation pipeline: batch scan transitions queued `ARRIVED_AT_TNL` units to `LOADED_TO_HAULER`, followed immediately by atomic waybill generation.
 - Verification: 16/16 backend tests (`WaybillShipmentOptionsIntegrationTest`, `SplitWaybillIntegrationTest`, `DataSeederWorkflowIntegrationTest`) and 174/174 mobile Node tests passed.
 
+**6.15 — Web Waybill Directory & Dedicated Manifest Detail** — **[COMPLETED]**
+- Replaced the web shipment selector and inline manifest preview with an administrator-only, server-paginated waybill directory using the existing `GET /api/v1/waybills` contract.
+- Added debounced multi-field search, status and hauler filters, 10/20/50 page sizing, stable generation-date and waybill-number ordering, bounded backend page sizes, and page-local batch parcel counts.
+- Added pressable table rows and explicit View actions that open `/waybills/[id]`, with loading, not-found, retry, status, shipment reference, printable manifest, and preserved two-copy landscape A4 printing.
+- Added backend integration coverage for pagination, ordering, search, filters, bounds, empty results, quantities, and administrator authorization, plus web unit coverage for query construction, pagination normalization, page reset behavior, and route encoding.
+

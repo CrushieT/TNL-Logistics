@@ -66,7 +66,8 @@ tnl-logistics/
 │   │   │   ├── statements/
 │   │   │   │   └── print.js         # Screen 22 Dedicated isolated printable SOA document
 │   │   │   ├── waybills/            # Waybills & printable manifest
-│   │   │   │   └── index.js         # Screens 23-25 Waybill workflow & printable manifest
+│   │   │   │   ├── index.js         # Paginated admin waybill directory
+│   │   │   │   └── [id].js          # Dedicated printable waybill manifest detail
 │   │   │   ├── reports.js           # Screen 26 Operational & Financial Reports
 │   │   │   ├── reports/
 │   │   │   │   └── print.js         # Dedicated isolated printable report document
@@ -77,12 +78,13 @@ tnl-logistics/
 │   │   │   ├── shipments/           # ClientSelectDropdown, ParcelUnitsEditor, ShipmentPricingSummary, parcelPagination.mjs, registrationCalculations.mjs, PrintLabelsModal, LabelPreview, durable outbox & isolated thermal print service
 │   │   │   ├── reports/             # Operational & financial report cards, PrintableReportDocument, reportPrintModel.mjs
 │   │   │   ├── collections/         # SOA components, API services, pagination, and hardened two-copy statementPrintModel.mjs
+│   │   │   ├── waybills/            # Waybill table, manifest, directory helpers, API client, and two-copy print service
 │   │   │   └── settings/            # Settings components plus shared SOA bank-detail normalization and validation
 │   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sessionCore.mjs, sseClient.js, sseClientCore.mjs)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
 │   │   ├── utils/                   # Shared QR facade
 │   │   └── vendor/qrcodegen/        # Vendored Project Nayuki QR generator
-│   ├── tests/                       # Web unit suites, including statementPrint.test.mjs for bank validation, print guards, logo readiness, and two-copy pagination
+│   ├── tests/                       # Web unit suites, including waybill directory, route, and two-copy print coverage
 │   ├── assets/                      # favicon.png, tracking-logo.png
 │   ├── app.json                     # Expo web configuration
 │   ├── package.json

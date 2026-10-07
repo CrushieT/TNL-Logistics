@@ -297,11 +297,20 @@ public class WaybillServiceImpl implements WaybillService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<WaybillSummaryResponse> getWaybills(String search, WaybillStatus status, String hauler, Pageable pageable) {
+    public Page<WaybillSummaryResponse> getWaybills(String search, WaybillStatus status, String client, Pageable pageable) {
         String cleanSearch = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
-        String cleanHauler = (hauler != null && !hauler.equalsIgnoreCase("ALL")) ? hauler.trim() : null;
+        String cleanClient = (client != null && !client.isBlank() && !client.equalsIgnoreCase("ALL"))
+                ? client.trim()
+                : null;
 
-        Page<Waybill> page = waybillRepository.searchWaybills(cleanSearch, status, cleanHauler, pageable);
+        Page<Waybill> page = waybillRepository.searchWaybills(cleanSearch, status, cleanClient, pageable);
+        List<String> waybillIds = page.getContent().stream()
+                .map(Waybill::getWaybillId)
+                .toList();
+        Map<String, Long> parcelCounts = waybillIds.isEmpty()
+                ? Collections.emptyMap()
+                : parcelUnitRepository.countByWaybillIds(waybillIds).stream()
+                        .collect(Collectors.toMap(row -> (String) row[0], row -> (Long) row[1]));
 
         List<WaybillSummaryResponse> summaries = page.getContent().stream().map(w -> {
             Shipment s = w.getShipment();
@@ -314,7 +323,7 @@ public class WaybillServiceImpl implements WaybillService {
                     s.getClient() != null ? s.getClient().getName() : "—",
                     s.getRecipientName(),
                     s.getRoute() != null ? s.getRoute() : "TNL Baguio Hub",
-                    parcelUnitRepository.findByWaybill_WaybillIdOrderBySeqAsc(w.getWaybillId()).size(),
+                    Math.toIntExact(parcelCounts.getOrDefault(w.getWaybillId(), 0L)),
                     w.getHaulerName(),
                     w.getStatus(),
                     statusLabel,

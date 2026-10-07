@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/waybills")
 public class WaybillController {
 
-    private static final int MAX_SHIPMENT_OPTION_PAGE_SIZE = 100;
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final WaybillService waybillService;
 
@@ -44,7 +44,7 @@ public class WaybillController {
             @RequestParam(value = "search", required = false) String search,
             Principal principal) {
         waybillService.assertViewer(actor(principal));
-        int boundedSize = Math.min(MAX_SHIPMENT_OPTION_PAGE_SIZE, Math.max(1, size));
+        int boundedSize = Math.min(MAX_PAGE_SIZE, Math.max(1, size));
         PageRequest pageRequest = PageRequest.of(
                 Math.max(0, page),
                 boundedSize,
@@ -61,7 +61,7 @@ public class WaybillController {
             @RequestParam(value = "status", required = false) WaybillStatus status,
             Principal principal) {
         waybillService.assertViewer(actor(principal));
-        int boundedSize = Math.min(MAX_SHIPMENT_OPTION_PAGE_SIZE, Math.max(1, size));
+        int boundedSize = Math.min(MAX_PAGE_SIZE, Math.max(1, size));
         PageRequest pageRequest = PageRequest.of(
                 Math.max(0, page),
                 boundedSize,
@@ -122,9 +122,13 @@ public class WaybillController {
             @RequestParam(value = "size", defaultValue = "20") int size,
             @RequestParam(value = "search", required = false) String search,
             @RequestParam(value = "status", required = false) WaybillStatus status,
-            @RequestParam(value = "hauler", required = false) String hauler) {
-        PageRequest pageRequest = PageRequest.of(Math.max(0, page), Math.max(1, size), Sort.by("generatedAt").descending());
-        return ResponseEntity.ok(waybillService.getWaybills(search, status, hauler, pageRequest));
+            @RequestParam(value = "client", required = false) String client) {
+        int boundedSize = Math.min(MAX_PAGE_SIZE, Math.max(1, size));
+        PageRequest pageRequest = PageRequest.of(
+                Math.max(0, page),
+                boundedSize,
+                Sort.by(Sort.Order.desc("generatedAt"), Sort.Order.desc("waybillId")));
+        return ResponseEntity.ok(waybillService.getWaybills(search, status, client, pageRequest));
     }
 
     private String actor(Principal principal) {

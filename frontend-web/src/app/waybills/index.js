@@ -1,147 +1,171 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Text, View, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
 import AppShell from '../../components/layout/AppShell';
+import Button from '../../components/common/Button';
 import PageHeader from '../../components/layout/PageHeader';
-import { WaybillManifestCard, SearchableShipmentDropdown, getWaybillShipmentOptions, getWaybillManifest, getWaybillByNumber } from '../../features/waybills';
-import { colors, spacing } from '../../theme';
+import SearchFilterBar from '../../components/common/SearchFilterBar';
+import { listClients } from '../../features/clients';
 import {
-  buildWaybillPrintHtml,
-  getRenderedWaybillLogoUri
-} from '../../features/waybills/services/waybillPrint.mjs';
+  buildWaybillDetailRoute,
+  listWaybills,
+  normalizeWaybillPage,
+  WaybillsTable,
+} from '../../features/waybills';
+import { colors, fonts, radius, spacing } from '../../theme';
+
+const STATUS_OPTIONS = [
+  { value: 'ALL', label: 'Status: All' },
+  { value: 'GENERATED', label: 'Generated' },
+  { value: 'SENT_TO_HAULER', label: 'Sent to Hauler' },
+  { value: 'SIGNED_COMPLETED', label: 'Signed / Completed' },
+];
 
 export default function WaybillsScreen() {
-  const [shipments, setShipments] = useState([]);
-  const [selectedShipmentId, setSelectedShipmentId] = useState('');
+  const router = useRouter();
   const [waybills, setWaybills] = useState([]);
-  const [selectedWaybillId, setSelectedWaybillId] = useState('');
-  const [numberSearch, setNumberSearch] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [status, setStatus] = useState('ALL');
+  const [client, setClient] = useState('ALL');
+  const [clientOptions, setClientOptions] = useState([{ value: 'ALL', label: 'Client: All' }]);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalElements, setTotalElements] = useState(0);
+  const requestSequence = useRef(0);
 
-  const loadShipments = useCallback(async () => {
-    try {
-      setShipments(await getWaybillShipmentOptions());
-    } catch {
-      setMessage('Could not load shipments.');
-    }
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    let isMounted = true;
+    listClients({ all: true })
+      .then((data) => {
+        if (!isMounted) return;
+        const records = Array.isArray(data) ? data : (data?.content || []);
+        const seen = new Set();
+        const options = records
+          .map((record) => record.name || record.clientId)
+          .filter((name) => name && !seen.has(name) && seen.add(name))
+          .sort((left, right) => left.localeCompare(right))
+          .map((name) => ({ value: name, label: name }));
+        setClientOptions([{ value: 'ALL', label: 'Client: All' }, ...options]);
+      })
+      .catch(() => {
+        if (isMounted) setClientOptions([{ value: 'ALL', label: 'Client: All' }]);
+      });
+    return () => { isMounted = false; };
   }, []);
 
-  useEffect(() => { loadShipments(); }, [loadShipments]);
-
-  const selectShipment = async (shipmentId) => {
-    setSelectedShipmentId(shipmentId);
-    setSelectedWaybillId('');
-    setMessage('');
+  const loadWaybills = useCallback(async () => {
+    const requestId = ++requestSequence.current;
     setLoading(true);
+    setError('');
     try {
-      const records = await getWaybillManifest(shipmentId);
-      setWaybills(records);
-      setSelectedWaybillId(records[0]?.waybillId || '');
+      const response = await listWaybills({ page, size: pageSize, search: debouncedSearch, status, client });
+      if (requestId !== requestSequence.current) return;
+      const normalized = normalizeWaybillPage(response);
+      setWaybills(normalized.content);
+      setTotalPages(normalized.totalPages);
+      setTotalElements(normalized.totalElements);
+      if (normalized.page !== page) setPage(normalized.page);
     } catch {
+      if (requestId !== requestSequence.current) return;
       setWaybills([]);
-      setMessage('Could not load waybills for this shipment.');
+      setTotalPages(1);
+      setTotalElements(0);
+      setError('Could not load the waybill directory.');
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) setLoading(false);
     }
-  };
+  }, [client, debouncedSearch, page, pageSize, status]);
 
-  const searchNumber = async () => {
-    const number = numberSearch.trim();
-    if (!number) return;
-    setLoading(true);
-    setMessage('');
-    try {
-      const record = await getWaybillByNumber(number);
-      await selectShipment(record.shipmentId);
-      setSelectedWaybillId(record.waybillId);
-    } catch {
-      setMessage('Waybill number not found.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    loadWaybills();
+  }, [loadWaybills]);
 
-  const selected = waybills.find((waybill) => waybill.waybillId === selectedWaybillId);
-  const selectedShipment = shipments.find((shipment) => shipment.shipmentId === selectedShipmentId);
-
-  const printSelected = () => {
-    if (!selected || typeof document === 'undefined') return;
-    const frame = document.createElement('iframe');
-    frame.style.cssText = 'position:fixed;width:0;height:0;border:0';
-    document.body.appendChild(frame);
-    const printDocument = frame.contentDocument;
-    printDocument.open();
-    const logoUri = getRenderedWaybillLogoUri(document);
-    printDocument.write(buildWaybillPrintHtml(selected, logoUri));
-    printDocument.close();
-    setTimeout(() => {
-      frame.contentWindow.focus();
-      frame.contentWindow.print();
-      setTimeout(() => frame.remove(), 60000);
-    }, 300);
+  const openWaybill = (waybill) => {
+    router.push(buildWaybillDetailRoute(waybill.waybillId));
   };
 
   return (
-    <AppShell activeTab="waybills">
-      <View style={styles.container}>
-        <PageHeader eyebrow="BILLING & FINANCE" title="Waybills" />
-        {message ? <Text style={styles.message}>{message}</Text> : null}
-        <View style={styles.controls}>
-          <SearchableShipmentDropdown shipments={shipments} selectedShipmentId={selectedShipmentId}
-            onSelectShipment={selectShipment} loading={loading} />
-          <TextInput style={styles.input} value={numberSearch} onChangeText={setNumberSearch}
-            placeholder="Exact waybill number" onSubmitEditing={searchNumber} />
-          <Pressable style={styles.button} onPress={searchNumber}><Text style={styles.buttonText}>Find</Text></Pressable>
+    <AppShell>
+      <PageHeader eyebrow="BILLING & FINANCE" title="Waybills" />
+
+      <SearchFilterBar
+        searchValue={search}
+        onSearchChange={(value) => {
+          setSearch(value);
+          setPage(0);
+        }}
+        placeholder="Search waybill, shipment, client, recipient, or hauler..."
+        filters={[
+          {
+            label: 'Status',
+            value: status,
+            onChange: (value) => {
+              setStatus(value);
+              setPage(0);
+            },
+            options: STATUS_OPTIONS,
+          },
+          {
+            label: 'Client',
+            value: client,
+            onChange: (value) => {
+              setClient(value);
+              setPage(0);
+            },
+            options: clientOptions,
+          },
+        ]}
+      />
+
+      {error ? (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Button label="Retry" variant="secondary" onPress={loadWaybills} style={styles.retryButton} />
         </View>
-        {selectedShipmentId ? (
-          <View style={styles.section}>
-            <Text style={styles.heading}>{selectedShipmentId}</Text>
-            <Text>{selectedShipment?.waybillStatus || ''}</Text>
-            {waybills.length === 0
-              ? <Text>No waybills have been generated for this shipment.</Text>
-              : waybills.map((waybill) => (
-                <Pressable key={waybill.waybillId} style={[styles.row, selectedWaybillId === waybill.waybillId && styles.selected]}
-                  onPress={() => setSelectedWaybillId(waybill.waybillId)}>
-                  <Text style={styles.rowTitle}>{waybill.waybillId}</Text>
-                  <Text>{waybill.statusLabel} · {waybill.parcels.length} units</Text>
-                </Pressable>
-              ))}
-          </View>
-        ) : null}
-        {selected ? (
-          <View style={styles.section}>
-            <View style={styles.printHeader}>
-              <View style={styles.printSummary}>
-                <Text style={styles.heading}>Printable waybill preview</Text>
-                <Text style={styles.previewHint}>
-                  Printing creates two identical landscape A4 copies with the return confirmation QR shown below.
-                </Text>
-              </View>
-              <Pressable style={styles.button} onPress={printSelected}>
-                <Text style={styles.buttonText}>Print two A4 copies</Text>
-              </Pressable>
-            </View>
-            <WaybillManifestCard manifest={selected} />
-          </View>
-        ) : null}
-      </View>
+      ) : null}
+
+      <WaybillsTable
+        waybills={waybills}
+        loading={loading}
+        page={page}
+        totalPages={totalPages}
+        totalElements={totalElements}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={(value) => {
+          setPageSize(value);
+          setPage(0);
+        }}
+        onView={openWaybill}
+      />
     </AppShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { gap: spacing.lg },
-  controls: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
-  input: { minWidth: 200, padding: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: '#FFFFFF' },
-  button: { alignSelf: 'flex-start', paddingVertical: 10, paddingHorizontal: 16, backgroundColor: colors.ink },
-  buttonText: { color: '#FFFFFF', fontWeight: '700' },
-  section: { gap: spacing.sm, backgroundColor: '#FFFFFF', padding: spacing.md, borderWidth: 1, borderColor: colors.border },
-  printHeader: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm },
-  printSummary: { flex: 1, minWidth: 260, gap: 4 },
-  previewHint: { color: colors.inkSoft, fontSize: 12 },
-  heading: { fontSize: 16, fontWeight: '700', color: colors.ink },
-  row: { flexDirection: 'row', justifyContent: 'space-between', padding: 12, borderWidth: 1, borderColor: colors.border },
-  rowTitle: { fontWeight: '700', color: colors.ink },
-  selected: { borderColor: colors.accent },
-  message: { color: colors.danger },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: radius.sm,
+    backgroundColor: colors.dangerSoft,
+  },
+  errorText: { fontFamily: fonts.sans, fontSize: 13, color: colors.danger },
+  retryButton: { minHeight: 32, paddingVertical: 5, paddingHorizontal: spacing.md },
 });
