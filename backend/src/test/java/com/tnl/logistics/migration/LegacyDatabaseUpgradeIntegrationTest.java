@@ -250,15 +250,32 @@ public class LegacyDatabaseUpgradeIntegrationTest {
         freshDs.setUsername(dataSourceProperties.getUsername());
         freshDs.setPassword(dataSourceProperties.getPassword());
 
-        // Fresh database runs Flyway V1..V25 directly
+        Flyway.configure()
+                .dataSource(freshDs)
+                .locations("classpath:db/migration")
+                .target("33")
+                .load()
+                .migrate();
+
+        JdbcTemplate freshJdbcTemplate = new JdbcTemplate(freshDs);
+        freshJdbcTemplate.update("INSERT INTO client (client_id, name, address, contact_number) VALUES ('CL-LEGACY-WB', 'Legacy Client', 'Baguio', '09170000000')");
+        freshJdbcTemplate.update("INSERT INTO app_user (user_id, username, password_hash, full_name, role) VALUES ('USR-LEGACY-WB', 'legacy_waybill', 'hash', 'Legacy Staff', 'FIELD_STAFF')");
+        freshJdbcTemplate.update("INSERT INTO shipment (shipment_id, client_id, recipient_name, recipient_address, recipient_contact, quantity, charge_model, shipping_fee, total_amount, registered_via) " +
+                "VALUES ('SHP-LEGACY-WB', 'CL-LEGACY-WB', 'Recipient', 'Baguio', '09170000000', 2, 'FLAT', 100.00, 100.00, 'DESKTOP_OFFICE')");
+        freshJdbcTemplate.update("INSERT INTO parcel_unit (tracking_id, shipment_id, seq) VALUES ('TRK-LEGACY-1', 'SHP-LEGACY-WB', 1), ('TRK-LEGACY-2', 'SHP-LEGACY-WB', 2)");
+        freshJdbcTemplate.update("INSERT INTO waybill (waybill_id, shipment_id, generated_by) VALUES ('WYB-LEGACY-WB', 'SHP-LEGACY-WB', 'USR-LEGACY-WB')");
+
         Flyway flyway = Flyway.configure()
                 .dataSource(freshDs)
                 .locations("classpath:db/migration")
                 .load();
 
         var result = flyway.migrate();
-        assertTrue(result.migrationsExecuted >= 25);
+        assertEquals(2, result.migrationsExecuted);
         flyway.validate();
+
+        assertEquals(2, freshJdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM parcel_unit WHERE waybill_id = 'WYB-LEGACY-WB'", Integer.class));
 
         assertTrue(upgradeService.tableExists(freshDs, "client"));
         assertTrue(upgradeService.tableExists(freshDs, "shipment"));

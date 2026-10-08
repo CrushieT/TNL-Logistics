@@ -1,5 +1,6 @@
-import React, { useReducer, useState, useEffect, useRef, useCallback } from 'react';
+import React, { useReducer, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
+  Animated,
   StyleSheet,
   View,
   Text,
@@ -7,6 +8,8 @@ import {
   TouchableOpacity,
   Modal,
   KeyboardAvoidingView,
+  Keyboard,
+  PanResponder,
   Platform,
   ActivityIndicator
 } from 'react-native';
@@ -38,6 +41,19 @@ import SingleScanReview from '../../features/scanner/components/SingleScanReview
 import BatchScanPanel from '../../features/scanner/components/BatchScanPanel';
 import ScanResultPanel from '../../features/scanner/components/ScanResultPanel';
 
+const CAMERA_HEIGHTS = [0, 160, 280];
+const CAMERA_HEIGHT_LABELS = ['Collapsed', 'Compact', 'Expanded'];
+const CAMERA_TAP_THRESHOLD = 8;
+const DEFAULT_CAMERA_HEIGHT_INDEX = CAMERA_HEIGHTS.length - 1;
+
+function findNearestCameraHeightIndex(height) {
+  return CAMERA_HEIGHTS.reduce((nearestIndex, cameraHeight, index) => (
+    Math.abs(cameraHeight - height) < Math.abs(CAMERA_HEIGHTS[nearestIndex] - height)
+      ? index
+      : nearestIndex
+  ), 0);
+}
+
 export default function ScanScreen() {
   const router = useRouter();
   const navigation = useNavigation();
@@ -50,6 +66,8 @@ export default function ScanScreen() {
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [isScreenFocused, setIsScreenFocused] = useState(true);
   const [cameraMountKey, setCameraMountKey] = useState(0);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [cameraHeightIndex, setCameraHeightIndex] = useState(DEFAULT_CAMERA_HEIGHT_INDEX);
 
   // Vehicles state
   const [vehicles, setVehicles] = useState([]);
@@ -59,16 +77,114 @@ export default function ScanScreen() {
   const scanLockRef = useRef(false);
   const submitLockRef = useRef(false);
   const cooldownTimerRef = useRef(null);
+  const cameraHeightIndexRef = useRef(DEFAULT_CAMERA_HEIGHT_INDEX);
+  const cameraDragStartHeightRef = useRef(CAMERA_HEIGHTS[DEFAULT_CAMERA_HEIGHT_INDEX]);
+  const animatedCameraHeight = useRef(
+    new Animated.Value(CAMERA_HEIGHTS[DEFAULT_CAMERA_HEIGHT_INDEX])
+  ).current;
 
   // Navigation protection refs
   const pendingNavigationActionRef = useRef(null);
   const allowLeaveRef = useRef(false);
   const abortControllerRef = useRef(null);
 
-  // Restrict screen strictly to FIELD_STAFF
+  const animateCameraToIndex = useCallback((nextIndex) => {
+    const boundedIndex = Math.max(0, Math.min(CAMERA_HEIGHTS.length - 1, nextIndex));
+    cameraHeightIndexRef.current = boundedIndex;
+    setCameraHeightIndex(boundedIndex);
+    animatedCameraHeight.stopAnimation();
+    Animated.spring(animatedCameraHeight, {
+      toValue: CAMERA_HEIGHTS[boundedIndex],
+      stiffness: 260,
+      damping: 28,
+      mass: 0.7,
+      useNativeDriver: false
+    }).start();
+  }, [animatedCameraHeight]);
+
+  const resizeCamera = useCallback((indexDelta) => {
+    animateCameraToIndex(cameraHeightIndexRef.current + indexDelta);
+  }, [animateCameraToIndex]);
+
+  const toggleCameraHeight = useCallback(() => {
+    const currentIndex = cameraHeightIndexRef.current;
+    if (currentIndex === DEFAULT_CAMERA_HEIGHT_INDEX) {
+      animateCameraToIndex(DEFAULT_CAMERA_HEIGHT_INDEX - 1);
+    } else if (currentIndex === 0) {
+      animateCameraToIndex(1);
+    } else {
+      animateCameraToIndex(DEFAULT_CAMERA_HEIGHT_INDEX);
+    }
+  }, [animateCameraToIndex]);
+
+  const cameraDividerPanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => !isKeyboardVisible,
+    onMoveShouldSetPanResponder: (_, gestureState) => (
+      !isKeyboardVisible
+      && Math.abs(gestureState.dy) >= 8
+      && Math.abs(gestureState.dy) > Math.abs(gestureState.dx)
+    ),
+    onPanResponderGrant: () => {
+      animatedCameraHeight.stopAnimation((currentHeight) => {
+        cameraDragStartHeightRef.current = currentHeight;
+      });
+    },
+    onPanResponderMove: (_, gestureState) => {
+      const nextHeight = Math.max(
+        CAMERA_HEIGHTS[0],
+        Math.min(
+          CAMERA_HEIGHTS[DEFAULT_CAMERA_HEIGHT_INDEX],
+          cameraDragStartHeightRef.current + gestureState.dy
+        )
+      );
+      animatedCameraHeight.setValue(nextHeight);
+    },
+    onPanResponderRelease: (_, gestureState) => {
+      if (Math.abs(gestureState.dy) < CAMERA_TAP_THRESHOLD) {
+        toggleCameraHeight();
+      } else {
+        const releasedHeight = Math.max(
+          CAMERA_HEIGHTS[0],
+          Math.min(
+            CAMERA_HEIGHTS[DEFAULT_CAMERA_HEIGHT_INDEX],
+            cameraDragStartHeightRef.current + gestureState.dy
+          )
+        );
+        animateCameraToIndex(findNearestCameraHeightIndex(releasedHeight));
+      }
+    },
+    onPanResponderTerminate: () => {
+      animatedCameraHeight.stopAnimation((currentHeight) => {
+        animateCameraToIndex(findNearestCameraHeightIndex(currentHeight));
+      });
+    }
+  }), [animatedCameraHeight, animateCameraToIndex, isKeyboardVisible, toggleCameraHeight]);
+
+  const handleManualInputFocus = useCallback(() => {
+    animatedCameraHeight.stopAnimation();
+    animatedCameraHeight.setValue(0);
+    setIsKeyboardVisible(true);
+  }, [animatedCameraHeight]);
+
+  const handleCameraAccessibilityAction = useCallback((event) => {
+    if (isKeyboardVisible) return;
+    if (event.nativeEvent.actionName === 'increment') {
+      resizeCamera(1);
+    } else if (event.nativeEvent.actionName === 'decrement') {
+      resizeCamera(-1);
+    } else if (event.nativeEvent.actionName === 'activate') {
+      toggleCameraHeight();
+    }
+  }, [isKeyboardVisible, resizeCamera, toggleCameraHeight]);
+
+  // Restrict screen strictly to non-hauler FIELD_STAFF
   useEffect(() => {
-    if (!authLoading && user && user.role !== 'FIELD_STAFF') {
-      router.replace('/(main)');
+    if (!authLoading && user) {
+      if (user.role !== 'FIELD_STAFF') {
+        router.replace('/(main)');
+      } else if (user.staffType === 'HAULER_STAFF') {
+        router.replace('/(main)/waybills');
+      }
     }
   }, [user, authLoading, router]);
 
@@ -76,14 +192,29 @@ export default function ScanScreen() {
   useFocusEffect(
     useCallback(() => {
       setIsScreenFocused(true);
+      const keyboardShowSubscription = Keyboard.addListener('keyboardDidShow', () => {
+        animatedCameraHeight.stopAnimation();
+        animatedCameraHeight.setValue(0);
+        setIsKeyboardVisible(true);
+      });
+      const keyboardHideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+        setIsKeyboardVisible(false);
+        animateCameraToIndex(cameraHeightIndexRef.current);
+      });
+
       return () => {
+        keyboardShowSubscription.remove();
+        keyboardHideSubscription.remove();
+        animatedCameraHeight.stopAnimation();
+        animatedCameraHeight.setValue(CAMERA_HEIGHTS[cameraHeightIndexRef.current]);
         setIsScreenFocused(false);
+        setIsKeyboardVisible(false);
         setTorchEnabled(false);
         if (abortControllerRef.current) {
           abortControllerRef.current.abort();
         }
       };
-    }, [])
+    }, [animatedCameraHeight, animateCameraToIndex])
   );
 
   // Clear cooldown timer on unmount
@@ -398,7 +529,8 @@ export default function ScanScreen() {
   };
 
   // Compute camera eligibility using pure selector
-  const cameraActive = connectivity.isOnline && canActivateCamera({
+  const viewfinderHeight = CAMERA_HEIGHTS[cameraHeightIndex] || CAMERA_HEIGHTS[1];
+  const cameraActive = !isKeyboardVisible && cameraHeightIndex > 0 && connectivity.isOnline && canActivateCamera({
     permissionGranted: Boolean(permission?.granted),
     isScreenFocused,
     cameraError: state.cameraError,
@@ -442,7 +574,7 @@ export default function ScanScreen() {
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
       >
         {/* 1. White Safe-Area Header */}
         <View style={styles.header}>
@@ -485,7 +617,33 @@ export default function ScanScreen() {
               ? 'Please select an active vehicle below to start scanning'
               : 'Camera preview paused'
           }
+          viewfinderHeight={viewfinderHeight}
+          animatedHeight={animatedCameraHeight}
         />
+
+        <View
+          {...cameraDividerPanResponder.panHandlers}
+          style={[styles.cameraDivider, isKeyboardVisible && styles.cameraDividerDisabled]}
+          accessible
+          accessibilityRole="adjustable"
+          accessibilityLabel="Camera panel height"
+          accessibilityHint="Swipe up to reduce the camera, swipe down to enlarge it, or tap to toggle its height"
+          accessibilityValue={{
+            min: 0,
+            max: CAMERA_HEIGHTS.length - 1,
+            now: isKeyboardVisible ? 0 : cameraHeightIndex,
+            text: isKeyboardVisible ? 'Collapsed while typing' : CAMERA_HEIGHT_LABELS[cameraHeightIndex]
+          }}
+          accessibilityState={{ disabled: isKeyboardVisible }}
+          accessibilityActions={[
+            { name: 'increment', label: 'Increase camera height' },
+            { name: 'decrement', label: 'Decrease camera height' },
+            { name: 'activate', label: 'Toggle camera height' }
+          ]}
+          onAccessibilityAction={handleCameraAccessibilityAction}
+        >
+          <View style={styles.cameraDividerHandle} />
+        </View>
 
         {!connectivity.isOnline && (
           <View style={styles.networkBanner}>
@@ -647,6 +805,7 @@ export default function ScanScreen() {
                   placeholderTextColor={colors.inkFaint}
                   value={state.manualInput}
                   onChangeText={(val) => dispatch({ type: 'SET_MANUAL_INPUT', payload: val })}
+                  onFocus={handleManualInputFocus}
                   autoCapitalize="characters"
                   maxLength={15}
                   returnKeyType="go"
@@ -761,6 +920,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.danger,
     fontWeight: '600'
+  },
+  cameraDivider: {
+    height: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  cameraDividerDisabled: {
+    opacity: 0.55
+  },
+  cameraDividerHandle: {
+    width: 56,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.borderStrong
   },
   lookupRecoveryCard: {
     margin: spacing.md,

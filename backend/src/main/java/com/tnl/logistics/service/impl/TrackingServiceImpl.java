@@ -92,10 +92,10 @@ public class TrackingServiceImpl implements TrackingService {
                 canScan = true;
                 break;
             case LOADED_TO_HAULER:
-                nextStatusCode = ParcelStatus.COMPLETED.name();
-                nextStatusLabel = formatStatusDisplay(ParcelStatus.COMPLETED);
+                nextStatusCode = parcel.getWaybill() == null ? ParcelStatus.COMPLETED.name() : null;
+                nextStatusLabel = parcel.getWaybill() == null ? formatStatusDisplay(ParcelStatus.COMPLETED) : null;
                 requiresVehicle = false;
-                canScan = true;
+                canScan = parcel.getWaybill() == null;
                 break;
             case COMPLETED:
             default:
@@ -278,6 +278,9 @@ public class TrackingServiceImpl implements TrackingService {
             AppUser actingStaff) {
 
         ParcelStatus currentStatus = parcel.getCurrentStatus();
+        if (targetStatus == ParcelStatus.COMPLETED && parcel.getWaybill() != null) {
+            throw new IllegalStateException("Assigned parcel can only be completed through its returned waybill");
+        }
         TrackingTransitionPolicy.Decision decision = transitionPolicy.decide(currentStatus, targetStatus,
                 vehicleId(parcel.getCurrentVehicle()), requestedVehicleId);
         requireOnlineDecision(decision, parcel, targetStatus, requestedVehicleId);

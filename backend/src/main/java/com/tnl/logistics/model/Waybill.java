@@ -18,9 +18,20 @@ public class Waybill implements Persistable<String> {
     @Column(name = "waybill_id", length = 20)
     private String waybillId;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "shipment_id", nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shipment_id", nullable = false)
     private Shipment shipment;
+
+    @Column(name = "generation_key", length = 100, unique = true)
+    private String generationKey;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sent_by")
+    private AppUser sentBy;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "completed_by")
+    private AppUser completedBy;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "generated_by", nullable = false)
@@ -100,6 +111,12 @@ public class Waybill implements Persistable<String> {
 
     public Shipment getShipment() { return shipment; }
     public void setShipment(Shipment shipment) { this.shipment = shipment; }
+    public String getGenerationKey() { return generationKey; }
+    public void setGenerationKey(String generationKey) { this.generationKey = generationKey; }
+    public AppUser getSentBy() { return sentBy; }
+    public void setSentBy(AppUser sentBy) { this.sentBy = sentBy; }
+    public AppUser getCompletedBy() { return completedBy; }
+    public void setCompletedBy(AppUser completedBy) { this.completedBy = completedBy; }
 
     public AppUser getGeneratedBy() { return generatedBy; }
     public void setGeneratedBy(AppUser generatedBy) { this.generatedBy = generatedBy; }

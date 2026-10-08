@@ -1,15 +1,22 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, Image, StyleSheet } from 'react-native';
+import QRCodeGenerator from '../../../components/common/QRCodeGenerator';
 import { colors, fonts, spacing, radius } from '../../../theme';
 import { getCompanyBranding } from '../../settings/services/settingsApi';
+import { getWaybillQrPayload, paginateWaybillParcels, WAYBILL_ITEMS_PER_PAGE } from '../services/waybillPrint.mjs';
 
 /**
  * Waybill Manifest Card component strictly matching prototype waybills page.png
  */
-export default function WaybillManifestCard({ manifest, selectedHauler }) {
-  const [branding, setBranding] = useState(null);
+export default function WaybillManifestCard({ manifest, selectedHauler, companyBranding = null }) {
+  const [branding, setBranding] = useState(companyBranding || null);
+  const [logoFailed, setLogoFailed] = useState(false);
 
   useEffect(() => {
+    if (companyBranding) {
+      setBranding(companyBranding);
+      return;
+    }
     let mounted = true;
     getCompanyBranding()
       .then((res) => {
@@ -19,7 +26,7 @@ export default function WaybillManifestCard({ manifest, selectedHauler }) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [companyBranding]);
 
   if (!manifest) {
     return (
@@ -49,6 +56,7 @@ export default function WaybillManifestCard({ manifest, selectedHauler }) {
   } = manifest;
 
   const displayDocNumber = waybillId ? `${waybillId} | ${shipmentId}` : shipmentId;
+  const returnQrPayload = waybillId ? getWaybillQrPayload(waybillId) : null;
 
   const todayFormatted = new Date().toLocaleDateString('en-US', {
     month: 'short',
@@ -57,198 +65,229 @@ export default function WaybillManifestCard({ manifest, selectedHauler }) {
   });
   const displayDocDate = generatedDate && generatedDate !== '-' ? generatedDate : todayFormatted;
 
+  const brandName = (branding?.companyName || 'TC & CT INTEGRATED LOGISTICS').toUpperCase();
+  const brandAddress = branding?.companyAddress || 'Manila Central Hub';
+  const brandContact = branding?.companyContact || '0917-555-0000';
+  const brandEmail = branding?.billingEmail || 'billing@tcct.ph';
+  const brandSubtext = `${brandAddress} | ${brandContact} | ${brandEmail}`;
+
   const isCompleted = manifest.status === 'SIGNED_COMPLETED' || manifest.statusLabel === 'Signed / Completed';
 
+  const paginatedPages = useMemo(() => paginateWaybillParcels(parcels), [parcels]);
+  const totalPages = paginatedPages.length;
+
   return (
-    <View style={styles.manifestCard} id="printable-waybill-manifest" nativeID="printable-waybill-manifest">
-      {Platform.OS === 'web' && (
-        <style
-          dangerouslySetInnerHTML={{
-            __html: `
-              @media print {
-                @page {
-                  size: landscape;
-                  margin: 0;
-                }
+    <View style={styles.container}>
+      {paginatedPages.map((pageItems, pageIndex) => {
+        const pageNumber = pageIndex + 1;
+        const isLastPage = pageIndex === totalPages - 1;
 
-                html, body {
-                  background-color: #FFFFFF !important;
-                  margin: 0 !important;
-                  padding: 0 !important;
-                  width: 100% !important;
-                  height: 100% !important;
-                  -webkit-print-color-adjust: exact !important;
-                  print-color-adjust: exact !important;
-                }
+        return (
+          <View
+            key={`waybill-page-${pageIndex}`}
+            style={[
+              styles.manifestCard,
+              totalPages > 1 && styles.stackedPaper,
+            ]}
+            id={pageIndex === 0 ? 'printable-waybill-manifest' : `printable-waybill-manifest-${pageIndex}`}
+            nativeID={pageIndex === 0 ? 'printable-waybill-manifest' : `printable-waybill-manifest-${pageIndex}`}
+          >
+            {/* Top-Centered Letterhead Brand Header */}
+            <View style={styles.letterheadBlock}>
+              {logoFailed ? (
+                <View style={styles.logoFallback}>
+                  <Text style={styles.logoFallbackText}>LOGISTICS</Text>
+                </View>
+              ) : (
+                <View style={styles.letterheadLogoWrap}>
+                  <Image
+                    source={require('../../../../assets/tracking-logo.png')}
+                    style={styles.brandLogo}
+                    accessibilityLabel={brandName}
+                    resizeMode="contain"
+                    onError={() => setLogoFailed(true)}
+                  />
+                </View>
+              )}
+              <Text style={styles.companyNameCentered}>{brandName}</Text>
+              <Text style={styles.companySubtextCentered}>{brandSubtext}</Text>
+            </View>
 
-                /* Hide all screen application layout chrome */
-                body * {
-                  visibility: hidden !important;
-                }
+            {/* Hairline Divider below Letterhead */}
+            <View style={styles.letterheadDivider} />
 
-                /* Ensure strictly printable manifest and its contents are visible */
-                #printable-waybill-manifest,
-                #printable-waybill-manifest * {
-                  visibility: visible !important;
-                }
+            {/* Document Header Row: Waybill Metadata on Far Left, Return QR in Center, Consignee on Far Right */}
+            <View style={styles.metaRow}>
+              <View style={styles.metaCol}>
+                <Text style={styles.documentTitle}>WAYBILL</Text>
+                <View style={styles.metaLine}>
+                  <Text style={styles.metaLabel}>Waybill No. </Text>
+                  <Text style={styles.metaValueMono}>{waybillId || '-'}</Text>
+                </View>
+                <View style={styles.metaLine}>
+                  <Text style={styles.metaLabel}>Shipment No. </Text>
+                  <Text style={styles.metaValueMono}>{shipmentId || '-'}</Text>
+                </View>
+                <View style={styles.metaLine}>
+                  <Text style={styles.metaLabel}>Date: </Text>
+                  <Text style={styles.metaValue}>{displayDocDate}</Text>
+                </View>
+              </View>
 
-                #printable-waybill-manifest {
-                  position: fixed !important;
-                  left: 0 !important;
-                  top: 0 !important;
-                  right: 0 !important;
-                  bottom: 0 !important;
-                  width: 100vw !important;
-                  height: 100vh !important;
-                  box-sizing: border-box !important;
-                  margin: 0 !important;
-                  padding: 12mm 16mm !important;
-                  border: none !important;
-                  border-width: 0 !important;
-                  border-radius: 0 !important;
-                  box-shadow: none !important;
-                  background-color: #FFFFFF !important;
-                  page-break-inside: avoid !important;
-                  break-inside: avoid !important;
-                }
-              }
-            `,
-          }}
-        />
-      )}
-      {/* Header Block */}
-      <View style={styles.headerRow}>
-        <View style={styles.brandCol}>
-          <View style={styles.logoMark}>
-            <Text style={styles.logoMarkText}>T</Text>
-          </View>
-          <View style={styles.brandInfo}>
-            <Text style={styles.brandTitle}>{(branding?.companyName || 'TNL LOGISTICS').toUpperCase()}</Text>
-            <Text style={styles.brandSub}>
-              {branding?.companyAddress || 'Manila Central Hub'} | {branding?.companyContact || '0917-555-0000'}
-            </Text>
-          </View>
-        </View>
+              {returnQrPayload ? (
+                <View
+                  style={styles.returnQrCol}
+                  accessible
+                  accessibilityRole="image"
+                  accessibilityLabel={returnQrPayload}
+                >
+                  <Text style={styles.returnQrLabel}>RETURN CONFIRMATION QR</Text>
+                  <QRCodeGenerator value={returnQrPayload} size={88} quietZone={4} />
+                </View>
+              ) : null}
 
-        <View style={styles.docCol}>
-          <Text style={styles.docTitle}>WAYBILL</Text>
-          <Text style={styles.docNumber}>{displayDocNumber}</Text>
-          <Text style={styles.docDate}>{displayDocDate}</Text>
-        </View>
-      </View>
+              <View style={styles.deliveryCol}>
+                <Text style={styles.sectionEyebrow}>DELIVER TO / CONSIGNEE</Text>
+                <Text style={styles.consigneeName}>{recipientName || '-'}</Text>
+                {recipientAddress ? <Text style={styles.consigneeAddress}>{recipientAddress}</Text> : null}
+                {manifest.recipientContact ? (
+                  <View style={styles.consigneeMetaRow}>
+                    <Text style={styles.consigneeMetaText}>
+                      <Text style={styles.consigneeMetaLabel}>Contact: </Text>
+                      <Text style={styles.consigneeMetaVal}>{manifest.recipientContact}</Text>
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
 
-      <View style={styles.divider} />
+            {/* Single Solid Black Divider */}
+            <View style={styles.solidDivider} />
 
-      {/* Shipper & Consignee Columns */}
-      <View style={styles.partiesRow}>
-        <View style={styles.partyCol}>
-          <Text style={styles.partyEyebrow}>SHIPPER / CLIENT</Text>
-          <Text style={styles.partyName}>{clientName || '-'}</Text>
-          <Text style={styles.partyAddress}>{clientAddress || '-'}</Text>
-        </View>
+            {/* Cargo Tracking Items Table */}
+            <View style={styles.tableContainer}>
+              <View style={styles.tableHeader}>
+                <Text style={[styles.thCell, { flex: 2 }]}>TRACKING ID</Text>
+                <Text style={[styles.thCell, { flex: 1 }]}>PACKAGE</Text>
+                <Text style={[styles.thCell, { flex: 2.5 }]}>CONTENTS</Text>
+                <Text style={[styles.thCell, { flex: 1.2, textAlign: 'right' }]}>WEIGHT</Text>
+              </View>
 
-        <View style={[styles.partyCol, styles.partyColRight]}>
-          <Text style={styles.partyEyebrow}>CONSIGNEE / DESTINATION</Text>
-          <Text style={styles.partyName}>{recipientName || '-'}</Text>
-          <Text style={styles.partyHub}>{destinationHub || 'TNL Baguio Hub'}</Text>
-          <Text style={styles.partyAddress}>{recipientAddress || '-'}</Text>
-        </View>
-      </View>
+              {pageItems.length > 0 ? (
+                pageItems.map((parcel, idx) => {
+                  const overallIndex = pageIndex * WAYBILL_ITEMS_PER_PAGE + idx;
+                  const seq = parcel.seq ?? parcel.packageIndex ?? (overallIndex + 1);
+                  const total = parcel.packageCount ?? totalQuantity ?? parcels.length;
+                  const packageDisplay = parcel.packageNumber || `${seq} of ${total}`;
+                  const weightDisplay = parcel.weightKg !== undefined && parcel.weightKg !== null && parcel.weightKg !== ''
+                    ? `${Number(parcel.weightKg).toFixed(1)} kg`
+                    : '2.5 kg';
 
-      <View style={styles.divider} />
+                  return (
+                    <View key={parcel.trackingId || overallIndex} style={styles.tableRow}>
+                      <Text style={[styles.tdCell, styles.monoText, { flex: 2 }]}>
+                        {parcel.trackingId}
+                      </Text>
+                      <Text style={[styles.tdCell, { flex: 1 }]}>
+                        {packageDisplay}
+                      </Text>
+                      <Text style={[styles.tdCell, { flex: 2.5 }]} numberOfLines={1}>
+                        {description || 'General Cargo'}
+                      </Text>
+                      <Text style={[styles.tdCell, styles.monoText, { flex: 1.2, textAlign: 'right' }]}>
+                        {weightDisplay}
+                      </Text>
+                    </View>
+                  );
+                })
+              ) : (
+                <View style={styles.tableRow}>
+                  <Text style={[styles.tdCell, styles.monoText, { flex: 2 }]}>
+                    TRK-PENDING
+                  </Text>
+                  <Text style={[styles.tdCell, { flex: 1 }]}>1 of {totalQuantity}</Text>
+                  <Text style={[styles.tdCell, { flex: 2.5 }]}>{description || 'General Cargo'}</Text>
+                  <Text style={[styles.tdCell, styles.monoText, { flex: 1.2, textAlign: 'right' }]}>2.5 kg</Text>
+                </View>
+              )}
+            </View>
 
-      {/* Cargo Tracking Items Table */}
-      <View style={styles.tableContainer}>
-        <View style={styles.tableHeader}>
-          <Text style={[styles.thCell, { flex: 2 }]}>TRACKING ID</Text>
-          <Text style={[styles.thCell, { flex: 1 }]}>PACKAGE</Text>
-          <Text style={[styles.thCell, { flex: 2.5 }]}>CONTENTS</Text>
-          <Text style={[styles.thCell, { flex: 1.2, textAlign: 'right' }]}>WEIGHT</Text>
-        </View>
+            {/* Non-last page spacer */}
+            {!isLastPage && <View style={styles.nonLastPageSpacer} />}
 
-        {parcels.length > 0 ? (
-          parcels.map((parcel, idx) => (
-            <View key={parcel.trackingId || idx} style={styles.tableRow}>
-              <Text style={[styles.tdCell, styles.monoText, { flex: 2 }]}>
-                {parcel.trackingId}
+            {/* Final Page Summary and Signatures */}
+            {isLastPage && (
+              <>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryItem}>
+                    <Text style={styles.summaryLabel}>Parcel Qty: </Text>
+                    <Text style={styles.summaryValue}>{totalQuantity}</Text>
+                  </Text>
+                  <Text style={styles.summaryItem}>
+                    <Text style={styles.summaryLabel}>Truck: </Text>
+                    <Text style={styles.summaryValue}>{vehiclePlate || manifest.truckPlate || manifest.plateNumber || '-'}</Text>
+                  </Text>
+                </View>
+
+                <View style={styles.signaturesRow}>
+                  <View style={styles.sigCol}>
+                    <Text style={styles.sigEyebrow}>RELEASED BY</Text>
+                    <View style={styles.sigLineContainer}>
+                      <Text style={styles.sigAdminName}>{releasedByAdminName || 'Hauler Staff'}</Text>
+                      <View style={styles.sigLine} />
+                    </View>
+                    <Text style={styles.sigSubLabel}>Signature</Text>
+                  </View>
+
+                  <View style={[styles.sigCol, styles.sigColRight]}>
+                    <Text style={styles.sigEyebrow}>CLIENT SIGNATURE AND PRINTED NAME</Text>
+                    <View style={styles.sigLineContainer}>
+                      {isCompleted && signedBy ? (
+                        <Text style={styles.sigAdminName}>{signedBy}</Text>
+                      ) : (
+                        <View style={styles.sigBlankSpacer} />
+                      )}
+                      <View style={styles.sigLine} />
+                    </View>
+                    <View style={styles.sigClientMetaRight}>
+                      <Text style={styles.sigMetaLabel}>
+                        Date:{' '}
+                        <Text style={styles.sigMetaValue}>
+                          {isCompleted && signedDate ? signedDate : '_________________'}
+                        </Text>
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </>
+            )}
+
+            {/* Bottom Footnote on EVERY Sheet */}
+            <View style={[styles.pageFootnoteRow, isLastPage && styles.pageFootnoteLast]}>
+              <Text style={styles.pageFootnoteText}>
+                Waybill {waybillId || shipmentId} | Manifest for {recipientName || 'Consignee'}
               </Text>
-              <Text style={[styles.tdCell, { flex: 1 }]}>
-                {parcel.packageNumber || `${idx + 1} of ${totalQuantity}`}
-              </Text>
-              <Text style={[styles.tdCell, { flex: 2.5 }]} numberOfLines={1}>
-                {description || 'General Cargo'}
-              </Text>
-              <Text style={[styles.tdCell, styles.monoText, { flex: 1.2, textAlign: 'right' }]}>
-                {parcel.weightKg !== undefined ? `${Number(parcel.weightKg).toFixed(1)} kg` : '2.5 kg'}
+              <Text style={styles.pageNumberText}>
+                Page {pageNumber} of {totalPages}
               </Text>
             </View>
-          ))
-        ) : (
-          <View style={styles.tableRow}>
-            <Text style={[styles.tdCell, styles.monoText, { flex: 2 }]}>
-              TRK-PENDING
-            </Text>
-            <Text style={[styles.tdCell, { flex: 1 }]}>1 of {totalQuantity}</Text>
-            <Text style={[styles.tdCell, { flex: 2.5 }]}>{description || 'General Cargo'}</Text>
-            <Text style={[styles.tdCell, styles.monoText, { flex: 1.2, textAlign: 'right' }]}>2.5 kg</Text>
           </View>
-        )}
-      </View>
-
-      {/* Summary Row */}
-      <View style={styles.summaryRow}>
-        <Text style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>Parcel Qty: </Text>
-          <Text style={styles.summaryValue}>{totalQuantity}</Text>
-        </Text>
-        <Text style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>Hauler: </Text>
-          <Text style={styles.summaryValue}>{haulerName && haulerName !== '-' ? haulerName : (selectedHauler || '-')}</Text>
-        </Text>
-        <Text style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>Truck: </Text>
-          <Text style={styles.summaryValue}>{vehiclePlate || 'ABC-1234'}</Text>
-        </Text>
-      </View>
-
-      {/* Signature Sections (2 Balanced Columns, Left & Right Aligned) */}
-      <View style={styles.signaturesRow}>
-        {/* Left: RELEASED BY */}
-        <View style={styles.sigCol}>
-          <Text style={styles.sigEyebrow}>RELEASED BY</Text>
-          <View style={styles.sigLineContainer}>
-            <Text style={styles.sigAdminName}>{releasedByAdminName || 'Maria Santos'}</Text>
-            <View style={styles.sigLine} />
-          </View>
-          <Text style={styles.sigSubLabel}>Signature</Text>
-        </View>
-
-        {/* Right: CLIENT SIGNATURE AND PRINTED NAME */}
-        <View style={[styles.sigCol, styles.sigColRight]}>
-          <Text style={styles.sigEyebrow}>CLIENT SIGNATURE AND PRINTED NAME</Text>
-          <View style={styles.sigLineContainer}>
-            {isCompleted && signedBy ? (
-              <Text style={styles.sigAdminName}>{signedBy}</Text>
-            ) : (
-              <View style={styles.sigBlankSpacer} />
-            )}
-            <View style={styles.sigLine} />
-          </View>
-          <View style={styles.sigClientMetaRight}>
-            <Text style={styles.sigMetaLabel}>
-              Date:{' '}
-              <Text style={styles.sigMetaValue}>
-                {isCompleted && signedDate ? signedDate : '_________________'}
-              </Text>
-            </Text>
-          </View>
-        </View>
-      </View>
+        );
+      })}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+    gap: spacing.lg,
+  },
+  stackedPaper: {
+    marginBottom: spacing.lg,
+  },
   emptyCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
@@ -271,119 +310,173 @@ const styles = StyleSheet.create({
     paddingVertical: 32,
     borderRadius: radius.sm,
     width: '100%',
-    maxWidth: 960,
+    maxWidth: 760,
     alignSelf: 'center',
     shadowColor: '#000',
     shadowOpacity: 0.04,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
   },
-  headerRow: {
+  letterheadBlock: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  letterheadLogoWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 3,
+  },
+  brandLogo: {
+    width: 150,
+    height: 48,
+  },
+  logoFallback: {
+    width: 150,
+    height: 48,
+    borderWidth: 2,
+    borderColor: '#111110',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 3,
+  },
+  logoFallbackText: {
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#111110',
+  },
+  companyNameCentered: {
+    fontFamily: fonts.sans,
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#111110',
+    letterSpacing: 0.8,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+  },
+  companySubtextCentered: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    color: colors.inkMuted,
+    marginTop: 1,
+    textAlign: 'center',
+  },
+  letterheadDivider: {
+    borderTopWidth: 1,
+    borderTopColor: '#E1DFD5',
+    height: 0,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  metaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    paddingBottom: spacing.md,
+    paddingTop: 4,
+    marginTop: 4,
+    marginBottom: 4,
   },
-  brandCol: {
+  metaCol: {
+    flex: 1,
+    alignItems: 'flex-start',
+    paddingRight: spacing.md,
+  },
+  deliveryCol: {
+    flex: 1,
+    alignItems: 'flex-end',
+    paddingLeft: spacing.md,
+  },
+  documentTitle: {
+    fontFamily: fonts.sans,
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#111110',
+    letterSpacing: 0.5,
+    marginBottom: 3,
+  },
+  metaLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    marginTop: 1.5,
   },
-  logoMark: {
-    width: 44,
-    height: 44,
-    backgroundColor: colors.black,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.sm,
-  },
-  logoMarkText: {
-    fontFamily: fonts.mono,
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 22,
-  },
-  brandInfo: {
-    gap: 2,
-  },
-  brandTitle: {
-    fontFamily: fonts.sans,
-    fontWeight: '800',
-    fontSize: 16,
-    color: colors.ink,
-    letterSpacing: 0.5,
-  },
-  brandSub: {
+  metaLabel: {
     fontFamily: fonts.sans,
     fontSize: 12,
-    color: colors.inkSoft,
+    color: colors.inkMuted,
   },
-  docCol: {
-    alignItems: 'flex-end',
-    gap: 2,
-  },
-  docTitle: {
+  metaValue: {
     fontFamily: fonts.sans,
-    fontWeight: '800',
-    fontSize: 17,
+    fontSize: 12,
+    color: '#111110',
+    fontWeight: '700',
+  },
+  metaValueMono: {
+    fontFamily: fonts.mono,
+    fontSize: 16,
+    color: '#111110',
+    fontWeight: '900',
+  },
+  returnQrCol: {
+    alignItems: 'center',
+    gap: 4,
+    minWidth: 100,
+  },
+  returnQrLabel: {
+    fontFamily: fonts.mono,
+    fontSize: 9.5,
+    fontWeight: '700',
     color: colors.ink,
     letterSpacing: 0.5,
   },
-  docNumber: {
+  solidDivider: {
+    borderTopWidth: 1.5,
+    borderTopColor: '#111110',
+    height: 0,
+    marginVertical: 10,
+  },
+  sectionEyebrow: {
     fontFamily: fonts.mono,
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: colors.inkSoft,
-  },
-  docDate: {
-    fontFamily: fonts.sans,
-    fontSize: 11.5,
-    color: colors.inkFaint,
-  },
-  divider: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#E1DFD5',
-    marginVertical: spacing.md + 2,
-  },
-  partiesRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: spacing.xl,
-    paddingVertical: spacing.xs,
-  },
-  partyCol: {
-    flex: 1,
-    gap: 3,
-  },
-  partyColRight: {
-    alignItems: 'flex-end',
-    textAlign: 'right',
-  },
-  partyEyebrow: {
-    fontFamily: fonts.mono,
-    fontSize: 10.5,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
     color: colors.inkFaint,
     letterSpacing: 0.8,
     marginBottom: 2,
-    textTransform: 'uppercase',
+    textAlign: 'right',
   },
-  partyName: {
+  consigneeName: {
     fontFamily: fonts.sans,
+    fontSize: 16,
     fontWeight: '800',
-    fontSize: 15,
+    color: '#111110',
+    textAlign: 'right',
+  },
+  consigneeAddress: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
     color: colors.ink,
+    marginTop: 1,
+    textAlign: 'right',
   },
-  partyHub: {
-    fontFamily: fonts.sans,
-    fontWeight: '600',
-    fontSize: 12.5,
-    color: colors.inkSoft,
+  consigneeMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: spacing.lg,
+    marginTop: 4,
   },
-  partyAddress: {
+  consigneeMetaText: {
     fontFamily: fonts.sans,
-    fontSize: 12.5,
-    color: colors.inkSoft,
+    fontSize: 12,
+    color: colors.ink,
+    textAlign: 'right',
+  },
+  consigneeMetaLabel: {
+    color: colors.inkMuted,
+  },
+  consigneeMetaVal: {
+    fontWeight: '700',
+    color: '#111110',
   },
   tableContainer: {
     marginTop: spacing.xs,
@@ -398,22 +491,22 @@ const styles = StyleSheet.create({
   },
   thCell: {
     fontFamily: fonts.mono,
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 13.5,
+    fontWeight: '800',
     color: colors.ink,
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   tableRow: {
     flexDirection: 'row',
-    paddingVertical: 9,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F0EFEA',
     alignItems: 'center',
   },
   tdCell: {
     fontFamily: fonts.sans,
-    fontSize: 12.5,
+    fontSize: 14,
     color: colors.ink,
   },
   monoText: {
@@ -432,7 +525,7 @@ const styles = StyleSheet.create({
   },
   summaryItem: {
     fontFamily: fonts.sans,
-    fontSize: 12.5,
+    fontSize: 13,
   },
   summaryLabel: {
     color: colors.inkFaint,
@@ -459,7 +552,7 @@ const styles = StyleSheet.create({
   },
   sigEyebrow: {
     fontFamily: fonts.mono,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.inkFaint,
     letterSpacing: 0.6,
@@ -473,7 +566,7 @@ const styles = StyleSheet.create({
   },
   sigAdminName: {
     fontFamily: fonts.sans,
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: '700',
     color: colors.ink,
     marginBottom: 2,
@@ -503,7 +596,35 @@ const styles = StyleSheet.create({
   },
   sigMetaValue: {
     fontFamily: fonts.sans,
+    fontSize: 12,
     fontWeight: '600',
     color: colors.ink,
+  },
+  nonLastPageSpacer: {
+    minHeight: 140,
+    flexGrow: 1,
+  },
+  pageFootnoteRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: spacing.md,
+    marginTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: '#E1DFD5',
+  },
+  pageFootnoteLast: {
+    marginTop: spacing.lg,
+  },
+  pageFootnoteText: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    color: colors.inkFaint,
+  },
+  pageNumberText: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.inkFaint,
   },
 });

@@ -42,6 +42,7 @@ public class DataSeeder implements CommandLineRunner {
     private final WeeklyCollectionRepository weeklyCollectionRepository;
     private final SoaRepository soaRepository;
     private final SystemSettingRepository systemSettingRepository;
+    private final WaybillReturnScanRepository waybillReturnScanRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final Environment environment;
 
@@ -61,6 +62,7 @@ public class DataSeeder implements CommandLineRunner {
                       PrintEventRepository printEventRepository, WaybillRepository waybillRepository,
                       WeeklyCollectionRepository weeklyCollectionRepository, SoaRepository soaRepository,
                       SystemSettingRepository systemSettingRepository,
+                      WaybillReturnScanRepository waybillReturnScanRepository,
                       BCryptPasswordEncoder passwordEncoder, Environment environment) {
         this.appUserRepository = appUserRepository;
         this.clientRepository = clientRepository;
@@ -75,6 +77,7 @@ public class DataSeeder implements CommandLineRunner {
         this.weeklyCollectionRepository = weeklyCollectionRepository;
         this.soaRepository = soaRepository;
         this.systemSettingRepository = systemSettingRepository;
+        this.waybillReturnScanRepository = waybillReturnScanRepository;
         this.passwordEncoder = passwordEncoder;
         this.environment = environment;
     }
@@ -85,14 +88,15 @@ public class DataSeeder implements CommandLineRunner {
         if (seedMobilePins && environment.acceptsProfiles(Profiles.of("prod"))) {
             throw new IllegalStateException("app.seed.mobile-pins must not be enabled in production");
         }
-        if (seedWorkflowFixtures && environment.acceptsProfiles(Profiles.of("prod"))) {
+        boolean shouldSeedWorkflow = seedWorkflowFixtures || (seedSampleData && environment.acceptsProfiles(Profiles.of("dev", "workflow")));
+        if (shouldSeedWorkflow && environment.acceptsProfiles(Profiles.of("prod"))) {
             throw new IllegalStateException("app.seed.workflow-fixtures must not be enabled in production");
         }
-        if (!seedWorkflowFixtures) {
+        if (!shouldSeedWorkflow) {
             seedTestProfileFoundation();
             return;
         }
-        seedWorkflowSoaBankDetails();
+        seedWorkflowSystemSettings();
         if (!seedSampleData) return;
         if (seedAdmin) seedUser("U-001", "admin", "admin123", "Maria Santos", UserRole.ADMIN, null, null, null);
 
@@ -100,15 +104,16 @@ public class DataSeeder implements CommandLineRunner {
         AppUser office = seedUser("U-002", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF, null, null, staffMobilePin);
         AppUser courier = seedUser("U-003", "field", "field123", "Carlos Mendoza", UserRole.FIELD_STAFF, StaffType.INTERNAL_TRUCK, null, staffMobilePin);
         AppUser hauler = seedHaulerUser("U-004", "Rogelio Aquino", "Northbound Hauling", staffMobilePin);
-        seedUser("U-005", "hauler2", "field123", "Danilo Cruz", UserRole.FIELD_STAFF, StaffType.HAULER_STAFF, "Cordillera Freight", staffMobilePin);
+        AppUser hauler2 = seedUser("U-005", "hauler2", "field123", "Danilo Cruz", UserRole.FIELD_STAFF, StaffType.HAULER_STAFF, "Cordillera Freight", staffMobilePin);
 
         List<Client> clients = List.of(
-                seedClient("CL-001", "Northbridge Trading", "Unit 402, Trade Tower, Binondo, Manila", "0917-555-0148", "orders@northbridge.ph"),
+                seedClient("CL-001", "Northbridge Trading", "Unit 402, Trade Tower, Binondo, Manila", "0917-555-0148", "orders@northbridge.ph", ChargeModel.PER_PARCEL, new BigDecimal("35.00")),
                 seedClient("CL-002", "Sunrise Hardware", "88 Rizal St., Baguio City", "0918-555-0022", "acctg@sunrisehw.ph"),
-                seedClient("CL-003", "Metro Fashion House", "Session Road, Baguio City", "0999-555-0099", "metro@fashionhouse.ph"),
-                seedClient("CL-004", "Delacruz General Merchandise", "Magsaysay Ave, Baguio City", "0920-555-0077", null));
+                seedClient("CL-003", "Metro Fashion House", "Session Road, Baguio City", "0999-555-0099", "metro@fashionhouse.ph", ChargeModel.PER_PARCEL, new BigDecimal("40.00")),
+                seedClient("CL-004", "Delacruz General Merchandise", "Magsaysay Ave, Baguio City", "0920-555-0077", null),
+                seedClient("CL-005", "Cordillera Highlands Produce", "KM 5 La Trinidad, Benguet", "0928-555-0333", "cordillera@produce.ph", ChargeModel.PER_PARCEL, new BigDecimal("38.00")));
         Vehicle truck = seedVehicle("VH-001", "NCP-2401", "TNL line-haul vehicle");
-        seedVehicle("VH-002", "NCP-2402", "TNL reserve vehicle");
+        Vehicle reserveTruck = seedVehicle("VH-002", "NCP-2402", "TNL reserve vehicle");
 
         int year = LocalDate.now(ZoneOffset.UTC).getYear();
         List<WorkflowFixture> fixtures = List.of(
@@ -125,13 +130,25 @@ public class DataSeeder implements CommandLineRunner {
             if (fixture.sequence() == 4) collectionShipment = shipment;
         }
         if (collectionShipment != null) seedCollectionFixture(collectionShipment, office);
+        seedAdvancedWorkflowShipments(year, clients, office, courier, hauler, hauler2, truck, reserveTruck);
     }
 
-    private void seedWorkflowSoaBankDetails() {
+    private void seedWorkflowSystemSettings() {
         var existingSetting = systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID);
         SystemSetting setting = existingSetting.orElseGet(SystemSetting::new);
         boolean hasChanges = existingSetting.isEmpty();
 
+        if (setting.getVolumetricDivisor() == null) {
+            setting.setVolumetricDivisor(3500);
+            hasChanges = true;
+        } else if (environment.acceptsProfiles(Profiles.of("dev", "workflow")) && setting.getVolumetricDivisor() == 5000) {
+            setting.setVolumetricDivisor(3500);
+            hasChanges = true;
+        }
+        if (setting.getRatePerKilo() == null) {
+            setting.setRatePerKilo(new BigDecimal("45.00"));
+            hasChanges = true;
+        }
         if (setting.getSoaBankName() == null || setting.getSoaBankName().isBlank()) {
             setting.setSoaBankName("BDO Unibank");
             hasChanges = true;
@@ -148,6 +165,10 @@ public class DataSeeder implements CommandLineRunner {
         if (hasChanges) {
             systemSettingRepository.save(setting);
         }
+    }
+
+    private void seedWorkflowSoaBankDetails() {
+        seedWorkflowSystemSettings();
     }
 
     private void seedTestProfileFoundation() {
@@ -200,8 +221,20 @@ public class DataSeeder implements CommandLineRunner {
         return hasUpdatedLegacyCredentials ? appUserRepository.save(haulerUser) : haulerUser;
     }
 
+    private Client seedClient(String id, String name, String address, String contact, String email, ChargeModel defaultRateType, BigDecimal ratePerKilo) {
+        Client client = clientRepository.findById(id).orElseGet(() -> new Client(id, name, address, contact, email));
+        boolean hasChanges = false;
+        if (!name.equals(client.getName())) { client.setName(name); hasChanges = true; }
+        if (!address.equals(client.getAddress())) { client.setAddress(address); hasChanges = true; }
+        if (!contact.equals(client.getContactNumber())) { client.setContactNumber(contact); hasChanges = true; }
+        if (email != null && !email.equals(client.getEmail())) { client.setEmail(email); hasChanges = true; }
+        if (defaultRateType != null && client.getDefaultRateType() != defaultRateType) { client.setDefaultRateType(defaultRateType); hasChanges = true; }
+        if (ratePerKilo != null && (client.getRatePerKilo() == null || client.getRatePerKilo().compareTo(ratePerKilo) != 0)) { client.setRatePerKilo(ratePerKilo); hasChanges = true; }
+        return (hasChanges || client.getCreatedAt() == null) ? clientRepository.save(client) : client;
+    }
+
     private Client seedClient(String id, String name, String address, String contact, String email) {
-        return clientRepository.findById(id).orElseGet(() -> clientRepository.save(new Client(id, name, address, contact, email)));
+        return seedClient(id, name, address, contact, email, ChargeModel.FLAT, null);
     }
 
     private Vehicle seedVehicle(String id, String plate, String description) {
@@ -277,8 +310,16 @@ public class DataSeeder implements CommandLineRunner {
 
     private void seedWaybill(int year, int sequence, Shipment shipment, AppUser office, WaybillStatus status, LocalDateTime timestamp) {
         String waybillId = String.format("WYB-%d-%04d", year, sequence);
-        if (waybillRepository.existsById(waybillId)) return;
-        Waybill waybill = new Waybill(waybillId, shipment, office, "Northbound Hauling");
+        Waybill waybill = waybillRepository.findById(waybillId).orElse(null);
+        if (waybill != null) {
+            List<ParcelUnit> existingUnits = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipment.getShipmentId());
+            for (ParcelUnit unit : existingUnits) {
+                if (unit.getWaybill() == null) unit.setWaybill(waybill);
+            }
+            parcelUnitRepository.saveAll(existingUnits);
+            return;
+        }
+        waybill = new Waybill(waybillId, shipment, office, "Northbound Hauling");
         waybill.setDriverName("Rogelio Aquino");
         waybill.setDriverContact("0917-555-1004");
         waybill.setVehiclePlate("NCP-2401");
@@ -289,6 +330,11 @@ public class DataSeeder implements CommandLineRunner {
             waybill.setSignedAt(timestamp.plusDays(1));
         }
         waybillRepository.save(waybill);
+        List<ParcelUnit> manifestUnits = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipment.getShipmentId());
+        for (ParcelUnit unit : manifestUnits) {
+            if (unit.getWaybill() == null) unit.setWaybill(waybill);
+        }
+        parcelUnitRepository.saveAll(manifestUnits);
     }
 
     private void seedCollectionFixture(Shipment shipment, AppUser office) {
@@ -300,6 +346,305 @@ public class DataSeeder implements CommandLineRunner {
         if (!soaRepository.existsById(soaNo)) soaRepository.save(new Soa(soaNo, null, collection, shipment.getClient(), BigDecimal.ZERO, shipment.getTotalAmount(), BigDecimal.ZERO, null, BigDecimal.ZERO, shipment.getTotalAmount(), office.getFullName(), collectionDate, null));
         shipment.setStatementId(soaNo);
         shipmentRepository.save(shipment);
+    }
+
+    private void seedAdvancedWorkflowShipments(int year, List<Client> clients, AppUser office, AppUser courier, AppUser hauler, AppUser hauler2, Vehicle truck, Vehicle reserveTruck) {
+        seedMultiParcelShipment7(year, clients.get(0), office);
+        seedMultiParcelShipment8(year, clients.get(2), office, courier, hauler);
+        seedMultiParcelShipment9(year, clients.get(1), office, courier, hauler, truck);
+        seedMultiParcelShipment10(year, clients.get(4), office, courier, hauler2, reserveTruck);
+        seedMultiParcelShipment11(year, clients.get(0), office, courier, hauler, truck);
+        seedMultiParcelShipment12(year, clients.get(3), office, courier, hauler2, reserveTruck);
+    }
+
+    private void seedMultiParcelShipment7(int year, Client client, AppUser office) {
+        String shipmentId = String.format("SHP-%d-007", year);
+        if (shipmentRepository.existsById(shipmentId)) return;
+
+        LocalDateTime registeredAt = LocalDate.now(ZoneOffset.UTC).minusDays(1).atTime(10, 30);
+        Shipment shipment = new Shipment(shipmentId, client, "Highland Retailers Hub", "Baguio City", "0917-000-0007", 3,
+                ChargeModel.PER_PARCEL, new BigDecimal("1242.50"), BigDecimal.ZERO, new BigDecimal("1242.50"), false, RegisteredVia.DESKTOP_OFFICE);
+        shipment.setDescription("Workflow fixture 7 - Multi-unit registered shipment with unprinted labels");
+        shipment.setRoute("Manila to TNL Baguio");
+        shipment.setAppliedRatePerKilo(new BigDecimal("35.00"));
+        shipment.setAppliedVolumetricDivisor(3500);
+        shipment.setTotalActualWeight(new BigDecimal("35.50"));
+        shipment.setTotalVolumetricWeight(new BigDecimal("30.71"));
+        shipment.setBillableWeight(new BigDecimal("35.50"));
+        shipment.setDateRegistered(registeredAt);
+        shipment = shipmentRepository.saveAndFlush(shipment);
+
+        List<ParcelUnit> parcels = List.of(
+                new ParcelUnit(String.format("TRK-%d-000007", year), shipment, 1, new BigDecimal("12.00"), new BigDecimal("40.00"), new BigDecimal("25.00"), new BigDecimal("30.00"), new BigDecimal("0.0300")),
+                new ParcelUnit(String.format("TRK-%d-000008", year), shipment, 2, new BigDecimal("8.50"), new BigDecimal("35.00"), new BigDecimal("20.00"), new BigDecimal("25.00"), new BigDecimal("0.0175")),
+                new ParcelUnit(String.format("TRK-%d-000009", year), shipment, 3, new BigDecimal("15.00"), new BigDecimal("50.00"), new BigDecimal("30.00"), new BigDecimal("40.00"), new BigDecimal("0.0600"))
+        );
+        for (ParcelUnit parcel : parcels) {
+            parcel.setCurrentStatus(ParcelStatus.REGISTERED);
+            parcel.setLabelStatus(LabelStatus.NOT_PRINTED);
+            parcelUnitRepository.save(parcel);
+
+            TrackingEvent event = new TrackingEvent(parcel, ParcelStatus.REGISTERED, null, office, "Workflow fixture REGISTERED");
+            event.setEventTimestamp(registeredAt);
+            trackingEventRepository.save(event);
+        }
+    }
+
+    private void seedMultiParcelShipment8(int year, Client client, AppUser office, AppUser courier, AppUser hauler) {
+        String shipmentId = String.format("SHP-%d-008", year);
+        if (shipmentRepository.existsById(shipmentId)) return;
+
+        LocalDateTime registeredAt = LocalDate.now(ZoneOffset.UTC).minusDays(2).atTime(9, 15);
+        Shipment shipment = new Shipment(shipmentId, client, "Session Boutique Manila Express", "Baguio City", "0917-000-0008", 5,
+                ChargeModel.PER_PARCEL, new BigDecimal("1240.00"), BigDecimal.ZERO, new BigDecimal("1240.00"), true, RegisteredVia.DESKTOP_OFFICE);
+        shipment.setDescription("Workflow fixture 8 - Available loading & Rapid Batch generation");
+        shipment.setRoute("Manila to TNL Baguio");
+        shipment.setAppliedRatePerKilo(new BigDecimal("40.00"));
+        shipment.setAppliedVolumetricDivisor(3500);
+        shipment.setTotalActualWeight(new BigDecimal("31.00"));
+        shipment.setTotalVolumetricWeight(new BigDecimal("25.14"));
+        shipment.setBillableWeight(new BigDecimal("31.00"));
+        shipment.setDateRegistered(registeredAt);
+        shipment = shipmentRepository.saveAndFlush(shipment);
+
+        List<ParcelUnit> parcels = List.of(
+                new ParcelUnit(String.format("TRK-%d-000010", year), shipment, 1, new BigDecimal("5.00"), new BigDecimal("30.00"), new BigDecimal("15.00"), new BigDecimal("20.00"), new BigDecimal("0.0090")),
+                new ParcelUnit(String.format("TRK-%d-000011", year), shipment, 2, new BigDecimal("6.00"), new BigDecimal("35.00"), new BigDecimal("20.00"), new BigDecimal("25.00"), new BigDecimal("0.0175")),
+                new ParcelUnit(String.format("TRK-%d-000012", year), shipment, 3, new BigDecimal("4.50"), new BigDecimal("25.00"), new BigDecimal("15.00"), new BigDecimal("20.00"), new BigDecimal("0.0075")),
+                new ParcelUnit(String.format("TRK-%d-000013", year), shipment, 4, new BigDecimal("8.00"), new BigDecimal("40.00"), new BigDecimal("25.00"), new BigDecimal("30.00"), new BigDecimal("0.0300")),
+                new ParcelUnit(String.format("TRK-%d-000014", year), shipment, 5, new BigDecimal("7.50"), new BigDecimal("40.00"), new BigDecimal("20.00"), new BigDecimal("30.00"), new BigDecimal("0.0240"))
+        );
+        for (int i = 0; i < parcels.size(); i++) {
+            ParcelUnit parcel = parcels.get(i);
+            ParcelStatus finalStatus = i < 3 ? ParcelStatus.LOADED_TO_HAULER : ParcelStatus.ARRIVED_AT_TNL;
+            parcel.setCurrentStatus(finalStatus);
+            parcel.setLabelStatus(LabelStatus.PRINTED);
+            parcelUnitRepository.save(parcel);
+
+            seedTrackingHistory(parcel, finalStatus, registeredAt, office, courier, hauler, null);
+            seedPrintHistory(parcel, shipment, LabelStatus.PRINTED, registeredAt, office);
+        }
+        seedPayment(shipment, new BigDecimal("1240.00"), registeredAt.toLocalDate(), office);
+    }
+
+    private void seedMultiParcelShipment9(int year, Client client, AppUser office, AppUser courier, AppUser hauler, Vehicle truck) {
+        String shipmentId = String.format("SHP-%d-009", year);
+        if (shipmentRepository.existsById(shipmentId)) return;
+
+        LocalDateTime registeredAt = LocalDate.now(ZoneOffset.UTC).minusDays(3).atTime(11, 0);
+        Shipment unsaved = new Shipment(shipmentId, client, "Baguio Summit Hardware", "Baguio City", "0917-000-0009", 4,
+                ChargeModel.FLAT, new BigDecimal("1800.00"), BigDecimal.ZERO, new BigDecimal("1800.00"), false, RegisteredVia.DESKTOP_OFFICE);
+        unsaved.setDescription("Workflow fixture 9 - Waybill printing test fixture");
+        unsaved.setRoute("Manila to TNL Baguio");
+        unsaved.setDateRegistered(registeredAt);
+        final Shipment shipment = shipmentRepository.saveAndFlush(unsaved);
+
+        List<ParcelUnit> parcels = List.of(
+                new ParcelUnit(String.format("TRK-%d-000015", year), shipment, 1, new BigDecimal("20.00"), new BigDecimal("50.00"), new BigDecimal("30.00"), new BigDecimal("40.00"), new BigDecimal("0.0600")),
+                new ParcelUnit(String.format("TRK-%d-000016", year), shipment, 2, new BigDecimal("18.00"), new BigDecimal("45.00"), new BigDecimal("30.00"), new BigDecimal("35.00"), new BigDecimal("0.0473")),
+                new ParcelUnit(String.format("TRK-%d-000017", year), shipment, 3, new BigDecimal("15.00"), new BigDecimal("40.00"), new BigDecimal("25.00"), new BigDecimal("30.00"), new BigDecimal("0.0300")),
+                new ParcelUnit(String.format("TRK-%d-000018", year), shipment, 4, new BigDecimal("22.00"), new BigDecimal("55.00"), new BigDecimal("35.00"), new BigDecimal("45.00"), new BigDecimal("0.0866"))
+        );
+        for (ParcelUnit parcel : parcels) {
+            parcel.setCurrentStatus(ParcelStatus.LOADED_TO_HAULER);
+            parcel.setLabelStatus(LabelStatus.PRINTED);
+            parcelUnitRepository.save(parcel);
+
+            seedTrackingHistory(parcel, ParcelStatus.LOADED_TO_HAULER, registeredAt, office, courier, hauler, truck);
+            seedPrintHistory(parcel, shipment, LabelStatus.PRINTED, registeredAt, office);
+        }
+        seedPayment(shipment, new BigDecimal("900.00"), registeredAt.toLocalDate(), office);
+
+        String waybillId = String.format("WYB-%d-%04d", year, 7);
+        Waybill waybill = waybillRepository.findById(waybillId).orElseGet(() -> {
+            Waybill w = new Waybill(waybillId, shipment, hauler, "Northbound Hauling");
+            w.setDriverName("Rogelio Aquino");
+            w.setDriverContact("0917-555-1004");
+            w.setVehiclePlate("NCP-2401");
+            w.setStatus(WaybillStatus.GENERATED);
+            w.setRemarks("Fragile hardware items - handle with care. Gate 2 delivery.");
+            return waybillRepository.save(w);
+        });
+        for (ParcelUnit parcel : parcels) {
+            parcel.setWaybill(waybill);
+        }
+        parcelUnitRepository.saveAll(parcels);
+    }
+
+    private void seedMultiParcelShipment10(int year, Client client, AppUser office, AppUser courier, AppUser hauler2, Vehicle reserveTruck) {
+        String shipmentId = String.format("SHP-%d-010", year);
+        if (shipmentRepository.existsById(shipmentId)) return;
+
+        LocalDateTime registeredAt = LocalDate.now(ZoneOffset.UTC).minusDays(2).atTime(8, 0);
+        Shipment unsaved = new Shipment(shipmentId, client, "Benguet Fresh Mart", "La Trinidad, Benguet", "0917-000-0010", 3,
+                ChargeModel.PER_PARCEL, new BigDecimal("1140.00"), BigDecimal.ZERO, new BigDecimal("1140.00"), true, RegisteredVia.DESKTOP_OFFICE);
+        unsaved.setDescription("Workflow fixture 10 - Returned waybill recommendation rail");
+        unsaved.setRoute("Manila to La Trinidad Hub");
+        unsaved.setAppliedRatePerKilo(new BigDecimal("38.00"));
+        unsaved.setAppliedVolumetricDivisor(3500);
+        unsaved.setTotalActualWeight(new BigDecimal("30.00"));
+        unsaved.setTotalVolumetricWeight(new BigDecimal("20.37"));
+        unsaved.setBillableWeight(new BigDecimal("30.00"));
+        unsaved.setDateRegistered(registeredAt);
+        final Shipment shipment = shipmentRepository.saveAndFlush(unsaved);
+
+        List<ParcelUnit> parcels = List.of(
+                new ParcelUnit(String.format("TRK-%d-000019", year), shipment, 1, new BigDecimal("10.00"), new BigDecimal("35.00"), new BigDecimal("25.00"), new BigDecimal("30.00"), new BigDecimal("0.0263")),
+                new ParcelUnit(String.format("TRK-%d-000020", year), shipment, 2, new BigDecimal("12.00"), new BigDecimal("40.00"), new BigDecimal("25.00"), new BigDecimal("30.00"), new BigDecimal("0.0300")),
+                new ParcelUnit(String.format("TRK-%d-000021", year), shipment, 3, new BigDecimal("8.00"), new BigDecimal("30.00"), new BigDecimal("20.00"), new BigDecimal("25.00"), new BigDecimal("0.0150"))
+        );
+        for (ParcelUnit parcel : parcels) {
+            parcel.setCurrentStatus(ParcelStatus.LOADED_TO_HAULER);
+            parcel.setLabelStatus(LabelStatus.PRINTED);
+            parcelUnitRepository.save(parcel);
+
+            seedTrackingHistory(parcel, ParcelStatus.LOADED_TO_HAULER, registeredAt, office, courier, hauler2, reserveTruck);
+            seedPrintHistory(parcel, shipment, LabelStatus.PRINTED, registeredAt, office);
+        }
+        seedPayment(shipment, new BigDecimal("1140.00"), registeredAt.toLocalDate(), office);
+
+        String waybillId = String.format("WYB-%d-%04d", year, 8);
+        Waybill waybill = waybillRepository.findById(waybillId).orElseGet(() -> {
+            Waybill w = new Waybill(waybillId, shipment, hauler2, "Cordillera Freight");
+            w.setDriverName("Danilo Cruz");
+            w.setDriverContact("0920-555-1005");
+            w.setVehiclePlate("NCP-2402");
+            w.setStatus(WaybillStatus.SENT_TO_HAULER);
+            w.setSentBy(hauler2);
+            w.setDispatchedAt(registeredAt.plusHours(6));
+            w.setRemarks("Perishable produce - priority transit.");
+            return waybillRepository.save(w);
+        });
+        for (ParcelUnit parcel : parcels) {
+            parcel.setWaybill(waybill);
+        }
+        parcelUnitRepository.saveAll(parcels);
+    }
+
+    private void seedMultiParcelShipment11(int year, Client client, AppUser office, AppUser courier, AppUser hauler, Vehicle truck) {
+        String shipmentId = String.format("SHP-%d-011", year);
+        if (shipmentRepository.existsById(shipmentId)) return;
+
+        LocalDateTime registeredAt = LocalDate.now(ZoneOffset.UTC).minusDays(1).atTime(13, 30);
+        Shipment unsaved = new Shipment(shipmentId, client, "Mountain View General Store", "Baguio City", "0917-000-0011", 2,
+                ChargeModel.PER_PARCEL, new BigDecimal("700.00"), BigDecimal.ZERO, new BigDecimal("700.00"), true, RegisteredVia.DESKTOP_OFFICE);
+        unsaved.setDescription("Workflow fixture 11 - Returned waybill recent options rail");
+        unsaved.setRoute("Manila to TNL Baguio");
+        unsaved.setAppliedRatePerKilo(new BigDecimal("35.00"));
+        unsaved.setAppliedVolumetricDivisor(3500);
+        unsaved.setTotalActualWeight(new BigDecimal("20.00"));
+        unsaved.setTotalVolumetricWeight(new BigDecimal("13.57"));
+        unsaved.setBillableWeight(new BigDecimal("20.00"));
+        unsaved.setDateRegistered(registeredAt);
+        final Shipment shipment = shipmentRepository.saveAndFlush(unsaved);
+
+        List<ParcelUnit> parcels = List.of(
+                new ParcelUnit(String.format("TRK-%d-000022", year), shipment, 1, new BigDecimal("9.00"), new BigDecimal("35.00"), new BigDecimal("20.00"), new BigDecimal("25.00"), new BigDecimal("0.0175")),
+                new ParcelUnit(String.format("TRK-%d-000023", year), shipment, 2, new BigDecimal("11.00"), new BigDecimal("40.00"), new BigDecimal("25.00"), new BigDecimal("30.00"), new BigDecimal("0.0300"))
+        );
+        for (ParcelUnit parcel : parcels) {
+            parcel.setCurrentStatus(ParcelStatus.LOADED_TO_HAULER);
+            parcel.setLabelStatus(LabelStatus.PRINTED);
+            parcelUnitRepository.save(parcel);
+
+            seedTrackingHistory(parcel, ParcelStatus.LOADED_TO_HAULER, registeredAt, office, courier, hauler, truck);
+            seedPrintHistory(parcel, shipment, LabelStatus.PRINTED, registeredAt, office);
+        }
+        seedPayment(shipment, new BigDecimal("700.00"), registeredAt.toLocalDate(), office);
+
+        String waybillId = String.format("WYB-%d-%04d", year, 9);
+        Waybill waybill = waybillRepository.findById(waybillId).orElseGet(() -> {
+            Waybill w = new Waybill(waybillId, shipment, hauler, "Northbound Hauling");
+            w.setDriverName("Rogelio Aquino");
+            w.setDriverContact("0917-555-1004");
+            w.setVehiclePlate("NCP-2401");
+            w.setStatus(WaybillStatus.SENT_TO_HAULER);
+            w.setSentBy(hauler);
+            w.setDispatchedAt(registeredAt.plusHours(4));
+            w.setRemarks("Standard delivery - check invoice upon handover.");
+            return waybillRepository.save(w);
+        });
+        for (ParcelUnit parcel : parcels) {
+            parcel.setWaybill(waybill);
+        }
+        parcelUnitRepository.saveAll(parcels);
+    }
+
+    private void seedMultiParcelShipment12(int year, Client client, AppUser office, AppUser courier, AppUser hauler2, Vehicle reserveTruck) {
+        String shipmentId = String.format("SHP-%d-012", year);
+        if (shipmentRepository.existsById(shipmentId)) return;
+
+        LocalDateTime registeredAt = LocalDate.now(ZoneOffset.UTC).minusDays(3).atTime(9, 0);
+        Shipment unsaved = new Shipment(shipmentId, client, "La Trinidad Commercial Center", "La Trinidad, Benguet", "0917-000-0012", 4,
+                ChargeModel.FLAT, new BigDecimal("1600.00"), BigDecimal.ZERO, new BigDecimal("1600.00"), true, RegisteredVia.DESKTOP_OFFICE);
+        unsaved.setDescription("Workflow fixture 12 - Split waybill partial completion (2/4 Completed)");
+        unsaved.setRoute("Manila to La Trinidad Hub");
+        unsaved.setDateRegistered(registeredAt);
+        final Shipment shipment = shipmentRepository.saveAndFlush(unsaved);
+
+        List<ParcelUnit> parcels = List.of(
+                new ParcelUnit(String.format("TRK-%d-000024", year), shipment, 1, new BigDecimal("10.00"), new BigDecimal("35.00"), new BigDecimal("25.00"), new BigDecimal("30.00"), new BigDecimal("0.0263")),
+                new ParcelUnit(String.format("TRK-%d-000025", year), shipment, 2, new BigDecimal("10.00"), new BigDecimal("35.00"), new BigDecimal("25.00"), new BigDecimal("30.00"), new BigDecimal("0.0263")),
+                new ParcelUnit(String.format("TRK-%d-000026", year), shipment, 3, new BigDecimal("10.00"), new BigDecimal("35.00"), new BigDecimal("25.00"), new BigDecimal("30.00"), new BigDecimal("0.0263")),
+                new ParcelUnit(String.format("TRK-%d-000027", year), shipment, 4, new BigDecimal("10.00"), new BigDecimal("35.00"), new BigDecimal("25.00"), new BigDecimal("30.00"), new BigDecimal("0.0263"))
+        );
+        for (int i = 0; i < parcels.size(); i++) {
+            ParcelUnit parcel = parcels.get(i);
+            ParcelStatus finalStatus = i < 2 ? ParcelStatus.COMPLETED : ParcelStatus.LOADED_TO_HAULER;
+            parcel.setCurrentStatus(finalStatus);
+            parcel.setLabelStatus(LabelStatus.PRINTED);
+            parcelUnitRepository.save(parcel);
+
+            seedTrackingHistory(parcel, finalStatus, registeredAt, office, courier, hauler2, reserveTruck);
+            seedPrintHistory(parcel, shipment, LabelStatus.PRINTED, registeredAt, office);
+        }
+        seedPayment(shipment, new BigDecimal("1600.00"), registeredAt.toLocalDate(), office);
+
+        // Split Waybill A: WYB-%d-0010 (SIGNED_COMPLETED, Units 24 & 25)
+        String waybill10Id = String.format("WYB-%d-%04d", year, 10);
+        Waybill waybill10 = waybillRepository.findById(waybill10Id).orElseGet(() -> {
+            Waybill w = new Waybill(waybill10Id, shipment, hauler2, "Cordillera Freight");
+            w.setDriverName("Danilo Cruz");
+            w.setDriverContact("0920-555-1005");
+            w.setVehiclePlate("NCP-2402");
+            w.setStatus(WaybillStatus.SIGNED_COMPLETED);
+            w.setSentBy(hauler2);
+            w.setDispatchedAt(registeredAt.plusHours(4));
+            w.setCompletedBy(hauler2);
+            w.setSignedBy("Juan Dela Cruz");
+            w.setSignedAt(registeredAt.plusDays(2));
+            w.setRemarks("Batch A delivered and signed.");
+            return waybillRepository.save(w);
+        });
+        parcels.get(0).setWaybill(waybill10);
+        parcels.get(1).setWaybill(waybill10);
+
+        if (waybillReturnScanRepository != null) {
+            for (int i = 0; i < 2; i++) {
+                ParcelUnit p = parcels.get(i);
+                if (!waybillReturnScanRepository.existsByWaybill_WaybillIdAndParcel_TrackingId(waybill10Id, p.getTrackingId())) {
+                    waybillReturnScanRepository.save(new WaybillReturnScan(waybill10, p, hauler2));
+                }
+            }
+        }
+
+        // Split Waybill B: WYB-%d-0011 (SENT_TO_HAULER, Units 26 & 27)
+        String waybill11Id = String.format("WYB-%d-%04d", year, 11);
+        Waybill waybill11 = waybillRepository.findById(waybill11Id).orElseGet(() -> {
+            Waybill w = new Waybill(waybill11Id, shipment, hauler2, "Cordillera Freight");
+            w.setDriverName("Danilo Cruz");
+            w.setDriverContact("0920-555-1005");
+            w.setVehiclePlate("NCP-2402");
+            w.setStatus(WaybillStatus.SENT_TO_HAULER);
+            w.setSentBy(hauler2);
+            w.setDispatchedAt(registeredAt.plusDays(1).plusHours(2));
+            w.setRemarks("Batch B in transit.");
+            return waybillRepository.save(w);
+        });
+        parcels.get(2).setWaybill(waybill11);
+        parcels.get(3).setWaybill(waybill11);
+
+        parcelUnitRepository.saveAll(parcels);
     }
 
     private record WorkflowFixture(int sequence, Client client, String recipient, ParcelStatus status, LabelStatus labelStatus, BigDecimal total, BigDecimal paid, WaybillStatus waybillStatus) {

@@ -40,6 +40,9 @@ const webSelectStyle = {
   backgroundColor: 'transparent',
   padding: '9px 12px',
   outline: 'none',
+  width: '100%',
+  maxWidth: '100%',
+  cursor: 'pointer',
 };
 
 const styles = StyleSheet.create({
@@ -70,6 +73,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     backgroundColor: colors.surface,
     minWidth: 130,
+    maxWidth: 240,
     justifyContent: 'center',
   },
 });

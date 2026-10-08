@@ -548,12 +548,15 @@ public class ShipmentServiceImpl implements ShipmentService {
         resp.setBillableWeightKg(billableWeight);
 
         // Waybill summary
-        Waybill waybill = waybillRepository.findByShipment_ShipmentId(shipment.getShipmentId()).orElse(null);
+        List<Waybill> shipmentWaybills = waybillRepository.findByShipment_ShipmentIdOrderByGeneratedAtDesc(shipment.getShipmentId());
+        Waybill waybill = shipmentWaybills.isEmpty() ? null : shipmentWaybills.get(0);
         if (waybill != null) {
             String wbStatusLabel = waybill.getStatus() == com.tnl.logistics.model.WaybillStatus.SIGNED_COMPLETED
                     ? "Waybill: Signed / Completed"
                     : (waybill.getStatus() == com.tnl.logistics.model.WaybillStatus.SENT_TO_HAULER ? "Waybill: Sent to Hauler" : "Waybill: Generated");
-            resp.setWaybillStatus(wbStatusLabel);
+            long completedCount = parcels.stream().filter(parcel -> parcel.getCurrentStatus() == ParcelStatus.COMPLETED).count();
+            resp.setWaybillStatus(completedCount > 0 && completedCount < parcels.size()
+                    ? "Waybills: " + completedCount + " of " + parcels.size() + " completed" : wbStatusLabel);
             resp.setHauler(waybill.getHaulerName());
             resp.setWaybillGeneratedDate(waybill.getGeneratedAt() != null ? waybill.getGeneratedAt().format(DATE_FORMATTER) : "—");
             resp.setSignedBy(waybill.getSignedBy());
@@ -917,7 +920,7 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         if (counts.containsKey(ParcelStatus.COMPLETED)) {
             long c = counts.get(ParcelStatus.COMPLETED);
-            return new RollupStatus("Completed", c + " / " + total + " Completed");
+            return new RollupStatus(c == total ? "Completed" : "Partially Completed", c + " / " + total + " Completed");
         }
         if (counts.containsKey(ParcelStatus.LOADED_TO_HAULER)) {
             long c = counts.get(ParcelStatus.LOADED_TO_HAULER);

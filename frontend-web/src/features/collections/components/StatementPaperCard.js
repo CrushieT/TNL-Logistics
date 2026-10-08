@@ -168,6 +168,9 @@ export default function StatementPaperCard({
               <Text style={styles.companySubtextCentered}>{brandSubtext}</Text>
             </View>
 
+            {/* Hairline Divider below Letterhead */}
+            <View style={styles.letterheadDivider} />
+
             {/* Document Meta Row: Title on Left, SOA Metadata on Right */}
             <View style={styles.metaRow}>
               <View style={styles.titleCol}>
@@ -190,9 +193,6 @@ export default function StatementPaperCard({
               </View>
             </View>
 
-            {/* Solid Black Divider Line */}
-            <View style={styles.solidDivider} />
-
             {/* Bill To & Collection Week Information Row (Rendered on Every Page) */}
             <View style={styles.infoRow}>
               <View style={styles.billToCol}>
@@ -214,6 +214,9 @@ export default function StatementPaperCard({
                 </Text>
               </View>
             </View>
+
+            {/* Single Solid Black Divider Line */}
+            <View style={styles.solidDivider} />
 
             {/* Itemized Shipments Table */}
             <View style={styles.tableContainer}>
@@ -413,14 +416,19 @@ const styles = StyleSheet.create({
     marginTop: 1,
     textAlign: 'center',
   },
+  letterheadDivider: {
+    borderTopWidth: 1,
+    borderTopColor: '#E1DFD5',
+    height: 0,
+    marginTop: 6,
+    marginBottom: 4,
+  },
   metaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    paddingTop: 5,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
-    marginBottom: 1,
+    paddingTop: 4,
+    marginBottom: 4,
   },
   titleCol: {
     justifyContent: 'flex-end',

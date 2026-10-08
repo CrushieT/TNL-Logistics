@@ -24,10 +24,16 @@ public interface ParcelUnitRepository extends JpaRepository<ParcelUnit, String> 
 
     List<ParcelUnit> findByShipment_ShipmentIdOrderBySeqAsc(String shipmentId);
 
+    List<ParcelUnit> findByWaybill_WaybillIdOrderBySeqAsc(String waybillId);
+
     List<ParcelUnit> findByShipment_ShipmentIdAndTrackingIdIn(String shipmentId, Collection<String> trackingIds);
 
     @Query("SELECT p FROM ParcelUnit p LEFT JOIN FETCH p.currentVehicle WHERE p.shipment.shipmentId IN :shipmentIds ORDER BY p.seq ASC")
     List<ParcelUnit> findByShipment_ShipmentIdInOrderBySeqAsc(@Param("shipmentIds") Collection<String> shipmentIds);
+
+    @Query("SELECT p.waybill.waybillId, COUNT(p) FROM ParcelUnit p " +
+           "WHERE p.waybill.waybillId IN :waybillIds GROUP BY p.waybill.waybillId")
+    List<Object[]> countByWaybillIds(@Param("waybillIds") Collection<String> waybillIds);
 
     long countByCurrentVehicle_VehicleIdAndCurrentStatus(String vehicleId, com.tnl.logistics.model.ParcelStatus currentStatus);
 

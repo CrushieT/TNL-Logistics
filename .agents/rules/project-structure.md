@@ -14,7 +14,7 @@ tnl-logistics/
 │   └── railway-deployment-runbook.md
 ├── .agents/
 │   └── rules/
-│       ├── build-plan.md             # Master 6-Phase development roadmap & progress tracking
+│       ├── build-plan.md             # Master development roadmap & progress tracking
 │       ├── git-conventions.md        # Git workflow, branch naming & commit rules
 │       ├── hardening-plan.md         # Post-review system hardening & lifecycle remediation plan
 │       ├── karpathy-guidelines.md    # LLM coding best practices
@@ -40,7 +40,7 @@ tnl-logistics/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
 │   │   │       ├── application-loadtest.properties
-│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V33; V33 adds nullable SOA bank-payment settings)
+│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V35; V35 records returned QR scans)
 │   │   └── test/                        # Integration and unit test suites, including AdminConsoleAuthorizationIntegrationTest and scanner API coverage
 │   └── pom.xml
 │
@@ -66,7 +66,8 @@ tnl-logistics/
 │   │   │   ├── statements/
 │   │   │   │   └── print.js         # Screen 22 Dedicated isolated printable SOA document
 │   │   │   ├── waybills/            # Waybills & printable manifest
-│   │   │   │   └── index.js         # Screens 23-25 Waybill workflow & printable manifest
+│   │   │   │   ├── index.js         # Paginated admin waybill directory
+│   │   │   │   └── [id].js          # Dedicated printable waybill manifest detail
 │   │   │   ├── reports.js           # Screen 26 Operational & Financial Reports
 │   │   │   ├── reports/
 │   │   │   │   └── print.js         # Dedicated isolated printable report document
@@ -77,12 +78,13 @@ tnl-logistics/
 │   │   │   ├── shipments/           # ClientSelectDropdown, ParcelUnitsEditor, ShipmentPricingSummary, parcelPagination.mjs, registrationCalculations.mjs, PrintLabelsModal, LabelPreview, durable outbox & isolated thermal print service
 │   │   │   ├── reports/             # Operational & financial report cards, PrintableReportDocument, reportPrintModel.mjs
 │   │   │   ├── collections/         # SOA components, API services, pagination, and hardened two-copy statementPrintModel.mjs
+│   │   │   ├── waybills/            # Waybill table, manifest, directory helpers, API client, and two-copy print service
 │   │   │   └── settings/            # Settings components plus shared SOA bank-detail normalization and validation
 │   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sessionCore.mjs, sseClient.js, sseClientCore.mjs)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
 │   │   ├── utils/                   # Shared QR facade
 │   │   └── vendor/qrcodegen/        # Vendored Project Nayuki QR generator
-│   ├── tests/                       # Web unit suites, including statementPrint.test.mjs for bank validation, print guards, logo readiness, and two-copy pagination
+│   ├── tests/                       # Web unit suites, including waybill directory, route, and two-copy print coverage
 │   ├── assets/                      # favicon.png, tracking-logo.png
 │   ├── app.json                     # Expo web configuration
 │   ├── package.json
@@ -108,6 +110,7 @@ tnl-logistics/
 │   │   │       │   └── parcel/
 │   │   │       │       └── [trackingId].js # Screen 40 Single Parcel Details & Scan Audit Timeline
 │   │   │       ├── scan.js           # Screen 45 online-only camera QR scanner with in-memory Rapid Batch
+│   │   │       ├── waybills.js       # Hauler Staff split waybill loading, Rapid Batch manifest queue, expo-print 2-copy A4 printing, driver handover, and return scan verification
 │   │   │       ├── settings/          # Screens 53–55 Mobile Account & Security
 │   │   │       │   ├── index.js       # Screen 53 account, session, and bound-device overview
 │   │   │       │   ├── password.js    # Screen 54 in-app password rotation
@@ -118,12 +121,13 @@ tnl-logistics/
 │   │   ├── components/               # Shared UI atoms (BackButton, Keypad, PinIndicator, PressableScale, ActionCard, MetricCard, NoticeBanner, StatusModal, QRCodeGenerator, ThermalLabelPreviewModal)
 │   │   │   ├── common/
 │   │   │   └── layout/               # MobileHeader
-│   │   ├── features/                 # Domain feature slices (auth, office, field, shipments, printer, scanner, tracking-history, settings)
+│   │   ├── features/                 # Domain feature slices (auth, office, field, shipments, printer, scanner, tracking-history, waybills, settings)
 │   │   │   ├── auth/services/        # Auth API, secure storage transitions, and pure cold-launch/PIN lifecycle helpers
 │   │   │   ├── settings/             # Account/security flow helpers and reusable settings components
 │   │   │   ├── shipments/            # Shipment registration with ParcelUnitsEditor and parcelPagination helpers, explorer, detail screens, and barcode scanner modal
 │   │   │   ├── printer/              # Driver isolation, audit outbox, ESC/POS formatter, and serialized PrinterContext
 │   │   │   ├── scanner/              # Field camera scanner (ScanViewfinder, SingleScanReview, BatchScanPanel, ScanResultPanel, scannerFlow.mjs, trackingScanApi.js, haptics.js, hapticsCore.mjs)
+│   │   │   ├── waybills/             # Split waybill client (waybillApi.js) and 2-copy portrait A4 print generator (printWaybill.mjs)
 │   │   │   ├── tracking-history/     # Field personal scan feed, metrics, parcel summary, personal timeline, pure flow logic (trackingHistoryFlow.mjs), request coordinator (trackingHistoryRequestCoordinator.mjs), and API client (trackingHistoryApi.js)
 │   │   ├── services/
 │   │   │   ├── api/                  # Axios client plus sessionHandling.mjs retry and redaction helpers
@@ -170,9 +174,35 @@ tnl-logistics/
 
 ### Workflow & Load Testing
 
-- Flyway migration inventory spans `V1` through `V33`; `V31` adds global rating snapshots, `V32` adds the nullable client rate, and `V33` adds nullable SOA bank-payment settings without seeded account data.
+- Flyway migration inventory spans V1 through V35; V34 adds split-waybill membership and legacy backfill, and V35 records returned QR scans.
 - `backend/src/main/resources/application-workflow.properties` selects the isolated `tnl_workflow` database and enables the production-shaped workflow fixtures.
 - `docker-compose.workflow.yml` overrides the default Compose stack for the same isolated workflow profile.
 - `backend/src/main/resources/application-loadtest.properties` selects the isolated `tnl_loadtest` database with configurable HikariCP concurrency tuning (default pool size 10), strict Hibernate `ddl-auto=validate`, and opt-in deterministic seeder (`LoadTestDataSeeder.java`).
 - `docker-compose.loadtest.yml` spins up `mysql-loadtest` (port 3307, 512M RAM / 0.5 vCPU) and `backend-loadtest` (port 8082, 512M RAM / 0.5 vCPU with Serial GC) using `.env.loadtest`.
 - `load-tests/` provides k6 smoke, 25-user baseline, and 20-courier + 1-admin realistic hybrid simulation scripts targeting `http://localhost:8082` with JWT credential sanitization.
+
+### Combined Phases 3-4 additions
+
+- `backend/src/main/java/com/tnl/logistics/dto/WaybillGenerationRequest.java`: selected-unit generation request.
+- `backend/src/main/resources/db/migration/V34__split_waybill_manifests.sql`: split manifests and legacy backfill.
+- `backend/src/test/java/com/tnl/logistics/controller/SplitWaybillIntegrationTest.java`: split-waybill workflow tests.
+- `frontend-mobile/src/app/(main)/waybills.js`: Hauler Staff loading, handoff, printing, exact lookup, and printed-waybill QR return confirmation screen.
+- `frontend-mobile/src/features/waybills/waybillApi.js`: waybill API calls.
+- `frontend-mobile/src/features/waybills/printWaybill.mjs` and `printWaybill.test.mjs`: two-copy A4 print model and tests.
+- `frontend-mobile/src/features/waybills/waybillReturnFlow.mjs` and `frontend-mobile/tests/waybillReturn.test.mjs`: strict QR parsing and completion-unlock rules.
+- `frontend-web/src/app/waybills/index.js`: Admin waybill lookup and selected-manifest printing.
+- `backend/src/main/resources/db/migration/V35__record_waybill_return_scans.sql` and its model/repository remain for historical return-scan records; the active return-scan endpoint is retired.
+- `frontend-web/src/features/waybills/services/waybillPrint.mjs` and `waybillPrint.test.mjs`: exact-manifest two-copy A4 print model with identical return-confirmation QRs and pagination tests.
+
+### Mobile shipment-option pagination additions
+
+- `backend/src/main/java/com/tnl/logistics/dto/PageResponse.java`: stable top-level page metadata response used by mobile shipment options.
+- `backend/src/test/java/com/tnl/logistics/controller/WaybillShipmentOptionsIntegrationTest.java`: pagination, ordering, search, bounds, empty-result, and authorization coverage.
+- `frontend-mobile/src/features/waybills/shipmentOptionsFlow.mjs`: pure page merging, query normalization, end detection, and cancellable request coordination.
+- `frontend-mobile/tests/shipmentOptions.test.mjs`: regression coverage for shipment-option pagination and stale-response protection.
+
+### Mobile returned waybill option pagination additions
+
+- `backend/src/main/java/com/tnl/logistics/dto/WaybillOptionResponse.java`: lightweight projection for returned waybill options (waybill ID, shipment ID, parcel count, status, status label, generated timestamp).
+- `frontend-mobile/src/features/waybills/waybillOptionsFlow.mjs`: pure option parameter construction, page merging, recommendation bounds, and cancellable request coordination.
+- `frontend-mobile/tests/waybillOptions.test.mjs`: unit tests for returned waybill pagination, recommendation capping, and cancellation.
