@@ -1,9 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
+  PanResponder,
   Platform,
   ScrollView,
   StyleSheet,
@@ -62,6 +65,19 @@ import {
 } from '../../features/waybills/waybillReturnFlow.mjs';
 import { colors, typography, spacing, radius } from '../../theme';
 
+const CAMERA_HEIGHTS = [0, 160, 280];
+const CAMERA_HEIGHT_LABELS = ['Collapsed', 'Compact', 'Expanded'];
+const CAMERA_TAP_THRESHOLD = 8;
+const DEFAULT_CAMERA_HEIGHT_INDEX = CAMERA_HEIGHTS.length - 1;
+
+function findNearestCameraHeightIndex(height) {
+  return CAMERA_HEIGHTS.reduce((nearestIndex, cameraHeight, index) => (
+    Math.abs(cameraHeight - height) < Math.abs(CAMERA_HEIGHTS[nearestIndex] - height)
+      ? index
+      : nearestIndex
+  ), 0);
+}
+
 export default function HaulerWaybillsScreen() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
@@ -113,10 +129,17 @@ export default function HaulerWaybillsScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [cameraHeightIndex, setCameraHeightIndex] = useState(DEFAULT_CAMERA_HEIGHT_INDEX);
   const [generationKey, setGenerationKey] = useState(() => Crypto.randomUUID());
 
   const scanLockRef = useRef(false);
   const returnContextVersionRef = useRef(0);
+  const cameraHeightIndexRef = useRef(DEFAULT_CAMERA_HEIGHT_INDEX);
+  const cameraDragStartHeightRef = useRef(CAMERA_HEIGHTS[DEFAULT_CAMERA_HEIGHT_INDEX]);
+  const animatedCameraHeight = useRef(
+    new Animated.Value(CAMERA_HEIGHTS[DEFAULT_CAMERA_HEIGHT_INDEX])
+  ).current;
   const shipmentOptionCoordinatorRef = useRef(null);
   if (shipmentOptionCoordinatorRef.current === null) {
     shipmentOptionCoordinatorRef.current = createShipmentOptionRequestCoordinator();
@@ -125,6 +148,95 @@ export default function HaulerWaybillsScreen() {
   if (waybillOptionCoordinatorRef.current === null) {
     waybillOptionCoordinatorRef.current = createWaybillOptionRequestCoordinator();
   }
+
+  const animateCameraToIndex = useCallback((nextIndex) => {
+    const boundedIndex = Math.max(0, Math.min(CAMERA_HEIGHTS.length - 1, nextIndex));
+    cameraHeightIndexRef.current = boundedIndex;
+    setCameraHeightIndex(boundedIndex);
+    animatedCameraHeight.stopAnimation();
+    Animated.spring(animatedCameraHeight, {
+      toValue: CAMERA_HEIGHTS[boundedIndex],
+      stiffness: 260,
+      damping: 28,
+      mass: 0.7,
+      useNativeDriver: false
+    }).start();
+  }, [animatedCameraHeight]);
+
+  const resizeCamera = useCallback((indexDelta) => {
+    animateCameraToIndex(cameraHeightIndexRef.current + indexDelta);
+  }, [animateCameraToIndex]);
+
+  const toggleCameraHeight = useCallback(() => {
+    const currentIndex = cameraHeightIndexRef.current;
+    if (currentIndex === DEFAULT_CAMERA_HEIGHT_INDEX) {
+      animateCameraToIndex(DEFAULT_CAMERA_HEIGHT_INDEX - 1);
+    } else if (currentIndex === 0) {
+      animateCameraToIndex(1);
+    } else {
+      animateCameraToIndex(DEFAULT_CAMERA_HEIGHT_INDEX);
+    }
+  }, [animateCameraToIndex]);
+
+  const cameraDividerPanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => !isKeyboardVisible,
+    onMoveShouldSetPanResponder: (_, gestureState) => (
+      !isKeyboardVisible
+      && Math.abs(gestureState.dy) >= 8
+      && Math.abs(gestureState.dy) > Math.abs(gestureState.dx)
+    ),
+    onPanResponderGrant: () => {
+      animatedCameraHeight.stopAnimation((currentHeight) => {
+        cameraDragStartHeightRef.current = currentHeight;
+      });
+    },
+    onPanResponderMove: (_, gestureState) => {
+      const nextHeight = Math.max(
+        CAMERA_HEIGHTS[0],
+        Math.min(
+          CAMERA_HEIGHTS[DEFAULT_CAMERA_HEIGHT_INDEX],
+          cameraDragStartHeightRef.current + gestureState.dy
+        )
+      );
+      animatedCameraHeight.setValue(nextHeight);
+    },
+    onPanResponderRelease: (_, gestureState) => {
+      if (Math.abs(gestureState.dy) < CAMERA_TAP_THRESHOLD) {
+        toggleCameraHeight();
+      } else {
+        const releasedHeight = Math.max(
+          CAMERA_HEIGHTS[0],
+          Math.min(
+            CAMERA_HEIGHTS[DEFAULT_CAMERA_HEIGHT_INDEX],
+            cameraDragStartHeightRef.current + gestureState.dy
+          )
+        );
+        animateCameraToIndex(findNearestCameraHeightIndex(releasedHeight));
+      }
+    },
+    onPanResponderTerminate: () => {
+      animatedCameraHeight.stopAnimation((currentHeight) => {
+        animateCameraToIndex(findNearestCameraHeightIndex(currentHeight));
+      });
+    }
+  }), [animatedCameraHeight, animateCameraToIndex, isKeyboardVisible, toggleCameraHeight]);
+
+  const handleManualInputFocus = useCallback(() => {
+    animatedCameraHeight.stopAnimation();
+    animatedCameraHeight.setValue(0);
+    setIsKeyboardVisible(true);
+  }, [animatedCameraHeight]);
+
+  const handleCameraAccessibilityAction = useCallback((event) => {
+    if (isKeyboardVisible) return;
+    if (event.nativeEvent.actionName === 'increment') {
+      resizeCamera(1);
+    } else if (event.nativeEvent.actionName === 'decrement') {
+      resizeCamera(-1);
+    } else if (event.nativeEvent.actionName === 'activate') {
+      toggleCameraHeight();
+    }
+  }, [isKeyboardVisible, resizeCamera, toggleCameraHeight]);
 
   // Role restriction: FIELD_STAFF with HAULER_STAFF staff type
   useEffect(() => {
@@ -139,13 +251,28 @@ export default function HaulerWaybillsScreen() {
   useFocusEffect(
     useCallback(() => {
       setIsScreenFocused(true);
+      const keyboardShowSubscription = Keyboard.addListener('keyboardDidShow', () => {
+        animatedCameraHeight.stopAnimation();
+        animatedCameraHeight.setValue(0);
+        setIsKeyboardVisible(true);
+      });
+      const keyboardHideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+        setIsKeyboardVisible(false);
+        animateCameraToIndex(cameraHeightIndexRef.current);
+      });
+
       return () => {
+        keyboardShowSubscription.remove();
+        keyboardHideSubscription.remove();
+        animatedCameraHeight.stopAnimation();
+        animatedCameraHeight.setValue(CAMERA_HEIGHTS[cameraHeightIndexRef.current]);
         returnContextVersionRef.current += 1;
         setIsScreenFocused(false);
+        setIsKeyboardVisible(false);
         setTorchEnabled(false);
         setConfirmedWaybillId(null);
       };
-    }, [])
+    }, [animatedCameraHeight, animateCameraToIndex])
   );
 
   useEffect(() => {
@@ -435,6 +562,7 @@ export default function HaulerWaybillsScreen() {
   const handleSelectShipment = async (chosenId) => {
     const cleanId = String(chosenId || '').trim().toUpperCase();
     if (!cleanId) return;
+    Keyboard.dismiss();
     shipmentOptionCoordinatorRef.current.cancelAll();
     setIsLoadingShipments(false);
     setIsLoadingMoreShipments(false);
@@ -483,6 +611,21 @@ export default function HaulerWaybillsScreen() {
     setNotice('');
   };
 
+  const handleClearWaybill = () => {
+    waybillOptionCoordinatorRef.current.cancelAll();
+    setIsLoadingWaybillOptions(false);
+    setIsLoadingMoreWaybillOptions(false);
+    setIsLoadingWaybillRecommendations(false);
+    setWaybillRecommendations([]);
+    setWaybillRecommendationError('');
+    returnContextVersionRef.current += 1;
+    setWaybillInput('');
+    setManifest(null);
+    setConfirmedWaybillId(null);
+    setError('');
+    setNotice('');
+  };
+
   const handleModeChange = (nextMode) => {
     if (nextMode === mode) return;
     shipmentOptionCoordinatorRef.current.cancelAll();
@@ -511,6 +654,7 @@ export default function HaulerWaybillsScreen() {
   const handleOpenWaybill = async (targetWaybillId) => {
     const cleanNumber = String(targetWaybillId || '').trim().toUpperCase();
     if (!cleanNumber) return;
+    Keyboard.dismiss();
     waybillOptionCoordinatorRef.current.cancelAll();
     setIsLoadingWaybillOptions(false);
     setIsLoadingMoreWaybillOptions(false);
@@ -815,7 +959,8 @@ export default function HaulerWaybillsScreen() {
     return null;
   }
 
-  const cameraActive = isOnline && !busy && isScreenFocused && (
+  const viewfinderHeight = CAMERA_HEIGHTS[cameraHeightIndex] || CAMERA_HEIGHTS[1];
+  const cameraActive = !isKeyboardVisible && cameraHeightIndex > 0 && isOnline && !busy && isScreenFocused && (
     (mode === 'load' && Boolean(shipmentId)) ||
     mode === 'return'
   );
@@ -845,7 +990,7 @@ export default function HaulerWaybillsScreen() {
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
       >
         {/* Header matching scan.js */}
         <View style={styles.header}>
@@ -870,7 +1015,33 @@ export default function HaulerWaybillsScreen() {
           onRequestPermission={requestPermission}
           instructionText={getInstructionText()}
           pausedText={getPausedText()}
+          viewfinderHeight={viewfinderHeight}
+          animatedHeight={animatedCameraHeight}
         />
+
+        <View
+          {...cameraDividerPanResponder.panHandlers}
+          style={[styles.cameraDivider, isKeyboardVisible && styles.cameraDividerDisabled]}
+          accessible
+          accessibilityRole="adjustable"
+          accessibilityLabel="Camera panel height"
+          accessibilityHint="Swipe up to reduce the camera, swipe down to enlarge it, or tap to toggle its height"
+          accessibilityValue={{
+            min: 0,
+            max: CAMERA_HEIGHTS.length - 1,
+            now: isKeyboardVisible ? 0 : cameraHeightIndex,
+            text: isKeyboardVisible ? 'Collapsed while typing' : CAMERA_HEIGHT_LABELS[cameraHeightIndex]
+          }}
+          accessibilityState={{ disabled: isKeyboardVisible }}
+          accessibilityActions={[
+            { name: 'increment', label: 'Increase camera height' },
+            { name: 'decrement', label: 'Decrease camera height' },
+            { name: 'activate', label: 'Toggle camera height' }
+          ]}
+          onAccessibilityAction={handleCameraAccessibilityAction}
+        >
+          <View style={styles.cameraDividerHandle} />
+        </View>
 
         {/* Network Offline Banner */}
         {!isOnline && (
@@ -932,6 +1103,9 @@ export default function HaulerWaybillsScreen() {
             style={styles.panelScrollView}
             contentContainerStyle={styles.panelContent}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={
+              Platform.OS === 'ios' ? 'interactive' : Platform.OS === 'android' ? 'on-drag' : undefined
+            }
             nestedScrollEnabled
           >
             {mode === 'load' ? (
@@ -947,6 +1121,7 @@ export default function HaulerWaybillsScreen() {
                         placeholderTextColor={colors.inkFaint}
                         value={shipmentIdInput}
                         onChangeText={setShipmentIdInput}
+                        onFocus={handleManualInputFocus}
                         autoCapitalize="characters"
                         maxLength={20}
                         onSubmitEditing={() => handleSelectShipment(shipmentIdInput)}
@@ -1027,6 +1202,7 @@ export default function HaulerWaybillsScreen() {
                         ) : (
                           <FlatList
                             horizontal
+                            keyboardShouldPersistTaps="handled"
                             data={shipments}
                             keyExtractor={(shipment) => shipment.shipmentId}
                             renderItem={({ item: shipment }) => (
@@ -1154,6 +1330,7 @@ export default function HaulerWaybillsScreen() {
                         placeholderTextColor={colors.inkFaint}
                         value={manualTrackingInput}
                         onChangeText={setManualTrackingInput}
+                        onFocus={handleManualInputFocus}
                         autoCapitalize="characters"
                         maxLength={15}
                         onSubmitEditing={handleManualTrackingSubmit}
@@ -1254,34 +1431,36 @@ export default function HaulerWaybillsScreen() {
             ) : (
               <>
                 {/* RETURNED WAYBILL MODE */}
-                <View style={styles.sectionCard}>
-                  <Text style={styles.sectionEyebrow}>OPEN RETURNED WAYBILL</Text>
-                  <View style={styles.inputActionRow}>
-                    <TextInput
-                      style={styles.textInput}
-                      placeholder="WYB-YYYY-NNNN"
-                      placeholderTextColor={colors.inkFaint}
-                      value={waybillInput}
-                      onChangeText={setWaybillInput}
-                      autoCapitalize="characters"
-                      maxLength={20}
-                      onSubmitEditing={() => handleOpenWaybill(waybillInput)}
-                      editable={isOnline && !busy}
-                    />
-                    <TouchableOpacity
-                      style={[
-                        styles.actionButtonCompact,
-                        (!waybillInput.trim() || !isOnline || busy) && styles.buttonDisabled
-                      ]}
-                      onPress={() => handleOpenWaybill(waybillInput)}
-                      disabled={!waybillInput.trim() || !isOnline || busy}
-                    >
-                      <Text style={styles.actionButtonText}>LOOKUP</Text>
-                    </TouchableOpacity>
-                  </View>
+                {!manifest ? (
+                  <View style={styles.sectionCard}>
+                    <Text style={styles.sectionEyebrow}>SELECT RETURNED WAYBILL</Text>
+                    <View style={styles.inputActionRow}>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="WYB-YYYY-NNNN"
+                        placeholderTextColor={colors.inkFaint}
+                        value={waybillInput}
+                        onChangeText={setWaybillInput}
+                        onFocus={handleManualInputFocus}
+                        autoCapitalize="characters"
+                        maxLength={20}
+                        onSubmitEditing={() => handleOpenWaybill(waybillInput)}
+                        editable={isOnline && !busy}
+                      />
+                      <TouchableOpacity
+                        style={[
+                          styles.actionButtonCompact,
+                          (!waybillInput.trim() || !isOnline || busy) && styles.buttonDisabled
+                        ]}
+                        onPress={() => handleOpenWaybill(waybillInput)}
+                        disabled={!waybillInput.trim() || !isOnline || busy}
+                      >
+                        <Text style={styles.actionButtonText}>SELECT</Text>
+                      </TouchableOpacity>
+                    </View>
 
-                  {!manifest && (isWaybillRecommendationSearchActive ? (
-                    <View style={styles.recommendationPanel}>
+                    {isWaybillRecommendationSearchActive ? (
+                      <View style={styles.recommendationPanel}>
                       <Text style={[styles.subtleLabel, styles.recommendationLabel]}>
                         Waybill Recommendations
                       </Text>
@@ -1320,9 +1499,9 @@ export default function HaulerWaybillsScreen() {
                           </TouchableOpacity>
                         ))
                       )}
-                    </View>
-                  ) : (
-                    <View style={styles.chipListContainer}>
+                      </View>
+                    ) : (
+                      <View style={styles.chipListContainer}>
                       <Text style={styles.subtleLabel}>Recent Returned Waybills</Text>
                       {isLoadingWaybillOptions && waybillOptions.length === 0 ? (
                         <View style={styles.inlineStateRow}>
@@ -1341,6 +1520,7 @@ export default function HaulerWaybillsScreen() {
                       ) : (
                         <FlatList
                           horizontal
+                          keyboardShouldPersistTaps="handled"
                           data={waybillOptions}
                           keyExtractor={(option) => option.waybillId}
                           renderItem={({ item: option }) => (
@@ -1379,9 +1559,37 @@ export default function HaulerWaybillsScreen() {
                           )}
                         />
                       )}
+                      </View>
+                    )}
+                  </View>
+                ) : (
+                  <View style={styles.activeShipmentCard}>
+                    <View style={styles.activeShipmentHeader}>
+                      <View style={styles.shipmentBadge}>
+                        <Text style={styles.shipmentBadgeText}>WAYBILL</Text>
+                      </View>
+                      <Text style={styles.activeShipmentId}>{manifest.waybillId}</Text>
+                      <TouchableOpacity
+                        style={styles.changeLink}
+                        onPress={handleClearWaybill}
+                        disabled={busy}
+                      >
+                        <Text style={styles.changeLinkText}>CHANGE</Text>
+                      </TouchableOpacity>
                     </View>
-                  ))}
-                </View>
+                    <Text style={styles.activeShipmentRecipient}>
+                      Shipment: {manifest.shipmentId}
+                    </Text>
+                    <View style={styles.shipmentMetricsRow}>
+                      <Text style={styles.metricItem}>
+                        Units: <Text style={styles.metricValue}>{manifest.parcels?.length || 0}</Text>
+                      </Text>
+                      <Text style={styles.metricItem}>
+                        Status: <Text style={styles.metricValue}>{manifest.statusLabel || manifest.status}</Text>
+                      </Text>
+                    </View>
+                  </View>
+                )}
 
               </>
             )}
@@ -1574,6 +1782,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.success,
     fontWeight: '600'
+  },
+  cameraDivider: {
+    height: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  cameraDividerDisabled: {
+    opacity: 0.55
+  },
+  cameraDividerHandle: {
+    width: 56,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.borderStrong
   },
   bottomPanel: {
     flex: 1,

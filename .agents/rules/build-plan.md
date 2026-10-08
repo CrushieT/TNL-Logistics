@@ -5,39 +5,10 @@
 **4 Independent Status Concepts (Rule 19):**
 * **Tracking Status (6-state):** `Registered` -> `QR Generated` -> `Loaded on Truck` -> `Outload / Arrive TNL` -> `Loaded to Hauler` -> `Completed`
 * **Payment Status:** `Unpaid` → `Partially Paid` → `Paid` (and `For Collection` during Thursday batch)
-* **Label Status:** `Not Printed` → `Printed` → `Reprinted`
-* **Waybill Status (4-state):** `Not Generated` → `Generated` → `Sent to Hauler` → `Signed / Completed`
+* **Label Status:** `Not Printed` -> `Printed` -> `Reprinted`
+* **Waybill Status (4-state):** `Not Generated` -> `Generated` -> `Sent to Hauler` -> `Signed / Completed`
 
 ---
-
-## Post-Client-Demo Change Program
-
-**Status:** [IN PROGRESS]
-
-- **Phase 0 - Discovery, Contract Confirmation, and Threat Model:** [COMPLETED]
-  - Existing registration, SOA, waybill, tracking, authorization, and mobile device-binding flows have been traced.
-  - Technical findings and required security controls are recorded in `.review/client-demo-phase-0-discovery-and-threat-model.md`.
-- **Phase 1 - Per-Unit Registration and Settings-Based Per-Kilo Rating:** [COMPLETED]
-  - Migration `V31__add_rate_per_kilo_and_shipment_snapshots.sql` adds the nullable `rate_per_kilo` setting and 5 shipment calculation snapshots; no migration supplies or clears a business rate, so it remains unset until explicit administrative setup.
-  - Backend rating engine enforces `PER_KILO` charge model, mandatory `@NotNull` stale settings guards (`expectedRatePerKilo`, `expectedVolumetricDivisor`), calculation overflow bounds (`DECIMAL(12,2)` / `DECIMAL(10,4)`), decimal-safe `HALF_UP` calculations, and recipient consignee identity derived from active billing client.
-  - Web and mobile registration applications updated with compact 10-unit paginated parcel editors, render-aware jump-to-error navigation, modular extracted components (`ParcelUnitsEditor.js`, `ShipmentPricingSummary.js`), read-only rate per kilo, live breakdown summaries, quantity sync with confirmation guards, and 409 stale-settings recovery.
-  - Full automated integration and unit test suites passing across backend (343 tests), web (52 tests), and mobile (154 tests).
-- **Phase 1.1 - Client-Specific Rate Override:** [COMPLETED]
-  - Migration `V32__add_client_rate_per_kilo.sql` adds one nullable Admin-managed rate per kilo to each client; null retains global System Settings inheritance.
-  - Backend registration resolves the client rate first, falls back to the global rate, applies stale-rate protection, and stores the effective numeric rate in the existing shipment snapshot.
-  - Web Admin client profiles can enable, update, or disable the custom rate; web and mobile registration reload effective pricing after client selection.
-  - Verification passed across backend (346 tests), web (53 tests), mobile (157 tests), and Expo web/Android production exports.
-- **Phase 2 - Configurable SOA Bank Details and Printing:** [COMPLETED]
-  - Migration `V33__add_soa_bank_details.sql` adds nullable SOA bank name, account name, and text account number settings without embedding real account data.
-  - Admin settings validate and persist the three fields; staff branding, SSE payloads, and logs exclude them.
-  - Workflow fixtures seed fictional BDO demonstration values only for blank fields and preserve custom configuration.
-  - SOA preview and print use current persisted financial/company/bank data, block invalid configuration and unsaved adjustments, use the approved logo, and render two complete A4 copies with restarted page numbering.
-  - Verification passed across the backend suite (350 tests), web suite (63 tests), workflow integration coverage, Flyway fresh/upgrade paths, and Expo web production export.
-- **Phases 3-4 - Split Waybills and Hauler Staff Handoff:** [COMPLETED]
-  - `V34__split_waybill_manifests.sql` supports multiple waybills per shipment and explicit manifest persistence. The existing V35 `waybill_return_scan` table and records remain unchanged for history.
-  - Backend generation and handoff remain atomic. Completion requires a matching `confirmedWaybillId`, is Hauler Staff-only, locks the persisted manifest, completes only its units, and is retry-safe. The parcel return-scan endpoint is retired.
-  - Mobile and web print two portrait A4 copies with the same scannable `WAYBILL:<waybillId>` return-confirmation QR, exact persisted manifest, logo fallback, and long-table pagination. The web selected-manifest preview displays the same return QR and printable header format before printing.
-  - Mobile manual lookup remains available for review and reprinting but cannot enable completion. Only scanning the matching QR for a `SENT_TO_HAULER` waybill enables the separate confirmation action.
 
 ## Progress Overview
 
@@ -50,12 +21,12 @@
 | **Phase 2.3** | Real-Time Live Auto-Updates (Server-Sent Events streaming pipeline `GET /api/v1/events/stream`) | [COMPLETED] |
 | **Phase 2.4** | Web: Vehicle Fleet Management UI (`/vehicles` list & register modal — Desktop Screens 13/14) | [COMPLETED] |
 | **Phase 2.5** | Web & Backend: Client Management Directory & Profile View (`/clients`, `/clients/[id]` — Screens 15/16) | [COMPLETED] |
-| **Phase 3** | Split waybill manifests and Hauler Staff handoff | [COMPLETED] |
+| **Phase 3** | Core Waybill Generation & Initial Manifest Flow | [COMPLETED] |
 | **Phase 4.1** | Backend: Payments & Collections Engine (`POST /api/v1/payments`, Balance Recalculation, Multi-Search & Audit) | [COMPLETED] |
 | **Phase 4.2** | Backend: Thursday Weekly Collections Consolidation & SOA Generator (3 Deductions, Net Remittance) | [COMPLETED] |
 | **Phase 4.3** | Web: Billing, Collections & Printable SOA (Desktop Screens 18–22) | [COMPLETED] |
 | **Phase 5** | Web Console: Live Dashboard, Tracking Logs Stream, Reports, Users, Settings & First Boot Setup (Screens 01, 02, 17, 26–28) | [COMPLETED] |
-| **Phase 6** | Role-Aware Mobile Courier Portal (Screens 29–56) | [IN PROGRESS] |
+| **Phase 6** | Role-Aware Mobile Courier Portal (Screens 29–56) | [COMPLETED] |
 | ↳ **Phase 6.1** | Mobile Credential & PIN Workflow & Role-Aware Shell (Screens 29–33) | [COMPLETED] |
 | ↳ **Phase 6.2** | Office Staff: Shipment Generation & Past Shipments Directory (Screens 34–40) | [COMPLETED] |
 | ↳ **Phase 6.3a** | Software Label Printing, Virtual Driver Isolation & Audit Hardening (Screens 41–44) | [COMPLETED] |
@@ -63,13 +34,14 @@
 | ↳ **Phase 6.4** | Field Staff: Camera QR Scanner & Status Flow Engine (Screens 45–48) | [COMPLETED] |
 | ↳ **Phase 6.5** | Field Staff: Personal Scan & Tracking History (Screens 49–52) | [COMPLETED] |
 | ↳ **Phase 6.6** | Mobile Staff Account, Security & 4-Digit PIN Settings (Screens 53–55) | [COMPLETED] |
-| â†³ **Phase 6.7** | Online-Only Scanner Simplification & Offline Queue Removal | [COMPLETED] |
-| ↳ **Phase 6.8** | Public Staff Android APK Download from Web Login | [COMPLETED] |
-| ↳ **Phase 6.9** | Admin-Only Web Console Access and Staff Mobile API Preservation | [COMPLETED] |
-| ↳ **Phase 6.10** | High-Volume Load-Testing Profile, Synthetic Seeder & Strict Schema Validation | [COMPLETED] |
-| ↳ **Phase 6.11** | Mobile Recent Shipment Pagination & Number Recommendations | [COMPLETED] |
-| ↳ **Phase 6.12** | Mobile Returned Waybill Pagination & Recommendations | [COMPLETED] |
-| ↳ **Phase 6.13** | Development Data Seeder & Workflow Test Fixtures Expansion | [COMPLETED] |
+| **Phase 7** | Post-Demo Client Changes & System Enhancements | [IN PROGRESS] |
+| ↳ **Phase 7.1** | Per-Unit Registration, Dynamic Rates & Settings-Based Pricing | [COMPLETED] |
+| ↳ **Phase 7.2** | Configurable SOA Bank Details & Formatted Statement Printing | [COMPLETED] |
+| ↳ **Phase 7.3** | Split Waybills, Hauler Console & 15-Item Manifest Printing | [COMPLETED] |
+| ↳ **Phase 7.4** | Online-Only Mobile Scanner, Ergonomics & Access Hardening | [COMPLETED] |
+| ↳ **Phase 7.5** | Mobile Discovery Rails & Query Recommendations | [COMPLETED] |
+| ↳ **Phase 7.6** | High-Volume Load Testing, Synthetic Seeder & Dev Fixtures | [COMPLETED] |
+| ↳ **Phase 7.7** | Future Client Enhancements & Workflow Adaptations | [UPCOMING] |
 
 ---
 
@@ -117,7 +89,7 @@
 
 ---
 
-## Phase 2 — Status Flow, Vehicle Fleet & Real-Time Sync [COMPLETED / IN PROGRESS]
+## Phase 2 — Status Flow, Vehicle Fleet & Real-Time Sync [COMPLETED]
 
 **2.1 — Backend: 6-State Status Flow Engine** — **[COMPLETED]**
 - Status lifecycle: `REGISTERED` -> `QR_GENERATED` -> `LOADED_ON_TRUCK` -> `ARRIVED_AT_TNL` -> `LOADED_TO_HAULER` -> `COMPLETED`.
@@ -150,20 +122,17 @@
 
 ---
 
-## Phase 3 — Waybill Manifest and Hauler Staff Handoff — **[COMPLETED]**
+## Phase 3 — Core Waybill Flow & Initial Manifest Generation [COMPLETED]
 
-**Current Status:** [COMPLETED]
+**3.1 — Core Waybill Entity & Handoff Engine** — **[COMPLETED]**
+- Waybill entity, repositories, and sequential generator `WYB-YYYY-XXXX`.
+- 4-state lifecycle: `NOT_GENERATED` -> `GENERATED` -> `SENT_TO_HAULER` -> `SIGNED_COMPLETED`.
+- Initial shipment-to-waybill generation assigning loaded parcels to a hauler waybill document.
+- Verified via backend waybill integration tests. *(Advanced multi-manifest splitting, dedicated hauler console, and 15-item printing are consolidated in Phase 7.3)*.
 
-- `V34__split_waybill_manifests.sql` supports multiple waybills per shipment and stores fixed parcel membership. Existing waybills are backfilled with all shipment units; inconsistent historical counts fail migration. The V35 return-scan table remains intact for historical records but is no longer part of the active workflow.
-- Hauler Staff retains the `HAULER_STAFF` account type and label. Drivers carry physical paper without an account. The Dispatch Staff rename is deferred.
-- Online tracking scans record `LOADED_TO_HAULER` before generation. Generation selects loaded, unassigned units and uses an idempotency key; it does not change parcel status.
-- Generated, sent, and signed-completed waybill states are separate. Sending records the authenticated paper handoff actor. Completion requires the matching printed waybill QR and a separate confirmation press; client signatory data remains optional. Only persisted manifest parcels become `COMPLETED`.
-- Admin web users can list shipment waybills, search by exact number, review, and print the selected persisted manifest. Admin cannot generate, send, or complete.
-- Mobile Hauler Staff can load units with Single Scan or Rapid Batch. Staff review the accepted units, generate a waybill, print two landscape A4 copies with identical return QRs, mark handoff sent, and later scan the printed waybill QR before explicit completion.
-- Automated tests cover exact QR payloads, manual-lookup locking, strict QR parsing, manifest-only completion, rollback, role denial, and retry safety. Native Android camera scanning of an actual printed copy remains a device acceptance check.
-- Verification passed for `SplitWaybillIntegrationTest` (7 tests), the mobile suite (162 tests), the web suite (70 tests), and the web and Android production exports. Web printing resolves the bundled logo from the rendered manifest and retains the text-brand fallback.
+---
 
-## Phase 4 — Billing, Weekly Collections & Statement of Account (Desktop Screens 18–22)
+## Phase 4 — Billing, Weekly Collections & Statement of Account (Desktop Screens 18–22) [COMPLETED]
 *Financial accounting and client billing.*
 
 **4.1 — Backend: Payments & Collections Engine** — **[COMPLETED]**
@@ -196,7 +165,7 @@
 - Real-time SSE broadcasting via `broadcastSoaGenerated`.
 - Verified via `SoaIntegrationTest` suite (21/21 total backend tests passing).
 
-**4.3 — Web: Billing, Collections & Printable SOA (Desktop Screens 18, 19, 20, 21, 22)**  — **[COMPLETED]**
+**4.3 — Web: Billing, Collections & Printable SOA (Desktop Screens 18, 19, 20, 21, 22)** — **[COMPLETED]**
 - **Payment Management (Screen 18) — [COMPLETED]:**
   - `/payments` directory table with payment status filter (`Unpaid`, `Partial`, `Paid`), multi-search (Shipment ID, Client Name, Recipient), and real-time outstanding balance metric card.
   - "Record Payment" modal with real-time balance ceiling restriction, dynamic reference validation (`*` for `GCASH`, `BANK`, `CHEQUE`), and SSE live refresh.
@@ -222,7 +191,7 @@
 
 ---
 
-## Phase 5 — Web Console: Dashboard, Reports & Administration (Desktop Screens 01, 02, 17, 26–28)
+## Phase 5 — Web Console: Dashboard, Reports & Administration (Desktop Screens 01, 02, 17, 26–28) [COMPLETED]
 *Operational dashboards and administrative controls.*
 
 **5.1 — Desktop Login & Route Protection (Screen 01)** — **[COMPLETED]**
@@ -298,7 +267,7 @@
 
 ---
 
-## Phase 6 — Role-Aware Mobile Courier Portal (Mobile Screens 29–56) — **[IN PROGRESS]**
+## Phase 6 — Role-Aware Mobile Courier Portal (Mobile Screens 29–56) — **[COMPLETED]**
 *Field staff courier app and authorized mobile office workflows.*
 
 **6.1 — Mobile Credential & PIN Workflow & Role-Aware Shell (Screens 29, 30, 31, 32, 33)** — **[COMPLETED]**
@@ -462,72 +431,61 @@
   - Backend OWASP dependency analysis migrated to automated GitHub Actions CI/CD workflows (`.github/workflows/owasp-check.yml` and `.github/workflows/dependency-review.yml`) with NVD API key and local cache support.
   - Physical on-device acceptance testing on mobile hardware completed and verified.
 
-**6.7 — Online-Only Scanner Simplification & Offline Queue Removal** — **[COMPLETED]**
-- Pre-deployment scope decision: removed the unpaid offline synchronization feature across mobile and backend instead of maintaining a replay subsystem before launch.
-- Mobile scanner uses `@react-native-community/netinfo` as a fail-closed gate. Unknown or offline connectivity disables camera scanning, manual lookup, Single Scan confirmation, and Rapid Batch submission with a clear inline explanation.
-- Single and batch operations submit directly to `POST /api/v1/tracking-events/scan` and `POST /api/v1/tracking-events/batch-scan`; Rapid Batch state is in memory only and is retained during temporary connectivity loss.
-- Removed Screen 56, `OfflineSyncContext`, SQLite queue stores, replay coordinator/API client, cached vehicle support, pending-sync UI, and the unbind queue guard.
-- Removed backend replay endpoint, request guard, request/response DTOs, replay and cleanup services, receipt entity/repository, and runtime `TrackingEvent` offline metadata. Existing sequential and staff-type scan authorization remains unchanged.
-- Retired endpoint behavior is explicit: authenticated requests receive the standard HTTP 404 response and unauthenticated requests remain HTTP 401.
-- Preserved `V30__add_offline_scan_idempotency.sql` unchanged as immutable Flyway history. No follow-up migration was added because the application has not been deployed and runtime mappings no longer use the historical schema artifacts.
-- Removed `expo-sqlite`; retained NetInfo for online gating and `expo-crypto` for printer hashing and identifiers.
-- Verification: full backend suite 331/331 passed, full mobile suite 140/140 passed, and Android Hermes production export passed.
-**6.8 — Public Staff Android APK Download from Web Login** — **[COMPLETED]**
-- Web login renders a staff Android app link below sign-in only when `EXPO_PUBLIC_ANDROID_APK_URL` is set. The URL must point to a public, verified GitHub Release APK asset.
-- Publish the Release asset, configure the URL for the web export, deploy the export, and verify the unauthenticated download before marking this slice complete.
+---
 
-**6.9 — Admin-Only Web Console Access and Staff Mobile API Preservation** — **[COMPLETED]**
-- Restricted web login, console routes, and console-only API operations to `ADMIN` while preserving office and field mobile workflows.
-- Added backend authorization and frontend session regression coverage for administrator-only web access.
+## Phase 7 — Post-Demo Client Changes & System Enhancements — **[IN PROGRESS]**
+*Consolidated client change requests, operational refinements, and quality infrastructure.*
 
-**6.10 — High-Volume Load-Testing Profile, Synthetic Seeder & Strict Schema Validation** — **[COMPLETED]**
-- Dedicated Spring Boot `loadtest` profile (`application-loadtest.properties`) with configurable HikariCP pool tuning (default pool size 10) and Hibernate strict `ddl-auto=validate`.
-- Docker Compose load-testing environment (`docker-compose.loadtest.yml`) configured for low-cost cloud limits (512 MB RAM / 0.5 vCPU per container) with MySQL memory optimization (`--performance_schema=OFF`, `innodb_buffer_pool_size=64M`) and JVM Serial GC (`-XX:+UseSerialGC -XX:MaxRAMPercentage=65.0`).
-- Opt-in synthetic seeder (`LoadTestDataSeeder.java`) generating 10,000 shipments, 500 clients, 100 vehicles, tracking events, and payments using deterministic random seeding (`20260925`) and batch processing (size 250).
-- Safety guards (`LoadTestEnvironmentGuard.java`) enforcing database name validation (`app.loadtest.expected-database=tnl_loadtest`), exact target equality skip checking (`existingShipments == shipmentTarget`), and immediate startup failure (`IllegalStateException`) on partial (`0 < count < target`) or over-target (`count > target`) datasets.
-- k6 performance testing suite in `load-tests/` (`smoke.js`, `baseline.js`, `realistic-simulation.js`, `README.md`) with automated JWT credential sanitization and git artifact exclusion (`.gitignore`), achieving 100% success rate across 1,451 live hybrid operations (1 Admin + 20 Couriers) under 512 MB RAM / 0.5 vCPU limits.
-- Unit and integration coverage: `LoadTestEnvironmentGuardTest` (6 tests), `LoadTestDataSeederTest` (5 tests covering disabled, partial, exact-target, over-target, and missing password states), and `LoadTestSchemaValidationIntegrationTest` validating all 17 entity mappings against Flyway migrations (V1–V30).
+**7.1 — Per-Unit Registration, Dynamic Rates & Settings-Based Pricing** — **[COMPLETED]**
+- Migration `V31__add_rate_per_kilo_and_shipment_snapshots.sql`: adds nullable `rate_per_kilo` setting and 5 shipment calculation snapshots (`applied_rate_per_kilo`, `applied_volumetric_divisor`, `total_actual_weight_kg`, `total_volumetric_weight_kg`, `billable_weight_kg`).
+- Backend rating engine enforces `PER_KILO` charge model, mandatory `@NotNull` stale settings guards (`expectedRatePerKilo`, `expectedVolumetricDivisor`), calculation overflow bounds (`DECIMAL(12,2)` / `DECIMAL(10,4)`), decimal-safe `HALF_UP` calculations, and recipient consignee identity derived from active billing client.
+- Migration `V32__add_client_rate_per_kilo.sql`: adds nullable Admin-managed rate per kilo to each client (`client.rate_per_kilo`), allowing client-specific overrides while falling back to global system settings.
+- Web Admin client profiles can enable, update, or disable the custom rate; web and mobile registration reload effective pricing dynamically after client selection.
+- Web and mobile registration applications updated with compact 10-unit paginated parcel editors, render-aware jump-to-error navigation, modular extracted components (`ParcelUnitsEditor.js`, `ShipmentPricingSummary.js`), read-only rate per kilo, live breakdown summaries, quantity sync with confirmation guards, and 409 stale-settings recovery.
+- Verification passed across backend (346 tests), web (53 tests), mobile (157 tests), and Expo web/Android production exports.
 
-**6.11 — Mobile Recent Shipment Pagination & Number Recommendations** — **[COMPLETED]**
-- Added Hauler Staff-only `GET /api/v1/waybills/shipment-options` with bounded server pagination, case-insensitive shipment-ID fragment search, deterministic registration-date and shipment-ID ordering, explicit page metadata, and page-local waybill/parcel enrichment. The existing web shipment-option endpoint remains unchanged.
-- Replaced the mobile 15-item recent shipment cap with a 20-item horizontal `FlatList` that deduplicates appended pages, blocks concurrent end events, and preserves loaded results across retryable failures.
-- Added 250 ms debounced shipment-number recommendations after two non-space characters, capped at eight vertical results with stale-response cancellation. Exact manual selection remains available outside loaded pages.
-- Shipment-option requests are cancelled and invalidated on selection, mode changes, sign-out, connectivity loss, and unmount while existing online-only waybill generation and return flows remain intact.
-- Load & Generate uses coordinated nested scrolling: gestures inside the bounded manifest queue scroll its entries, while gestures elsewhere scroll the outer panel so lower shipment and waybill sections remain reachable.
-- Verification: 11/11 affected backend integration tests, 169/169 mobile Node tests, and Android Hermes production export passed.
+**7.2 — Configurable SOA Bank Details & Formatted Statement Printing** — **[COMPLETED]**
+- Migration `V33__add_soa_bank_details.sql`: adds nullable SOA bank name, account name, and text account number settings without embedding real account data.
+- Admin settings validate and persist the three fields; staff branding, SSE payloads, and logs exclude them.
+- Workflow fixtures seed fictional demonstration values only for blank fields and preserve custom configuration.
+- SOA preview and print use current persisted financial/company/bank data, block invalid configuration and unsaved adjustments, use the approved logo, and render two complete A4 copies with restarted page numbering.
+- Hardened two-copy multi-page sequence (`statementPrintModel.mjs`) repeating every physical sheet with independent page counters (`Page X of Y`).
+- Verification passed across backend suite (350 tests), web suite (63 tests), workflow integration coverage, Flyway fresh/upgrade paths, and Expo web production export.
 
-**6.12 — Mobile Returned Waybill Pagination & Recommendations** — **[COMPLETED]**
-- Added Hauler Staff-only `GET /api/v1/waybills/options` with bounded server pagination (`page`, `size` [1..100]), optional waybill number search, optional status filtering (defaulting to `SENT_TO_HAULER`), stable generation date and waybill ID descending ordering, and batch parcel count enrichment.
-- Added a 20-item recent returned waybill horizontal `FlatList` rail on the mobile Returned Waybill screen with deduplication, retry triggers, and end-of-list detection.
-- Added 250 ms debounced waybill-number search recommendations after two non-space characters, capped at eight results displaying waybill ID, shipment ID, parcel count, and status.
-- Preserved existing exact manual lookup and printed-waybill QR return confirmation requirement; selecting a recommendation opens the waybill for inspection without bypassing the completion scan gate.
-- Reused cancellable request coordinator to abort stale requests on input changes, selection, mode changes, sign-out, connectivity loss, and unmount.
-- Verification: 6/6 `WaybillShipmentOptionsIntegrationTest` backend tests, 175/175 mobile Node tests, and clean production exports passed.
+**7.3 — Split Waybills, Hauler Console & 15-Item Manifest Printing** — **[COMPLETED]**
+- Migration `V34__split_waybill_manifests.sql`: supports multiple waybills per shipment and explicit manifest parcel persistence. Existing waybills backfilled with all shipment units.
+- Backend generation and handoff remain atomic. Completion requires matching `confirmedWaybillId`, is Hauler Staff-only, locks the persisted manifest, completes only its units, and is retry-safe. The parcel return-scan endpoint is retired (V35 table preserved for audit history).
+- Hauler Staff Dedicated Console: replaced generic `SCAN QR` with `WAYBILLS` on `FieldDashboard` for `HAULER_STAFF`, providing a clean 2-card grid (`WAYBILLS` and `TRACKING HISTORY`) and redirecting transit scanning to `/(main)/waybills`.
+- Hub Loading Queue: expanded `GET /api/v1/waybills/shipments/{shipmentId}/available` to return unassigned units in both `ARRIVED_AT_TNL` and `LOADED_TO_HAULER` statuses, enabling hauler staff to batch-queue all units awaiting dispatch with one-tap unit chips and "+ ADD ALL TO QUEUE".
+- Keyboard Ergonomics & Active Waybill Card: added `KeyboardAvoidingView` height handling, on-drag keyboard dismissal, camera auto-collapse during manual entry, and persistent active waybill header card with one-tap `CHANGE` reset.
+- 15-Item Paginated Waybill Layout: configured `WAYBILL_ITEMS_PER_PAGE = 15` across web preview (`WaybillManifestCard.js`), web print (`waybillPrint.mjs`), and mobile print (`printWaybill.mjs`). Every sheet repeats the full top brand letterhead, hairline divider, left waybill metadata, center return QR, and right-aligned consignee block. Solid black divider separates headers from items table; summary and signatures are isolated to the final sheet; bottom footnote (`Waybill <ID> | Manifest for <Consignee> | Page X of Y`) appears on every sheet.
+- Web Waybill Directory & Inspection: dedicated administrator-only paginated directory at `/waybills` with debounced search, status/hauler filters, and `/waybills/[id]` detail manifest view.
+- Verification passed across `SplitWaybillIntegrationTest` (7 tests), `WaybillShipmentOptionsIntegrationTest` (6 tests), web suite (70 tests), mobile suite (176 tests), and production exports.
 
-**6.13 — Development Data Seeder & Workflow Test Fixtures Expansion** — **[COMPLETED]**
-- Synchronized `application-dev.properties` to opt into workflow data initialization (`app.seed.workflow-fixtures=true`) matching the `workflow` profile.
-- Extended `DataSeeder.java` to support both historical fixtures (1–6) and 6 rich test scenarios (7–12) for mobile and web feature verification:
-  - Fixture 7 (`SHP-YYYY-007`): Multi-unit registered shipment (3 parcels) with heterogeneous weights/dimensions, unprinted labels (`NOT_PRINTED`), and unpaid balance for Office Staff label printing and parcel inspection testing.
-  - Fixture 8 (`SHP-YYYY-008`): Multi-unit shipment (5 parcels) with 3 unassigned `LOADED_TO_HAULER` units and 2 `ARRIVED_AT_TNL` units for mobile Hauler Staff Rapid Batch loading and manifest creation testing.
-  - Fixture 9 (`SHP-YYYY-009`): Multi-unit shipment (4 parcels) assigned to `WYB-YYYY-0007` in `GENERATED` status with driver and vehicle metadata for 2-copy landscape A4 printing on mobile (`expo-print`) and web.
-  - Fixture 10 (`SHP-YYYY-010`): Multi-unit shipment (3 parcels) assigned to `WYB-YYYY-0008` in `SENT_TO_HAULER` status for returned waybill scanning and recommendation matching.
-  - Fixture 11 (`SHP-YYYY-011`): Shipment (2 parcels) assigned to `WYB-YYYY-0009` in `SENT_TO_HAULER` status populating the Returned Waybill horizontal recent options rail.
-  - Fixture 12 (`SHP-YYYY-012`): Split waybill shipment (4 parcels) split between `WYB-YYYY-0010` (2 units, `SIGNED_COMPLETED`, signed by "Juan Dela Cruz") and `WYB-YYYY-0011` (2 units, `SENT_TO_HAULER`), demonstrating `"2 / 4 Completed"` partial completion rollup status.
-- Added VIP client pricing (`CL-001` at 35.00/kg, `CL-003` at 40.00/kg, `CL-005` Cordillera Highlands Produce at 38.00/kg) with default charge model configurations.
-- Enriched system settings seeding (`ratePerKilo = 45.00`, `volumetricDivisor = 3500` for dev/workflow profiles, company branding, and SOA bank details).
-- Automated test verification: `DataSeederWorkflowIntegrationTest` expanded with 2/2 passing tests covering all new fixtures and backward compatibility.
+**7.4 — Online-Only Mobile Scanner, Ergonomics & Access Hardening** — **[COMPLETED]**
+- Pre-deployment scope decision: removed offline SQLite replay subsystem across mobile and backend, enforcing online-only scanning with fail-closed NetInfo connectivity gating.
+- Single and batch scan operations submit directly to `POST /api/v1/tracking-events/scan` and `POST /api/v1/tracking-events/batch-scan` with in-memory state.
+- Dynamic Camera Viewfinder & Gesture Resizing: draggable `PanResponder` divider handle allowing couriers to toggle or drag between compact (120px) and standard (280px) camera previews with responsive reticle scaling (104px compact / 200px standard) and accessible adjustment actions.
+- Keyboard-Aware Viewport Collapse: camera preview automatically collapses when manual text inputs receive focus and restores upon keyboard dismissal, preventing layout clipping on small screens.
+- Web Console Access Restriction: restricted web login, console routes, and console-only API operations strictly to `ADMIN` while preserving office and field mobile workflows.
+- Public Staff Android APK Download: web login renders staff Android app download link when `EXPO_PUBLIC_ANDROID_APK_URL` is set, pointing to public GitHub Release asset.
+- Verification: backend authorization and scanner tests passed (331 tests), full mobile suite passed (140 tests).
 
-**6.14 — Hauler Staff Dedicated Console & Hub Loading Status Alignment** — **[COMPLETED]**
-- Replaced the generic `SCAN QR` card with `WAYBILLS` on `FieldDashboard` for `HAULER_STAFF` users, providing a clean 2-card grid (`WAYBILLS` and `TRACKING HISTORY`) and redirecting top banner navigation directly to `/(main)/waybills`.
-- Hardened `scan.js` route protection to immediately redirect `HAULER_STAFF` to `/(main)/waybills`, preventing accidental access to non-manifest transit scanning.
-- Expanded `GET /api/v1/waybills/shipments/{shipmentId}/available` in `WaybillServiceImpl` to return unassigned units in both `ARRIVED_AT_TNL` and `LOADED_TO_HAULER` statuses so hauler staff can view and batch-queue all units awaiting dispatch at the hub.
-- Hardened mobile `waybills.js` `processQueueScan` to validate unassigned status using canonical `canScan` and status labels, displaying `AVAILABLE IN HUB (N)` with "+ ADD ALL TO QUEUE" and one-tap unit chips.
-- Preserved the atomic two-step manifest generation pipeline: batch scan transitions queued `ARRIVED_AT_TNL` units to `LOADED_TO_HAULER`, followed immediately by atomic waybill generation.
-- Verification: 16/16 backend tests (`WaybillShipmentOptionsIntegrationTest`, `SplitWaybillIntegrationTest`, `DataSeederWorkflowIntegrationTest`) and 174/174 mobile Node tests passed.
+**7.5 — Mobile Discovery Rails & Query Recommendations** — **[COMPLETED]**
+- Mobile Recent Shipment Rail: added Hauler Staff `GET /api/v1/waybills/shipment-options` with 20-item horizontal `FlatList` rail on Load & Generate screen with deduplication, retry triggers, and 250ms debounced search recommendations capped at 8 results.
+- Mobile Returned Waybill Rail: added Hauler Staff `GET /api/v1/waybills/options` with 20-item horizontal `FlatList` rail and 250ms debounced waybill search recommendations.
+- Preserved mandatory printed-waybill QR scan confirmation gate; recommendation selection enables inspection without bypassing the return confirmation scan requirement.
+- Coordinated cancellable request coordinator aborts stale requests on input changes, mode changes, sign-out, or unmount.
+- Verification: 11 affected backend tests and 175 mobile tests passed.
 
-**6.15 — Web Waybill Directory & Dedicated Manifest Detail** — **[COMPLETED]**
-- Replaced the web shipment selector and inline manifest preview with an administrator-only, server-paginated waybill directory using the existing `GET /api/v1/waybills` contract.
-- Added debounced multi-field search, status and hauler filters, 10/20/50 page sizing, stable generation-date and waybill-number ordering, bounded backend page sizes, and page-local batch parcel counts.
-- Added pressable table rows and explicit View actions that open `/waybills/[id]`, with loading, not-found, retry, status, shipment reference, printable manifest, and preserved two-copy landscape A4 printing.
-- Added backend integration coverage for pagination, ordering, search, filters, bounds, empty results, quantities, and administrator authorization, plus web unit coverage for query construction, pagination normalization, page reset behavior, and route encoding.
+**7.6 — High-Volume Load Testing, Synthetic Seeder & Dev Fixtures** — **[COMPLETED]**
+- Dedicated Spring Boot `loadtest` profile (`application-loadtest.properties`) with HikariCP tuning and Hibernate strict `ddl-auto=validate`.
+- Low-memory Docker Compose environment (`docker-compose.loadtest.yml`, 512 MB RAM / 0.5 vCPU) with MySQL memory optimizations and JVM Serial GC.
+- Opt-in synthetic seeder (`LoadTestDataSeeder.java`) generating 10,000 shipments, 500 clients, 100 vehicles, tracking events, and payments using deterministic seed (`20260925`) and batch processing.
+- Database safety guards (`LoadTestEnvironmentGuard.java`) enforcing database name validation (`tnl_loadtest`) and strict count checks.
+- k6 performance testing suite in `load-tests/` (`smoke.js`, `baseline.js`, `realistic-simulation.js`) achieving 100% success rate across 1,451 live hybrid operations under resource limits.
+- Development Data Seeder & Workflow Fixtures: synchronized `application-dev.properties` to opt into `app.seed.workflow-fixtures=true` with rich scenarios 7–12 (unprinted labels, hauler queue, generated waybill, returned waybill, partial split completion).
+- Verification: unit/integration coverage across `LoadTestEnvironmentGuardTest`, `LoadTestDataSeederTest`, `LoadTestSchemaValidationIntegrationTest`, and `DataSeederWorkflowIntegrationTest` passed.
 
+**7.7 — Future Client Enhancements & Workflow Adaptations** — **[UPCOMING]**
+- Reserved for subsequent client feedback, operational customizations, and future enhancements.
