@@ -70,7 +70,7 @@ class AdminConsoleAuthorizationIntegrationTest {
                 .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/v1/waybills/WYB-001/complete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"signedBy\":\"Client Signatory\",\"scannedTrackingIds\":[\"TNL-001\"]}"))
+                        .content("{\"confirmedWaybillId\":\"WYB-001\",\"signedBy\":\"Client Signatory\"}"))
                 .andExpect(status().isForbidden());
     }
 
