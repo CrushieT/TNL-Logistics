@@ -6,6 +6,7 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   PanResponder,
   Platform,
   ScrollView,
@@ -129,11 +130,13 @@ export default function HaulerWaybillsScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [showGenerationConfirmation, setShowGenerationConfirmation] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [cameraHeightIndex, setCameraHeightIndex] = useState(DEFAULT_CAMERA_HEIGHT_INDEX);
   const [generationKey, setGenerationKey] = useState(() => Crypto.randomUUID());
 
   const scanLockRef = useRef(false);
+  const generationLockRef = useRef(false);
   const returnContextVersionRef = useRef(0);
   const cameraHeightIndexRef = useRef(DEFAULT_CAMERA_HEIGHT_INDEX);
   const cameraDragStartHeightRef = useRef(CAMERA_HEIGHTS[DEFAULT_CAMERA_HEIGHT_INDEX]);
@@ -292,6 +295,7 @@ export default function HaulerWaybillsScreen() {
       setWaybillOptions([]);
       setWaybillRecommendations([]);
       setBatchQueue([]);
+      setShowGenerationConfirmation(false);
     }
   }, [user]);
 
@@ -573,6 +577,7 @@ export default function HaulerWaybillsScreen() {
     setShipmentId(cleanId);
     setShipmentIdInput(cleanId);
     setBatchQueue([]);
+    setShowGenerationConfirmation(false);
     setManifest(null);
     setConfirmedWaybillId(null);
     setError('');
@@ -642,6 +647,7 @@ export default function HaulerWaybillsScreen() {
     setWaybillRecommendationError('');
     returnContextVersionRef.current += 1;
     setMode(nextMode);
+    setShowGenerationConfirmation(false);
     setManifest(null);
     setConfirmedWaybillId(null);
     setError('');
@@ -853,7 +859,9 @@ export default function HaulerWaybillsScreen() {
 
   // Submit Rapid Batch Queue: Loads un-loaded units and generates the waybill atomically
   const handleGenerateWaybill = async () => {
-    if (!shipmentId || batchQueue.length === 0 || !isOnline || busy) return;
+    if (!shipmentId || batchQueue.length === 0 || !isOnline || busy || generationLockRef.current) return;
+    generationLockRef.current = true;
+    setShowGenerationConfirmation(false);
     setBusy(true);
     setError('');
     setNotice('');
@@ -885,6 +893,7 @@ export default function HaulerWaybillsScreen() {
       safeHaptics.error();
       setError(err?.response?.data?.message || err?.message || 'Failed to generate waybill.');
     } finally {
+      generationLockRef.current = false;
       setBusy(false);
     }
   };
@@ -1351,7 +1360,7 @@ export default function HaulerWaybillsScreen() {
                     {/* Submit Rapid Batch & Generate Waybill Button */}
                     <TouchableOpacity
                       style={[styles.primaryButton, (!canGenerate || busy) && styles.buttonDisabled]}
-                      onPress={handleGenerateWaybill}
+                      onPress={() => setShowGenerationConfirmation(true)}
                       disabled={!canGenerate || busy}
                     >
                       {busy ? (
@@ -1698,6 +1707,73 @@ export default function HaulerWaybillsScreen() {
             )}
           </ScrollView>
         </View>
+
+        <Modal
+          visible={showGenerationConfirmation}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowGenerationConfirmation(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.generationReviewCard}>
+              <View style={styles.generationReviewHeader}>
+                <View style={styles.generationReviewIcon}>
+                  <Icon source="file-document-check-outline" size={24} color={colors.accent} />
+                </View>
+                <View style={styles.generationReviewTitleGroup}>
+                  <Text style={styles.generationReviewTitle}>Review Waybill Manifest</Text>
+                  <Text style={styles.generationReviewSubtitle}>
+                    Confirm the shipment and every unit before generation.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.generationReviewSummary}>
+                <View style={styles.generationReviewSummaryItem}>
+                  <Text style={styles.generationReviewLabel}>SHIPMENT</Text>
+                  <Text style={styles.generationReviewValue}>{shipmentId}</Text>
+                </View>
+                <View style={styles.generationReviewSummaryItem}>
+                  <Text style={styles.generationReviewLabel}>MANIFEST UNITS</Text>
+                  <Text style={styles.generationReviewValue}>{batchQueue.length}</Text>
+                </View>
+              </View>
+
+              <ScrollView
+                style={styles.generationReviewList}
+                contentContainerStyle={styles.generationReviewListContent}
+                nestedScrollEnabled
+                showsVerticalScrollIndicator
+              >
+                {batchQueue.map((trackingId, index) => (
+                  <View key={trackingId} style={styles.generationReviewUnit}>
+                    <Text style={styles.generationReviewIndex}>#{index + 1}</Text>
+                    <Text style={styles.generationReviewTrackingId}>{trackingId}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+
+              <Text style={styles.generationReviewWarning}>
+                Generation creates a fixed manifest. Units not listed here can be placed on a later waybill.
+              </Text>
+
+              <View style={styles.modalActionsRow}>
+                <TouchableOpacity
+                  style={styles.modalCancelButton}
+                  onPress={() => setShowGenerationConfirmation(false)}
+                >
+                  <Text style={styles.modalCancelButtonText}>CANCEL</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalConfirmButton}
+                  onPress={handleGenerateWaybill}
+                >
+                  <Text style={styles.modalConfirmButtonText}>CONFIRM & GENERATE</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -2273,5 +2349,139 @@ const styles = StyleSheet.create({
   actionBlock: {
     gap: spacing.xs,
     marginTop: 4
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'center',
+    padding: spacing.lg
+  },
+  generationReviewCard: {
+    maxHeight: '82%',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    gap: spacing.md
+  },
+  generationReviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm
+  },
+  generationReviewIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accentSoft
+  },
+  generationReviewTitleGroup: {
+    flex: 1,
+    gap: 2
+  },
+  generationReviewTitle: {
+    ...typography.h2,
+    fontSize: 17,
+    color: colors.ink
+  },
+  generationReviewSubtitle: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.inkSoft
+  },
+  generationReviewSummary: {
+    flexDirection: 'row',
+    gap: spacing.sm
+  },
+  generationReviewSummaryItem: {
+    flex: 1,
+    backgroundColor: colors.canvas,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    gap: 3
+  },
+  generationReviewLabel: {
+    ...typography.eyebrow,
+    fontSize: 9,
+    color: colors.inkFaint
+  },
+  generationReviewValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.ink,
+    fontFamily: 'monospace'
+  },
+  generationReviewList: {
+    maxHeight: 230,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm
+  },
+  generationReviewListContent: {
+    padding: spacing.xs,
+    gap: 4
+  },
+  generationReviewUnit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.canvas,
+    borderRadius: 2,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+    gap: spacing.sm
+  },
+  generationReviewIndex: {
+    minWidth: 28,
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.inkFaint
+  },
+  generationReviewTrackingId: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.ink,
+    fontFamily: 'monospace'
+  },
+  generationReviewWarning: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: colors.inkSoft
+  },
+  modalActionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm
+  },
+  modalCancelButton: {
+    flex: 1,
+    height: 42,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  modalCancelButtonText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.inkSoft
+  },
+  modalConfirmButton: {
+    flex: 1.6,
+    height: 42,
+    backgroundColor: colors.accent,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm
+  },
+  modalConfirmButtonText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.3
   }
 });

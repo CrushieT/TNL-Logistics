@@ -454,10 +454,11 @@
 
 **7.3 — Split Waybills, Hauler Console & 15-Item Manifest Printing** — **[COMPLETED]**
 - Migration `V34__split_waybill_manifests.sql`: supports multiple waybills per shipment and explicit manifest parcel persistence. Existing waybills backfilled with all shipment units.
-- Backend generation and handoff remain atomic. Completion requires matching `confirmedWaybillId`, is Hauler Staff-only, locks the persisted manifest, completes only its units, and is retry-safe. The parcel return-scan endpoint is retired (V35 table preserved for audit history).
+- Backend manifest generation is atomic after loading transitions have succeeded. Completion requires matching `confirmedWaybillId`, is Hauler Staff-only, locks the persisted manifest, completes only its units, and is retry-safe. The parcel return-scan endpoint is retired (V35 table preserved for historical compatibility).
 - Hauler Staff Dedicated Console: replaced generic `SCAN QR` with `WAYBILLS` on `FieldDashboard` for `HAULER_STAFF`, providing a clean 2-card grid (`WAYBILLS` and `TRACKING HISTORY`) and redirecting transit scanning to `/(main)/waybills`.
 - Hub Loading Queue: expanded `GET /api/v1/waybills/shipments/{shipmentId}/available` to return unassigned units in both `ARRIVED_AT_TNL` and `LOADED_TO_HAULER` statuses, enabling hauler staff to batch-queue all units awaiting dispatch with one-tap unit chips and "+ ADD ALL TO QUEUE".
-- Keyboard Ergonomics & Active Waybill Card: added `KeyboardAvoidingView` height handling, on-drag keyboard dismissal, camera auto-collapse during manual entry, and persistent active waybill header card with one-tap `CHANGE` reset.
+- Manifest Review & Selection Safety: accepted units remain visible in the manifest queue while duplicate, rejected, wrong-shipment, and already-assigned scans receive specific messages. `GENERATE WAYBILL` opens a final confirmation modal showing the shipment, exact unit count, and every queued tracking ID; generation uses a synchronous double-submission guard.
+- Keyboard Ergonomics & Selected Context Cards: added `KeyboardAvoidingView` height handling, on-drag keyboard dismissal, camera auto-collapse during manual entry, keyboard-open option taps, and persistent selected shipment/waybill cards with one-tap `CHANGE` reset.
 - 15-Item Paginated Waybill Layout: configured `WAYBILL_ITEMS_PER_PAGE = 15` across web preview (`WaybillManifestCard.js`), web print (`waybillPrint.mjs`), and mobile print (`printWaybill.mjs`). Every sheet repeats the full top brand letterhead, hairline divider, left waybill metadata, center return QR, and right-aligned consignee block. Solid black divider separates headers from items table; summary and signatures are isolated to the final sheet; bottom footnote (`Waybill <ID> | Manifest for <Consignee> | Page X of Y`) appears on every sheet.
 - Web Waybill Directory & Inspection: dedicated administrator-only paginated directory at `/waybills` with debounced search, status/hauler filters, and `/waybills/[id]` detail manifest view.
 - Verification passed across `SplitWaybillIntegrationTest` (7 tests), `WaybillShipmentOptionsIntegrationTest` (6 tests), web suite (70 tests), mobile suite (176 tests), and production exports.
@@ -465,18 +466,18 @@
 **7.4 — Online-Only Mobile Scanner, Ergonomics & Access Hardening** — **[COMPLETED]**
 - Pre-deployment scope decision: removed offline SQLite replay subsystem across mobile and backend, enforcing online-only scanning with fail-closed NetInfo connectivity gating.
 - Single and batch scan operations submit directly to `POST /api/v1/tracking-events/scan` and `POST /api/v1/tracking-events/batch-scan` with in-memory state.
-- Dynamic Camera Viewfinder & Gesture Resizing: draggable `PanResponder` divider handle allowing couriers to toggle or drag between compact (120px) and standard (280px) camera previews with responsive reticle scaling (104px compact / 200px standard) and accessible adjustment actions.
+- Dynamic Camera Viewfinder & Gesture Resizing: draggable `PanResponder` divider handle shared by Field and Hauler Staff screens with collapsed (0px), compact (160px), and expanded (280px) snap positions, responsive reticle scaling (104px compact / 200px expanded), spring settling, and accessible adjustment actions. Dragging updates one animated height value without per-frame React state changes.
 - Keyboard-Aware Viewport Collapse: camera preview automatically collapses when manual text inputs receive focus and restores upon keyboard dismissal, preventing layout clipping on small screens.
 - Web Console Access Restriction: restricted web login, console routes, and console-only API operations strictly to `ADMIN` while preserving office and field mobile workflows.
 - Public Staff Android APK Download: web login renders staff Android app download link when `EXPO_PUBLIC_ANDROID_APK_URL` is set, pointing to public GitHub Release asset.
-- Verification: backend authorization and scanner tests passed (331 tests), full mobile suite passed (140 tests).
+- Verification: backend authorization and scanner tests passed at the recorded 331-test checkpoint; the latest full mobile suite passed (176 tests) and the Android production export completed successfully.
 
 **7.5 — Mobile Discovery Rails & Query Recommendations** — **[COMPLETED]**
 - Mobile Recent Shipment Rail: added Hauler Staff `GET /api/v1/waybills/shipment-options` with 20-item horizontal `FlatList` rail on Load & Generate screen with deduplication, retry triggers, and 250ms debounced search recommendations capped at 8 results.
-- Mobile Returned Waybill Rail: added Hauler Staff `GET /api/v1/waybills/options` with 20-item horizontal `FlatList` rail and 250ms debounced waybill search recommendations.
+- Mobile Returned Waybill Rail: added Hauler Staff `GET /api/v1/waybills/options` with 20-item horizontal `FlatList` rail and 250ms debounced waybill search recommendations. Shipment and waybill rails accept selections while the keyboard is visible.
 - Preserved mandatory printed-waybill QR scan confirmation gate; recommendation selection enables inspection without bypassing the return confirmation scan requirement.
 - Coordinated cancellable request coordinator aborts stale requests on input changes, mode changes, sign-out, or unmount.
-- Verification: 11 affected backend tests and 175 mobile tests passed.
+- Verification: 11 affected backend tests passed; the latest full mobile suite passed 176 tests after selector, keyboard, gesture, and final manifest-review changes.
 
 **7.6 — High-Volume Load Testing, Synthetic Seeder & Dev Fixtures** — **[COMPLETED]**
 - Dedicated Spring Boot `loadtest` profile (`application-loadtest.properties`) with HikariCP tuning and Hibernate strict `ddl-auto=validate`.
