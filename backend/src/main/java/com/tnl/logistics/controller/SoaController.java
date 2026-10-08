@@ -53,7 +53,7 @@ public class SoaController {
     }
 
     @GetMapping("/collectors")
-    @PreAuthorize("hasAnyRole('ADMIN', 'FIELD_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<CollectorOptionDto>> getAuthorizedCollectors() {
         List<CollectorOptionDto> collectors = soaService.getAuthorizedCollectors();
         return ResponseEntity.ok(collectors);

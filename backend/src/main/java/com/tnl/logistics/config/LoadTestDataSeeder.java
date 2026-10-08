@@ -105,8 +105,8 @@ public class LoadTestDataSeeder implements CommandLineRunner {
 
     private void seedReferenceData() {
         persistUser("LT-ADMIN", "loadtest-admin", "Load Test Admin", UserRole.ADMIN, null);
-        persistUser("LT-OFFICE", "loadtest-office", "Load Test Office", UserRole.OFFICE_STAFF, null);
-        persistUser("LT-FIELD", "loadtest-field", "Load Test Field", UserRole.FIELD_STAFF, StaffType.INTERNAL_TRUCK);
+        persistUser("LT-OFFICE", "loadtest-office", "Load Test Receiving", UserRole.RECEIVING_STAFF, null);
+        persistUser("LT-FIELD", "loadtest-field", "Load Test Courier", UserRole.COURIER_STAFF, StaffType.INTERNAL_TRUCK);
         for (int index = 1; index <= CLIENT_COUNT; index++) {
             entityManager.persist(new Client(String.format("LT-CL-%04d", index), "Synthetic Client " + index,
                     index + " Sample Avenue, Load Test City", "0917" + String.format("%07d", index), "client" + index + "@loadtest.invalid"));

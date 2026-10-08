@@ -41,7 +41,7 @@
 | ↳ **Phase 7.4** | Online-Only Mobile Scanner, Ergonomics & Access Hardening | [COMPLETED] |
 | ↳ **Phase 7.5** | Mobile Discovery Rails & Query Recommendations | [COMPLETED] |
 | ↳ **Phase 7.6** | High-Volume Load Testing, Synthetic Seeder & Dev Fixtures | [COMPLETED] |
-| ↳ **Phase 7.7** | Future Client Enhancements & Workflow Adaptations | [UPCOMING] |
+| ↳ **Phase 7.7** | Four-Role Authorization Model & Staff-Type Retirement | [IN PROGRESS] |
 
 ---
 
@@ -488,5 +488,12 @@
 - Development Data Seeder & Workflow Fixtures: synchronized `application-dev.properties` to opt into `app.seed.workflow-fixtures=true` with rich scenarios 7–12 (unprinted labels, hauler queue, generated waybill, returned waybill, partial split completion).
 - Verification: unit/integration coverage across `LoadTestEnvironmentGuardTest`, `LoadTestDataSeederTest`, `LoadTestSchemaValidationIntegrationTest`, and `DataSeederWorkflowIntegrationTest` passed.
 
-**7.7 — Future Client Enhancements & Workflow Adaptations** — **[UPCOMING]**
-- Reserved for subsequent client feedback, operational customizations, and future enhancements.
+**7.7 — Four-Role Authorization Model & Staff-Type Retirement** — **[IN PROGRESS]**
+- Planning and threat modeling are complete in `.review/four-role-authorization-migration-plan.md`.
+- Target roles: `ADMIN`, `RECEIVING_STAFF`, `COURIER_STAFF`, and `DISPATCH_STAFF`.
+- Retires the broad `OFFICE_STAFF` / `FIELD_STAFF` plus `StaffType` model after a fail-closed database and JWT migration.
+- Delivery uses three `/ship` runs: backend role cutover, web/mobile adoption, and legacy removal with final authorization verification.
+- Execution prompts and handoff gates are documented in `.review/four-role-ship-runbook.md`.
+- Ship 1 (Backend Role Cutover) [COMPLETED]: Added four target roles, fail-closed Flyway V36 migration with deterministic duplicate-key guards and token version incrementing, token-persisted role mismatch rejection, controller/service authorization matrix enforcement, Courier/Dispatch transition split, Admin-only client and vehicle administration, and full test suite verification (377 tests, 0 failures, 0 errors).
+- Ship 2 (Web and Mobile Adoption) [UPCOMING]: Replace client `staffType` branches and UI selectors with explicit four-role routing and presentation.
+- Ship 3 (Legacy Removal and Final Closure) [UPCOMING]: Drop legacy `staff_type` schema/DTOs and verify final single authorization source.

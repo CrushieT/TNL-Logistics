@@ -117,8 +117,9 @@ public class TrackingScanIntegrationTest {
         // Seed users
         AppUser fieldUser = appUserRepository.findById("USR-FIELD").orElse(null);
         if (fieldUser == null) {
-            fieldUser = new AppUser("USR-FIELD", "field_staff", passwordEncoder.encode("field123"), "Field Staff User", UserRole.FIELD_STAFF);
+            fieldUser = new AppUser("USR-FIELD", "field_staff", passwordEncoder.encode("field123"), "Courier Staff User", UserRole.COURIER_STAFF);
         }
+        fieldUser.setRole(UserRole.COURIER_STAFF);
         fieldUser.setStaffType(StaffType.INTERNAL_TRUCK);
         fieldUser.setMustChangePassword(false);
         fieldUser.setActive(true);
@@ -126,7 +127,8 @@ public class TrackingScanIntegrationTest {
 
         AppUser haulerUser = appUserRepository.findById("USR-HAULER").orElseGet(() ->
                 new AppUser("USR-HAULER", "hauler_staff", passwordEncoder.encode("hauler123"),
-                        "Hauler Staff User", UserRole.FIELD_STAFF));
+                        "Dispatch Staff User", UserRole.DISPATCH_STAFF));
+        haulerUser.setRole(UserRole.DISPATCH_STAFF);
         haulerUser.setStaffType(StaffType.HAULER_STAFF);
         haulerUser.setMustChangePassword(false);
         haulerUser.setActive(true);
@@ -134,7 +136,8 @@ public class TrackingScanIntegrationTest {
 
         AppUser generalFieldUser = appUserRepository.findById("USR-FIELD-GENERAL").orElseGet(() ->
                 new AppUser("USR-FIELD-GENERAL", "general_field", passwordEncoder.encode("general123"),
-                        "General Field User", UserRole.FIELD_STAFF));
+                        "General Courier User", UserRole.COURIER_STAFF));
+        generalFieldUser.setRole(UserRole.COURIER_STAFF);
         generalFieldUser.setStaffType(null);
         generalFieldUser.setMustChangePassword(false);
         generalFieldUser.setActive(true);
@@ -142,9 +145,12 @@ public class TrackingScanIntegrationTest {
 
         AppUser officeUser = appUserRepository.findById("USR-OFFICE").orElse(null);
         if (officeUser == null) {
-            officeUser = new AppUser("USR-OFFICE", "office_staff", passwordEncoder.encode("office123"), "Office Staff User", UserRole.OFFICE_STAFF);
+            officeUser = new AppUser("USR-OFFICE", "office_staff", passwordEncoder.encode("office123"), "Receiving Staff User", UserRole.RECEIVING_STAFF);
             appUserRepository.save(officeUser);
         }
+        officeUser.setRole(UserRole.RECEIVING_STAFF);
+        officeUser.setStaffType(null);
+        appUserRepository.save(officeUser);
 
         AppUser adminUser = appUserRepository.findById("USR-ADMIN").orElse(null);
         if (adminUser == null) {
@@ -152,10 +158,10 @@ public class TrackingScanIntegrationTest {
             appUserRepository.save(adminUser);
         }
 
-        fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
-        haulerToken = "Bearer " + JwtTokenProvider.generateToken("USR-HAULER", "FIELD_STAFF");
-        generalFieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD-GENERAL", "FIELD_STAFF");
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "COURIER_STAFF");
+        haulerToken = "Bearer " + JwtTokenProvider.generateToken("USR-HAULER", "DISPATCH_STAFF");
+        generalFieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD-GENERAL", "COURIER_STAFF");
+        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
         adminToken = "Bearer " + JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
@@ -250,9 +256,9 @@ public class TrackingScanIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    // 3. Every status maps to the correct next scanner status
+    // 3. Scan context exposes only transitions authorized for the caller's role
     @Test
-    public void testStatusMappingAcrossLifecycle() throws Exception {
+    public void testRoleAwareStatusMappingAcrossLifecycle() throws Exception {
         String trackingId = createTestShipment(1);
         ParcelUnit unit = parcelUnitRepository.findById(trackingId).orElseThrow();
 
@@ -261,9 +267,9 @@ public class TrackingScanIntegrationTest {
         parcelUnitRepository.saveAndFlush(unit);
         mockMvc.perform(get("/api/v1/tracking-events/scan-context/" + trackingId).header("Authorization", fieldToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.nextStatusCode").value("QR_GENERATED"))
+                .andExpect(jsonPath("$.nextStatusCode").doesNotExist())
                 .andExpect(jsonPath("$.requiresVehicle").value(false))
-                .andExpect(jsonPath("$.canScan").value(true));
+                .andExpect(jsonPath("$.canScan").value(false));
 
         // 3b. QR_GENERATED
         unit.setCurrentStatus(ParcelStatus.QR_GENERATED);
@@ -288,12 +294,18 @@ public class TrackingScanIntegrationTest {
         parcelUnitRepository.saveAndFlush(unit);
         mockMvc.perform(get("/api/v1/tracking-events/scan-context/" + trackingId).header("Authorization", fieldToken))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nextStatusCode").doesNotExist())
+                .andExpect(jsonPath("$.requiresVehicle").value(false))
+                .andExpect(jsonPath("$.canScan").value(false));
+
+        mockMvc.perform(get("/api/v1/tracking-events/scan-context/" + trackingId).header("Authorization", haulerToken))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nextStatusCode").value("LOADED_TO_HAULER"))
                 .andExpect(jsonPath("$.requiresVehicle").value(false))
                 .andExpect(jsonPath("$.canScan").value(true));
     }
 
-    // 4. LOADED_TO_HAULER proposes completion and COMPLETED remains terminal
+    // 4. LOADED_TO_HAULER and COMPLETED cannot be advanced through generic scanning
     @Test
     public void testTerminalStatusesReturnCannotScan() throws Exception {
         String trackingId = createTestShipment(1);
@@ -304,9 +316,14 @@ public class TrackingScanIntegrationTest {
         parcelUnitRepository.saveAndFlush(unit);
         mockMvc.perform(get("/api/v1/tracking-events/scan-context/" + trackingId).header("Authorization", fieldToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.canScan").value(true))
-                .andExpect(jsonPath("$.nextStatusCode").value("COMPLETED"))
-                .andExpect(jsonPath("$.nextStatusLabel").value("Completed"));
+                .andExpect(jsonPath("$.canScan").value(false))
+                .andExpect(jsonPath("$.nextStatusCode").doesNotExist())
+                .andExpect(jsonPath("$.nextStatusLabel").doesNotExist());
+
+        mockMvc.perform(get("/api/v1/tracking-events/scan-context/" + trackingId).header("Authorization", haulerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.canScan").value(false))
+                .andExpect(jsonPath("$.nextStatusCode").doesNotExist());
 
         // COMPLETED
         unit.setCurrentStatus(ParcelStatus.COMPLETED);
@@ -374,16 +391,15 @@ public class TrackingScanIntegrationTest {
                 .andExpect(jsonPath("$.previousStatusCode").value("ARRIVED_AT_TNL"))
                 .andExpect(jsonPath("$.newStatusCode").value("LOADED_TO_HAULER"));
 
-        // LOADED_TO_HAULER -> COMPLETED
+        // Generic completion is denied; returned-waybill completion is the only completion path.
         TrackingScanRequest req4 = new TrackingScanRequest(trackingId, ParcelStatus.COMPLETED, null, "Delivered");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .header("Authorization", haulerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req4)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.transitionApplied").value(true))
-                .andExpect(jsonPath("$.previousStatusCode").value("LOADED_TO_HAULER"))
-                .andExpect(jsonPath("$.newStatusCode").value("COMPLETED"));
+                .andExpect(status().isForbidden());
+        assertEquals(ParcelStatus.LOADED_TO_HAULER,
+                parcelUnitRepository.findById(trackingId).orElseThrow().getCurrentStatus());
     }
 
     // 7. LOADED_ON_TRUCK rejects missing vehicle
@@ -902,7 +918,7 @@ public class TrackingScanIntegrationTest {
 
         TrackingScanRequest req = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Auth test");
 
-        // FIELD_STAFF -> OK
+        // COURIER_STAFF -> OK
         mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -997,15 +1013,13 @@ public class TrackingScanIntegrationTest {
     }
 
     @Test
-    public void testNullStaffTypeRetainsFullSequentialAccessAndCannotSkipArrival() throws Exception {
+    public void testRoleSpecificTransitionsCannotCrossAuthorityOrSkipArrival() throws Exception {
         vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "AUTH-1004", "General Staff Truck"));
         String trackingId = createTestShipment(1);
 
         for (TrackingScanRequest request : List.of(
                 new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Loaded"),
-                new TrackingScanRequest(trackingId, ParcelStatus.ARRIVED_AT_TNL, null, "Arrived"),
-                new TrackingScanRequest(trackingId, ParcelStatus.LOADED_TO_HAULER, null, "Handover"),
-                new TrackingScanRequest(trackingId, ParcelStatus.COMPLETED, null, "Completed"))) {
+                new TrackingScanRequest(trackingId, ParcelStatus.ARRIVED_AT_TNL, null, "Arrived"))) {
             mockMvc.perform(post("/api/v1/tracking-events/scan")
                             .header("Authorization", generalFieldToken)
                             .contentType(MediaType.APPLICATION_JSON)
@@ -1013,7 +1027,28 @@ public class TrackingScanIntegrationTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.transitionApplied").value(true));
         }
-        assertEquals(ParcelStatus.COMPLETED,
+        TrackingScanRequest handover = new TrackingScanRequest(
+                trackingId, ParcelStatus.LOADED_TO_HAULER, null, "Handover");
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", generalFieldToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(handover)))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", haulerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(handover)))
+                .andExpect(status().isOk());
+
+        TrackingScanRequest genericCompletion = new TrackingScanRequest(
+                trackingId, ParcelStatus.COMPLETED, null, "Completed");
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", haulerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(genericCompletion)))
+                .andExpect(status().isForbidden());
+        assertEquals(ParcelStatus.LOADED_TO_HAULER,
                 parcelUnitRepository.findById(trackingId).orElseThrow().getCurrentStatus());
 
         String skippedTrackingId = createTestShipment(1);
@@ -1028,7 +1063,7 @@ public class TrackingScanIntegrationTest {
         TrackingScanRequest skippedRequest = new TrackingScanRequest(
                 skippedTrackingId, ParcelStatus.LOADED_TO_HAULER, null, "Skip arrival");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
-                        .header("Authorization", generalFieldToken)
+                        .header("Authorization", haulerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(skippedRequest)))
                 .andExpect(status().isBadRequest());

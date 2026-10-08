@@ -72,7 +72,7 @@ public interface TrackingEventRepository extends JpaRepository<TrackingEvent, Lo
                                       @Param("endDateTime") LocalDateTime endDateTime);
 
     @Query("SELECT COUNT(DISTINCT e.staff.userId) FROM TrackingEvent e " +
-           "WHERE e.staff.role = com.tnl.logistics.model.UserRole.FIELD_STAFF " +
+           "WHERE e.staff.role = com.tnl.logistics.model.UserRole.COURIER_STAFF " +
            "AND e.eventTimestamp >= :startDateTime AND e.eventTimestamp <= :endDateTime")
     long countDistinctCouriersBetween(@Param("startDateTime") LocalDateTime startDateTime,
                                       @Param("endDateTime") LocalDateTime endDateTime);

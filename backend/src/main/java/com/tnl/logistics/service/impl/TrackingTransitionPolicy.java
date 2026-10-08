@@ -1,7 +1,7 @@
 package com.tnl.logistics.service.impl;
 
 import com.tnl.logistics.model.ParcelStatus;
-import com.tnl.logistics.model.StaffType;
+import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.model.Vehicle;
 import com.tnl.logistics.repository.VehicleRepository;
 import org.springframework.stereotype.Component;
@@ -42,20 +42,16 @@ public class TrackingTransitionPolicy {
         return new Decision(DecisionKind.APPLY);
     }
 
-    public StaffAuthorizationDecision decideStaffAuthorization(StaffType staffType, ParcelStatus targetStatus) {
-        if (staffType == null) {
-            return StaffAuthorizationDecision.ALLOWED;
-        }
-        if (targetStatus == null) {
+    public StaffAuthorizationDecision decideStaffAuthorization(UserRole role, ParcelStatus targetStatus) {
+        if (role == null || targetStatus == null) {
             return StaffAuthorizationDecision.DENIED;
         }
-        return switch (staffType) {
-            case INTERNAL_TRUCK -> targetStatus == ParcelStatus.LOADED_ON_TRUCK
+        return switch (role) {
+            case COURIER_STAFF -> targetStatus == ParcelStatus.LOADED_ON_TRUCK
                     || targetStatus == ParcelStatus.ARRIVED_AT_TNL
                     ? StaffAuthorizationDecision.ALLOWED
                     : StaffAuthorizationDecision.DENIED;
-            case HAULER_STAFF -> targetStatus == ParcelStatus.LOADED_TO_HAULER
-                    || targetStatus == ParcelStatus.COMPLETED
+            case DISPATCH_STAFF -> targetStatus == ParcelStatus.LOADED_TO_HAULER
                     ? StaffAuthorizationDecision.ALLOWED
                     : StaffAuthorizationDecision.DENIED;
             default -> StaffAuthorizationDecision.DENIED;

@@ -50,7 +50,7 @@ public class DashboardIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "receiving", roles = {"RECEIVING_STAFF"})
     void testGetDashboardSummaryAsOfficeStaffReturns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/dashboard/summary")
                 .contentType(MediaType.APPLICATION_JSON))
@@ -58,7 +58,7 @@ public class DashboardIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "field", roles = {"FIELD_STAFF"})
+    @WithMockUser(username = "courier", roles = {"COURIER_STAFF"})
     void testGetDashboardSummaryAsFieldStaffReturns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/dashboard/summary")
                 .contentType(MediaType.APPLICATION_JSON))

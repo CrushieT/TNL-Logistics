@@ -124,7 +124,7 @@ public class ReportIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "field", roles = {"FIELD_STAFF"})
+    @WithMockUser(username = "courier", roles = {"COURIER_STAFF"})
     void testGetReportSummaryAsFieldStaffReturns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/reports/summary")
                 .contentType(MediaType.APPLICATION_JSON))

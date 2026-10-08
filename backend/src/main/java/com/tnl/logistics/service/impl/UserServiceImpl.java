@@ -70,6 +70,7 @@ public class UserServiceImpl implements UserService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Administrator account creation is not permitted. Only one system administrator account is allowed.");
         }
+        requireAssignableRole(request.getRole());
 
         String normalizedUsername = UsernameNormalizer.normalize(request.getUsername());
         if (appUserRepository.findByUsername(normalizedUsername).isPresent()) {
@@ -77,10 +78,7 @@ public class UserServiceImpl implements UserService {
                     "Username '" + normalizedUsername + "' is already taken.");
         }
 
-        if (request.getRole() == UserRole.FIELD_STAFF && request.getStaffType() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Staff type is required for Field Staff accounts.");
-        }
+        StaffType compatibilityStaffType = resolveCompatibilityStaffType(request.getRole(), request.getStaffType());
 
         String userId = generateNextUserId();
 
@@ -93,9 +91,7 @@ public class UserServiceImpl implements UserService {
         );
         user.setMustChangePassword(true);
 
-        if (request.getRole() == UserRole.FIELD_STAFF) {
-            user.setStaffType(request.getStaffType());
-        }
+        user.setStaffType(compatibilityStaffType);
 
         if (request.getPin() != null && !request.getPin().isBlank()) {
             user.setPinHash(passwordEncoder.encode(request.getPin()));
@@ -109,6 +105,7 @@ public class UserServiceImpl implements UserService {
     public UserResponse updateUser(String userId, UserUpdateRequest request, String requestingUserId) {
         guardSelfModification(userId, requestingUserId);
         AppUser user = findUserOrThrow(userId);
+        requireTargetRole(request.getRole());
 
         if (user.getRole() != UserRole.ADMIN && request.getRole() == UserRole.ADMIN) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -128,10 +125,9 @@ public class UserServiceImpl implements UserService {
             }
         });
 
-        if (request.getRole() == UserRole.FIELD_STAFF && request.getStaffType() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Staff type is required for Field Staff accounts.");
-        }
+        StaffType compatibilityStaffType = request.getRole() == UserRole.ADMIN
+                ? resolveCompatibilityStaffType(UserRole.ADMIN, request.getStaffType())
+                : resolveCompatibilityStaffType(request.getRole(), request.getStaffType());
 
         boolean hasSecurityRelevantChange = user.getRole() != request.getRole()
                 || !java.util.Objects.equals(user.getActive(), request.getActive());
@@ -141,11 +137,7 @@ public class UserServiceImpl implements UserService {
         user.setRole(request.getRole());
         user.setActive(request.getActive());
 
-        if (request.getRole() == UserRole.FIELD_STAFF) {
-            user.setStaffType(request.getStaffType());
-        } else {
-            user.setStaffType(null);
-        }
+        user.setStaffType(compatibilityStaffType);
 
         if (hasSecurityRelevantChange) {
             user.incrementTokenVersion();
@@ -230,12 +222,40 @@ public class UserServiceImpl implements UserService {
 
     private List<UserRole> resolveRoleFilter(String roleFilter) {
         if (roleFilter == null || roleFilter.isBlank() || roleFilter.equalsIgnoreCase("all")) {
-            return List.of(UserRole.ADMIN, UserRole.OFFICE_STAFF, UserRole.FIELD_STAFF);
+            return List.of(UserRole.ADMIN, UserRole.RECEIVING_STAFF, UserRole.COURIER_STAFF, UserRole.DISPATCH_STAFF);
         }
         try {
-            return List.of(UserRole.valueOf(roleFilter.toUpperCase()));
+            UserRole role = UserRole.valueOf(roleFilter.toUpperCase());
+            requireTargetRole(role);
+            return List.of(role);
         } catch (IllegalArgumentException e) {
-            return List.of(UserRole.ADMIN, UserRole.OFFICE_STAFF, UserRole.FIELD_STAFF);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported role filter.");
         }
+    }
+
+    private void requireAssignableRole(UserRole role) {
+        if (role == null || !role.isAssignableStaffRole()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported staff role.");
+        }
+    }
+
+    private void requireTargetRole(UserRole role) {
+        if (role == null || !role.isTargetRole()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported role.");
+        }
+    }
+
+    private StaffType resolveCompatibilityStaffType(UserRole role, StaffType requestedStaffType) {
+        StaffType expectedStaffType = switch (role) {
+            case COURIER_STAFF -> StaffType.INTERNAL_TRUCK;
+            case DISPATCH_STAFF -> StaffType.HAULER_STAFF;
+            case ADMIN, RECEIVING_STAFF -> null;
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported role.");
+        };
+        if (requestedStaffType != null && requestedStaffType != expectedStaffType) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Staff type is incompatible with the selected role.");
+        }
+        return expectedStaffType;
     }
 }

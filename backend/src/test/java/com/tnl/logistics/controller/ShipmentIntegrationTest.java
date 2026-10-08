@@ -104,8 +104,8 @@ public class ShipmentIntegrationTest {
         jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
         systemSettingService.refreshCachedSettings();
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
-        fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
+        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
+        fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "COURIER_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {
@@ -348,7 +348,7 @@ public class ShipmentIntegrationTest {
         ShipmentResponse created = objectMapper.readValue(regResult.getResponse().getContentAsString(), ShipmentResponse.class);
         String trackingId0 = created.getTrackingIds().getFirst();
 
-        // 2. Role gating: FIELD_STAFF cannot access GET /api/v1/shipments or GET /api/v1/shipments/{id}
+    // 2. Role gating: COURIER_STAFF cannot access GET /api/v1/shipments or GET /api/v1/shipments/{id}
         mockMvc.perform(get("/api/v1/shipments").header("Authorization", fieldToken))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/shipments/" + created.getShipmentId()).header("Authorization", fieldToken))

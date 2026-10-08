@@ -27,7 +27,7 @@ public class UserCreateRequest {
     @NotNull(message = "Role is required")
     private UserRole role;
 
-    // Required when role is FIELD_STAFF
+    // Temporary compatibility data; authorization is always derived from role.
     private StaffType staffType;
 
     // Optional 4-digit numeric PIN for mobile login

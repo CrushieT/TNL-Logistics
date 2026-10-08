@@ -30,14 +30,14 @@ public class WaybillController {
     }
 
     @GetMapping("/shipments")
-    @PreAuthorize("hasAnyRole('ADMIN', 'FIELD_STAFF')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DISPATCH_STAFF')")
     public ResponseEntity<List<WaybillShipmentOptionResponse>> getShipmentOptions(Principal principal) {
         waybillService.assertViewer(actor(principal));
         return ResponseEntity.ok(waybillService.getShipmentOptions());
     }
 
     @GetMapping("/shipment-options")
-    @PreAuthorize("hasRole('FIELD_STAFF')")
+    @PreAuthorize("hasRole('DISPATCH_STAFF')")
     public ResponseEntity<PageResponse<WaybillShipmentOptionResponse>> getShipmentOptionsPage(
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size,
@@ -53,7 +53,7 @@ public class WaybillController {
     }
 
     @GetMapping("/options")
-    @PreAuthorize("hasRole('FIELD_STAFF')")
+    @PreAuthorize("hasRole('DISPATCH_STAFF')")
     public ResponseEntity<PageResponse<WaybillOptionResponse>> getWaybillOptions(
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size,
@@ -76,40 +76,40 @@ public class WaybillController {
     }
 
     @GetMapping("/shipments/{shipmentId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'FIELD_STAFF')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DISPATCH_STAFF')")
     public ResponseEntity<List<WaybillManifestResponse>> getByShipmentId(@PathVariable String shipmentId, Principal principal) {
         waybillService.assertViewer(actor(principal));
         return ResponseEntity.ok(waybillService.getByShipmentId(shipmentId));
     }
 
     @GetMapping("/shipments/{shipmentId}/available")
-    @PreAuthorize("hasRole('FIELD_STAFF')")
+    @PreAuthorize("hasRole('DISPATCH_STAFF')")
     public ResponseEntity<List<ParcelUnitResponse>> getAvailableUnits(@PathVariable String shipmentId, Principal principal) {
         waybillService.assertViewer(actor(principal));
         return ResponseEntity.ok(waybillService.getAvailableUnits(shipmentId));
     }
 
     @GetMapping("/{waybillId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'FIELD_STAFF')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DISPATCH_STAFF')")
     public ResponseEntity<WaybillManifestResponse> getById(@PathVariable String waybillId, Principal principal) {
         waybillService.assertViewer(actor(principal));
         return ResponseEntity.ok(waybillService.getManifestById(waybillId));
     }
 
     @PostMapping("/generate")
-    @PreAuthorize("hasRole('FIELD_STAFF')")
+    @PreAuthorize("hasRole('DISPATCH_STAFF')")
     public ResponseEntity<WaybillManifestResponse> generate(@Valid @RequestBody WaybillGenerationRequest request, Principal principal) {
         return ResponseEntity.ok(waybillService.generate(request, actor(principal)));
     }
 
     @PostMapping("/{waybillId}/send")
-    @PreAuthorize("hasRole('FIELD_STAFF')")
+    @PreAuthorize("hasRole('DISPATCH_STAFF')")
     public ResponseEntity<WaybillManifestResponse> sendToHauler(@PathVariable String waybillId, Principal principal) {
         return ResponseEntity.ok(waybillService.sendToHauler(waybillId, actor(principal)));
     }
 
     @PostMapping("/{waybillId}/complete")
-    @PreAuthorize("hasRole('FIELD_STAFF')")
+    @PreAuthorize("hasRole('DISPATCH_STAFF')")
     public ResponseEntity<WaybillManifestResponse> markSignedCompleted(@PathVariable String waybillId,
             @Valid @RequestBody WaybillStatusUpdateRequest request, Principal principal) {
         return ResponseEntity.ok(waybillService.markSignedCompleted(waybillId, request, actor(principal)));

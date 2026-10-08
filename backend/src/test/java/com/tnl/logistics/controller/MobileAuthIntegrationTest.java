@@ -158,7 +158,7 @@ public class MobileAuthIntegrationTest {
                 .andExpect(jsonPath("$.userId").value("USR-OFFICE"))
                 .andExpect(jsonPath("$.username").value("office"))
                 .andExpect(jsonPath("$.fullName").value("Office Staff"))
-                .andExpect(jsonPath("$.role").value("OFFICE_STAFF"))
+                .andExpect(jsonPath("$.role").value("RECEIVING_STAFF"))
                 .andExpect(jsonPath("$.hasPinSet").value(true))
                 .andExpect(jsonPath("$.deviceId").isString())
                 .andExpect(jsonPath("$.deviceToken").isString());
@@ -176,7 +176,7 @@ public class MobileAuthIntegrationTest {
                 .andExpect(jsonPath("$.userId").value("USR-FIELD"))
                 .andExpect(jsonPath("$.username").value("field"))
                 .andExpect(jsonPath("$.fullName").value("Carlos Mendoza"))
-                .andExpect(jsonPath("$.role").value("FIELD_STAFF"))
+                .andExpect(jsonPath("$.role").value("COURIER_STAFF"))
                 .andExpect(jsonPath("$.hasPinSet").value(true))
                 .andExpect(jsonPath("$.deviceId").isString())
                 .andExpect(jsonPath("$.deviceToken").isString());
@@ -390,7 +390,7 @@ public class MobileAuthIntegrationTest {
                 .andExpect(jsonPath("$.userId").value("USR-OFFICE"))
                 .andExpect(jsonPath("$.username").value("office"))
                 .andExpect(jsonPath("$.fullName").value("Office Staff"))
-                .andExpect(jsonPath("$.role").value("OFFICE_STAFF"))
+                .andExpect(jsonPath("$.role").value("RECEIVING_STAFF"))
                 .andExpect(jsonPath("$.deviceId").value("dev-office-device"))
                 .andExpect(jsonPath("$.deviceToken").value(OFFICE_DEVICE_TOKEN));
     }
@@ -407,7 +407,7 @@ public class MobileAuthIntegrationTest {
                 .andExpect(jsonPath("$.userId").value("USR-FIELD"))
                 .andExpect(jsonPath("$.username").value("field"))
                 .andExpect(jsonPath("$.fullName").value("Carlos Mendoza"))
-                .andExpect(jsonPath("$.role").value("FIELD_STAFF"));
+                .andExpect(jsonPath("$.role").value("COURIER_STAFF"));
     }
 
     @Test
@@ -785,7 +785,7 @@ public class MobileAuthIntegrationTest {
                 .andExpect(jsonPath("$.userId").value("USR-OFFICE"))
                 .andExpect(jsonPath("$.username").value("office"))
                 .andExpect(jsonPath("$.fullName").value("Office Staff"))
-                .andExpect(jsonPath("$.role").value("OFFICE_STAFF"))
+                .andExpect(jsonPath("$.role").value("RECEIVING_STAFF"))
                 .andExpect(jsonPath("$.mustChangePassword").value(false))
                 .andExpect(jsonPath("$.hasPinSet").value(true))
                 .andExpect(jsonPath("$.deviceBinding.maskedDeviceId").value("\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022e-device"))
@@ -810,7 +810,7 @@ public class MobileAuthIntegrationTest {
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + fieldToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.role").value("FIELD_STAFF"))
+                .andExpect(jsonPath("$.role").value("COURIER_STAFF"))
                 .andExpect(jsonPath("$.deviceBinding").doesNotExist());
 
         mockMvc.perform(get("/api/v1/auth/me")

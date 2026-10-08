@@ -99,8 +99,8 @@ public class ClientIntegrationTest {
     public void testMobileClientCreationValidationAndRoleGates() throws Exception {
         ClientCreateRequest request = new ClientCreateRequest("Mobile test client", "Baguio test address", "09170000000", null);
         String payload = objectMapper.writeValueAsString(request);
-        String fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
-        String mobileOfficeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        String fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "COURIER_STAFF");
+        String mobileOfficeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
         mockMvc.perform(post("/api/v1/clients").header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isForbidden());
@@ -111,7 +111,7 @@ public class ClientIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
         request.setEmail("invalid-email");
-        MvcResult invalid = mockMvc.perform(post("/api/v1/clients").header("Authorization", mobileOfficeToken)
+        MvcResult invalid = mockMvc.perform(post("/api/v1/clients").header("Authorization", officeToken)
                         .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest()).andReturn();
         assertTrue(objectMapper.readTree(invalid.getResponse().getContentAsString()).get("fieldErrors").has("email"));
@@ -120,19 +120,22 @@ public class ClientIntegrationTest {
         // Verify contact number length and format rejection
         request.setEmail(null);
         request.setContactNumber("091700000000"); // 12 digits
-        MvcResult invalidContactLen = mockMvc.perform(post("/api/v1/clients").header("Authorization", mobileOfficeToken)
+        MvcResult invalidContactLen = mockMvc.perform(post("/api/v1/clients").header("Authorization", officeToken)
                         .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest()).andReturn();
         assertTrue(objectMapper.readTree(invalidContactLen.getResponse().getContentAsString()).get("fieldErrors").has("contactNumber"));
 
         request.setContactNumber("0917-555-014"); // contains dashes
-        MvcResult invalidContactFmt = mockMvc.perform(post("/api/v1/clients").header("Authorization", mobileOfficeToken)
+        MvcResult invalidContactFmt = mockMvc.perform(post("/api/v1/clients").header("Authorization", officeToken)
                         .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest()).andReturn();
         assertTrue(objectMapper.readTree(invalidContactFmt.getResponse().getContentAsString()).get("fieldErrors").has("contactNumber"));
 
         request.setContactNumber("09170000000"); // restore valid
-        MvcResult created = mockMvc.perform(post("/api/v1/clients").header("Authorization", mobileOfficeToken)
+        mockMvc.perform(post("/api/v1/clients").header("Authorization", mobileOfficeToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isForbidden());
+        MvcResult created = mockMvc.perform(post("/api/v1/clients").header("Authorization", officeToken)
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isOk()).andReturn();
         JsonNode body = objectMapper.readTree(created.getResponse().getContentAsString());
@@ -232,8 +235,8 @@ public class ClientIntegrationTest {
         );
         clientRepository.saveAndFlush(client);
 
-        String mobileOfficeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
-        String fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
+        String mobileOfficeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
+        String fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "COURIER_STAFF");
 
         mockMvc.perform(get("/api/v1/shipments/calculation-settings")
                         .header("Authorization", mobileOfficeToken)

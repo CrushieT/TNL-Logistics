@@ -87,7 +87,7 @@ public class ParcelPrintIntegrationTest {
         parcelUnitRepository.deleteAll();
         shipmentRepository.deleteAll();
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {
@@ -296,7 +296,7 @@ public class ParcelPrintIntegrationTest {
     @Test
     public void testFieldStaffCannotRecordPrintAudit() throws Exception {
         ShipmentResponse created = createSampleShipment();
-        String fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
+        String fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "COURIER_STAFF");
         PrintLabelRequest request = new PrintLabelRequest(
                 UUID.randomUUID(), created.getTrackingIds(), "SYSTEM-PDF"
         );

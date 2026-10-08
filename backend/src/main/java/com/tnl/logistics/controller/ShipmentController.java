@@ -33,7 +33,7 @@ public class ShipmentController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('RECEIVING_STAFF')")
     public ResponseEntity<ShipmentResponse> registerShipment(@Valid @RequestBody ShipmentRegistrationRequest request) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
@@ -45,7 +45,7 @@ public class ShipmentController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('RECEIVING_STAFF')")
     public ResponseEntity<Page<ShipmentSummaryResponse>> getShipments(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -63,21 +63,21 @@ public class ShipmentController {
     }
 
     @GetMapping("/calculation-settings")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('RECEIVING_STAFF')")
     public ResponseEntity<ShipmentCalculationSettingsResponse> getCalculationSettings(
             @RequestParam String clientId) {
         return ResponseEntity.ok(shipmentService.getCalculationSettings(clientId));
     }
 
     @GetMapping("/{shipmentId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('RECEIVING_STAFF')")
     public ResponseEntity<ShipmentDetailResponse> getShipmentById(@PathVariable String shipmentId) {
         ShipmentDetailResponse response = shipmentService.getShipmentById(shipmentId);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{shipmentId}/labels/print")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('RECEIVING_STAFF')")
     public ResponseEntity<Void> recordLabelPrint(
             @PathVariable String shipmentId,
             @Valid @RequestBody PrintLabelRequest request

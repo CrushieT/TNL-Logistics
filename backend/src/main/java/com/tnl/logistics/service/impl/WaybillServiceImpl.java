@@ -57,7 +57,7 @@ public class WaybillServiceImpl implements WaybillService {
                 .orElseThrow(() -> new AccessDeniedException("Active waybill staff account required"));
         if (!Boolean.TRUE.equals(actor.getActive()) ||
                 (actor.getRole() != UserRole.ADMIN &&
-                        (actor.getRole() != UserRole.FIELD_STAFF || actor.getStaffType() != StaffType.HAULER_STAFF))) {
+                        actor.getRole() != UserRole.DISPATCH_STAFF)) {
             throw new AccessDeniedException("Active waybill staff account required");
         }
     }
@@ -141,18 +141,9 @@ public class WaybillServiceImpl implements WaybillService {
     public List<HaulerStaffOptionResponse> getHaulerStaffOptions() {
         List<HaulerStaffOptionResponse> options = new ArrayList<>();
 
-        // 1. Query specialized HAULER_STAFF users
-        List<AppUser> haulerStaff = appUserRepository.findByStaffTypeAndActiveTrue(StaffType.HAULER_STAFF);
-        for (AppUser u : haulerStaff) {
+        List<AppUser> dispatchStaff = appUserRepository.findByRoleAndActiveTrue(UserRole.DISPATCH_STAFF);
+        for (AppUser u : dispatchStaff) {
             options.add(new HaulerStaffOptionResponse(u.getUserId(), u.getFullName(), u.getStaffType(), null, u.getFullName()));
-        }
-
-        // 2. Query other active FIELD_STAFF only if no specialized hauler staff exist
-        if (options.isEmpty()) {
-            List<AppUser> otherField = appUserRepository.findByRoleAndActiveTrue(UserRole.FIELD_STAFF);
-            for (AppUser u : otherField) {
-                options.add(new HaulerStaffOptionResponse(u.getUserId(), u.getFullName(), u.getStaffType(), null, u.getFullName()));
-            }
         }
 
         return options;
@@ -191,7 +182,7 @@ public class WaybillServiceImpl implements WaybillService {
 
     @Override
     public WaybillManifestResponse generate(WaybillGenerationRequest request, String actingStaffUserId) {
-        AppUser actor = requireHaulerStaff(actingStaffUserId);
+        AppUser actor = requireDispatchStaff(actingStaffUserId);
         String key = request.getIdempotencyKey().trim();
         if (key.length() > 100) throw new IllegalArgumentException("Idempotency key is too long");
         List<String> ids = normalizeIds(request.getTrackingIds());
@@ -239,7 +230,7 @@ public class WaybillServiceImpl implements WaybillService {
 
     @Override
     public WaybillManifestResponse sendToHauler(String waybillId, String actingStaffUserId) {
-        AppUser actor = requireHaulerStaff(actingStaffUserId);
+        AppUser actor = requireDispatchStaff(actingStaffUserId);
         Waybill waybill = waybillRepository.findByIdForUpdate(waybillId)
                 .orElseThrow(() -> new IllegalArgumentException("Waybill not found: " + waybillId));
         shipmentRepository.findByIdForUpdate(waybill.getShipment().getShipmentId()).orElseThrow();
@@ -255,7 +246,7 @@ public class WaybillServiceImpl implements WaybillService {
 
     @Override
     public WaybillManifestResponse markSignedCompleted(String waybillId, WaybillStatusUpdateRequest request, String actingStaffUserId) {
-        AppUser actor = requireHaulerStaff(actingStaffUserId);
+        AppUser actor = requireDispatchStaff(actingStaffUserId);
         if (request == null || request.getConfirmedWaybillId() == null
                 || !waybillId.equals(request.getConfirmedWaybillId())) {
             throw new IllegalArgumentException(COMPLETION_DENIED_MESSAGE);
@@ -371,12 +362,11 @@ public class WaybillServiceImpl implements WaybillService {
                 .orElseThrow(() -> new IllegalArgumentException("Waybill not found: " + waybillId));
     }
 
-    private AppUser requireHaulerStaff(String userId) {
+    private AppUser requireDispatchStaff(String userId) {
         AppUser actor = appUserRepository.findById(userId)
-                .orElseThrow(() -> new AccessDeniedException("Active Hauler Staff account required"));
-        if (!Boolean.TRUE.equals(actor.getActive()) || actor.getRole() != UserRole.FIELD_STAFF
-                || actor.getStaffType() != StaffType.HAULER_STAFF) {
-            throw new AccessDeniedException("Active Hauler Staff account required");
+                .orElseThrow(() -> new AccessDeniedException("Active Dispatch Staff account required"));
+        if (!Boolean.TRUE.equals(actor.getActive()) || actor.getRole() != UserRole.DISPATCH_STAFF) {
+            throw new AccessDeniedException("Active Dispatch Staff account required");
         }
         return actor;
     }

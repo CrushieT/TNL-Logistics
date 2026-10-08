@@ -53,7 +53,7 @@ public class PaymentController {
      * Retrieve payment breakdown and financial balance for a specific shipment.
      */
     @GetMapping("/shipment/{shipmentId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'FIELD_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ShipmentPaymentSummaryResponse> getPaymentsByShipmentId(
             @PathVariable String shipmentId) {
         ShipmentPaymentSummaryResponse response = paymentService.getPaymentsByShipmentId(shipmentId);

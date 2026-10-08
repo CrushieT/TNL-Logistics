@@ -11,6 +11,8 @@ tnl-logistics/
 │   ├── client-demo-phase-0-discovery-and-threat-model.md
 │   ├── client-demo-phase-1-registration-and-rating-plan.md
 │   ├── client-demo-phase-1.1-client-rate-override-plan.md
+│   ├── four-role-authorization-migration-plan.md
+│   ├── four-role-ship-runbook.md
 │   └── railway-deployment-runbook.md
 ├── .agents/
 │   └── rules/
@@ -40,8 +42,8 @@ tnl-logistics/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
 │   │   │       ├── application-loadtest.properties
-│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V35; V35 records returned QR scans)
-│   │   └── test/                        # Integration and unit test suites, including AdminConsoleAuthorizationIntegrationTest and scanner API coverage
+│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V36; V36 cuts over to four authorization roles)
+│   │   └── test/                        # Integration and unit test suites, including FourRoleAuthorizationIntegrationTest, AdminConsoleAuthorizationIntegrationTest, and scanner API coverage
 │   └── pom.xml
 │
 ├── frontend-web/                    # Admin Web Portal (React Native Web / Expo Router)

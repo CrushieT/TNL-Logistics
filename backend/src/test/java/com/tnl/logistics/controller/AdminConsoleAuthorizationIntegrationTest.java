@@ -26,7 +26,7 @@ class AdminConsoleAuthorizationIntegrationTest {
     private MockMvc mockMvc;
 
     @Test
-    @WithMockUser(username = "office", roles = "OFFICE_STAFF")
+    @WithMockUser(username = "receiving", roles = "RECEIVING_STAFF")
     void officeStaffCannotAccessConsoleOnlyOperations() throws Exception {
         mockMvc.perform(get("/api/v1/dashboard/summary")).andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/collections/weekly")).andExpect(status().isForbidden());
@@ -75,9 +75,9 @@ class AdminConsoleAuthorizationIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "office", roles = "OFFICE_STAFF")
-    void officeStaffRetainsMobileSharedClientOperations() throws Exception {
+    @WithMockUser(username = "receiving", roles = "RECEIVING_STAFF")
+    void receivingStaffCannotAccessClientAdministration() throws Exception {
         mockMvc.perform(get("/api/v1/clients"))
-                .andExpect(status().isOk());
+                .andExpect(status().isForbidden());
     }
 }

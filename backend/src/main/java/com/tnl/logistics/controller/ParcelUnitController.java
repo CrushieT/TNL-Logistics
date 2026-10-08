@@ -23,7 +23,7 @@ public class ParcelUnitController {
     }
 
     @GetMapping("/{trackingId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasRole('RECEIVING_STAFF')")
     public ResponseEntity<ParcelUnitDetailResponse> getParcelUnit(@PathVariable String trackingId) {
         ParcelUnitDetailResponse response = shipmentService.getParcelUnitByTrackingId(trackingId);
         return ResponseEntity.ok(response);

@@ -165,10 +165,10 @@ class WaybillDirectoryIntegrationTest {
         mockMvc.perform(get("/api/v1/waybills"))
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/v1/waybills")
-                        .with(user("USR-OFFICE").roles("OFFICE_STAFF")))
+                .with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/waybills")
-                        .with(user("USR-HAULER").roles("FIELD_STAFF")))
+                .with(user("USR-HAULER").roles("DISPATCH_STAFF")))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/waybills")
                         .with(user("USR-ADMIN").roles("ADMIN")))

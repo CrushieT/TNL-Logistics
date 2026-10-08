@@ -61,7 +61,7 @@ public class UserManagementIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "USR-RECEIVING", roles = {"RECEIVING_STAFF"})
     void testListUsersAsOfficeStaffReturns403() throws Exception {
         mockMvc.perform(get("/api/v1/users").contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden());
@@ -80,7 +80,7 @@ public class UserManagementIntegrationTest {
         request.setFullName("Test Field Agent");
         request.setUsername("testagent001");
         request.setPassword("pass123");
-        request.setRole(UserRole.FIELD_STAFF);
+        request.setRole(UserRole.COURIER_STAFF);
         request.setStaffType(StaffType.INTERNAL_TRUCK);
 
         mockMvc.perform(post("/api/v1/users")
@@ -89,7 +89,7 @@ public class UserManagementIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.userId").value(org.hamcrest.Matchers.matchesPattern("U-\\d{3}")))
                 .andExpect(jsonPath("$.username").value("testagent001"))
-                .andExpect(jsonPath("$.role").value("FIELD_STAFF"))
+                .andExpect(jsonPath("$.role").value("COURIER_STAFF"))
                 .andExpect(jsonPath("$.mustChangePassword").value(true))
                 .andExpect(jsonPath("$.hasPinSet").value(false));
     }
@@ -101,7 +101,7 @@ public class UserManagementIntegrationTest {
         request.setFullName("Pinned Office Staff");
         request.setUsername("pinoffice001");
         request.setPassword("pass123");
-        request.setRole(UserRole.OFFICE_STAFF);
+        request.setRole(UserRole.RECEIVING_STAFF);
         request.setPin("1234");
 
         mockMvc.perform(post("/api/v1/users")
@@ -146,7 +146,7 @@ public class UserManagementIntegrationTest {
     void testUserCreateBoundaryValidation() throws Exception {
         UserCreateRequest request = new UserCreateRequest();
         request.setPassword("pass123");
-        request.setRole(UserRole.OFFICE_STAFF);
+        request.setRole(UserRole.RECEIVING_STAFF);
 
         // Full name > 150 chars
         request.setFullName("A".repeat(151));
@@ -195,7 +195,7 @@ public class UserManagementIntegrationTest {
     @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testUserUpdateBoundaryValidation() throws Exception {
         UserUpdateRequest updateReq = new UserUpdateRequest();
-        updateReq.setRole(UserRole.OFFICE_STAFF);
+        updateReq.setRole(UserRole.RECEIVING_STAFF);
         updateReq.setActive(true);
 
         // Full name > 150 chars
@@ -235,18 +235,19 @@ public class UserManagementIntegrationTest {
 
     @Test
     @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
-    void testCreateFieldStaffWithoutStaffTypeReturns400() throws Exception {
+    void testCreateCourierDerivesCompatibilityStaffType() throws Exception {
         UserCreateRequest request = new UserCreateRequest();
-        request.setFullName("Incomplete Field Staff");
+        request.setFullName("Courier Staff");
         request.setUsername("incomplete001");
         request.setPassword("pass123");
-        request.setRole(UserRole.FIELD_STAFF);
-        // staffType intentionally omitted
+        request.setRole(UserRole.COURIER_STAFF);
 
         mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.role").value("COURIER_STAFF"))
+                .andExpect(jsonPath("$.staffType").value("INTERNAL_TRUCK"));
     }
 
     @Test
@@ -398,7 +399,7 @@ public class UserManagementIntegrationTest {
         createReq.setFullName("Ephemeral Staff");
         createReq.setUsername("ephemeral001");
         createReq.setPassword("pass123");
-        createReq.setRole(UserRole.OFFICE_STAFF);
+        createReq.setRole(UserRole.RECEIVING_STAFF);
 
         String body = mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -426,7 +427,7 @@ public class UserManagementIntegrationTest {
         originalRequest.setFullName("Original Session Owner");
         originalRequest.setUsername("reusedsession001");
         originalRequest.setPassword("pass123");
-        originalRequest.setRole(UserRole.OFFICE_STAFF);
+        originalRequest.setRole(UserRole.RECEIVING_STAFF);
 
         String originalResponse = mockMvc.perform(post("/api/v1/users")
                         .header("Authorization", adminToken)
@@ -482,7 +483,7 @@ public class UserManagementIntegrationTest {
         createReq.setFullName("Waybill Generator Staff");
         createReq.setUsername("waybillstaff001");
         createReq.setPassword("pass123");
-        createReq.setRole(UserRole.OFFICE_STAFF);
+        createReq.setRole(UserRole.RECEIVING_STAFF);
 
         String body = mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -525,7 +526,7 @@ public class UserManagementIntegrationTest {
         request.setFullName("Normalized Staff");
         request.setUsername("  PaddedUsername01  ");
         request.setPassword("pass123");
-        request.setRole(UserRole.OFFICE_STAFF);
+        request.setRole(UserRole.RECEIVING_STAFF);
 
         mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -538,7 +539,7 @@ public class UserManagementIntegrationTest {
         duplicateReq.setFullName("Duplicate Staff");
         duplicateReq.setUsername("PADDEDUSERNAME01");
         duplicateReq.setPassword("pass123");
-        duplicateReq.setRole(UserRole.OFFICE_STAFF);
+        duplicateReq.setRole(UserRole.RECEIVING_STAFF);
 
         mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -553,7 +554,7 @@ public class UserManagementIntegrationTest {
         createReq.setFullName("Staff To Update");
         createReq.setUsername("updatable001");
         createReq.setPassword("pass123");
-        createReq.setRole(UserRole.OFFICE_STAFF);
+        createReq.setRole(UserRole.RECEIVING_STAFF);
 
         String body = mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -566,7 +567,7 @@ public class UserManagementIntegrationTest {
         UserUpdateRequest updateReq = new UserUpdateRequest();
         updateReq.setFullName("Staff With Padded Name");
         updateReq.setUsername("  RenamedStaff001  ");
-        updateReq.setRole(UserRole.OFFICE_STAFF);
+        updateReq.setRole(UserRole.RECEIVING_STAFF);
         updateReq.setActive(true);
 
         mockMvc.perform(put("/api/v1/users/" + newUserId)
@@ -588,7 +589,7 @@ public class UserManagementIntegrationTest {
         UserUpdateRequest updateRequest = new UserUpdateRequest();
         updateRequest.setFullName(officeUser.getFullName());
         updateRequest.setUsername(officeUser.getUsername());
-        updateRequest.setRole(UserRole.FIELD_STAFF);
+        updateRequest.setRole(UserRole.COURIER_STAFF);
         updateRequest.setStaffType(StaffType.INTERNAL_TRUCK);
         updateRequest.setActive(true);
 
@@ -638,7 +639,7 @@ public class UserManagementIntegrationTest {
         request.setFullName("Invalid Username");
         request.setUsername("not valid");
         request.setPassword("pass123");
-        request.setRole(UserRole.OFFICE_STAFF);
+        request.setRole(UserRole.RECEIVING_STAFF);
 
         mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
