@@ -254,14 +254,14 @@ test('password and PIN rotations replace JWT without clearing device credentials
   assert.equal(rotationBlock.includes('removeDeviceCredentials'), false);
 });
 
-test('dispatch dashboard keeps waybills primary while exposing shared scan and history entry points', async () => {
+test('hauler staff role exchanges scan qr card with waybills console and scan.js redirects', async () => {
   const [fieldDashboard, scanScreen] = await Promise.all([
     readFile(new URL('../src/features/field/components/FieldDashboard.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/app/(main)/scan.js', import.meta.url), 'utf8'),
   ]);
-  assert.match(fieldDashboard, /user\?\.role === 'DISPATCH_STAFF'/);
-  assert.match(fieldDashboard, /title="WAYBILLS"/);
-  assert.match(fieldDashboard, /title=\{isDispatchStaff \? 'SCAN QR' : 'TRACKING HISTORY'\}/);
-  assert.match(fieldDashboard, /isDispatchStaff[\s\S]*title="TRACKING HISTORY"/);
-  assert.match(scanScreen, /canAccessMobileRoute\(user\.role, MOBILE_ROUTES\.SCAN\)/);
+  assert.match(fieldDashboard, /isDispatchStaff\s*\?\s*\(\s*<ActionCard[\s\S]*title="SCAN QR"[\s\S]*subtitle="Hauler waybill/);
+  assert.match(fieldDashboard, /:\s*\(\s*<ActionCard[\s\S]*title="SCAN QR"[\s\S]*subtitle="Advance parcel/);
+  assert.match(fieldDashboard, /router\.push\(isDispatchStaff \? '\/\(main\)\/waybills' : '\/\(main\)\/scan'\)/);
+  assert.match(scanScreen, /user\.role === 'DISPATCH_STAFF'[\s\S]*router\.replace\('\/\(main\)\/waybills'\)/);
 });
+

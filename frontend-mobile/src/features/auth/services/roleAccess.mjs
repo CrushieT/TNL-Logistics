@@ -26,7 +26,6 @@ const ROLE_ROUTE_ACCESS = Object.freeze({
     MOBILE_ROUTES.HOME,
     MOBILE_ROUTES.REGISTER,
     MOBILE_ROUTES.SHIPMENTS,
-    MOBILE_ROUTES.SCAN,
     MOBILE_ROUTES.PRINTER,
     MOBILE_ROUTES.ACCOUNT,
   ]),
@@ -39,7 +38,6 @@ const ROLE_ROUTE_ACCESS = Object.freeze({
   ]),
   [MOBILE_ROLES.DISPATCH_STAFF]: Object.freeze([
     MOBILE_ROUTES.HOME,
-    MOBILE_ROUTES.SCAN,
     MOBILE_ROUTES.WAYBILLS,
     MOBILE_ROUTES.TRACKING_HISTORY,
     MOBILE_ROUTES.PRINTER,
@@ -72,11 +70,11 @@ export function sanitizeMobileUser(user) {
     return null;
   }
 
-  if (Object.hasOwn(user, 'staffType') && user.staffType != null) {
-    return null;
-  }
-
-  const { staffType: _retiredStaffType, ...roleOnlyUser } = user;
+  const {
+    staffType: _retiredStaffType,
+    staff_type: _retiredStaffTypeSnake,
+    ...roleOnlyUser
+  } = user;
   return roleOnlyUser;
 }
 

@@ -34,7 +34,6 @@ import {
   isRoleTransitionAllowed,
   validateBatchCandidate
 } from '../../features/scanner/scannerFlow.mjs';
-import { canAccessMobileRoute, MOBILE_ROUTES } from '../../features/auth/services/roleAccess.mjs';
 import { trackingScanApi } from '../../features/scanner/services/trackingScanApi';
 import { safeHaptics } from '../../features/scanner/utils/haptics';
 import ScanViewfinder from '../../features/scanner/components/ScanViewfinder';
@@ -178,9 +177,14 @@ export default function ScanScreen() {
     }
   }, [isKeyboardVisible, resizeCamera, toggleCameraHeight]);
 
+  // Restrict screen strictly to COURIER_STAFF
   useEffect(() => {
-    if (!authLoading && user && !canAccessMobileRoute(user.role, MOBILE_ROUTES.SCAN)) {
-      router.replace('/(main)');
+    if (!authLoading && user) {
+      if (user.role === 'DISPATCH_STAFF') {
+        router.replace('/(main)/waybills');
+      } else if (user.role !== 'COURIER_STAFF') {
+        router.replace('/(main)');
+      }
     }
   }, [user, authLoading, router]);
 
@@ -562,7 +566,7 @@ export default function ScanScreen() {
     );
   }
 
-  if (!user || !canAccessMobileRoute(user.role, MOBILE_ROUTES.SCAN)) {
+  if (!user || user.role !== 'COURIER_STAFF') {
     return null;
   }
 

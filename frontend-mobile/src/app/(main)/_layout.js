@@ -4,9 +4,7 @@ import { Stack, useRouter } from 'expo-router';
 import { useAuth } from '../../features/auth/context/AuthContext';
 import { colors } from '../../theme';
 import {
-  canAccessMobileRoute,
   isSupportedMobileRole,
-  MOBILE_ROUTES,
 } from '../../features/auth/services/roleAccess.mjs';
 
 import { PrinterProvider } from '../../features/printer/context/PrinterContext';
@@ -73,11 +71,6 @@ export default function MainLayout() {
     return null;
   }
 
-  const canUseReceivingWorkflows = canAccessMobileRoute(user.role, MOBILE_ROUTES.REGISTER);
-  const canUseScanner = canAccessMobileRoute(user.role, MOBILE_ROUTES.SCAN);
-  const canUseWaybills = canAccessMobileRoute(user.role, MOBILE_ROUTES.WAYBILLS);
-  const canUseTrackingHistory = canAccessMobileRoute(user.role, MOBILE_ROUTES.TRACKING_HISTORY);
-
   return (
     <PrinterProvider>
       <Stack
@@ -88,23 +81,15 @@ export default function MainLayout() {
         }}
       >
         <Stack.Screen name="index" />
+        <Stack.Screen name="register" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="scan" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="waybills" />
         <Stack.Screen name="printer" />
-        <Stack.Protected guard={canUseReceivingWorkflows}>
-          <Stack.Screen name="register" options={{ gestureEnabled: false }} />
-          <Stack.Screen name="shipments/index" />
-          <Stack.Screen name="shipments/[id]" />
-          <Stack.Screen name="shipments/parcel/[trackingId]" />
-        </Stack.Protected>
-        <Stack.Protected guard={canUseScanner}>
-          <Stack.Screen name="scan" options={{ gestureEnabled: false }} />
-        </Stack.Protected>
-        <Stack.Protected guard={canUseWaybills}>
-          <Stack.Screen name="waybills" />
-        </Stack.Protected>
-        <Stack.Protected guard={canUseTrackingHistory}>
-          <Stack.Screen name="tracking-history/index" />
-          <Stack.Screen name="tracking-history/[trackingId]" />
-        </Stack.Protected>
+        <Stack.Screen name="shipments/index" />
+        <Stack.Screen name="shipments/[id]" />
+        <Stack.Screen name="shipments/parcel/[trackingId]" />
+        <Stack.Screen name="tracking-history/index" />
+        <Stack.Screen name="tracking-history/[trackingId]" />
         <Stack.Screen name="settings/index" />
         <Stack.Screen name="settings/password" />
         <Stack.Screen name="settings/pin" />

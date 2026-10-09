@@ -17,7 +17,7 @@ export function FieldDashboard({ user, onAccount, onLock }) {
         <Image source={require('../../../../assets/tracking-logo.png')} style={styles.brandLogo} resizeMode="contain" />
         <Text style={styles.brandTitle}>TNL LOGISTICS</Text>
         <Text style={styles.brandSubtitle}>
-          {isDispatchStaff ? 'Dispatch & Manifest Console' : 'Courier & Transit Console'}
+          {isDispatchStaff ? 'Hauler Dispatch & Manifest Console' : 'Field Courier & Transit Console'}
         </Text>
         <View style={styles.divider} />
         <PressableScale
@@ -37,9 +37,9 @@ export function FieldDashboard({ user, onAccount, onLock }) {
       <View style={styles.gridRow}>
         {isDispatchStaff ? (
           <ActionCard
-            iconName="file-document-outline"
-            title="WAYBILLS"
-            subtitle="Manifest dispatch and return confirmation"
+            iconName="qrcode-scan"
+            title="SCAN QR"
+            subtitle="Hauler waybill & manifest dispatch"
             onPress={() => router.push('/(main)/waybills')}
           />
         ) : (
@@ -50,16 +50,8 @@ export function FieldDashboard({ user, onAccount, onLock }) {
             onPress={() => router.push('/(main)/scan')}
           />
         )}
-        <ActionCard
-          iconName={isDispatchStaff ? 'qrcode-scan' : 'history'}
-          title={isDispatchStaff ? 'SCAN QR' : 'TRACKING HISTORY'}
-          subtitle={isDispatchStaff ? 'Parcel lookup and permitted status updates' : 'Recent parcels & events'}
-          onPress={() => router.push(isDispatchStaff ? '/(main)/scan' : '/(main)/tracking-history')}
-        />
-      </View>
-      {isDispatchStaff ? (
         <ActionCard iconName="history" title="TRACKING HISTORY" subtitle="Recent parcels & events" onPress={() => router.push('/(main)/tracking-history')} />
-      ) : null}
+      </View>
 
       <PressableScale style={styles.accountWrapper} contentStyle={styles.accountCard} onPress={onAccount} activeScale={0.98} accessibilityRole="button" accessibilityLabel="Open account and shift settings">
         <Icon source="account-circle-outline" size={24} color={colors.ink} />

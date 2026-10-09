@@ -6,14 +6,6 @@
 
 ```
 tnl-logistics/
-├── .review/                          # Planning, discovery, threat-model, and implementation-review artifacts
-│   ├── client-demo-change-plan.md
-│   ├── client-demo-phase-0-discovery-and-threat-model.md
-│   ├── client-demo-phase-1-registration-and-rating-plan.md
-│   ├── client-demo-phase-1.1-client-rate-override-plan.md
-│   ├── four-role-authorization-migration-plan.md
-│   ├── four-role-ship-runbook.md
-│   └── railway-deployment-runbook.md
 ├── .agents/
 │   └── rules/
 │       ├── build-plan.md             # Master development roadmap & progress tracking
