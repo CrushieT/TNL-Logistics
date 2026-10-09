@@ -105,7 +105,6 @@ public class PersonalTrackingHistoryIntegrationTest {
 
         fieldUser1 = appUserRepository.findById("USR-FIELD-1").orElseGet(() -> {
             AppUser u = new AppUser("USR-FIELD-1", "field_staff_1", passwordEncoder.encode("field123"), "Courier Staff One", UserRole.COURIER_STAFF);
-            u.setStaffType(StaffType.INTERNAL_TRUCK);
             return appUserRepository.save(u);
         });
         fieldUser1.setMustChangePassword(false);
@@ -114,7 +113,6 @@ public class PersonalTrackingHistoryIntegrationTest {
 
         fieldUser2 = appUserRepository.findById("USR-FIELD-2").orElseGet(() -> {
             AppUser u = new AppUser("USR-FIELD-2", "field_staff_2", passwordEncoder.encode("field123"), "Courier Staff Two", UserRole.COURIER_STAFF);
-            u.setStaffType(StaffType.INTERNAL_TRUCK);
             return appUserRepository.save(u);
         });
         fieldUser2.setMustChangePassword(false);

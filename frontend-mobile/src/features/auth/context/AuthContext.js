@@ -182,12 +182,6 @@ export function AuthProvider({ children }) {
           });
           return;
         }
-        if (storedBoundUser && Object.hasOwn(storedBoundUser, 'staffType')) {
-          await saveBoundUser(restoredBoundUser);
-        }
-        if (storedUser && Object.hasOwn(storedUser, 'staffType')) {
-          await saveUser(restoredUser);
-        }
         if ((restoredBoundUser || (restoredUser && !restoredUser.mustChangePassword)) && !deviceCredentials) {
           await clearInvalidDeviceSession();
           showSessionNotice({

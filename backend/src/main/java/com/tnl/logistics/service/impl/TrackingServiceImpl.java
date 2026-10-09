@@ -525,7 +525,6 @@ public class TrackingServiceImpl implements TrackingService {
                     (staff != null) ? staff.getUsername() : null,
                     (staff != null) ? staff.getFullName() : null,
                     (staff != null && staff.getRole() != null) ? staff.getRole().name() : null,
-                    (staff != null && staff.getStaffType() != null) ? staff.getStaffType().name() : null,
                     event.getRemarks(),
                     event.getEventTimestamp(),
                     formattedTimestamp

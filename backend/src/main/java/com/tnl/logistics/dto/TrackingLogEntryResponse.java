@@ -18,7 +18,6 @@ public class TrackingLogEntryResponse {
     private String staffUsername;
     private String staffName;
     private String staffRole;
-    private String staffType;
     private String remarks;
     private LocalDateTime timestamp;
     private String formattedTimestamp;
@@ -29,7 +28,7 @@ public class TrackingLogEntryResponse {
                                     String packageDisplay, String status, String statusDisplay,
                                     String vehicleId, String vehiclePlateNumber,
                                     String staffUsername, String staffName, String staffRole,
-                                    String staffType, String remarks,
+                                    String remarks,
                                     LocalDateTime timestamp, String formattedTimestamp) {
         this.eventId = eventId;
         this.trackingId = trackingId;
@@ -42,7 +41,6 @@ public class TrackingLogEntryResponse {
         this.staffUsername = staffUsername;
         this.staffName = staffName;
         this.staffRole = staffRole;
-        this.staffType = staffType;
         this.remarks = remarks;
         this.timestamp = timestamp;
         this.formattedTimestamp = formattedTimestamp;
@@ -81,8 +79,6 @@ public class TrackingLogEntryResponse {
     public String getStaffRole() { return staffRole; }
     public void setStaffRole(String staffRole) { this.staffRole = staffRole; }
 
-    public String getStaffType() { return staffType; }
-    public void setStaffType(String staffType) { this.staffType = staffType; }
 
     public String getRemarks() { return remarks; }
     public void setRemarks(String remarks) { this.remarks = remarks; }

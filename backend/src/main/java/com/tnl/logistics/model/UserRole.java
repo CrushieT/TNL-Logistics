@@ -7,13 +7,7 @@ public enum UserRole {
     ADMIN,
     RECEIVING_STAFF,
     COURIER_STAFF,
-    DISPATCH_STAFF,
-    @Deprecated
-    OFFICE_STAFF,
-    @Deprecated
-    FIELD_STAFF
-
-    ;
+    DISPATCH_STAFF;
 
     public boolean isTargetRole() {
         return this == ADMIN

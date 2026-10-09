@@ -125,7 +125,6 @@ public class TrackingScanIntegrationTest {
             fieldUser = new AppUser("USR-FIELD", "field_staff", passwordEncoder.encode("field123"), "Courier Staff User", UserRole.COURIER_STAFF);
         }
         fieldUser.setRole(UserRole.COURIER_STAFF);
-        fieldUser.setStaffType(StaffType.INTERNAL_TRUCK);
         fieldUser.setMustChangePassword(false);
         fieldUser.setActive(true);
         appUserRepository.save(fieldUser);
@@ -134,7 +133,6 @@ public class TrackingScanIntegrationTest {
                 new AppUser("USR-HAULER", "hauler_staff", passwordEncoder.encode("hauler123"),
                         "Dispatch Staff User", UserRole.DISPATCH_STAFF));
         haulerUser.setRole(UserRole.DISPATCH_STAFF);
-        haulerUser.setStaffType(StaffType.HAULER_STAFF);
         haulerUser.setMustChangePassword(false);
         haulerUser.setActive(true);
         appUserRepository.save(haulerUser);
@@ -143,7 +141,6 @@ public class TrackingScanIntegrationTest {
                 new AppUser("USR-FIELD-GENERAL", "general_field", passwordEncoder.encode("general123"),
                         "General Courier User", UserRole.COURIER_STAFF));
         generalFieldUser.setRole(UserRole.COURIER_STAFF);
-        generalFieldUser.setStaffType(null);
         generalFieldUser.setMustChangePassword(false);
         generalFieldUser.setActive(true);
         appUserRepository.save(generalFieldUser);
@@ -154,7 +151,6 @@ public class TrackingScanIntegrationTest {
             appUserRepository.save(officeUser);
         }
         officeUser.setRole(UserRole.RECEIVING_STAFF);
-        officeUser.setStaffType(null);
         appUserRepository.save(officeUser);
 
         AppUser adminUser = appUserRepository.findById("USR-ADMIN").orElse(null);
@@ -1116,8 +1112,6 @@ public class TrackingScanIntegrationTest {
                 Set.of(ParcelStatus.LOADED_ON_TRUCK, ParcelStatus.ARRIVED_AT_TNL));
         assertTransitionAuthority(UserRole.DISPATCH_STAFF,
                 Set.of(ParcelStatus.LOADED_TO_HAULER, ParcelStatus.COMPLETED));
-        assertTransitionAuthority(UserRole.OFFICE_STAFF, Set.of());
-        assertTransitionAuthority(UserRole.FIELD_STAFF, Set.of());
     }
 
     @Test

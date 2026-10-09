@@ -70,30 +70,11 @@ export function sanitizeMobileUser(user) {
     return null;
   }
 
-  const camelCaseStaffType = Object.hasOwn(user, 'staffType') ? user.staffType : null;
-  const snakeCaseStaffType = Object.hasOwn(user, 'staff_type') ? user.staff_type : null;
-  if (camelCaseStaffType != null
-    && snakeCaseStaffType != null
-    && camelCaseStaffType !== snakeCaseStaffType) {
+  if (Object.hasOwn(user, 'staffType') || Object.hasOwn(user, 'staff_type')) {
     return null;
   }
 
-  const transitionalStaffType = camelCaseStaffType ?? snakeCaseStaffType;
-  const expectedStaffTypes = {
-    [MOBILE_ROLES.RECEIVING_STAFF]: null,
-    [MOBILE_ROLES.COURIER_STAFF]: 'INTERNAL_TRUCK',
-    [MOBILE_ROLES.DISPATCH_STAFF]: 'HAULER_STAFF',
-  };
-  if (transitionalStaffType != null && transitionalStaffType !== expectedStaffTypes[user.role]) {
-    return null;
-  }
-
-  const {
-    staffType: _retiredStaffType,
-    staff_type: _retiredStaffTypeSnake,
-    ...roleOnlyUser
-  } = user;
-  return roleOnlyUser;
+  return { ...user };
 }
 
 export function getMobileRoleLabel(role) {

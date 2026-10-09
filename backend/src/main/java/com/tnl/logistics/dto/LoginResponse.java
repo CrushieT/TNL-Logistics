@@ -10,7 +10,6 @@ public class LoginResponse {
     private String username;
     private String fullName;
     private String role;
-    private String staffType;
     private boolean mustChangePassword;
     private boolean hasPinSet;
     private String deviceId;
@@ -57,8 +56,6 @@ public class LoginResponse {
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
 
-    public String getStaffType() { return staffType; }
-    public void setStaffType(String staffType) { this.staffType = staffType; }
 
     public boolean isMustChangePassword() { return mustChangePassword; }
     public void setMustChangePassword(boolean mustChangePassword) { this.mustChangePassword = mustChangePassword; }

@@ -78,7 +78,6 @@ public class AuthSecurityServiceImpl implements AuthSecurityService {
                 user.getUsername(),
                 user.getFullName(),
                 user.getRole().name(),
-                user.getStaffType() != null ? user.getStaffType().name() : null,
                 Boolean.TRUE.equals(user.getMustChangePassword()),
                 hasPinSet(user),
                 deviceBinding);

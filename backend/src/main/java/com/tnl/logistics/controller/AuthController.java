@@ -250,7 +250,6 @@ public class AuthController {
                     true,
                     hasPin
             );
-            response.setStaffType(user.getStaffType() != null ? user.getStaffType().name() : null);
             return ResponseEntity.ok(response);
         }
 
@@ -291,7 +290,6 @@ public class AuthController {
                 deviceId,
                 rawDeviceToken
         );
-        response.setStaffType(user.getStaffType() != null ? user.getStaffType().name() : null);
 
         return ResponseEntity.ok(response);
     }
@@ -438,7 +436,6 @@ public class AuthController {
                 request.getDeviceId(),
                 request.getDeviceToken()
         );
-        response.setStaffType(target.getStaffType() != null ? target.getStaffType().name() : null);
 
         return ResponseEntity.ok(response);
     }
@@ -713,9 +710,7 @@ public class AuthController {
                 normalizedUsername,
                 passwordEncoder.encode(request.getPassword()),
                 request.getFullName().trim(),
-                UserRole.ADMIN,
-                null,
-                null
+                UserRole.ADMIN
         );
         adminUser.setActive(true);
         adminUser.setMustChangePassword(false);

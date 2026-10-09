@@ -5,7 +5,6 @@ import com.tnl.logistics.dto.AdminPasswordResetRequest;
 import com.tnl.logistics.dto.AdminPinResetRequest;
 import com.tnl.logistics.dto.UserCreateRequest;
 import com.tnl.logistics.dto.UserUpdateRequest;
-import com.tnl.logistics.model.StaffType;
 import com.tnl.logistics.model.UserRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -81,7 +80,6 @@ public class UserManagementIntegrationTest {
         request.setUsername("testagent001");
         request.setPassword("pass123");
         request.setRole(UserRole.COURIER_STAFF);
-        request.setStaffType(StaffType.INTERNAL_TRUCK);
 
         mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -235,7 +233,7 @@ public class UserManagementIntegrationTest {
 
     @Test
     @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
-    void testCreateCourierDerivesCompatibilityStaffType() throws Exception {
+    void testCreateCourierReturnsRoleOnlyIdentity() throws Exception {
         UserCreateRequest request = new UserCreateRequest();
         request.setFullName("Courier Staff");
         request.setUsername("incomplete001");
@@ -247,7 +245,7 @@ public class UserManagementIntegrationTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.role").value("COURIER_STAFF"))
-                .andExpect(jsonPath("$.staffType").value("INTERNAL_TRUCK"));
+                .andExpect(jsonPath("$.staffType").doesNotExist());
     }
 
     @Test
@@ -590,7 +588,6 @@ public class UserManagementIntegrationTest {
         updateRequest.setFullName(officeUser.getFullName());
         updateRequest.setUsername(officeUser.getUsername());
         updateRequest.setRole(UserRole.COURIER_STAFF);
-        updateRequest.setStaffType(StaffType.INTERNAL_TRUCK);
         updateRequest.setActive(true);
 
         mockMvc.perform(put("/api/v1/users/USR-OFFICE")

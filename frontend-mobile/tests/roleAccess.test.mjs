@@ -20,53 +20,19 @@ test('mobile accepts only the three staff roles and rejects Admin, legacy, null,
   }
 });
 
-test('restored and server identities fail closed and never retain staffType', () => {
-  const courierWithSubtype = sanitizeMobileUser({
-    userId: 'USR-COURIER',
-    role: 'COURIER_STAFF',
-    staffType: 'INTERNAL_TRUCK',
-  });
-  assert.deepEqual(courierWithSubtype, { userId: 'USR-COURIER', role: 'COURIER_STAFF' });
-  assert.equal('staffType' in courierWithSubtype, false);
-
-  const dispatchWithSubtype = sanitizeMobileUser({
-    userId: 'USR-DISPATCH',
-    role: 'DISPATCH_STAFF',
-    staffType: 'HAULER_STAFF',
-  });
-  assert.deepEqual(dispatchWithSubtype, { userId: 'USR-DISPATCH', role: 'DISPATCH_STAFF' });
-  assert.equal('staffType' in dispatchWithSubtype, false);
-
-  const receivingWithoutSubtype = sanitizeMobileUser({
-    userId: 'USR-RECEIVING',
-    role: 'RECEIVING_STAFF',
-    staffType: null,
-  });
-  assert.deepEqual(receivingWithoutSubtype, { userId: 'USR-RECEIVING', role: 'RECEIVING_STAFF' });
-  assert.equal('staffType' in receivingWithoutSubtype, false);
-
-  const courierWithSnake = sanitizeMobileUser({
-    userId: 'USR-COURIER-2',
-    role: 'COURIER_STAFF',
-    staff_type: 'INTERNAL_TRUCK',
-  });
-  assert.deepEqual(courierWithSnake, { userId: 'USR-COURIER-2', role: 'COURIER_STAFF' });
-  assert.equal('staff_type' in courierWithSnake, false);
-
-  assert.equal(sanitizeMobileUser({ role: 'RECEIVING_STAFF', staffType: 'INTERNAL_TRUCK' }), null);
-  assert.equal(sanitizeMobileUser({ role: 'COURIER_STAFF', staffType: 'HAULER_STAFF' }), null);
-  assert.equal(sanitizeMobileUser({ role: 'DISPATCH_STAFF', staffType: 'INTERNAL_TRUCK' }), null);
-  assert.equal(sanitizeMobileUser({ role: 'COURIER_STAFF', staff_type: 'HAULER_STAFF' }), null);
-  assert.equal(sanitizeMobileUser({
-    role: 'DISPATCH_STAFF',
-    staffType: 'HAULER_STAFF',
-    staff_type: 'INTERNAL_TRUCK',
-  }), null);
-
-  assert.equal(sanitizeMobileUser({ role: 'FIELD_STAFF', staffType: 'INTERNAL_TRUCK' }), null);
-  assert.equal(sanitizeMobileUser({ role: 'OFFICE_STAFF' }), null);
-  assert.equal(sanitizeMobileUser({ role: 'UNKNOWN_ROLE' }), null);
-  assert.equal(sanitizeMobileUser({ role: null }), null);
+test('restored and server identities accept role-only accounts and reject retired identity fields', () => {
+  for (const role of Object.values(MOBILE_ROLES)) {
+    const user = { userId: 'USR-STAFF', role };
+    assert.deepEqual(sanitizeMobileUser(user), user);
+    for (const fieldName of ['staffType', 'staff_type']) {
+      for (const value of [null, 'INTERNAL_TRUCK', 'HAULER_STAFF', 'UNKNOWN']) {
+        assert.equal(sanitizeMobileUser({ ...user, [fieldName]: value }), null);
+      }
+    }
+  }
+  for (const role of ['FIELD_STAFF', 'OFFICE_STAFF', 'UNKNOWN_ROLE', null]) {
+    assert.equal(sanitizeMobileUser({ role }), null);
+  }
 });
 
 test('each role lands on home and retains shared printer and account access', () => {

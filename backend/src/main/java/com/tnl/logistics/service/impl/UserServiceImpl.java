@@ -2,7 +2,6 @@ package com.tnl.logistics.service.impl;
 
 import com.tnl.logistics.dto.*;
 import com.tnl.logistics.model.AppUser;
-import com.tnl.logistics.model.StaffType;
 import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.service.UserService;
@@ -78,7 +77,6 @@ public class UserServiceImpl implements UserService {
                     "Username '" + normalizedUsername + "' is already taken.");
         }
 
-        StaffType compatibilityStaffType = resolveCompatibilityStaffType(request.getRole(), request.getStaffType());
 
         String userId = generateNextUserId();
 
@@ -91,7 +89,6 @@ public class UserServiceImpl implements UserService {
         );
         user.setMustChangePassword(true);
 
-        user.setStaffType(compatibilityStaffType);
 
         if (request.getPin() != null && !request.getPin().isBlank()) {
             user.setPinHash(passwordEncoder.encode(request.getPin()));
@@ -125,9 +122,6 @@ public class UserServiceImpl implements UserService {
             }
         });
 
-        StaffType compatibilityStaffType = request.getRole() == UserRole.ADMIN
-                ? resolveCompatibilityStaffType(UserRole.ADMIN, request.getStaffType())
-                : resolveCompatibilityStaffType(request.getRole(), request.getStaffType());
 
         boolean hasSecurityRelevantChange = user.getRole() != request.getRole()
                 || !java.util.Objects.equals(user.getActive(), request.getActive());
@@ -137,7 +131,6 @@ public class UserServiceImpl implements UserService {
         user.setRole(request.getRole());
         user.setActive(request.getActive());
 
-        user.setStaffType(compatibilityStaffType);
 
         if (hasSecurityRelevantChange) {
             user.incrementTokenVersion();
@@ -245,17 +238,4 @@ public class UserServiceImpl implements UserService {
         }
     }
 
-    private StaffType resolveCompatibilityStaffType(UserRole role, StaffType requestedStaffType) {
-        StaffType expectedStaffType = switch (role) {
-            case COURIER_STAFF -> StaffType.INTERNAL_TRUCK;
-            case DISPATCH_STAFF -> StaffType.HAULER_STAFF;
-            case ADMIN, RECEIVING_STAFF -> null;
-            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported role.");
-        };
-        if (requestedStaffType != null && requestedStaffType != expectedStaffType) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Staff type is incompatible with the selected role.");
-        }
-        return expectedStaffType;
-    }
 }
