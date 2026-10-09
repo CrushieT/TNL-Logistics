@@ -4,6 +4,8 @@ import {
   buildCreateUserRequest,
   buildUpdateUserRequest,
   getRoleLabel,
+  PLATFORM_ACCESS,
+  ROLE_CHIP_COLORS,
   ROLE_FILTERS,
   STAFF_ROLE_OPTIONS,
 } from '../src/features/users/userRoles.mjs';
@@ -80,4 +82,11 @@ test('role presentation never falls back to an unknown raw authority value', () 
   assert.equal(getRoleLabel('COURIER_STAFF'), 'Courier Staff');
   assert.equal(getRoleLabel('DISPATCH_STAFF'), 'Dispatch Staff');
   assert.equal(getRoleLabel('FIELD_STAFF'), 'Unknown role');
+  assert.deepEqual(PLATFORM_ACCESS, {
+    ADMIN: 'Web administration console',
+    RECEIVING_STAFF: 'Mobile receiving, registration, and printing',
+    COURIER_STAFF: 'Mobile transit scanning and tracking history',
+    DISPATCH_STAFF: 'Mobile dispatch, waybills, and tracking history',
+  });
+  assert.deepEqual(ROLE_CHIP_COLORS.DISPATCH_STAFF, ROLE_CHIP_COLORS.COURIER_STAFF);
 });

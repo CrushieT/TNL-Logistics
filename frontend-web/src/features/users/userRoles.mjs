@@ -22,16 +22,16 @@ export const ROLE_LABELS = Object.freeze({
 
 export const PLATFORM_ACCESS = Object.freeze({
   [USER_ROLES.ADMIN]: 'Web administration console',
-  [USER_ROLES.RECEIVING_STAFF]: 'Mobile receiving, registration, printing, and scanning',
+  [USER_ROLES.RECEIVING_STAFF]: 'Mobile receiving, registration, and printing',
   [USER_ROLES.COURIER_STAFF]: 'Mobile transit scanning and tracking history',
-  [USER_ROLES.DISPATCH_STAFF]: 'Mobile dispatch, waybills, scanning, and tracking history',
+  [USER_ROLES.DISPATCH_STAFF]: 'Mobile dispatch, waybills, and tracking history',
 });
 
 export const ROLE_CHIP_COLORS = Object.freeze({
   [USER_ROLES.ADMIN]: { bg: '#EFF6FF', text: '#1D4ED8' },
   [USER_ROLES.RECEIVING_STAFF]: { bg: '#F0FDF4', text: '#15803D' },
   [USER_ROLES.COURIER_STAFF]: { bg: '#FFF7ED', text: '#C2410C' },
-  [USER_ROLES.DISPATCH_STAFF]: { bg: '#F5F3FF', text: '#6D28D9' },
+  [USER_ROLES.DISPATCH_STAFF]: { bg: '#FFF7ED', text: '#C2410C' },
 });
 
 export function isSupportedUserRole(role) {

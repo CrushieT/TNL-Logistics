@@ -218,6 +218,7 @@ test('settings routes and dashboard account navigation are wired', async () => {
   assert.match(fieldDashboard, /onPress=\{onAccount\}/);
   assert.match(officeDashboard, /ACCOUNT & SHIFT/);
   assert.match(officeDashboard, /onPress=\{onAccount\}/);
+  assert.match(officeDashboard, /Receiving Intake & Dispatch Console/);
 });
 
 test('production settings screens use canonical profile data and no sample identity', async () => {

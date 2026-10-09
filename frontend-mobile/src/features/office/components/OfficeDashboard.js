@@ -17,7 +17,7 @@ export function OfficeDashboard({ user, onAccount, onLock }) {
       <View style={styles.brandCard}>
         <Image source={require('../../../../assets/tracking-logo.png')} style={styles.brandLogo} resizeMode="contain" />
         <Text style={styles.brandTitle}>TNL LOGISTICS</Text>
-        <Text style={styles.brandSubtitle}>Receiving Intake & Label Console</Text>
+        <Text style={styles.brandSubtitle}>Receiving Intake & Dispatch Console</Text>
         <View style={styles.divider} />
         <PressableScale contentStyle={styles.statusRow} onPress={() => router.push('/(main)/printer')} activeScale={0.98} accessibilityRole="button" accessibilityLabel="Thermal printer setup">
           <View style={[styles.statusDot, { backgroundColor: isConnected ? colors.success : colors.danger }]} />

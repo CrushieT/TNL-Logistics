@@ -53,6 +53,16 @@ test('restored and server identities fail closed and never retain staffType', ()
   assert.deepEqual(courierWithSnake, { userId: 'USR-COURIER-2', role: 'COURIER_STAFF' });
   assert.equal('staff_type' in courierWithSnake, false);
 
+  assert.equal(sanitizeMobileUser({ role: 'RECEIVING_STAFF', staffType: 'INTERNAL_TRUCK' }), null);
+  assert.equal(sanitizeMobileUser({ role: 'COURIER_STAFF', staffType: 'HAULER_STAFF' }), null);
+  assert.equal(sanitizeMobileUser({ role: 'DISPATCH_STAFF', staffType: 'INTERNAL_TRUCK' }), null);
+  assert.equal(sanitizeMobileUser({ role: 'COURIER_STAFF', staff_type: 'HAULER_STAFF' }), null);
+  assert.equal(sanitizeMobileUser({
+    role: 'DISPATCH_STAFF',
+    staffType: 'HAULER_STAFF',
+    staff_type: 'INTERNAL_TRUCK',
+  }), null);
+
   assert.equal(sanitizeMobileUser({ role: 'FIELD_STAFF', staffType: 'INTERNAL_TRUCK' }), null);
   assert.equal(sanitizeMobileUser({ role: 'OFFICE_STAFF' }), null);
   assert.equal(sanitizeMobileUser({ role: 'UNKNOWN_ROLE' }), null);
