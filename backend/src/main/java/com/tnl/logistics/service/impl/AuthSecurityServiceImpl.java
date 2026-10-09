@@ -78,7 +78,6 @@ public class AuthSecurityServiceImpl implements AuthSecurityService {
                 user.getUsername(),
                 user.getFullName(),
                 user.getRole().name(),
-                user.getStaffType() != null ? user.getStaffType().name() : null,
                 Boolean.TRUE.equals(user.getMustChangePassword()),
                 hasPinSet(user),
                 deviceBinding);
@@ -280,7 +279,8 @@ public class AuthSecurityServiceImpl implements AuthSecurityService {
 
     private AppUser requireActiveUser(String userId) {
         AppUser user = appUserRepository.findById(userId).orElse(null);
-        if (user == null || !Boolean.TRUE.equals(user.getActive())) {
+        if (user == null || !Boolean.TRUE.equals(user.getActive())
+                || user.getRole() == null || !user.getRole().isTargetRole()) {
             throw invalidSession();
         }
         return user;
@@ -288,7 +288,8 @@ public class AuthSecurityServiceImpl implements AuthSecurityService {
 
     private AppUser requireLockedActiveUser(String userId) {
         AppUser user = appUserRepository.findByIdForUpdate(userId).orElse(null);
-        if (user == null || !Boolean.TRUE.equals(user.getActive())) {
+        if (user == null || !Boolean.TRUE.equals(user.getActive())
+                || user.getRole() == null || !user.getRole().isTargetRole()) {
             throw invalidSession();
         }
         return user;
@@ -304,7 +305,7 @@ public class AuthSecurityServiceImpl implements AuthSecurityService {
     }
 
     private void requireMobileRole(AppUser user) {
-        if (user.getRole() != UserRole.FIELD_STAFF && user.getRole() != UserRole.OFFICE_STAFF) {
+        if (user.getRole() == null || !user.getRole().isMobileStaffRole()) {
             throw new AuthSecurityException(
                     HttpStatus.FORBIDDEN,
                     "MOBILE_ROLE_REQUIRED",

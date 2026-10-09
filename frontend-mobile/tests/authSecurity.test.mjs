@@ -9,7 +9,6 @@ import {
 import {
   deriveInitials,
   formatRole,
-  formatStaffType,
   maskDeviceId,
   normalizeSecurityError,
   resolveAccountDisplay,
@@ -58,19 +57,19 @@ test('account display helpers use canonical values and safe fallbacks', () => {
   assert.equal(deriveInitials('Prince', 'prince'), 'P');
   assert.equal(deriveInitials('', 'terminal.user'), 'T');
   assert.equal(deriveInitials('   ', '   '), '?');
-  assert.equal(formatRole('OFFICE_STAFF'), 'OFFICE STAFF');
+  assert.equal(formatRole('RECEIVING_STAFF'), 'RECEIVING STAFF');
+  assert.equal(formatRole('COURIER_STAFF'), 'COURIER STAFF');
+  assert.equal(formatRole('DISPATCH_STAFF'), 'DISPATCH STAFF');
   assert.equal(formatRole('UNKNOWN'), 'ROLE UNAVAILABLE');
-  assert.equal(formatStaffType('INTERNAL_TRUCK'), 'INTERNAL TRUCK');
-  assert.equal(formatStaffType(null), 'UNAVAILABLE');
   assert.equal(maskDeviceId('terminal-device-a12f93bc'), '••••••••a12f93bc');
   assert.equal(maskDeviceId('abc'), '••••••••abc');
   assert.equal(maskDeviceId(null), '—');
   assert.equal(maskDeviceId('   '), '—');
 
-  const display = resolveAccountDisplay({ username: 'field.user', role: 'FIELD_STAFF' }, { isAuthenticated: true });
+  const display = resolveAccountDisplay({ username: 'courier.user', role: 'COURIER_STAFF' }, { isAuthenticated: true });
   assert.equal(display.fullName, '—');
-  assert.equal(display.username, '@field.user');
-  assert.equal(display.role, 'FIELD STAFF');
+  assert.equal(display.username, '@courier.user');
+  assert.equal(display.role, 'COURIER STAFF');
   assert.equal(display.isUnlocked, true);
 });
 
@@ -219,6 +218,7 @@ test('settings routes and dashboard account navigation are wired', async () => {
   assert.match(fieldDashboard, /onPress=\{onAccount\}/);
   assert.match(officeDashboard, /ACCOUNT & SHIFT/);
   assert.match(officeDashboard, /onPress=\{onAccount\}/);
+  assert.match(officeDashboard, /Receiving Intake & Dispatch Console/);
 });
 
 test('production settings screens use canonical profile data and no sample identity', async () => {
@@ -260,8 +260,9 @@ test('hauler staff role exchanges scan qr card with waybills console and scan.js
     readFile(new URL('../src/features/field/components/FieldDashboard.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/app/(main)/scan.js', import.meta.url), 'utf8'),
   ]);
-  assert.match(fieldDashboard, /isHaulerStaff\s*\?\s*\(\s*<ActionCard[\s\S]*title="SCAN QR"[\s\S]*subtitle="Hauler waybill/);
+  assert.match(fieldDashboard, /isDispatchStaff\s*\?\s*\(\s*<ActionCard[\s\S]*title="SCAN QR"[\s\S]*subtitle="Hauler waybill/);
   assert.match(fieldDashboard, /:\s*\(\s*<ActionCard[\s\S]*title="SCAN QR"[\s\S]*subtitle="Advance parcel/);
-  assert.match(fieldDashboard, /router\.push\(isHaulerStaff \? '\/\(main\)\/waybills' : '\/\(main\)\/scan'\)/);
-  assert.match(scanScreen, /user\.staffType === 'HAULER_STAFF'[\s\S]*router\.replace\('\/\(main\)\/waybills'\)/);
+  assert.match(fieldDashboard, /router\.push\(isDispatchStaff \? '\/\(main\)\/waybills' : '\/\(main\)\/scan'\)/);
+  assert.match(scanScreen, /user\.role === 'DISPATCH_STAFF'[\s\S]*router\.replace\('\/\(main\)\/waybills'\)/);
 });
+

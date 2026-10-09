@@ -11,29 +11,19 @@ import {
   ScrollView,
 } from 'react-native';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
-
-const ROLE_OPTIONS = [
-  { label: 'Office Staff', value: 'OFFICE_STAFF' },
-  { label: 'Field Staff', value: 'FIELD_STAFF' },
-];
+import { STAFF_ROLE_OPTIONS, USER_ROLES } from '../userRoles.mjs';
 
 function generateTemporaryPassword() {
   const randomSuffix = Math.floor(1000 + Math.random() * 9000);
   return `TNL-${randomSuffix}`;
 }
 
-const STAFF_TYPE_OPTIONS = [
-  { label: 'Internal Truck', value: 'INTERNAL_TRUCK' },
-  { label: 'Hauler Staff', value: 'HAULER_STAFF' },
-];
-
 export default function CreateUserModal({ visible, onClose, onSaved }) {
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [copied, setCopied] = useState(false);
-  const [role, setRole] = useState('OFFICE_STAFF');
-  const [staffType, setStaffType] = useState('INTERNAL_TRUCK');
+  const [role, setRole] = useState(USER_ROLES.RECEIVING_STAFF);
   const [showManualPin, setShowManualPin] = useState(false);
   const [pin, setPin] = useState(['', '', '', '']);
   const [saving, setSaving] = useState(false);
@@ -48,8 +38,7 @@ export default function CreateUserModal({ visible, onClose, onSaved }) {
       setUsername('');
       setPassword(generateTemporaryPassword());
       setCopied(false);
-      setRole('OFFICE_STAFF');
-      setStaffType('INTERNAL_TRUCK');
+      setRole(USER_ROLES.RECEIVING_STAFF);
       setShowManualPin(false);
       setPin(['', '', '', '']);
       setError(null);
@@ -124,8 +113,6 @@ export default function CreateUserModal({ visible, onClose, onSaved }) {
       setError('Temporary password must be at least 6 characters.');
       return;
     }
-    if (role === 'FIELD_STAFF' && !staffType) { setError('Staff type is required for Field Staff.'); return; }
-
     let pinPayload = undefined;
     if (showManualPin) {
       const pinValue = pin.join('');
@@ -144,7 +131,6 @@ export default function CreateUserModal({ visible, onClose, onSaved }) {
         username: username.trim(),
         password: password.trim(),
         role,
-        staffType: role === 'FIELD_STAFF' ? staffType : undefined,
         pin: pinPayload,
       };
       await onSaved(payload);
@@ -234,7 +220,7 @@ export default function CreateUserModal({ visible, onClose, onSaved }) {
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>ROLE *</Text>
               <View style={styles.pillRow}>
-                {ROLE_OPTIONS.map((opt) => (
+                {STAFF_ROLE_OPTIONS.map((opt) => (
                   <Pressable
                     key={opt.value}
                     style={[styles.pill, role === opt.value && styles.pillActive]}
@@ -248,25 +234,6 @@ export default function CreateUserModal({ visible, onClose, onSaved }) {
               </View>
             </View>
 
-            {role === 'FIELD_STAFF' ? (
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>STAFF TYPE *</Text>
-                <View style={styles.pillRow}>
-                  {STAFF_TYPE_OPTIONS.map((opt) => (
-                    <Pressable
-                      key={opt.value}
-                      style={[styles.pill, staffType === opt.value && styles.pillActive]}
-                      onPress={() => setStaffType(opt.value)}
-                    >
-                      <Text style={[styles.pillText, staffType === opt.value && styles.pillTextActive]}>
-                        {opt.label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            ) : null}
-
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>MOBILE PIN</Text>
 
@@ -276,7 +243,7 @@ export default function CreateUserModal({ visible, onClose, onSaved }) {
                   RECOMMENDED: REQUIRE PIN SETUP ON FIRST LOGIN
                 </Text>
                 <Text style={styles.pinNoticeText}>
-                  To uphold security and courier accountability, administrators should not handle staff private PINs. The courier will configure their secret 4-digit PIN upon first mobile login.
+                  To uphold security and staff accountability, administrators should not handle private PINs. The staff member will configure a secret 4-digit PIN upon first mobile login.
                 </Text>
               </View>
 
@@ -298,7 +265,7 @@ export default function CreateUserModal({ visible, onClose, onSaved }) {
               {showManualPin ? (
                 <View style={styles.overridePanel}>
                   <Text style={styles.overrideNote}>
-                    Only use this override if the courier cannot complete initial setup on their terminal.
+                    Only use this override if the staff member cannot complete initial setup on their terminal.
                   </Text>
                   <View style={styles.pinRow}>
                     {pin.map((digit, i) => (

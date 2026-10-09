@@ -78,7 +78,7 @@ public class TrackingLogIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "USR-FIELD", roles = {"FIELD_STAFF"})
+    @WithMockUser(username = "USR-COURIER", roles = {"COURIER_STAFF"})
     void testGetTrackingLogsAsFieldStaffReturns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/tracking-events")
                 .contentType(MediaType.APPLICATION_JSON))
@@ -115,7 +115,7 @@ public class TrackingLogIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "USR-FIELD", roles = {"FIELD_STAFF"})
+    @WithMockUser(username = "USR-COURIER", roles = {"COURIER_STAFF"})
     void testGetTrackingMetricsAsFieldStaffReturns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/tracking-events/metrics")
                 .contentType(MediaType.APPLICATION_JSON))

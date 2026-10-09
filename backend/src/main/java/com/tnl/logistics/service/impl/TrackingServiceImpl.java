@@ -384,9 +384,9 @@ public class TrackingServiceImpl implements TrackingService {
 
     private void requireStaffAuthorization(AppUser actingStaff, ParcelStatus targetStatus) {
         TrackingTransitionPolicy.StaffAuthorizationDecision decision =
-                transitionPolicy.decideStaffAuthorization(actingStaff.getStaffType(), targetStatus);
+                transitionPolicy.decideStaffAuthorization(actingStaff.getRole(), targetStatus);
         if (decision == TrackingTransitionPolicy.StaffAuthorizationDecision.DENIED) {
-            throw new AccessDeniedException("Staff type is not permitted to perform this tracking transition");
+            throw new AccessDeniedException("Staff role is not permitted to perform this tracking transition");
         }
     }
 
@@ -525,7 +525,6 @@ public class TrackingServiceImpl implements TrackingService {
                     (staff != null) ? staff.getUsername() : null,
                     (staff != null) ? staff.getFullName() : null,
                     (staff != null && staff.getRole() != null) ? staff.getRole().name() : null,
-                    (staff != null && staff.getStaffType() != null) ? staff.getStaffType().name() : null,
                     event.getRemarks(),
                     event.getEventTimestamp(),
                     formattedTimestamp
@@ -541,7 +540,7 @@ public class TrackingServiceImpl implements TrackingService {
         LocalDateTime endOfDay = today.atTime(23, 59, 59, 999999999);
 
         long totalScans = trackingEventRepository.countOperationalScansBetween(startOfDay, endOfDay);
-        long activeCouriers = trackingEventRepository.countDistinctCouriersBetween(startOfDay, endOfDay);
+        long activeCouriers = trackingEventRepository.countDistinctOperationalStaffBetween(startOfDay, endOfDay);
         long loadedOnTruck = trackingEventRepository.countStatusBetween(ParcelStatus.LOADED_ON_TRUCK, startOfDay, endOfDay);
         long handedToHauler = trackingEventRepository.countStatusBetween(ParcelStatus.LOADED_TO_HAULER, startOfDay, endOfDay);
 

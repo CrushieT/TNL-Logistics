@@ -84,10 +84,10 @@ public class TrackingAndVehicleIntegrationTest {
         shipmentRepository.deleteAll();
         vehicleRepository.deleteAll();
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
         adminToken = "Bearer " + JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
-        fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
-        haulerToken = "Bearer " + JwtTokenProvider.generateToken("USR-HAULER", "FIELD_STAFF");
+        fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "COURIER_STAFF");
+        haulerToken = "Bearer " + JwtTokenProvider.generateToken("USR-HAULER", "DISPATCH_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {
@@ -128,7 +128,7 @@ public class TrackingAndVehicleIntegrationTest {
 
         // 3. List active vehicles
         MvcResult listRes = mockMvc.perform(get("/api/v1/vehicles")
-                        .header("Authorization", fieldToken))
+                        .header("Authorization", adminToken))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -397,7 +397,7 @@ public class TrackingAndVehicleIntegrationTest {
 
         // 4. Verify onTruckCount is now 1
         MvcResult getRes1 = mockMvc.perform(get("/api/v1/vehicles/" + v.getVehicleId())
-                        .header("Authorization", officeToken))
+                        .header("Authorization", adminToken))
                 .andExpect(status().isOk())
                 .andReturn();
         VehicleResponse vAfter1 = objectMapper.readValue(getRes1.getResponse().getContentAsString(), VehicleResponse.class);
@@ -413,7 +413,7 @@ public class TrackingAndVehicleIntegrationTest {
 
         // 6. Verify onTruckCount is now 2
         MvcResult getRes2 = mockMvc.perform(get("/api/v1/vehicles/" + v.getVehicleId())
-                        .header("Authorization", officeToken))
+                        .header("Authorization", adminToken))
                 .andExpect(status().isOk())
                 .andReturn();
         VehicleResponse vAfter2 = objectMapper.readValue(getRes2.getResponse().getContentAsString(), VehicleResponse.class);
@@ -429,7 +429,7 @@ public class TrackingAndVehicleIntegrationTest {
 
         // 8. Verify onTruckCount decremented to 1
         MvcResult getRes3 = mockMvc.perform(get("/api/v1/vehicles/" + v.getVehicleId())
-                        .header("Authorization", officeToken))
+                        .header("Authorization", adminToken))
                 .andExpect(status().isOk())
                 .andReturn();
         VehicleResponse vAfter3 = objectMapper.readValue(getRes3.getResponse().getContentAsString(), VehicleResponse.class);

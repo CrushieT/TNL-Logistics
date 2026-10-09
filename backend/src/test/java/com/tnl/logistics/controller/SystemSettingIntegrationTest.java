@@ -71,7 +71,7 @@ public class SystemSettingIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "receiving", roles = {"RECEIVING_STAFF"})
     void testGetSettingsAsOfficeStaffReturns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/settings")
                 .contentType(MediaType.APPLICATION_JSON))
@@ -79,7 +79,7 @@ public class SystemSettingIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "field", roles = {"FIELD_STAFF"})
+    @WithMockUser(username = "courier", roles = {"COURIER_STAFF"})
     void testGetSettingsAsFieldStaffReturns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/settings")
                 .contentType(MediaType.APPLICATION_JSON))
@@ -132,7 +132,7 @@ public class SystemSettingIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "receiving", roles = {"RECEIVING_STAFF"})
     void testUpdateSettingsAsOfficeStaffReturns403Forbidden() throws Exception {
         UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(
                 "New Name", "New Addr", "09170001111", "test@test.com", DayOfWeek.MONDAY, 5000, new BigDecimal("100.00")
@@ -312,7 +312,7 @@ public class SystemSettingIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "office", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "receiving", roles = {"RECEIVING_STAFF"})
     void testGetCompanyBrandingAsOfficeStaffReturns200() throws Exception {
         mockMvc.perform(get("/api/v1/settings/branding")
                 .contentType(MediaType.APPLICATION_JSON))

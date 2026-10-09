@@ -98,14 +98,16 @@ class SplitWaybillIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));
         send(waybillA);
         complete(waybillA, null, "USR-HAULER2");
-        mockMvc.perform(get("/api/v1/shipments/" + shipmentId).with(user("USR-ADMIN").roles("ADMIN")))
+        mockMvc.perform(get("/api/v1/shipments/" + shipmentId)
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.statusRollup").value("5 / 10 Completed"))
                 .andExpect(jsonPath("$.status").value("Partially Completed"));
         for (String id : last) assertEquals(ParcelStatus.LOADED_TO_HAULER,
                 parcelUnitRepository.findById(id).orElseThrow().getCurrentStatus());
         send(waybillB);
         complete(waybillB, "Client Signatory", "USR-HAULER");
-        mockMvc.perform(get("/api/v1/shipments/" + shipmentId).with(user("USR-ADMIN").roles("ADMIN")))
+        mockMvc.perform(get("/api/v1/shipments/" + shipmentId)
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.statusRollup").value("10 / 10 Completed"));
         for (String id : first) assertEquals(1, trackingEventRepository
                 .findByParcelUnit_TrackingIdOrderByEventTimestampAsc(id).stream()
@@ -132,19 +134,19 @@ class SplitWaybillIntegrationTest {
         load(units.get(0).getTrackingId());
         load(other.getTrackingId());
         String id = units.get(0).getTrackingId();
-        mockMvc.perform(post("/api/v1/waybills/generate").with(user("USR-HAULER").roles("FIELD_STAFF"))
+        mockMvc.perform(post("/api/v1/waybills/generate").with(user("USR-HAULER").roles("DISPATCH_STAFF"))
                 .contentType(MediaType.APPLICATION_JSON).content(generation(shipmentId,
                         List.of(id, other.getTrackingId()), UUID.randomUUID().toString())))
                 .andExpect(status().isBadRequest());
         assertTrue(waybillRepository.findByShipment_ShipmentIdOrderByGeneratedAtDesc(shipmentId).isEmpty());
         String usedKey = UUID.randomUUID().toString();
         String number = generate(shipmentId, List.of(id), usedKey);
-        mockMvc.perform(post("/api/v1/waybills/generate").with(user("USR-HAULER").roles("FIELD_STAFF"))
+        mockMvc.perform(post("/api/v1/waybills/generate").with(user("USR-HAULER").roles("DISPATCH_STAFF"))
                 .contentType(MediaType.APPLICATION_JSON).content(generation(shipmentId,
                         List.of(id), UUID.randomUUID().toString())))
                 .andExpect(status().isBadRequest());
         assertEquals(number, parcelUnitRepository.findById(id).orElseThrow().getWaybill().getWaybillId());
-        mockMvc.perform(post("/api/v1/waybills/generate").with(user("USR-HAULER").roles("FIELD_STAFF"))
+        mockMvc.perform(post("/api/v1/waybills/generate").with(user("USR-HAULER").roles("DISPATCH_STAFF"))
                 .contentType(MediaType.APPLICATION_JSON).content(generation(otherShipment,
                         List.of(other.getTrackingId()), usedKey)))
                 .andExpect(status().isBadRequest());
@@ -159,24 +161,24 @@ class SplitWaybillIntegrationTest {
         ids.forEach(this::load);
         String number = generate(shipmentId, ids, UUID.randomUUID().toString());
         send(number);
-        mockMvc.perform(post("/api/v1/waybills/" + number + "/complete").with(user("USR-HAULER").roles("FIELD_STAFF"))
+        mockMvc.perform(post("/api/v1/waybills/" + number + "/complete").with(user("USR-HAULER").roles("DISPATCH_STAFF"))
                 .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(
                         Map.of("signedBy", "Signer"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Waybill completion is not permitted."));
-        mockMvc.perform(post("/api/v1/waybills/" + number + "/complete").with(user("USR-HAULER").roles("FIELD_STAFF"))
+        mockMvc.perform(post("/api/v1/waybills/" + number + "/complete").with(user("USR-HAULER").roles("DISPATCH_STAFF"))
                 .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(
                         Map.of("confirmedWaybillId", "WYB-2026-9999", "signedBy", "Signer"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Waybill completion is not permitted."));
-        mockMvc.perform(post("/api/v1/tracking-events/scan").with(user("USR-HAULER").roles("FIELD_STAFF"))
+        mockMvc.perform(post("/api/v1/tracking-events/scan").with(user("USR-HAULER").roles("DISPATCH_STAFF"))
                 .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(
                         Map.of("trackingId", ids.get(0), "targetStatus", "COMPLETED"))))
                 .andExpect(status().isBadRequest());
         complete(number, "Signer", "USR-HAULER");
         complete(number, "Signer", "USR-HAULER");
         mockMvc.perform(get("/api/v1/waybills/" + number)
-                .with(user("USR-HAULER").roles("FIELD_STAFF")))
+                .with(user("USR-HAULER").roles("DISPATCH_STAFF")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.scannedTrackingIds").doesNotExist());
         assertEquals(1, trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(ids.get(0))
@@ -192,7 +194,7 @@ class SplitWaybillIntegrationTest {
         String waybillId = generate(shipmentId, List.of(unit.getTrackingId()), UUID.randomUUID().toString());
 
         mockMvc.perform(post("/api/v1/waybills/" + waybillId + "/complete")
-                .with(user("USR-HAULER").roles("FIELD_STAFF"))
+                .with(user("USR-HAULER").roles("DISPATCH_STAFF"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of("confirmedWaybillId", waybillId))))
                 .andExpect(status().isBadRequest())
@@ -200,14 +202,14 @@ class SplitWaybillIntegrationTest {
 
         String unknownWaybillId = "WYB-2026-9999";
         mockMvc.perform(post("/api/v1/waybills/" + unknownWaybillId + "/complete")
-                .with(user("USR-HAULER").roles("FIELD_STAFF"))
+                .with(user("USR-HAULER").roles("DISPATCH_STAFF"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of("confirmedWaybillId", unknownWaybillId))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Waybill completion is not permitted."));
 
         mockMvc.perform(post("/api/v1/waybills/" + waybillId + "/return-scans")
-                .with(user("USR-HAULER").roles("FIELD_STAFF"))
+                .with(user("USR-HAULER").roles("DISPATCH_STAFF"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of("trackingId", unit.getTrackingId()))))
                 .andExpect(status().isNotFound());
@@ -228,7 +230,7 @@ class SplitWaybillIntegrationTest {
         parcelUnitRepository.saveAndFlush(invalidUnit);
 
         mockMvc.perform(post("/api/v1/waybills/" + waybillId + "/complete")
-                .with(user("USR-HAULER").roles("FIELD_STAFF"))
+                .with(user("USR-HAULER").roles("DISPATCH_STAFF"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of("confirmedWaybillId", waybillId))))
                 .andExpect(status().isBadRequest())
@@ -250,13 +252,13 @@ class SplitWaybillIntegrationTest {
         String body = generation(shipmentId, List.of(unit.getTrackingId()), UUID.randomUUID().toString());
         mockMvc.perform(post("/api/v1/waybills/generate").with(user("USR-ADMIN").roles("ADMIN"))
                 .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
-        mockMvc.perform(post("/api/v1/waybills/generate").with(user("USR-FIELD").roles("FIELD_STAFF"))
+        mockMvc.perform(post("/api/v1/waybills/generate").with(user("USR-FIELD").roles("COURIER_STAFF"))
                 .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
         String waybillId = generate(shipmentId, List.of(unit.getTrackingId()), UUID.randomUUID().toString());
         mockMvc.perform(post("/api/v1/waybills/" + waybillId + "/send")
-                .with(user("USR-FIELD").roles("FIELD_STAFF"))).andExpect(status().isForbidden());
+                .with(user("USR-FIELD").roles("COURIER_STAFF"))).andExpect(status().isForbidden());
         mockMvc.perform(post("/api/v1/waybills/" + waybillId + "/complete")
-                .with(user("USR-FIELD").roles("FIELD_STAFF"))
+                .with(user("USR-FIELD").roles("COURIER_STAFF"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of("confirmedWaybillId", waybillId,
                         "signedBy", "Signer"))))
@@ -338,7 +340,8 @@ class SplitWaybillIntegrationTest {
         for (int index = 1; index <= count; index++) parcels.add(new ParcelUnitRequest(index,
                 new BigDecimal("2.5"), new BigDecimal("20"), new BigDecimal("20"), new BigDecimal("20")));
         request.setParcels(parcels);
-        MvcResult result = mockMvc.perform(post("/api/v1/shipments").with(user("USR-ADMIN").roles("ADMIN"))
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                .with(user("USR-OFFICE").roles("RECEIVING_STAFF"))
                 .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated()).andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("shipmentId").asText();
@@ -353,7 +356,7 @@ class SplitWaybillIntegrationTest {
 
     private void load(String trackingId) {
         try {
-            mockMvc.perform(post("/api/v1/tracking-events/scan").with(user("USR-HAULER").roles("FIELD_STAFF"))
+        mockMvc.perform(post("/api/v1/tracking-events/scan").with(user("USR-HAULER").roles("DISPATCH_STAFF"))
                     .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(
                             Map.of("trackingId", trackingId, "targetStatus", "LOADED_TO_HAULER"))))
                     .andExpect(status().isOk());
@@ -366,7 +369,7 @@ class SplitWaybillIntegrationTest {
 
     private String generate(String shipmentId, List<String> ids, String key) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/waybills/generate")
-                .with(user("USR-HAULER").roles("FIELD_STAFF")).contentType(MediaType.APPLICATION_JSON)
+                .with(user("USR-HAULER").roles("DISPATCH_STAFF")).contentType(MediaType.APPLICATION_JSON)
                 .content(generation(shipmentId, ids, key)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.parcels.length()").value(ids.size())).andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("waybillId").asText();
@@ -374,7 +377,7 @@ class SplitWaybillIntegrationTest {
 
     private void send(String number) throws Exception {
         mockMvc.perform(post("/api/v1/waybills/" + number + "/send")
-                .with(user("USR-HAULER").roles("FIELD_STAFF")))
+                .with(user("USR-HAULER").roles("DISPATCH_STAFF")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("SENT_TO_HAULER"));
     }
 
@@ -385,7 +388,7 @@ class SplitWaybillIntegrationTest {
             payload.put("signedBy", signatory);
         }
         mockMvc.perform(post("/api/v1/waybills/" + number + "/complete")
-                .with(user(actor).roles("FIELD_STAFF")).contentType(MediaType.APPLICATION_JSON)
+                .with(user(actor).roles("DISPATCH_STAFF")).contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(payload)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("SIGNED_COMPLETED"));
     }

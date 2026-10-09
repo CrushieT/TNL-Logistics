@@ -3,6 +3,7 @@ package com.tnl.logistics.controller;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -126,6 +127,7 @@ public class SoaIntegrationTest {
         ));
 
         mockMvc.perform(post("/api/v1/shipments")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(shipmentReq)))
                 .andExpect(status().isCreated());
@@ -167,15 +169,26 @@ public class SoaIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "USR-FIELD", roles = {"FIELD_STAFF"})
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testAuthorizedCollectorsEndpoint() throws Exception {
         mockMvc.perform(get("/api/v1/soa/collectors"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray());
+        mockMvc.perform(get("/api/v1/soa/collectors")
+                        .with(user("USR-FIELD").roles("COURIER_STAFF")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+        mockMvc.perform(get("/api/v1/soa/collectors")
+                        .with(user("USR-HAULER").roles("DISPATCH_STAFF")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+        mockMvc.perform(get("/api/v1/soa/collectors")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
+                .andExpect(status().isForbidden());
     }
 
     @Test
-    @WithMockUser(username = "USR-FIELD", roles = {"FIELD_STAFF"})
+    @WithMockUser(username = "USR-COURIER", roles = {"COURIER_STAFF"})
     void testFieldStaffForbiddenFromSoaManagement() throws Exception {
         SaveStatementRequest saveReq = new SaveStatementRequest(
                 "CL-001",
@@ -196,7 +209,7 @@ public class SoaIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "USR-RECEIVING", roles = {"RECEIVING_STAFF"})
     void testSaveStatementValidationConstraints() throws Exception {
         // 1. Negative deduction amount
         SaveStatementRequest negativeDeduction = new SaveStatementRequest(
@@ -313,6 +326,7 @@ public class SoaIntegrationTest {
         ));
 
         mockMvc.perform(post("/api/v1/shipments")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(shipmentReq)))
                 .andExpect(status().isCreated());
@@ -357,6 +371,7 @@ public class SoaIntegrationTest {
         ));
 
         var registration = mockMvc.perform(post("/api/v1/shipments")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(shipmentReq)))
                 .andExpect(status().isCreated())
@@ -380,6 +395,7 @@ public class SoaIntegrationTest {
                 .andExpect(jsonPath("$.status").value("SETTLED"));
 
         mockMvc.perform(get("/api/v1/shipments")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF"))
                         .param("search", shipmentId)
                         .param("paymentStatus", "Settled"))
                 .andExpect(status().isOk())
@@ -499,6 +515,7 @@ public class SoaIntegrationTest {
         ));
 
         var regRes = mockMvc.perform(post("/api/v1/shipments")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(shipmentReq)))
                 .andExpect(status().isCreated())

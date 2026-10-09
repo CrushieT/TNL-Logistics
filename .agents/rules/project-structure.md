@@ -6,12 +6,6 @@
 
 ```
 tnl-logistics/
-├── .review/                          # Planning, discovery, threat-model, and implementation-review artifacts
-│   ├── client-demo-change-plan.md
-│   ├── client-demo-phase-0-discovery-and-threat-model.md
-│   ├── client-demo-phase-1-registration-and-rating-plan.md
-│   ├── client-demo-phase-1.1-client-rate-override-plan.md
-│   └── railway-deployment-runbook.md
 ├── .agents/
 │   └── rules/
 │       ├── build-plan.md             # Master development roadmap & progress tracking
@@ -40,8 +34,8 @@ tnl-logistics/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
 │   │   │       ├── application-loadtest.properties
-│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V35; V35 records returned QR scans)
-│   │   └── test/                        # Integration and unit test suites, including AdminConsoleAuthorizationIntegrationTest and scanner API coverage
+│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V37; V36 maps identities, V37 removes account subtype/company columns and closes the role domain)
+│   │   └── test/                        # Integration and unit test suites, including FourRoleAuthorizationIntegrationTest, AdminConsoleAuthorizationIntegrationTest, and scanner API coverage
 │   └── pom.xml
 │
 ├── frontend-web/                    # Admin Web Portal (React Native Web / Expo Router)
@@ -151,6 +145,13 @@ tnl-logistics/
 └── README.md                          # Project overview & quick start
 ```
 
+### Four-role client adoption additions
+
+- `frontend-web/src/features/users/userRoles.mjs`: explicit Admin/Receiving/Courier/Dispatch presentation metadata and role-only create/update request builders.
+- `frontend-web/tests/userRoles.test.mjs`: Admin user-management role selection, payload omission, and legacy-role rejection coverage.
+- `frontend-mobile/src/features/auth/services/roleAccess.mjs`: fail-closed mobile identity parsing, role labels, primary workflows, and direct-route capability matrix.
+- `frontend-mobile/tests/roleAccess.test.mjs`: primary routing, shared access, direct-navigation denial, and stale/unknown-role regression coverage.
+
 ### Folder Organization Philosophy
 
 **Backend (layered):** Features are structured using a traditional layered architecture (`config`, `controller`, `dto`, `model`, `repository`, `service`). 
@@ -206,3 +207,5 @@ tnl-logistics/
 - `backend/src/main/java/com/tnl/logistics/dto/WaybillOptionResponse.java`: lightweight projection for returned waybill options (waybill ID, shipment ID, parcel count, status, status label, generated timestamp).
 - `frontend-mobile/src/features/waybills/waybillOptionsFlow.mjs`: pure option parameter construction, page merging, recommendation bounds, and cancellable request coordination.
 - `frontend-mobile/tests/waybillOptions.test.mjs`: unit tests for returned waybill pagination, recommendation capping, and cancellation.
+
+Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. The final account entity and DTOs expose role-only identities. `.review/four-role-ship-3-evidence.md` retains the baseline capability trace, company-column removal evidence, migration controls, and final verification reports.

@@ -41,7 +41,7 @@
 | ↳ **Phase 7.4** | Online-Only Mobile Scanner, Ergonomics & Access Hardening | [COMPLETED] |
 | ↳ **Phase 7.5** | Mobile Discovery Rails & Query Recommendations | [COMPLETED] |
 | ↳ **Phase 7.6** | High-Volume Load Testing, Synthetic Seeder & Dev Fixtures | [COMPLETED] |
-| ↳ **Phase 7.7** | Future Client Enhancements & Workflow Adaptations | [UPCOMING] |
+| ↳ **Phase 7.7** | Four-Role Authorization Model & Staff-Type Retirement | [COMPLETED] |
 
 ---
 
@@ -416,7 +416,7 @@
   - Accepted Cryptography Contract: Passwords and exactly four-digit PINs retain BCrypt cost 10. Existing bindings intentionally remain active after password and PIN rotation.
 - Mobile Architecture & Storage Lifecycles:
   - Pure Transition Engine (`src/features/auth/services/authStorageTransitions.mjs`): Pure, testable storage transitions (`replaceAuthenticatedSession`, `clearAccessSessionPreservingBinding`, `clearDeviceSession`) with zero storage of passwords, PINs, or PIN hashes.
-  - Pure Security Flow Helpers (`src/features/settings/accountSecurityFlow.mjs`): `deriveInitials`, `formatRole`, `formatStaffType`, `maskDeviceId`, `validatePasswordChange`, `validateFourDigitPin`, and `normalizeSecurityError` with zero fabricated fallbacks.
+  - Pure Security Flow Helpers (`src/features/settings/accountSecurityFlow.mjs`): `deriveInitials`, `formatRole`, `maskDeviceId`, `validatePasswordChange`, `validateFourDigitPin`, and `normalizeSecurityError` with zero fabricated fallbacks.
   - Stale Response Protection & Single-Retry: Axios response interceptor retries once on `401 SESSION_REAUTH_REQUIRED` if a newer replacement token exists in storage.
   - Sensitive Error Redaction: Login, profile, password, PIN, device status, and unbind failures expose only safe status/code/message/retry metadata and remove request bodies, bearer tokens, raw device tokens, and Axios configuration.
   - AuthContext Operations: Handles `rotatePasswordInSession`, `rotateUserPin`, `lockSession`, `startPasswordReauthentication`, `unbindCurrentDevice`, and `clearInvalidDeviceSession`.
@@ -488,5 +488,12 @@
 - Development Data Seeder & Workflow Fixtures: synchronized `application-dev.properties` to opt into `app.seed.workflow-fixtures=true` with rich scenarios 7–12 (unprinted labels, hauler queue, generated waybill, returned waybill, partial split completion).
 - Verification: unit/integration coverage across `LoadTestEnvironmentGuardTest`, `LoadTestDataSeederTest`, `LoadTestSchemaValidationIntegrationTest`, and `DataSeederWorkflowIntegrationTest` passed.
 
-**7.7 — Future Client Enhancements & Workflow Adaptations** — **[UPCOMING]**
-- Reserved for subsequent client feedback, operational customizations, and future enhancements.
+**7.7 — Four-Role Authorization Model & Staff-Type Retirement** — **[COMPLETED]**
+- Planning and threat modeling are complete in `.review/four-role-authorization-migration-plan.md`.
+- Target roles: `ADMIN`, `RECEIVING_STAFF`, `COURIER_STAFF`, and `DISPATCH_STAFF`.
+- Retires the broad `OFFICE_STAFF` / `FIELD_STAFF` plus `StaffType` model after a fail-closed database and JWT migration.
+- Delivery uses three `/ship` runs: backend role cutover, web/mobile adoption, and legacy removal with final authorization verification.
+- Execution prompts and handoff gates are documented in `.review/four-role-ship-runbook.md`.
+- Ship 1 (Backend Role Cutover) [COMPLETED]: Added four target roles, fail-closed Flyway V36 migration with deterministic duplicate-key guards and token version incrementing, token-persisted role mismatch rejection, and behaviorally equivalent controller/service authorization. Restored Admin and Receiving sequential scans, Dispatch no-waybill direct completion, all-role vehicle reads and scan entry points, Courier/Dispatch financial lookups and operational metrics, lifecycle-driven scan context, and Dispatch-first/Courier-fallback hauler options. Automated verification is complete (383 tests, 0 failures, 0 errors, 5 skipped), diff-scoped audit is clean, and manual acceptance on the cloned development database has passed.
+- Ship 2 (Web and Mobile Adoption) [COMPLETED]: Replaced client authorization branches and Admin user-management selectors with explicit roles, removed `staffType` from client requests and presentation, added fail-closed mobile session/routing controls, restored the canonical 2-card dashboards and workflow boundaries (Receiving Intake/Shipments, Courier Scan/History, Dispatch Waybills/History), and added role-routing, direct-navigation, and payload regressions. Verification passed with 80 web tests, 184 mobile tests, and web/Android/iOS production exports.
+- Ship 3 (Legacy Removal and Final Closure) [COMPLETED]: Removed StaffType and legacy role aliases/compatibility from runtime contracts, seeds, fixtures, and mobile session translation. V37 validates canonical roles before a single atomic ALTER removes account subtype/company columns and narrows the role enum. Source tracing proves account company unused; waybill hauler snapshots, actor IDs, and history remain. Verification passed: 390 backend tests (0 failures/errors, 5 pre-existing skips), 78 web tests, 182 mobile tests, and Admin web/mobile Android/iOS/web exports. Focused audit: no Critical/High/Medium findings; one informational MySQL syntax notice. Full reports and the manual acceptance guide are in `.review/four-role-ship-3-evidence.md` and `.github/PR_DRAFT.md`; physical-device/browser acceptance was not repeated.

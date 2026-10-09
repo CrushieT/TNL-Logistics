@@ -90,12 +90,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 return;
             }
 
+            if (user.getRole() == null || !user.getRole().isTargetRole()) {
+                auditSecurityMutationFailure(request, userId, user, "SESSION_REAUTH_REQUIRED");
+                sendSessionReauthenticationRequiredResponse(response);
+                return;
+            }
+
             if (Boolean.TRUE.equals(user.getMustChangePassword()) && !isAllowedForMustChangePassword(request)) {
                 sendPasswordChangeRequiredResponse(response);
                 return;
             }
 
-            if (user.getRole() == null || !Objects.equals(role, user.getRole().name())) {
+            if (!Objects.equals(role, user.getRole().name())) {
                 auditSecurityMutationFailure(request, userId, user, "SESSION_REAUTH_REQUIRED");
                 sendSessionReauthenticationRequiredResponse(response);
                 return;

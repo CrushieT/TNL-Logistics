@@ -9,7 +9,7 @@ import { colors, typography } from '../../../theme';
 
 export function FieldDashboard({ user, onAccount, onLock }) {
   const router = useRouter();
-  const isHaulerStaff = user?.staffType === 'HAULER_STAFF';
+  const isDispatchStaff = user?.role === 'DISPATCH_STAFF';
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <MobileHeader role={user?.role} name={user?.fullName || user?.username} onAccount={onAccount} onLock={onLock} />
@@ -17,25 +17,25 @@ export function FieldDashboard({ user, onAccount, onLock }) {
         <Image source={require('../../../../assets/tracking-logo.png')} style={styles.brandLogo} resizeMode="contain" />
         <Text style={styles.brandTitle}>TNL LOGISTICS</Text>
         <Text style={styles.brandSubtitle}>
-          {isHaulerStaff ? 'Hauler Dispatch & Manifest Console' : 'Field Courier & Transit Console'}
+          {isDispatchStaff ? 'Hauler Dispatch & Manifest Console' : 'Field Courier & Transit Console'}
         </Text>
         <View style={styles.divider} />
         <PressableScale
           contentStyle={styles.statusRow}
-          onPress={() => router.push(isHaulerStaff ? '/(main)/waybills' : '/(main)/scan')}
+          onPress={() => router.push(isDispatchStaff ? '/(main)/waybills' : '/(main)/scan')}
           activeScale={0.98}
           accessibilityRole="button"
-          accessibilityLabel={isHaulerStaff ? 'Open waybill console' : 'Open camera scanner'}
+          accessibilityLabel={isDispatchStaff ? 'Open waybill console' : 'Open camera scanner'}
         >
           <View style={styles.statusDot} />
           <Text style={styles.statusText}>
-            {isHaulerStaff ? 'Camera scanner active · Ready for waybills' : 'Camera scanner active · Ready for scans'}
+            {isDispatchStaff ? 'Camera scanner active · Ready for waybills' : 'Camera scanner active · Ready for scans'}
           </Text>
           <Icon source="chevron-right" size={16} color={colors.inkFaint} />
         </PressableScale>
       </View>
       <View style={styles.gridRow}>
-        {isHaulerStaff ? (
+        {isDispatchStaff ? (
           <ActionCard
             iconName="qrcode-scan"
             title="SCAN QR"
@@ -58,7 +58,7 @@ export function FieldDashboard({ user, onAccount, onLock }) {
         <View style={styles.accountInfo}><Text style={styles.accountTitle}>ACCOUNT & SHIFT</Text><Text style={styles.accountSubtitle}>Profile, device access and security</Text></View>
         <Icon source="chevron-right" size={20} color={colors.inkFaint} />
       </PressableScale>
-      <View style={styles.footer}><Text style={styles.footerText}>TNL MOBILE · AUTHENTICATED FIELD ACCESS</Text></View>
+      <View style={styles.footer}><Text style={styles.footerText}>TNL MOBILE · AUTHENTICATED {isDispatchStaff ? 'DISPATCH' : 'COURIER'} ACCESS</Text></View>
     </ScrollView>
   );
 }

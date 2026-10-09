@@ -125,7 +125,7 @@ class WaybillShipmentOptionsIntegrationTest {
                         .param("page", "-4")
                         .param("size", "1000")
                         .param("search", "SHP-BOUND-")
-                        .with(user("USR-HAULER").roles("FIELD_STAFF")))
+                .with(user("USR-HAULER").roles("DISPATCH_STAFF")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.number").value(0))
                 .andExpect(jsonPath("$.size").value(100))
@@ -134,7 +134,7 @@ class WaybillShipmentOptionsIntegrationTest {
         mockMvc.perform(get("/api/v1/waybills/shipment-options")
                         .param("size", "0")
                         .param("search", "SHP-BOUND-")
-                        .with(user("USR-HAULER").roles("FIELD_STAFF")))
+                .with(user("USR-HAULER").roles("DISPATCH_STAFF")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.size").value(1))
                 .andExpect(jsonPath("$.content.length()").value(1));
@@ -148,10 +148,10 @@ class WaybillShipmentOptionsIntegrationTest {
                         .with(user("USR-ADMIN").roles("ADMIN")))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/waybills/shipment-options")
-                        .with(user("USR-FIELD").roles("FIELD_STAFF")))
+                .with(user("USR-FIELD").roles("COURIER_STAFF")))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/waybills/shipment-options")
-                        .with(user("USR-HAULER").roles("FIELD_STAFF")))
+                .with(user("USR-HAULER").roles("DISPATCH_STAFF")))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/waybills/shipments")
@@ -203,10 +203,10 @@ class WaybillShipmentOptionsIntegrationTest {
                         .with(user("USR-ADMIN").roles("ADMIN")))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/waybills/options")
-                        .with(user("USR-FIELD").roles("FIELD_STAFF")))
+                .with(user("USR-FIELD").roles("COURIER_STAFF")))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/waybills/options")
-                        .with(user("USR-HAULER").roles("FIELD_STAFF")))
+                .with(user("USR-HAULER").roles("DISPATCH_STAFF")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.size").value(20));
     }
@@ -215,7 +215,7 @@ class WaybillShipmentOptionsIntegrationTest {
         var request = get("/api/v1/waybills/shipment-options")
                 .param("page", String.valueOf(page))
                 .param("size", String.valueOf(size))
-                .with(user("USR-HAULER").roles("FIELD_STAFF"));
+                .with(user("USR-HAULER").roles("DISPATCH_STAFF"));
         if (search != null) {
             request.param("search", search);
         }
@@ -231,7 +231,7 @@ class WaybillShipmentOptionsIntegrationTest {
                         .param("size", String.valueOf(size))
                         .param("search", search)
                         .param("status", statusFilter)
-                        .with(user("USR-HAULER").roles("FIELD_STAFF")))
+                .with(user("USR-HAULER").roles("DISPATCH_STAFF")))
                 .andExpect(status().isOk())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString());
@@ -279,7 +279,7 @@ class WaybillShipmentOptionsIntegrationTest {
         parcelUnitRepository.flush();
 
         mockMvc.perform(get("/api/v1/waybills/shipments/" + shipment.getShipmentId() + "/available")
-                        .with(user("USR-HAULER").roles("FIELD_STAFF")))
+                .with(user("USR-HAULER").roles("DISPATCH_STAFF")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].trackingId").value("TRK-AVAIL-0001"))

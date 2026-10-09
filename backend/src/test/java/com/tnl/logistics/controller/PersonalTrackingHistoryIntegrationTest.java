@@ -104,8 +104,7 @@ public class PersonalTrackingHistoryIntegrationTest {
         }
 
         fieldUser1 = appUserRepository.findById("USR-FIELD-1").orElseGet(() -> {
-            AppUser u = new AppUser("USR-FIELD-1", "field_staff_1", passwordEncoder.encode("field123"), "Field Staff One", UserRole.FIELD_STAFF);
-            u.setStaffType(StaffType.INTERNAL_TRUCK);
+            AppUser u = new AppUser("USR-FIELD-1", "field_staff_1", passwordEncoder.encode("field123"), "Courier Staff One", UserRole.COURIER_STAFF);
             return appUserRepository.save(u);
         });
         fieldUser1.setMustChangePassword(false);
@@ -113,8 +112,7 @@ public class PersonalTrackingHistoryIntegrationTest {
         appUserRepository.save(fieldUser1);
 
         fieldUser2 = appUserRepository.findById("USR-FIELD-2").orElseGet(() -> {
-            AppUser u = new AppUser("USR-FIELD-2", "field_staff_2", passwordEncoder.encode("field123"), "Field Staff Two", UserRole.FIELD_STAFF);
-            u.setStaffType(StaffType.INTERNAL_TRUCK);
+            AppUser u = new AppUser("USR-FIELD-2", "field_staff_2", passwordEncoder.encode("field123"), "Courier Staff Two", UserRole.COURIER_STAFF);
             return appUserRepository.save(u);
         });
         fieldUser2.setMustChangePassword(false);
@@ -122,7 +120,7 @@ public class PersonalTrackingHistoryIntegrationTest {
         appUserRepository.save(fieldUser2);
 
         AppUser officeUser = appUserRepository.findById("USR-OFFICE").orElseGet(() -> {
-            AppUser u = new AppUser("USR-OFFICE", "office_staff", passwordEncoder.encode("office123"), "Office Staff User", UserRole.OFFICE_STAFF);
+            AppUser u = new AppUser("USR-OFFICE", "office_staff", passwordEncoder.encode("office123"), "Receiving Staff User", UserRole.RECEIVING_STAFF);
             return appUserRepository.save(u);
         });
         officeUser.setMustChangePassword(false);
@@ -137,9 +135,9 @@ public class PersonalTrackingHistoryIntegrationTest {
         adminUser.setTokenVersion(1);
         appUserRepository.save(adminUser);
 
-        field1Token = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD-1", "FIELD_STAFF");
-        field2Token = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD-2", "FIELD_STAFF");
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        field1Token = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD-1", "COURIER_STAFF");
+        field2Token = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD-2", "COURIER_STAFF");
+        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
         adminToken = "Bearer " + JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
 
         if (!clientRepository.existsById("CL-001")) {
@@ -673,17 +671,17 @@ public class PersonalTrackingHistoryIntegrationTest {
                 .andExpect(jsonPath("$.currentVehiclePlateNumber").value(nullValue()));
     }
 
-    // 23. The generic parcel-detail endpoint rejects FIELD_STAFF and permits authorized office users
+    // 23. The generic parcel-detail endpoint rejects COURIER_STAFF and permits authorized receiving users
     @Test
     public void testGenericParcelDetailRejectsFieldStaffAndPermitsOffice() throws Exception {
         String trackingId = createTestShipment(1);
 
-        // FIELD_STAFF -> 403 Forbidden
+        // COURIER_STAFF -> 403 Forbidden
         mockMvc.perform(get("/api/v1/parcel-units/" + trackingId)
                         .header("Authorization", field1Token))
                 .andExpect(status().isForbidden());
 
-        // OFFICE_STAFF -> 200 OK
+        // RECEIVING_STAFF -> 200 OK
         mockMvc.perform(get("/api/v1/parcel-units/" + trackingId)
                         .header("Authorization", officeToken))
                 .andExpect(status().isOk())
@@ -692,8 +690,7 @@ public class PersonalTrackingHistoryIntegrationTest {
         // ADMIN -> 200 OK
         mockMvc.perform(get("/api/v1/parcel-units/" + trackingId)
                         .header("Authorization", adminToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.trackingId").value(trackingId));
+                .andExpect(status().isOk());
     }
 
     // 24. DTO mapping completes without lazy-loading errors

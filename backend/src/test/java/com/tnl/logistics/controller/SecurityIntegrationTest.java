@@ -192,7 +192,7 @@ public class SecurityIntegrationTest {
                 .andExpect(status().isOk());
 
         // 9. Access Field Gated Endpoint with refreshed Admin Token fails (403 Forbidden due to role gate)
-        mockMvc.perform(get("/api/v1/test/field")
+        mockMvc.perform(get("/api/v1/test/courier")
                         .header("Authorization", refreshedToken))
                 .andExpect(status().isForbidden());
 
@@ -217,7 +217,7 @@ public class SecurityIntegrationTest {
     @Test
     public void testStaffWebLoginIsDeniedWhileMobileLoginRemainsAvailable() throws Exception {
         AppUser officeUser = appUserRepository.findByUsername("office").orElseGet(() -> {
-            AppUser user = new AppUser("USR-OFFICE", "office", passwordEncoder.encode("office123"), "Office Staff", UserRole.OFFICE_STAFF);
+            AppUser user = new AppUser("USR-OFFICE", "office", passwordEncoder.encode("office123"), "Receiving Staff", UserRole.RECEIVING_STAFF);
             user.setActive(true);
             user.setTokenVersion(1);
             return appUserRepository.saveAndFlush(user);
@@ -239,7 +239,7 @@ public class SecurityIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(officeLogin)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.role").value("OFFICE_STAFF"))
+                .andExpect(jsonPath("$.role").value("RECEIVING_STAFF"))
                 .andExpect(jsonPath("$.token").isNotEmpty());
     }
 
@@ -264,7 +264,7 @@ public class SecurityIntegrationTest {
 
     @Test
     public void testFlaggedOfficeStaffBlockedFromBusinessEndpointsUntilPasswordChanged() throws Exception {
-        AppUser flaggedUser = new AppUser("USR-FLAGGED-OFFICE", "flagged_office", passwordEncoder.encode("flagged123"), "Flagged Staff", UserRole.OFFICE_STAFF);
+        AppUser flaggedUser = new AppUser("USR-FLAGGED-OFFICE", "flagged_office", passwordEncoder.encode("flagged123"), "Flagged Staff", UserRole.RECEIVING_STAFF);
         flaggedUser.setMustChangePassword(true);
         flaggedUser.setTokenVersion(1);
         appUserRepository.saveAndFlush(flaggedUser);
@@ -320,8 +320,8 @@ public class SecurityIntegrationTest {
 
         String refreshedToken = "Bearer " + objectMapper.readTree(changeResult.getResponse().getContentAsString()).get("token").asText();
 
-        // Now allowed on client endpoints
-        mockMvc.perform(get("/api/v1/clients")
+        // Now allowed on receiving shipment endpoints
+        mockMvc.perform(get("/api/v1/shipments")
                         .header("Authorization", refreshedToken))
                 .andExpect(status().isOk());
     }
@@ -492,15 +492,15 @@ public class SecurityIntegrationTest {
     @Test
     public void testDeactivatedUserTokenIsRejected() throws Exception {
         // Create an office user and mark as deactivated
-        AppUser inactiveUser = new AppUser("USR-INACTIVE", "inactive_user", passwordEncoder.encode("pass123"), "Inactive Staff", UserRole.OFFICE_STAFF);
+        AppUser inactiveUser = new AppUser("USR-INACTIVE", "inactive_user", passwordEncoder.encode("pass123"), "Inactive Staff", UserRole.RECEIVING_STAFF);
         inactiveUser.setActive(false);
         appUserRepository.save(inactiveUser);
 
         // Generate a cryptographically valid token for the inactive user
-        String token = "Bearer " + com.tnl.logistics.config.JwtTokenProvider.generateToken("USR-INACTIVE", "OFFICE_STAFF");
+        String token = "Bearer " + com.tnl.logistics.config.JwtTokenProvider.generateToken("USR-INACTIVE", "RECEIVING_STAFF");
 
         // Attempting to access protected office endpoint must require session renewal.
-        mockMvc.perform(get("/api/v1/test/office")
+        mockMvc.perform(get("/api/v1/test/receiving")
                         .header("Authorization", token))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
@@ -614,7 +614,7 @@ public class SecurityIntegrationTest {
         long expectedStaffTtlSeconds = JwtTokenProvider.getStaffExpirationMs() / 1000;
 
         // Office Staff
-        String officeToken = JwtTokenProvider.generateToken("USR-OFFICE-01", "OFFICE_STAFF", 1);
+        String officeToken = JwtTokenProvider.generateToken("USR-OFFICE-01", "RECEIVING_STAFF", 1);
         Long officeExp = JwtTokenProvider.getExpirationFromToken(officeToken);
         assertNotNull(officeExp);
         long actualOfficeTtl = officeExp - nowSeconds;
@@ -622,7 +622,7 @@ public class SecurityIntegrationTest {
                 "Office staff token TTL should match configured staff expiration (" + expectedStaffTtlSeconds + "s), but was: " + actualOfficeTtl);
 
         // Field Staff
-        String fieldToken = JwtTokenProvider.generateToken("USR-FIELD-01", "FIELD_STAFF", 1);
+        String fieldToken = JwtTokenProvider.generateToken("USR-FIELD-01", "COURIER_STAFF", 1);
         Long fieldExp = JwtTokenProvider.getExpirationFromToken(fieldToken);
         assertNotNull(fieldExp);
         long actualFieldTtl = fieldExp - nowSeconds;
@@ -699,7 +699,7 @@ public class SecurityIntegrationTest {
     @Test
     public void testValidStaffTokenWithConfiguredWindowIsAccepted() {
         // Staff token with configured validity window
-        String validStaffToken = JwtTokenProvider.generateToken("USR-OFFICE-01", "OFFICE_STAFF", 1);
+        String validStaffToken = JwtTokenProvider.generateToken("USR-OFFICE-01", "RECEIVING_STAFF", 1);
         assertTrue(JwtTokenProvider.validateToken(validStaffToken),
                 "Staff token with configured validity window must remain valid");
     }
@@ -781,7 +781,7 @@ public class SecurityIntegrationTest {
 
         String token = objectMapper.readValue(loginResult.getResponse().getContentAsString(), LoginResponse.class).getToken();
 
-        mockMvc.perform(get("/api/v1/test/field")
+        mockMvc.perform(get("/api/v1/test/courier")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isForbidden())
                 .andExpect(header().doesNotExist("X-Renewed-Token"));
@@ -790,12 +790,12 @@ public class SecurityIntegrationTest {
     @Test
     public void testNonAdminRequestDoesNotEmitRenewalHeader() throws Exception {
         AppUser officeUser = appUserRepository.findByUsername("office").orElseGet(() -> {
-            AppUser u = new AppUser("USR-OFFICE", "office", passwordEncoder.encode("office123"), "Office Staff", UserRole.OFFICE_STAFF);
+            AppUser u = new AppUser("USR-OFFICE", "office", passwordEncoder.encode("office123"), "Receiving Staff", UserRole.RECEIVING_STAFF);
             u.setActive(true);
             return appUserRepository.saveAndFlush(u);
         });
 
-        String officeToken = JwtTokenProvider.generateToken(officeUser.getUserId(), "OFFICE_STAFF", officeUser.getTokenVersion());
+        String officeToken = JwtTokenProvider.generateToken(officeUser.getUserId(), "RECEIVING_STAFF", officeUser.getTokenVersion());
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + officeToken))
@@ -806,7 +806,7 @@ public class SecurityIntegrationTest {
     @Test
     public void testRoleMismatchBetweenTokenAndDatabaseIsRejected() throws Exception {
         AppUser admin = appUserRepository.findById("USR-ADMIN").orElseThrow();
-        String mismatchedToken = JwtTokenProvider.generateToken(admin.getUserId(), "OFFICE_STAFF", admin.getTokenVersion());
+        String mismatchedToken = JwtTokenProvider.generateToken(admin.getUserId(), "RECEIVING_STAFF", admin.getTokenVersion());
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + mismatchedToken))

@@ -1,6 +1,7 @@
 package com.tnl.logistics.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tnl.logistics.model.UserRole;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import javax.crypto.Mac;
@@ -150,6 +151,9 @@ public class JwtTokenProvider {
         if (secret == null) {
             throw new IllegalStateException("JWT secret has not been configured. Ensure jwt.secret is provided.");
         }
+        if (!isSupportedRole(role)) {
+            throw new IllegalArgumentException("JWT role is not supported.");
+        }
         try {
             Map<String, Object> header = new HashMap<>();
             header.put("alg", "HS256");
@@ -218,6 +222,9 @@ public class JwtTokenProvider {
             if (iat == null) {
                 return false;
             }
+            if (!isSupportedRole(role)) {
+                return false;
+            }
 
             // Enforce shift TTL policy and reject legacy overlong tokens for ADMIN
             if (isAdminRole(role)) {
@@ -281,6 +288,17 @@ public class JwtTokenProvider {
 
             return true;
         } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean isSupportedRole(String role) {
+        if (role == null || role.isBlank()) {
+            return false;
+        }
+        try {
+            return UserRole.valueOf(role).isTargetRole();
+        } catch (IllegalArgumentException exception) {
             return false;
         }
     }

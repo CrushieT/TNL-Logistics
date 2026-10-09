@@ -20,19 +20,33 @@ import {
   setAppLocked,
 } from '../../../services/storage/secureStore';
 import { shouldRestoreLockedSession } from '../services/appLifecycleLock.mjs';
+import { isSupportedMobileRole, sanitizeMobileUser } from '../services/roleAccess.mjs';
 
 const AuthContext = createContext(null);
 
 function toBoundUser(user) {
-  if (!user) return null;
+  const roleOnlyUser = sanitizeMobileUser(user);
+  if (!roleOnlyUser) return null;
   return {
-    userId: user.userId,
-    username: user.username,
-    fullName: user.fullName,
-    role: user.role,
-    staffType: user.staffType ?? null,
-    hasPinSet: user.hasPinSet,
+    userId: roleOnlyUser.userId,
+    username: roleOnlyUser.username,
+    fullName: roleOnlyUser.fullName,
+    role: roleOnlyUser.role,
+    hasPinSet: roleOnlyUser.hasPinSet,
   };
+}
+
+function requireSupportedMobileUser(user) {
+  const roleOnlyUser = sanitizeMobileUser(user);
+  if (!roleOnlyUser) {
+    throw {
+      status: 403,
+      code: 'UNSUPPORTED_MOBILE_ROLE',
+      message: 'This account is not authorized for the mobile application.',
+      retryAfterSeconds: null,
+    };
+  }
+  return roleOnlyUser;
 }
 
 export function AuthProvider({ children }) {
@@ -44,27 +58,40 @@ export function AuthProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true);
   const [popupNotice, setPopupNotice] = useState(null);
 
+  const rejectInvalidIdentity = useCallback(async () => {
+    await clearStoredDeviceSession();
+    setToken(null);
+    setUser(null);
+    setBoundUser(null);
+    setIsLocked(false);
+  }, []);
+
   const installSession = useCallback(async (replacementToken, nextUser) => {
-    await replaceAuthenticatedSession({ token: replacementToken, user: nextUser });
+    const roleOnlyUser = requireSupportedMobileUser(nextUser);
+    await replaceAuthenticatedSession({ token: replacementToken, user: roleOnlyUser });
     setToken(replacementToken);
-    setUser(nextUser);
+    setUser(roleOnlyUser);
     setIsLocked(false);
   }, []);
 
   const refreshAuthenticatedUser = useCallback(async (authenticatedUser) => {
     try {
       const profile = await authService.fetchCurrentUser();
-      const refreshedUser = { ...authenticatedUser, ...profile };
+      const refreshedUser = requireSupportedMobileUser({ ...authenticatedUser, ...profile });
       await saveUser(refreshedUser);
       setUser(refreshedUser);
       const refreshedBoundUser = toBoundUser(refreshedUser);
       await saveBoundUser(refreshedBoundUser);
       setBoundUser(refreshedBoundUser);
       return refreshedUser;
-    } catch {
+    } catch (error) {
+      if (error?.code === 'UNSUPPORTED_MOBILE_ROLE') {
+        await rejectInvalidIdentity();
+        throw error;
+      }
       return authenticatedUser;
     }
-  }, []);
+  }, [rejectInvalidIdentity]);
 
   const clearAccessSessionPreservingBinding = useCallback(async () => {
     await clearStoredAccessSession();
@@ -74,12 +101,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const clearInvalidDeviceSession = useCallback(async () => {
-    await clearStoredDeviceSession();
-    setToken(null);
-    setUser(null);
-    setBoundUser(null);
-    setIsLocked(false);
-  }, []);
+    await rejectInvalidIdentity();
+  }, [rejectInvalidIdentity]);
 
   const showSessionNotice = useCallback((notice) => {
     setPopupNotice({
@@ -147,52 +170,66 @@ export function AuthProvider({ children }) {
         ]);
 
         if (!isMounted) return;
-        if ((storedBoundUser || (storedUser && !storedUser.mustChangePassword)) && !deviceCredentials) {
+        const restoredBoundUser = storedBoundUser ? sanitizeMobileUser(storedBoundUser) : null;
+        const restoredUser = storedUser ? sanitizeMobileUser(storedUser) : null;
+        if ((storedBoundUser && !restoredBoundUser) || (storedUser && !restoredUser)) {
+          await clearInvalidDeviceSession();
+          showSessionNotice({
+            eyebrow: 'ACCOUNT ACCESS',
+            title: 'Password Sign In Required',
+            message: 'The saved session uses an unsupported or outdated role and was removed.',
+            action: 'dismiss',
+          });
+          return;
+        }
+        if ((restoredBoundUser || (restoredUser && !restoredUser.mustChangePassword)) && !deviceCredentials) {
           await clearInvalidDeviceSession();
           showSessionNotice({
             eyebrow: 'DEVICE SECURITY',
             title: 'Password Sign In Required',
             message: 'This device must be bound with a password before PIN unlock can be used.',
             action: 'password-login',
-            username: storedUser?.username || storedBoundUser?.username,
+            username: restoredUser?.username || restoredBoundUser?.username,
             reason: 'device_credentials_missing',
           });
           return;
         }
 
-        setBoundUser(storedBoundUser || null);
-        if (storedToken && storedUser) {
+        setBoundUser(restoredBoundUser || null);
+        if (storedToken && restoredUser) {
           const restoredLocked = shouldRestoreLockedSession({
             platform: Platform.OS,
-            boundUser: storedBoundUser,
-            user: storedUser,
+            boundUser: restoredBoundUser,
+            user: restoredUser,
             hasDeviceCredentials: Boolean(deviceCredentials),
             persistedLocked: locked,
           });
           setToken(storedToken);
-          setUser(storedUser);
+          setUser(restoredUser);
           setIsLocked(restoredLocked);
           if (restoredLocked && !locked) {
             await setAppLocked(true);
           }
 
-          if (!restoredLocked && !storedUser.mustChangePassword && deviceCredentials) {
+          if (!restoredLocked && !restoredUser.mustChangePassword && deviceCredentials) {
             authService.fetchCurrentUser()
               .then(async (profile) => {
                 if (isMounted) {
-                  const refreshedUser = { ...storedUser, ...profile };
+                  const refreshedUser = requireSupportedMobileUser({ ...restoredUser, ...profile });
                   await saveUser(refreshedUser);
                   setUser(refreshedUser);
                 }
               })
-              .catch(() => {
-                // The API interceptor owns session and device credential failures.
+              .catch(async (error) => {
+                if (error?.code === 'UNSUPPORTED_MOBILE_ROLE' && isMounted) {
+                  await clearInvalidDeviceSession();
+                }
               });
           }
-        } else if (storedBoundUser && deviceCredentials) {
+        } else if (restoredBoundUser && deviceCredentials) {
           const restoredLocked = shouldRestoreLockedSession({
             platform: Platform.OS,
-            boundUser: storedBoundUser,
+            boundUser: restoredBoundUser,
             user: null,
             hasDeviceCredentials: true,
             persistedLocked: locked,
@@ -223,7 +260,8 @@ export function AuthProvider({ children }) {
     try {
       const existingDeviceCredentials = await getDeviceCredentials();
       const data = await authService.loginWithPassword(username, password, existingDeviceCredentials?.deviceId);
-      const { token: receivedToken, deviceId, deviceToken, ...userData } = data;
+      const { token: receivedToken, deviceId, deviceToken, ...rawUserData } = data;
+      const userData = requireSupportedMobileUser(rawUserData);
 
       if (userData.mustChangePassword) {
         await saveToken(receivedToken);
@@ -261,7 +299,7 @@ export function AuthProvider({ children }) {
 
   const rotatePasswordInSession = useCallback(async (currentPassword, newPassword) => {
     const result = await authService.changePassword(currentPassword, newPassword);
-    const nextUser = { ...user, ...result };
+    const nextUser = requireSupportedMobileUser({ ...user, ...result });
     delete nextUser.token;
     delete nextUser.message;
     await installSession(result.token, nextUser);
@@ -301,7 +339,8 @@ export function AuthProvider({ children }) {
         throw { code: 'MISSING_DEVICE_CREDENTIALS', message: 'Password sign in is required.' };
       }
       const data = await authService.loginWithPin(targetUsername, pin, deviceCredentials);
-      const { token: receivedToken, deviceId, deviceToken, ...userData } = data;
+      const { token: receivedToken, deviceId, deviceToken, ...rawUserData } = data;
+      const userData = requireSupportedMobileUser(rawUserData);
       await saveDeviceCredentials(deviceId, deviceToken);
       await installSession(receivedToken, userData);
       const nextBoundUser = toBoundUser(userData);
@@ -346,7 +385,14 @@ export function AuthProvider({ children }) {
 
   const mustChangePassword = Boolean(user?.mustChangePassword);
   const mustSetupPin = Boolean(user && !mustChangePassword && user.hasPinSet === false);
-  const isAuthenticated = Boolean(token && user && !isLocked && !mustChangePassword && !mustSetupPin);
+  const isAuthenticated = Boolean(
+    token
+    && user
+    && isSupportedMobileRole(user.role)
+    && !isLocked
+    && !mustChangePassword
+    && !mustSetupPin
+  );
 
   return (
     <AuthContext.Provider value={{

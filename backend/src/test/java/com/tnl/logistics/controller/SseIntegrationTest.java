@@ -104,6 +104,7 @@ public class SseIntegrationTest {
 
     private String officeToken;
     private String adminToken;
+    private String courierToken;
 
     @BeforeEach
     public void setup() {
@@ -117,8 +118,9 @@ public class SseIntegrationTest {
         shipmentRepository.deleteAll();
         vehicleRepository.deleteAll();
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
         adminToken = "Bearer " + JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
+        courierToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "COURIER_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {
@@ -161,7 +163,7 @@ public class SseIntegrationTest {
         // 3. Trigger a status scan — should broadcast SSE event without throwing
         TrackingScanRequest scanReq = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Scanned in field");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
-                        .header("Authorization", officeToken)
+                        .header("Authorization", courierToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(scanReq)))
                 .andExpect(status().isOk());
@@ -180,7 +182,7 @@ public class SseIntegrationTest {
 
     @Test
     public void testStandardEndpointsRejectTokenQueryParameter() throws Exception {
-        String rawToken = JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        String rawToken = JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
         mockMvc.perform(get("/api/v1/shipments")
                         .param("token", rawToken))
                 .andExpect(status().isUnauthorized());
@@ -189,8 +191,8 @@ public class SseIntegrationTest {
     @Test
     public void testSseHeartbeatExecutionAndDeadEmitterPruning() {
         long futureDeadline = System.currentTimeMillis() + 60000L;
-        org.springframework.web.servlet.mvc.method.annotation.SseEmitter activeEmitter = sseService.registerClient("USR-OFFICE", 1, futureDeadline);
-        org.springframework.web.servlet.mvc.method.annotation.SseEmitter deadEmitter = sseService.registerClient("USR-OFFICE", 1, futureDeadline);
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter activeEmitter = sseService.registerClient("USR-ADMIN", 1, futureDeadline);
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter deadEmitter = sseService.registerClient("USR-ADMIN", 1, futureDeadline);
 
         // Complete deadEmitter to simulate client disconnect
         deadEmitter.complete();
@@ -204,7 +206,7 @@ public class SseIntegrationTest {
         long pastDeadline = System.currentTimeMillis() - 5000L;
         org.junit.jupiter.api.Assertions.assertThrows(
                 org.springframework.web.server.ResponseStatusException.class,
-                () -> sseService.registerClient("USR-OFFICE", 1, pastDeadline)
+                () -> sseService.registerClient("USR-ADMIN", 1, pastDeadline)
         );
     }
 
@@ -212,7 +214,7 @@ public class SseIntegrationTest {
     public void testCommittedRevocationClosesClientAndRollbackPreservesIt() {
         String userId = "USR-SSE-TEST";
         AppUserRepository repository = mock(AppUserRepository.class);
-        AppUserRepository.SseAuthorizationState officeState = createOfficeState(1);
+        AppUserRepository.SseAuthorizationState officeState = createAdminState(1);
         when(repository.findSseAuthorizationState(userId)).thenReturn(Optional.of(officeState));
         SseServiceImpl isolatedService = new SseServiceImpl(repository);
         long deadline = System.currentTimeMillis() + 60000L;
@@ -235,7 +237,7 @@ public class SseIntegrationTest {
         String userId = "USR-SSE-TEST";
         long deadline = System.currentTimeMillis() + 60000L;
         AppUserRepository revokedRepository = mock(AppUserRepository.class);
-        AppUserRepository.SseAuthorizationState rotatedState = createOfficeState(2);
+        AppUserRepository.SseAuthorizationState rotatedState = createAdminState(2);
         when(revokedRepository.findSseAuthorizationState(userId)).thenReturn(Optional.of(rotatedState));
         SseServiceImpl revokedService = new SseServiceImpl(revokedRepository);
 
@@ -261,7 +263,7 @@ public class SseIntegrationTest {
         CountDownLatch allowLookup = new CountDownLatch(1);
         CountDownLatch revocationStarted = new CountDownLatch(1);
         AppUserRepository repository = mock(AppUserRepository.class);
-        AppUserRepository.SseAuthorizationState officeState = createOfficeState(1);
+        AppUserRepository.SseAuthorizationState officeState = createAdminState(1);
         when(repository.findSseAuthorizationState(userId)).thenAnswer(invocation -> {
             lookupStarted.countDown();
             if (!allowLookup.await(5, TimeUnit.SECONDS)) {
@@ -300,7 +302,7 @@ public class SseIntegrationTest {
         CountDownLatch allowLookup = new CountDownLatch(1);
         CountDownLatch revocationStarted = new CountDownLatch(1);
         AppUserRepository repository = mock(AppUserRepository.class);
-        AppUserRepository.SseAuthorizationState officeState = createOfficeState(1);
+        AppUserRepository.SseAuthorizationState officeState = createAdminState(1);
         when(repository.findSseAuthorizationState(userId))
                 .thenReturn(Optional.of(officeState))
                 .thenAnswer(invocation -> {
@@ -341,7 +343,7 @@ public class SseIntegrationTest {
     public void testPostCommitLookupFailureDoesNotFailBusinessTransaction() {
         String userId = "USR-SSE-TEST";
         AppUserRepository repository = mock(AppUserRepository.class);
-        AppUserRepository.SseAuthorizationState officeState = createOfficeState(1);
+        AppUserRepository.SseAuthorizationState officeState = createAdminState(1);
         when(repository.findSseAuthorizationState(userId))
                 .thenReturn(Optional.of(officeState))
                 .thenThrow(new DataAccessResourceFailureException("Test database failure"));
@@ -357,7 +359,7 @@ public class SseIntegrationTest {
     public void testUnexpectedPostCommitBroadcastFailureDoesNotFailBusinessTransaction() {
         String userId = "USR-SSE-TEST";
         AppUserRepository repository = mock(AppUserRepository.class);
-        AppUserRepository.SseAuthorizationState officeState = createOfficeState(1);
+        AppUserRepository.SseAuthorizationState officeState = createAdminState(1);
         AppUserRepository.SseAuthorizationState failingState = mock(AppUserRepository.SseAuthorizationState.class);
         when(failingState.getActive()).thenThrow(new IllegalStateException("Unexpected authorization failure"));
         when(repository.findSseAuthorizationState(userId))
@@ -374,7 +376,7 @@ public class SseIntegrationTest {
     public void testMissingAccountClosesClientBeforeBroadcast() {
         String userId = "USR-SSE-TEST";
         AppUserRepository repository = mock(AppUserRepository.class);
-        AppUserRepository.SseAuthorizationState officeState = createOfficeState(1);
+        AppUserRepository.SseAuthorizationState officeState = createAdminState(1);
         when(repository.findSseAuthorizationState(userId))
                 .thenReturn(Optional.of(officeState))
                 .thenReturn(Optional.empty());
@@ -392,10 +394,10 @@ public class SseIntegrationTest {
         return transaction;
     }
 
-    private AppUserRepository.SseAuthorizationState createOfficeState(int tokenVersion) {
+    private AppUserRepository.SseAuthorizationState createAdminState(int tokenVersion) {
         AppUserRepository.SseAuthorizationState state = mock(AppUserRepository.SseAuthorizationState.class);
         when(state.getActive()).thenReturn(true);
-        when(state.getRole()).thenReturn(UserRole.OFFICE_STAFF);
+        when(state.getRole()).thenReturn(UserRole.ADMIN);
         when(state.getTokenVersion()).thenReturn(tokenVersion);
         return state;
     }

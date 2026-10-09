@@ -98,13 +98,13 @@ public class DataSeeder implements CommandLineRunner {
         }
         seedWorkflowSystemSettings();
         if (!seedSampleData) return;
-        if (seedAdmin) seedUser("U-001", "admin", "admin123", "Maria Santos", UserRole.ADMIN, null, null, null);
+        if (seedAdmin) seedUser("U-001", "admin", "admin123", "Maria Santos", UserRole.ADMIN, null);
 
         String staffMobilePin = seedMobilePins ? SEEDED_STAFF_MOBILE_PIN : null;
-        AppUser office = seedUser("U-002", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF, null, null, staffMobilePin);
-        AppUser courier = seedUser("U-003", "field", "field123", "Carlos Mendoza", UserRole.FIELD_STAFF, StaffType.INTERNAL_TRUCK, null, staffMobilePin);
-        AppUser hauler = seedHaulerUser("U-004", "Rogelio Aquino", "Northbound Hauling", staffMobilePin);
-        AppUser hauler2 = seedUser("U-005", "hauler2", "field123", "Danilo Cruz", UserRole.FIELD_STAFF, StaffType.HAULER_STAFF, "Cordillera Freight", staffMobilePin);
+        AppUser office = seedUser("U-002", "office", "office123", "Receiving Staff", UserRole.RECEIVING_STAFF, staffMobilePin);
+        AppUser courier = seedUser("U-003", "field", "field123", "Carlos Mendoza", UserRole.COURIER_STAFF, staffMobilePin);
+        AppUser hauler = seedHaulerUser("U-004", "Rogelio Aquino", staffMobilePin);
+        AppUser hauler2 = seedUser("U-005", "hauler2", "field123", "Danilo Cruz", UserRole.DISPATCH_STAFF, staffMobilePin);
 
         List<Client> clients = List.of(
                 seedClient("CL-001", "Northbridge Trading", "Unit 402, Trade Tower, Binondo, Manila", "0917-555-0148", "orders@northbridge.ph", ChargeModel.PER_PARCEL, new BigDecimal("35.00")),
@@ -174,22 +174,24 @@ public class DataSeeder implements CommandLineRunner {
     private void seedTestProfileFoundation() {
         if (!environment.acceptsProfiles(Profiles.of("test")) || !seedSampleData) return;
 
-        seedUser("USR-ADMIN", "admin", "admin123", "Admin User", UserRole.ADMIN, null, null, null);
+        seedUser("USR-ADMIN", "admin", "admin123", "Admin User", UserRole.ADMIN, null);
         String staffMobilePin = seedMobilePins ? SEEDED_STAFF_MOBILE_PIN : null;
-        seedUser("USR-OFFICE", "office", "office123", "Office Staff", UserRole.OFFICE_STAFF, null, null, staffMobilePin);
-        seedUser("USR-FIELD", "field", "field123", "Carlos Mendoza", UserRole.FIELD_STAFF, StaffType.INTERNAL_TRUCK, null, staffMobilePin);
-        seedHaulerUser("USR-HAULER", "Rogelio Aquino", "Northbound Hauling", staffMobilePin);
-        seedUser("USR-HAULER2", "hauler2", "field123", "Danilo Cruz", UserRole.FIELD_STAFF, StaffType.HAULER_STAFF, "Cordillera Freight", staffMobilePin);
+        seedUser("USR-OFFICE", "office", "office123", "Receiving Staff", UserRole.RECEIVING_STAFF, staffMobilePin);
+        seedUser("USR-FIELD", "field", "field123", "Carlos Mendoza", UserRole.COURIER_STAFF, staffMobilePin);
+        seedHaulerUser("USR-HAULER", "Rogelio Aquino", staffMobilePin);
+        seedUser("USR-HAULER2", "hauler2", "field123", "Danilo Cruz", UserRole.DISPATCH_STAFF, staffMobilePin);
         seedClient("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com");
         seedVehicle("VH-001", "NCP-2401", "TNL line-haul vehicle");
         seedVehicle("VH-002", "NCP-2402", "TNL reserve vehicle");
     }
 
-    private AppUser seedUser(String id, String username, String password, String fullName, UserRole role, StaffType type, String haulerCompany, String pin) {
+    private AppUser seedUser(String id, String username, String password, String fullName, UserRole role, String pin) {
         AppUser existingUser = appUserRepository.findById(id)
                 .or(() -> appUserRepository.findByUsername(username))
                 .orElse(null);
         if (existingUser != null) {
+            existingUser.setFullName(fullName);
+            existingUser.setRole(role);
             existingUser.setMustChangePassword(false);
             existingUser.setTokenVersion(1);
             if (pin != null && (existingUser.getPinHash() == null || existingUser.getPinHash().isBlank())) {
@@ -198,7 +200,7 @@ public class DataSeeder implements CommandLineRunner {
             return appUserRepository.save(existingUser);
         }
         return appUserRepository.findByUsername(username).orElseGet(() -> {
-            AppUser user = new AppUser(id, username, passwordEncoder.encode(password), fullName, role, type, haulerCompany);
+            AppUser user = new AppUser(id, username, passwordEncoder.encode(password), fullName, role);
             user.setMustChangePassword(false);
             user.setTokenVersion(1);
             if (pin != null) user.setPinHash(passwordEncoder.encode(pin));
@@ -206,9 +208,9 @@ public class DataSeeder implements CommandLineRunner {
         });
     }
 
-    private AppUser seedHaulerUser(String id, String fullName, String haulerCompany, String pin) {
+    private AppUser seedHaulerUser(String id, String fullName, String pin) {
         AppUser haulerUser = seedUser(id, SEEDED_HAULER_USERNAME, SEEDED_HAULER_PASSWORD, fullName,
-                UserRole.FIELD_STAFF, StaffType.HAULER_STAFF, haulerCompany, pin);
+                UserRole.DISPATCH_STAFF, pin);
         boolean hasUpdatedLegacyCredentials = false;
         if (LEGACY_HAULER_USERNAME.equals(haulerUser.getUsername())) {
             haulerUser.setUsername(SEEDED_HAULER_USERNAME);

@@ -31,7 +31,7 @@ import {
   buildBatchScanRequest,
   canActivateCamera,
   getScannerConnectivity,
-  isStaffTransitionAllowed,
+  isRoleTransitionAllowed,
   validateBatchCandidate
 } from '../../features/scanner/scannerFlow.mjs';
 import { trackingScanApi } from '../../features/scanner/services/trackingScanApi';
@@ -177,13 +177,13 @@ export default function ScanScreen() {
     }
   }, [isKeyboardVisible, resizeCamera, toggleCameraHeight]);
 
-  // Restrict screen strictly to non-hauler FIELD_STAFF
+  // Restrict screen strictly to COURIER_STAFF
   useEffect(() => {
     if (!authLoading && user) {
-      if (user.role !== 'FIELD_STAFF') {
-        router.replace('/(main)');
-      } else if (user.staffType === 'HAULER_STAFF') {
+      if (user.role === 'DISPATCH_STAFF') {
         router.replace('/(main)/waybills');
+      } else if (user.role !== 'COURIER_STAFF') {
+        router.replace('/(main)');
       }
     }
   }, [user, authLoading, router]);
@@ -245,12 +245,12 @@ export default function ScanScreen() {
   }, [navigation, state.mode, state.batchQueue.length]);
 
   useEffect(() => {
-    const staffType = user?.staffType ?? null;
-    dispatch({ type: 'RECONCILE_STAFF_PERMISSIONS', payload: staffType });
-    if (!isStaffTransitionAllowed(staffType, 'LOADED_ON_TRUCK')) {
+    const role = user?.role;
+    dispatch({ type: 'RECONCILE_ROLE_PERMISSIONS', payload: role });
+    if (!isRoleTransitionAllowed(role, 'LOADED_ON_TRUCK')) {
       setVehicles([]);
     }
-  }, [user?.staffType]);
+  }, [user?.role]);
 
   const loadVehicles = useCallback(async () => {
     if (!connectivity.isOnline) {
@@ -258,7 +258,7 @@ export default function ScanScreen() {
       setLoadingVehicles(false);
       return;
     }
-    if (!isStaffTransitionAllowed(user?.staffType ?? null, 'LOADED_ON_TRUCK')) {
+    if (!isRoleTransitionAllowed(user?.role, 'LOADED_ON_TRUCK')) {
       setVehicles([]);
       setLoadingVehicles(false);
       return;
@@ -273,17 +273,17 @@ export default function ScanScreen() {
     } finally {
       setLoadingVehicles(false);
     }
-  }, [connectivity.isOnline, user?.staffType]);
+  }, [connectivity.isOnline, user?.role]);
 
   // When switching to BATCH with LOADED_ON_TRUCK, load vehicles
   useEffect(() => {
     if (state.mode === SCANNER_MODES.BATCH
       && state.batchOperation === 'LOADED_ON_TRUCK'
-      && isStaffTransitionAllowed(user?.staffType ?? null, state.batchOperation)
+      && isRoleTransitionAllowed(user?.role, state.batchOperation)
       && vehicles.length === 0) {
       loadVehicles();
     }
-  }, [state.mode, state.batchOperation, vehicles.length, loadVehicles, user?.staffType]);
+  }, [state.mode, state.batchOperation, vehicles.length, loadVehicles, user?.role]);
 
   const handleToggleTorch = () => {
     setTorchEnabled((prev) => !prev);
@@ -325,7 +325,7 @@ export default function ScanScreen() {
         const context = await trackingScanApi.getScanContext(normalized.trackingId, controller.signal);
         dispatch({ type: 'SET_CONTEXT', payload: context });
         if (context.requiresVehicle
-          && isStaffTransitionAllowed(user?.staffType ?? null, context.nextStatusCode)
+          && isRoleTransitionAllowed(user?.role, context.nextStatusCode)
           && vehicles.length === 0) {
           loadVehicles();
         }
@@ -349,9 +349,9 @@ export default function ScanScreen() {
         dispatch({ type: 'SET_ERROR', payload: 'Please select a target operation before scanning parcels.' });
         return;
       }
-      if (!isStaffTransitionAllowed(user?.staffType ?? null, state.batchOperation)) {
+      if (!isRoleTransitionAllowed(user?.role, state.batchOperation)) {
         void safeHaptics.warning();
-        dispatch({ type: 'RECONCILE_STAFF_PERMISSIONS', payload: user?.staffType ?? null });
+        dispatch({ type: 'RECONCILE_ROLE_PERMISSIONS', payload: user?.role });
         return;
       }
       if (state.batchOperation === 'LOADED_ON_TRUCK' && !state.batchVehicleId) {
@@ -392,7 +392,7 @@ export default function ScanScreen() {
 
       try {
         const context = await trackingScanApi.getScanContext(normalized.trackingId, controller.signal);
-        const validation = validateBatchCandidate(context, state.batchOperation, user?.staffType ?? null);
+        const validation = validateBatchCandidate(context, state.batchOperation, user?.role);
 
         if (!validation.isValid) {
           void safeHaptics.warning();
@@ -442,7 +442,7 @@ export default function ScanScreen() {
       const payload = buildSingleScanRequest(
         state.currentContext,
         state.selectedVehicleId,
-        user?.staffType ?? null
+        user?.role
       );
       const res = await trackingScanApi.submitSingleScan(payload);
       void safeHaptics.success();
@@ -470,7 +470,7 @@ export default function ScanScreen() {
         state.batchQueue,
         state.batchOperation,
         state.batchVehicleId,
-        user?.staffType ?? null
+        user?.role
       );
       const responses = await trackingScanApi.submitBatchScan(payload);
       void safeHaptics.success();
@@ -538,7 +538,7 @@ export default function ScanScreen() {
     mode: state.mode,
     batchOperation: state.batchOperation,
     batchVehicleId: state.batchVehicleId,
-    staffType: user?.staffType ?? null
+    role: user?.role
   });
 
   const getModalCopy = () => {
@@ -566,7 +566,7 @@ export default function ScanScreen() {
     );
   }
 
-  if (!user || user.role !== 'FIELD_STAFF') {
+  if (!user || user.role !== 'COURIER_STAFF') {
     return null;
   }
 
@@ -758,7 +758,7 @@ export default function ScanScreen() {
               onCancel={handleScanNext}
               isSubmitting={state.isSubmitting}
               isOnline={connectivity.isOnline}
-              staffType={user?.staffType ?? null}
+              role={user?.role}
             />
           )}
 
@@ -779,7 +779,7 @@ export default function ScanScreen() {
                 onSubmit={handleBatchSubmit}
                 isSubmitting={state.isSubmitting}
                 isOnline={connectivity.isOnline}
-                staffType={user?.staffType ?? null}
+                role={user?.role}
               />
             )}
 

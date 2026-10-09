@@ -37,6 +37,9 @@ public class LegacyDatabaseUpgradeIntegrationTest {
     private static final String FRESH_DB_NAME = "tnl_fresh_integ_test";
     private static final String USERNAME_COLLISION_DB_NAME = "tnl_username_collision_integ_test";
     private static final String USERNAME_NORMALIZATION_DB_NAME = "tnl_username_normalization_integ_test";
+    private static final String FOUR_ROLE_FRESH_DB_NAME = "tnl_four_role_fresh_integ_test";
+    private static final String FOUR_ROLE_UPGRADE_DB_NAME = "tnl_four_role_upgrade_integ_test";
+    private static final String FOUR_ROLE_INVALID_DB_NAME = "tnl_four_role_invalid_integ_test";
 
     @Autowired
     private DataSource defaultDataSource;
@@ -85,6 +88,9 @@ public class LegacyDatabaseUpgradeIntegrationTest {
             defaultJdbcTemplate.execute("DROP DATABASE IF EXISTS " + FRESH_DB_NAME);
             defaultJdbcTemplate.execute("DROP DATABASE IF EXISTS " + USERNAME_COLLISION_DB_NAME);
             defaultJdbcTemplate.execute("DROP DATABASE IF EXISTS " + USERNAME_NORMALIZATION_DB_NAME);
+            defaultJdbcTemplate.execute("DROP DATABASE IF EXISTS " + FOUR_ROLE_FRESH_DB_NAME);
+            defaultJdbcTemplate.execute("DROP DATABASE IF EXISTS " + FOUR_ROLE_UPGRADE_DB_NAME);
+            defaultJdbcTemplate.execute("DROP DATABASE IF EXISTS " + FOUR_ROLE_INVALID_DB_NAME);
         } catch (Exception ignored) {}
     }
 
@@ -259,7 +265,7 @@ public class LegacyDatabaseUpgradeIntegrationTest {
 
         JdbcTemplate freshJdbcTemplate = new JdbcTemplate(freshDs);
         freshJdbcTemplate.update("INSERT INTO client (client_id, name, address, contact_number) VALUES ('CL-LEGACY-WB', 'Legacy Client', 'Baguio', '09170000000')");
-        freshJdbcTemplate.update("INSERT INTO app_user (user_id, username, password_hash, full_name, role) VALUES ('USR-LEGACY-WB', 'legacy_waybill', 'hash', 'Legacy Staff', 'FIELD_STAFF')");
+        freshJdbcTemplate.update("INSERT INTO app_user (user_id, username, password_hash, full_name, role, staff_type) VALUES ('USR-LEGACY-WB', 'legacy_waybill', 'hash', 'Legacy Staff', 'FIELD_STAFF', 'HAULER_STAFF')");
         freshJdbcTemplate.update("INSERT INTO shipment (shipment_id, client_id, recipient_name, recipient_address, recipient_contact, quantity, charge_model, shipping_fee, total_amount, registered_via) " +
                 "VALUES ('SHP-LEGACY-WB', 'CL-LEGACY-WB', 'Recipient', 'Baguio', '09170000000', 2, 'FLAT', 100.00, 100.00, 'DESKTOP_OFFICE')");
         freshJdbcTemplate.update("INSERT INTO parcel_unit (tracking_id, shipment_id, seq) VALUES ('TRK-LEGACY-1', 'SHP-LEGACY-WB', 1), ('TRK-LEGACY-2', 'SHP-LEGACY-WB', 2)");
@@ -271,8 +277,14 @@ public class LegacyDatabaseUpgradeIntegrationTest {
                 .load();
 
         var result = flyway.migrate();
-        assertEquals(2, result.migrationsExecuted);
+        assertEquals(4, result.migrationsExecuted);
         flyway.validate();
+
+        assertEquals("Cordillera Freight", freshJdbcTemplate.queryForObject(
+                "SELECT hauler_name FROM waybill WHERE waybill_id = 'WYB-LEGACY-WB'", String.class));
+        assertEquals("USR-LEGACY-WB", freshJdbcTemplate.queryForObject(
+                "SELECT generated_by FROM waybill WHERE waybill_id = 'WYB-LEGACY-WB'", String.class));
+        assertFinalAccountSchema(freshJdbcTemplate);
 
         assertEquals(2, freshJdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM parcel_unit WHERE waybill_id = 'WYB-LEGACY-WB'", Integer.class));
@@ -281,6 +293,171 @@ public class LegacyDatabaseUpgradeIntegrationTest {
         assertTrue(upgradeService.tableExists(freshDs, "shipment"));
         assertTrue(upgradeService.tableExists(freshDs, "legacy_reconciliation_record"));
         assertTrue(upgradeService.tableExists(freshDs, "legacy_upgrade_manifest"));
+    }
+
+    @Test
+    public void testFourRoleFreshMigrationPath() {
+        DriverManagerDataSource dataSource = createIsolatedDatabase(FOUR_ROLE_FRESH_DB_NAME);
+
+        var result = Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        assertTrue(result.migrationsExecuted >= 37);
+        assertEquals("37", jdbcTemplate.queryForObject(
+                "SELECT version FROM flyway_schema_history WHERE success = TRUE ORDER BY installed_rank DESC LIMIT 1",
+                String.class));
+        assertTrue(upgradeService.tableExists(dataSource, "app_user"));
+        assertFinalAccountSchema(jdbcTemplate);
+    }
+
+    @Test
+    public void testFourRoleV35UpgradeMapsRolesAndIncrementsTokenVersions() {
+        DriverManagerDataSource dataSource = createIsolatedDatabase(FOUR_ROLE_UPGRADE_DB_NAME);
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .target("35")
+                .load()
+                .migrate();
+
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        jdbcTemplate.update("INSERT INTO app_user (user_id, username, password_hash, full_name, role, staff_type, token_version) VALUES " +
+                "('USR-MIG-ADMIN', 'mig_admin', 'hash', 'Admin', 'ADMIN', NULL, 4), " +
+                "('USR-MIG-RECEIVING', 'mig_receiving', 'hash', 'Receiving', 'OFFICE_STAFF', NULL, 5), " +
+                "('USR-MIG-COURIER', 'mig_courier', 'hash', 'Courier', 'FIELD_STAFF', 'INTERNAL_TRUCK', 6), " +
+                "('USR-MIG-DISPATCH', 'mig_dispatch', 'hash', 'Dispatch', 'FIELD_STAFF', 'HAULER_STAFF', 7)");
+
+        var result = Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        assertEquals(2, result.migrationsExecuted);
+        assertEquals("ADMIN:4", finalIdentity(jdbcTemplate, "USR-MIG-ADMIN"));
+        assertEquals("RECEIVING_STAFF:6", finalIdentity(jdbcTemplate, "USR-MIG-RECEIVING"));
+        assertEquals("COURIER_STAFF:7", finalIdentity(jdbcTemplate, "USR-MIG-COURIER"));
+        assertEquals("DISPATCH_STAFF:8", finalIdentity(jdbcTemplate, "USR-MIG-DISPATCH"));
+        assertFinalAccountSchema(jdbcTemplate);
+    }
+
+    @Test
+    public void testFourRoleV35UpgradeRejectsUnmappableFieldStaffWithoutMutation() {
+        DriverManagerDataSource dataSource = createIsolatedDatabase(FOUR_ROLE_INVALID_DB_NAME, true);
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .target("35")
+                .load()
+                .migrate();
+
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        jdbcTemplate.update("INSERT INTO app_user (user_id, username, password_hash, full_name, role, staff_type, token_version) " +
+                "VALUES ('USR-MIG-INVALID', 'mig_invalid', 'hash', 'Invalid', 'FIELD_STAFF', NULL, 9)");
+
+        Flyway migration = Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load();
+
+        assertThrows(Exception.class, migration::migrate);
+        assertEquals("FIELD_STAFF:9:null", migratedIdentity(jdbcTemplate, "USR-MIG-INVALID"));
+        assertEquals(0, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '36' AND success = TRUE", Integer.class));
+    }
+
+
+    @Test
+    public void testFinalRoleMigrationRejectsLegacyAndUnknownRolesBeforeSchemaMutation() {
+        for (String invalidRole : List.of("OFFICE_STAFF", "FIELD_STAFF", "UNKNOWN_ROLE", "")) {
+            DriverManagerDataSource dataSource = createIsolatedDatabase(FOUR_ROLE_INVALID_DB_NAME, true);
+            Flyway.configure().dataSource(dataSource).locations("classpath:db/migration")
+                    .target("36").load().migrate();
+            JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+            jdbcTemplate.execute("ALTER TABLE app_user MODIFY COLUMN role VARCHAR(32) NULL");
+            jdbcTemplate.update("INSERT INTO app_user (user_id, username, password_hash, full_name, role, token_version, hauler_company) "
+                    + "VALUES ('USR-CLOSURE-INVALID', 'closure_invalid', 'hash', 'Invalid', ?, 9, 'Retained Company')", invalidRole);
+            assertFinalMigrationRefusesWithoutMutation(dataSource, jdbcTemplate, invalidRole);
+        }
+    }
+
+    @Test
+    public void testFinalRoleMigrationRejectsNullRoleBeforeSchemaMutation() {
+        DriverManagerDataSource dataSource = createIsolatedDatabase(FOUR_ROLE_INVALID_DB_NAME);
+        Flyway.configure().dataSource(dataSource).locations("classpath:db/migration")
+                .target("36").load().migrate();
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        jdbcTemplate.execute("ALTER TABLE app_user MODIFY COLUMN role VARCHAR(32) NULL");
+        jdbcTemplate.update("INSERT INTO app_user (user_id, username, password_hash, full_name, role, token_version, hauler_company) "
+                + "VALUES ('USR-CLOSURE-INVALID', 'closure_invalid', 'hash', 'Invalid', NULL, 9, 'Retained Company')");
+        assertFinalMigrationRefusesWithoutMutation(dataSource, jdbcTemplate, null);
+    }
+
+    private void assertFinalMigrationRefusesWithoutMutation(
+            DataSource dataSource, JdbcTemplate jdbcTemplate, String invalidRole) {
+        Flyway migration = Flyway.configure().dataSource(dataSource)
+                .locations("classpath:db/migration").load();
+        assertThrows(Exception.class, migration::migrate);
+        assertEquals(invalidRole, jdbcTemplate.queryForObject(
+                "SELECT role FROM app_user WHERE user_id = 'USR-CLOSURE-INVALID'", String.class));
+        assertEquals(9, jdbcTemplate.queryForObject(
+                "SELECT token_version FROM app_user WHERE user_id = 'USR-CLOSURE-INVALID'", Integer.class));
+        assertEquals("Retained Company", jdbcTemplate.queryForObject(
+                "SELECT hauler_company FROM app_user WHERE user_id = 'USR-CLOSURE-INVALID'", String.class));
+        assertEquals(1, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
+                        + "AND table_name = 'app_user' AND column_name = 'staff_type'", Integer.class));
+        assertEquals(0, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '37' AND success = TRUE", Integer.class));
+    }
+
+    private void assertFinalAccountSchema(JdbcTemplate jdbcTemplate) {
+        assertEquals(0, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
+                        + "AND table_name = 'app_user' AND column_name IN ('staff_type', 'hauler_company')", Integer.class));
+        assertEquals("enum('ADMIN','RECEIVING_STAFF','COURIER_STAFF','DISPATCH_STAFF')",
+                jdbcTemplate.queryForObject(
+                        "SELECT column_type FROM information_schema.columns WHERE table_schema = DATABASE() "
+                                + "AND table_name = 'app_user' AND column_name = 'role'", String.class));
+    }
+
+    private String finalIdentity(JdbcTemplate jdbcTemplate, String userId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT CONCAT(role, ':', token_version) FROM app_user WHERE user_id = ?", String.class, userId);
+    }
+
+    private DriverManagerDataSource createIsolatedDatabase(String databaseName) {
+        return createIsolatedDatabase(databaseName, false);
+    }
+
+    private DriverManagerDataSource createIsolatedDatabase(String databaseName, boolean usePermissiveSqlMode) {
+        defaultJdbcTemplate.execute("DROP DATABASE IF EXISTS " + databaseName);
+        defaultJdbcTemplate.execute("CREATE DATABASE " + databaseName + " CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+
+        DriverManagerDataSource dataSource = new DriverManagerDataSource();
+        dataSource.setDriverClassName(dataSourceProperties.getDriverClassName());
+        String baseUrl = dataSourceProperties.getUrl();
+        String databaseUrl = baseUrl.contains("/tnl_test")
+                ? baseUrl.replace("/tnl_test", "/" + databaseName)
+                : baseUrl.replaceAll("(?<=3306/)[^?]+", databaseName);
+        if (usePermissiveSqlMode) {
+            databaseUrl += databaseUrl.contains("?") ? "&sessionVariables=sql_mode=''" : "?sessionVariables=sql_mode=''";
+        }
+        dataSource.setUrl(databaseUrl);
+        dataSource.setUsername(dataSourceProperties.getUsername());
+        dataSource.setPassword(dataSourceProperties.getPassword());
+        return dataSource;
+    }
+
+    private String migratedIdentity(JdbcTemplate jdbcTemplate, String userId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT CONCAT(role, ':', token_version, ':', COALESCE(staff_type, 'null')) FROM app_user WHERE user_id = ?",
+                String.class,
+                userId);
     }
 
     @Test

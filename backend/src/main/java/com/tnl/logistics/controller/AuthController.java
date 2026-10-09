@@ -226,6 +226,12 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(Map.of("message", "Administrator accounts are restricted to the Web Portal."));
         }
+        if (user.getRole() == null || !user.getRole().isMobileStaffRole()) {
+            securityAuditLog.warn("AUTH_LOGIN_FAILURE userId={} role={} device=- ip={} reason=ROLE_NOT_SUPPORTED",
+                    user.getUserId(), user.getRole(), clientIp);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Account role is not supported. Contact an administrator."));
+        }
 
         recordRateLimitSuccess(endpointIpKey);
 
@@ -244,7 +250,6 @@ public class AuthController {
                     true,
                     hasPin
             );
-            response.setStaffType(user.getStaffType() != null ? user.getStaffType().name() : null);
             return ResponseEntity.ok(response);
         }
 
@@ -285,13 +290,12 @@ public class AuthController {
                 deviceId,
                 rawDeviceToken
         );
-        response.setStaffType(user.getStaffType() != null ? user.getStaffType().name() : null);
 
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/mobile-setup-pin")
-    @PreAuthorize("hasAnyRole('FIELD_STAFF', 'OFFICE_STAFF')")
+    @PreAuthorize("hasAnyRole('RECEIVING_STAFF', 'COURIER_STAFF', 'DISPATCH_STAFF')")
     public ResponseEntity<?> mobileSetupPin(
             @Valid @RequestBody MobilePinSetupRequest request,
             @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
@@ -363,7 +367,8 @@ public class AuthController {
 
         AppUser target = appUserRepository.findByUsername(normalized).orElse(null);
         if (target == null || !Boolean.TRUE.equals(target.getActive())
-                || target.getRole() == UserRole.ADMIN
+                || target.getRole() == null
+                || !target.getRole().isMobileStaffRole()
                 || !binding.getUserId().equals(target.getUserId())) {
             recordRateLimitFailure(endpointIpKey);
             securityAuditLog.warn("PIN_LOGIN_FAILURE userId=- role=- device={} ip={} reason=INVALID_DEVICE_CREDENTIALS",
@@ -431,7 +436,6 @@ public class AuthController {
                 request.getDeviceId(),
                 request.getDeviceToken()
         );
-        response.setStaffType(target.getStaffType() != null ? target.getStaffType().name() : null);
 
         return ResponseEntity.ok(response);
     }
@@ -484,7 +488,8 @@ public class AuthController {
         }
 
         AppUser user = appUserRepository.findByUsername(normalized).orElse(null);
-        if (user == null || !Boolean.TRUE.equals(user.getActive()) || user.getRole() == UserRole.ADMIN
+        if (user == null || !Boolean.TRUE.equals(user.getActive()) || user.getRole() == null
+                || !user.getRole().isMobileStaffRole()
                 || !binding.getUserId().equals(user.getUserId())) {
             recordRateLimitFailure(endpointIpKey);
             return ResponseEntity.ok(Map.of(
@@ -646,7 +651,7 @@ public class AuthController {
     }
 
     @PostMapping("/mobile-unbind")
-    @PreAuthorize("hasAnyRole('FIELD_STAFF', 'OFFICE_STAFF')")
+    @PreAuthorize("hasAnyRole('RECEIVING_STAFF', 'COURIER_STAFF', 'DISPATCH_STAFF')")
     public ResponseEntity<?> unbindCurrentDevice(
             @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
             @RequestHeader(value = "X-Device-Token", required = false) String deviceToken,
@@ -705,9 +710,7 @@ public class AuthController {
                 normalizedUsername,
                 passwordEncoder.encode(request.getPassword()),
                 request.getFullName().trim(),
-                UserRole.ADMIN,
-                null,
-                null
+                UserRole.ADMIN
         );
         adminUser.setActive(true);
         adminUser.setMustChangePassword(false);

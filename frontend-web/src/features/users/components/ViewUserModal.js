@@ -1,17 +1,7 @@
 import React from 'react';
 import { View, Text, Modal, Pressable, StyleSheet } from 'react-native';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
-
-const ROLE_LABELS = {
-  ADMIN: 'Administrator',
-  OFFICE_STAFF: 'Office Staff',
-  FIELD_STAFF: 'Field Staff',
-};
-
-const STAFF_TYPE_LABELS = {
-  INTERNAL_TRUCK: 'Internal Truck',
-  HAULER_STAFF: 'Hauler Staff',
-};
+import { getRoleLabel } from '../userRoles.mjs';
 
 function formatDate(dateStr) {
   if (!dateStr) return '-';
@@ -33,8 +23,7 @@ export default function ViewUserModal({ visible, user, onClose, onEdit }) {
     { label: 'ID', value: user.userId, mono: true },
     { label: 'Full Name', value: user.fullName },
     { label: 'Username', value: user.username, mono: true },
-    { label: 'Role', value: ROLE_LABELS[user.role] || user.role },
-    { label: 'Staff Type', value: user.staffType ? STAFF_TYPE_LABELS[user.staffType] || user.staffType : '-' },
+    { label: 'Role', value: getRoleLabel(user.role) },
     { label: 'Status', value: user.active ? 'Active' : 'Inactive', statusColor: user.active ? colors.success : colors.danger },
     { label: 'PIN Set', value: user.hasPinSet ? 'Yes' : 'No' },
     { label: 'Must Change Password', value: user.mustChangePassword ? 'Yes' : 'No' },
@@ -59,7 +48,7 @@ export default function ViewUserModal({ visible, user, onClose, onEdit }) {
               </Text>
             </View>
             <Text style={styles.profileName}>{user.fullName}</Text>
-            <Text style={styles.profileRole}>{ROLE_LABELS[user.role] || user.role}</Text>
+            <Text style={styles.profileRole}>{getRoleLabel(user.role)}</Text>
           </View>
 
           <View style={styles.body}>
