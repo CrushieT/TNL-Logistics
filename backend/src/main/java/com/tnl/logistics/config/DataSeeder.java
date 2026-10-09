@@ -190,6 +190,8 @@ public class DataSeeder implements CommandLineRunner {
                 .or(() -> appUserRepository.findByUsername(username))
                 .orElse(null);
         if (existingUser != null) {
+            existingUser.setFullName(fullName);
+            existingUser.setRole(role);
             existingUser.setMustChangePassword(false);
             existingUser.setTokenVersion(1);
             if (pin != null && (existingUser.getPinHash() == null || existingUser.getPinHash().isBlank())) {

@@ -101,7 +101,7 @@ public class MobileAuthIntegrationTest {
         if (officeUser != null) {
             officeUser.setPinHash(passwordEncoder.encode("2222"));
             officeUser.setPasswordHash(passwordEncoder.encode("office123"));
-            officeUser.setFullName("Office Staff");
+            officeUser.setFullName("Receiving Staff");
             officeUser.setMustChangePassword(false);
             officeUser.setActive(true);
             officeUser.setTokenVersion(1);
@@ -157,7 +157,7 @@ public class MobileAuthIntegrationTest {
                 .andExpect(jsonPath("$.token").isString())
                 .andExpect(jsonPath("$.userId").value("USR-OFFICE"))
                 .andExpect(jsonPath("$.username").value("office"))
-                .andExpect(jsonPath("$.fullName").value("Office Staff"))
+                .andExpect(jsonPath("$.fullName").value("Receiving Staff"))
                 .andExpect(jsonPath("$.role").value("RECEIVING_STAFF"))
                 .andExpect(jsonPath("$.hasPinSet").value(true))
                 .andExpect(jsonPath("$.deviceId").isString())
@@ -389,7 +389,7 @@ public class MobileAuthIntegrationTest {
                 .andExpect(jsonPath("$.token").isString())
                 .andExpect(jsonPath("$.userId").value("USR-OFFICE"))
                 .andExpect(jsonPath("$.username").value("office"))
-                .andExpect(jsonPath("$.fullName").value("Office Staff"))
+                .andExpect(jsonPath("$.fullName").value("Receiving Staff"))
                 .andExpect(jsonPath("$.role").value("RECEIVING_STAFF"))
                 .andExpect(jsonPath("$.deviceId").value("dev-office-device"))
                 .andExpect(jsonPath("$.deviceToken").value(OFFICE_DEVICE_TOKEN));
@@ -784,7 +784,7 @@ public class MobileAuthIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.userId").value("USR-OFFICE"))
                 .andExpect(jsonPath("$.username").value("office"))
-                .andExpect(jsonPath("$.fullName").value("Office Staff"))
+                .andExpect(jsonPath("$.fullName").value("Receiving Staff"))
                 .andExpect(jsonPath("$.role").value("RECEIVING_STAFF"))
                 .andExpect(jsonPath("$.mustChangePassword").value(false))
                 .andExpect(jsonPath("$.hasPinSet").value(true))
@@ -863,7 +863,7 @@ public class MobileAuthIntegrationTest {
                         .content(objectMapper.writeValueAsString(
                                 new PasswordChangeRequest("office123", "office456"))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.fullName").value("Office Staff"))
+                .andExpect(jsonPath("$.fullName").value("Receiving Staff"))
                 .andExpect(jsonPath("$.hasPinSet").value(true))
                 .andReturn().getResponse().getContentAsString();
 

@@ -87,6 +87,7 @@ public class ParcelPrintIntegrationTest {
         parcelUnitRepository.deleteAll();
         shipmentRepository.deleteAll();
 
+        jdbcTemplate.update("UPDATE app_user SET full_name = 'Receiving Staff', role = 'RECEIVING_STAFF' WHERE user_id = 'USR-OFFICE'");
         officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
@@ -166,7 +167,7 @@ public class ParcelPrintIntegrationTest {
         assertEquals(PrintKind.PRINT, printEvent.getKind());
         assertEquals("ZEBRA-GK420D", printEvent.getPrinterId());
         assertEquals("office", printEvent.getStaff().getUsername());
-        assertEquals("Office Staff", printEvent.getStaff().getFullName());
+        assertEquals("Receiving Staff", printEvent.getStaff().getFullName());
         assertEquals(1, printEvent.getLabelsProduced());
         assertNotNull(printEvent.getPrintTimestamp());
 
@@ -180,7 +181,7 @@ public class ParcelPrintIntegrationTest {
         assertEquals("Printed", response.getLabelStatus());
         assertNotNull(response.getPrinting());
         assertEquals("Printed", response.getPrinting().getStatus());
-        assertEquals("Office Staff", response.getPrinting().getBy());
+        assertEquals("Receiving Staff", response.getPrinting().getBy());
         assertEquals("ZEBRA-GK420D", response.getPrinting().getPrinter());
         assertEquals(1, response.getPrinting().getCount());
         assertNotEquals("—", response.getPrinting().getDate());
@@ -330,7 +331,7 @@ public class ParcelPrintIntegrationTest {
         ParcelUnitDetailResponse response = objectMapper.readValue(unitResult.getResponse().getContentAsString(), ParcelUnitDetailResponse.class);
 
         assertEquals("Printed", response.getLabelStatus());
-        assertEquals("Office Staff", response.getPrinting().getBy());
+        assertEquals("Receiving Staff", response.getPrinting().getBy());
         assertEquals("Brother RJ-2035B", response.getPrinting().getPrinter());
         assertNotEquals("Maria Santos", response.getPrinting().getBy());
     }
