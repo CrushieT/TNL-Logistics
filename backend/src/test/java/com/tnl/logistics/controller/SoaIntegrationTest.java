@@ -174,6 +174,17 @@ public class SoaIntegrationTest {
         mockMvc.perform(get("/api/v1/soa/collectors"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray());
+        mockMvc.perform(get("/api/v1/soa/collectors")
+                        .with(user("USR-FIELD").roles("COURIER_STAFF")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+        mockMvc.perform(get("/api/v1/soa/collectors")
+                        .with(user("USR-HAULER").roles("DISPATCH_STAFF")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+        mockMvc.perform(get("/api/v1/soa/collectors")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
+                .andExpect(status().isForbidden());
     }
 
     @Test

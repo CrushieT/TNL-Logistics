@@ -146,6 +146,14 @@ public class WaybillServiceImpl implements WaybillService {
             options.add(new HaulerStaffOptionResponse(u.getUserId(), u.getFullName(), u.getStaffType(), null, u.getFullName()));
         }
 
+        if (options.isEmpty()) {
+            List<AppUser> courierStaff = appUserRepository.findByRoleAndActiveTrue(UserRole.COURIER_STAFF);
+            for (AppUser user : courierStaff) {
+                options.add(new HaulerStaffOptionResponse(
+                        user.getUserId(), user.getFullName(), user.getStaffType(), null, user.getFullName()));
+            }
+        }
+
         return options;
     }
 

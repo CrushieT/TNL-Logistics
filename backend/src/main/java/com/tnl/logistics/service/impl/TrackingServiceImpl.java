@@ -53,11 +53,10 @@ public class TrackingServiceImpl implements TrackingService {
 
     @Override
     @Transactional(readOnly = true)
-    public TrackingScanContextResponse getScanContext(String trackingId, String actingStaffUserId) {
+    public TrackingScanContextResponse getScanContext(String trackingId) {
         if (trackingId == null || trackingId.trim().isEmpty()) {
             throw new IllegalArgumentException("Tracking ID is required");
         }
-        AppUser actingStaff = requireActingStaff(actingStaffUserId);
         ParcelUnit parcel = parcelUnitRepository.findById(trackingId.trim())
                 .orElseThrow(() -> new IllegalArgumentException("Parcel unit not found: " + trackingId));
 
@@ -93,10 +92,10 @@ public class TrackingServiceImpl implements TrackingService {
                 canScan = true;
                 break;
             case LOADED_TO_HAULER:
-                nextStatusCode = null;
-                nextStatusLabel = null;
+                nextStatusCode = parcel.getWaybill() == null ? ParcelStatus.COMPLETED.name() : null;
+                nextStatusLabel = parcel.getWaybill() == null ? formatStatusDisplay(ParcelStatus.COMPLETED) : null;
                 requiresVehicle = false;
-                canScan = false;
+                canScan = parcel.getWaybill() == null;
                 break;
             case COMPLETED:
             default:
@@ -105,18 +104,6 @@ public class TrackingServiceImpl implements TrackingService {
                 requiresVehicle = false;
                 canScan = false;
                 break;
-        }
-
-        if (nextStatusCode != null) {
-            ParcelStatus nextStatus = ParcelStatus.valueOf(nextStatusCode);
-            TrackingTransitionPolicy.StaffAuthorizationDecision authorizationDecision =
-                    transitionPolicy.decideStaffAuthorization(actingStaff.getRole(), nextStatus);
-            if (authorizationDecision == TrackingTransitionPolicy.StaffAuthorizationDecision.DENIED) {
-                nextStatusCode = null;
-                nextStatusLabel = null;
-                requiresVehicle = false;
-                canScan = false;
-            }
         }
 
         Shipment shipment = parcel.getShipment();
@@ -554,7 +541,7 @@ public class TrackingServiceImpl implements TrackingService {
         LocalDateTime endOfDay = today.atTime(23, 59, 59, 999999999);
 
         long totalScans = trackingEventRepository.countOperationalScansBetween(startOfDay, endOfDay);
-        long activeCouriers = trackingEventRepository.countDistinctCouriersBetween(startOfDay, endOfDay);
+        long activeCouriers = trackingEventRepository.countDistinctOperationalStaffBetween(startOfDay, endOfDay);
         long loadedOnTruck = trackingEventRepository.countStatusBetween(ParcelStatus.LOADED_ON_TRUCK, startOfDay, endOfDay);
         long handedToHauler = trackingEventRepository.countStatusBetween(ParcelStatus.LOADED_TO_HAULER, startOfDay, endOfDay);
 

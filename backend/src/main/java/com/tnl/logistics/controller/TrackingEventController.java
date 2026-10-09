@@ -36,7 +36,7 @@ public class TrackingEventController {
         if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
             throw new AccessDeniedException("Authenticated user context is required");
         }
-        TrackingScanContextResponse response = trackingService.getScanContext(trackingId, authentication.getName());
+        TrackingScanContextResponse response = trackingService.getScanContext(trackingId);
         return ResponseEntity.ok(response);
     }
 
@@ -88,7 +88,7 @@ public class TrackingEventController {
     }
 
     @PostMapping("/scan")
-    @PreAuthorize("hasAnyRole('COURIER_STAFF', 'DISPATCH_STAFF')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEIVING_STAFF', 'COURIER_STAFF', 'DISPATCH_STAFF')")
     public ResponseEntity<TrackingScanResponse> scanParcelStatus(
             @Valid @RequestBody TrackingScanRequest request,
             Authentication authentication) {
@@ -101,7 +101,7 @@ public class TrackingEventController {
     }
 
     @PostMapping("/batch-scan")
-    @PreAuthorize("hasAnyRole('COURIER_STAFF', 'DISPATCH_STAFF')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEIVING_STAFF', 'COURIER_STAFF', 'DISPATCH_STAFF')")
     public ResponseEntity<List<TrackingScanResponse>> batchScanParcelStatus(
             @Valid @RequestBody BatchTrackingScanRequest request,
             Authentication authentication) {

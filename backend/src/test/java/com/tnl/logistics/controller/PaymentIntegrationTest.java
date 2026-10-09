@@ -113,6 +113,20 @@ public class PaymentIntegrationTest {
                 .andExpect(jsonPath("$.amountPaid").value(0))
                 .andExpect(jsonPath("$.balance").value(1500.00));
 
+        for (String[] identity : new String[][]{
+                {"USR-ADMIN", "ADMIN"},
+                {"USR-FIELD", "COURIER_STAFF"},
+                {"USR-HAULER", "DISPATCH_STAFF"}}) {
+            mockMvc.perform(get("/api/v1/payments/shipment/" + shipmentId)
+                            .with(user(identity[0]).roles(identity[1])))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.shipmentId").value(shipmentId))
+                    .andExpect(jsonPath("$.balance").value(1500.00));
+        }
+        mockMvc.perform(get("/api/v1/payments/shipment/" + shipmentId)
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
+                .andExpect(status().isForbidden());
+
         // 3. Record partial payment: ₱500.00 via GCASH
         PaymentRecordRequest partialPayment = new PaymentRecordRequest(
                 shipmentId,

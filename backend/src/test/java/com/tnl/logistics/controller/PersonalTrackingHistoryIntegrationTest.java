@@ -689,10 +689,10 @@ public class PersonalTrackingHistoryIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.trackingId").value(trackingId));
 
-        // ADMIN -> 403 Forbidden
+        // ADMIN -> 200 OK
         mockMvc.perform(get("/api/v1/parcel-units/" + trackingId)
                         .header("Authorization", adminToken))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
     }
 
     // 24. DTO mapping completes without lazy-loading errors

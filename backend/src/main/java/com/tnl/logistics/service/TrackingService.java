@@ -10,7 +10,7 @@ import java.util.List;
 
 public interface TrackingService {
 
-    TrackingScanContextResponse getScanContext(String trackingId, String actingStaffUserId);
+    TrackingScanContextResponse getScanContext(String trackingId);
 
     TrackingScanResponse processStatusScan(TrackingScanRequest request, String actingStaffUserId);
 

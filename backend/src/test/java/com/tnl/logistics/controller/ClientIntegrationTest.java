@@ -132,10 +132,10 @@ public class ClientIntegrationTest {
         assertTrue(objectMapper.readTree(invalidContactFmt.getResponse().getContentAsString()).get("fieldErrors").has("contactNumber"));
 
         request.setContactNumber("09170000000"); // restore valid
-        mockMvc.perform(post("/api/v1/clients").header("Authorization", mobileOfficeToken)
-                        .contentType(MediaType.APPLICATION_JSON).content(payload))
-                .andExpect(status().isForbidden());
-        MvcResult created = mockMvc.perform(post("/api/v1/clients").header("Authorization", officeToken)
+        mockMvc.perform(get("/api/v1/clients").header("Authorization", mobileOfficeToken))
+        // Verified receiving staff can query clients and register walk-in clients
+                .andExpect(status().isOk());
+        MvcResult created = mockMvc.perform(post("/api/v1/clients").header("Authorization", mobileOfficeToken)
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isOk()).andReturn();
         JsonNode body = objectMapper.readTree(created.getResponse().getContentAsString());

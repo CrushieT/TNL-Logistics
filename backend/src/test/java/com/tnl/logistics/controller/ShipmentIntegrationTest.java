@@ -83,7 +83,7 @@ public class ShipmentIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    private String officeToken;
+    private String officeToken; private String adminToken;
     private String fieldToken;
     private String currentYear;
 
@@ -105,6 +105,7 @@ public class ShipmentIntegrationTest {
         systemSettingService.refreshCachedSettings();
 
         officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
+        adminToken = "Bearer " + JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
         fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "COURIER_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
@@ -1430,5 +1431,35 @@ public class ShipmentIntegrationTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.appliedRatePerKilo").value(80.00));
+    }
+    @Test
+    public void testAdminCanRegisterAndQueryShipments() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse created = objectMapper.readValue(
+                result.getResponse().getContentAsString(), ShipmentResponse.class);
+
+        mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", adminToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/shipments/" + created.getShipmentId())
+                        .header("Authorization", adminToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/parcel-units/" + created.getTrackingIds().get(0))
+                        .header("Authorization", adminToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/shipments/calculation-settings")
+                        .header("Authorization", adminToken)
+                        .param("clientId", "CL-001"))
+                .andExpect(status().isOk());
     }
 }

@@ -76,8 +76,8 @@ class AdminConsoleAuthorizationIntegrationTest {
 
     @Test
     @WithMockUser(username = "receiving", roles = "RECEIVING_STAFF")
-    void receivingStaffCannotAccessClientAdministration() throws Exception {
+    void receivingStaffCanListClientsForShipmentRegistration() throws Exception {
         mockMvc.perform(get("/api/v1/clients"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
     }
 }

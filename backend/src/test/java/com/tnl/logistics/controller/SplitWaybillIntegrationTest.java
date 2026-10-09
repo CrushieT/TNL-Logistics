@@ -174,7 +174,7 @@ class SplitWaybillIntegrationTest {
         mockMvc.perform(post("/api/v1/tracking-events/scan").with(user("USR-HAULER").roles("DISPATCH_STAFF"))
                 .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(
                         Map.of("trackingId", ids.get(0), "targetStatus", "COMPLETED"))))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isBadRequest());
         complete(number, "Signer", "USR-HAULER");
         complete(number, "Signer", "USR-HAULER");
         mockMvc.perform(get("/api/v1/waybills/" + number)

@@ -28,6 +28,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.not;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -62,7 +64,7 @@ class FourRoleAuthorizationIntegrationTest {
         mockMvc.perform(get("/api/v1/clients").with(user("USR-ADMIN").roles("ADMIN")))
                 .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/clients").with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/clients").with(user("USR-FIELD").roles("COURIER_STAFF")))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/clients").with(user("USR-HAULER").roles("DISPATCH_STAFF")))
@@ -71,16 +73,22 @@ class FourRoleAuthorizationIntegrationTest {
         mockMvc.perform(get("/api/v1/vehicles").with(user("USR-ADMIN").roles("ADMIN")))
                 .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/vehicles").with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/vehicles").with(user("USR-FIELD").roles("COURIER_STAFF")))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/vehicles").with(user("USR-HAULER").roles("DISPATCH_STAFF")))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
+
+        for (String[] identity : roleIdentities()) {
+            mockMvc.perform(get("/api/v1/settings/branding")
+                            .with(user(identity[0]).roles(identity[1])))
+                    .andExpect(status().isOk());
+        }
 
         mockMvc.perform(get("/api/v1/shipments").with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
                 .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/shipments").with(user("USR-ADMIN").roles("ADMIN")))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/shipments").with(user("USR-FIELD").roles("COURIER_STAFF")))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/shipments").with(user("USR-HAULER").roles("DISPATCH_STAFF")))
@@ -92,6 +100,32 @@ class FourRoleAuthorizationIntegrationTest {
                 .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/tracking-events/mine").with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/tracking-events/mine").with(user("USR-ADMIN").roles("ADMIN")))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/v1/payments/shipment/SHP-NOT-USED")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
+                .andExpect(status().isForbidden());
+        for (String[] identity : new String[][]{
+                {"USR-ADMIN", "ADMIN"},
+                {"USR-FIELD", "COURIER_STAFF"},
+                {"USR-HAULER", "DISPATCH_STAFF"}}) {
+            mockMvc.perform(get("/api/v1/payments/shipment/SHP-NOT-USED")
+                            .with(user(identity[0]).roles(identity[1])))
+                    .andExpect(status().isBadRequest());
+        }
+
+        mockMvc.perform(get("/api/v1/soa/collectors")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
+                .andExpect(status().isForbidden());
+        for (String[] identity : new String[][]{
+                {"USR-ADMIN", "ADMIN"},
+                {"USR-FIELD", "COURIER_STAFF"},
+                {"USR-HAULER", "DISPATCH_STAFF"}}) {
+            mockMvc.perform(get("/api/v1/soa/collectors")
+                            .with(user(identity[0]).roles(identity[1])))
+                    .andExpect(status().isOk());
+        }
 
         mockMvc.perform(get("/api/v1/waybills/shipment-options").with(user("USR-HAULER").roles("DISPATCH_STAFF")))
                 .andExpect(status().isOk());
@@ -115,6 +149,26 @@ class FourRoleAuthorizationIntegrationTest {
         mockMvc.perform(post("/api/v1/waybills/WYB-NOT-USED/send")
                         .with(user("USR-ADMIN").roles("ADMIN")))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listsDispatchStaffFirstAndFallsBackToCourierStaff() throws Exception {
+        mockMvc.perform(get("/api/v1/waybills/haulers")
+                        .with(user("USR-ADMIN").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].userId", hasItem("USR-HAULER")));
+
+        for (AppUser dispatch : appUserRepository.findByRoleAndActiveTrue(UserRole.DISPATCH_STAFF)) {
+            dispatch.setActive(false);
+            appUserRepository.save(dispatch);
+        }
+        appUserRepository.flush();
+
+        mockMvc.perform(get("/api/v1/waybills/haulers")
+                        .with(user("USR-ADMIN").roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].userId", hasItem("USR-FIELD")))
+                .andExpect(jsonPath("$[*].userId", not(hasItem("USR-HAULER"))));
     }
 
     @Test
@@ -187,6 +241,15 @@ class FourRoleAuthorizationIntegrationTest {
         user.setActive(true);
         user.setMustChangePassword(false);
         appUserRepository.save(user);
+    }
+
+    private String[][] roleIdentities() {
+        return new String[][]{
+                {"USR-ADMIN", "ADMIN"},
+                {"USR-OFFICE", "RECEIVING_STAFF"},
+                {"USR-FIELD", "COURIER_STAFF"},
+                {"USR-HAULER", "DISPATCH_STAFF"}
+        };
     }
 
     private UserCreateRequest request(String username, UserRole role, StaffType staffType) {

@@ -26,7 +26,7 @@ public class ClientController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEIVING_STAFF')")
     public ResponseEntity<?> getClients(
             @RequestParam(value = "page", required = false) Integer page,
             @RequestParam(value = "size", required = false) Integer size,
@@ -49,7 +49,7 @@ public class ClientController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEIVING_STAFF')")
     public ResponseEntity<ClientSummaryResponse> createClient(@Valid @RequestBody ClientCreateRequest request) {
         return ResponseEntity.ok(clientService.createClient(request));
     }

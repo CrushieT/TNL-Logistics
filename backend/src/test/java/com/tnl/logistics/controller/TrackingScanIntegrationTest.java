@@ -8,6 +8,7 @@ import com.tnl.logistics.repository.*;
 import com.tnl.logistics.service.ShipmentService;
 import com.tnl.logistics.service.SseService;
 import com.tnl.logistics.service.TrackingService;
+import com.tnl.logistics.service.impl.TrackingTransitionPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -25,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -53,6 +55,9 @@ public class TrackingScanIntegrationTest {
 
     @Autowired
     private TrackingService trackingService;
+
+    @Autowired
+    private TrackingTransitionPolicy transitionPolicy;
 
     @Autowired
     private com.tnl.logistics.config.DataSeeder dataSeeder;
@@ -256,9 +261,9 @@ public class TrackingScanIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    // 3. Scan context exposes only transitions authorized for the caller's role
+    // 3. Scan context remains lifecycle-driven for all field roles
     @Test
-    public void testRoleAwareStatusMappingAcrossLifecycle() throws Exception {
+    public void testStatusMappingAcrossLifecycle() throws Exception {
         String trackingId = createTestShipment(1);
         ParcelUnit unit = parcelUnitRepository.findById(trackingId).orElseThrow();
 
@@ -267,9 +272,9 @@ public class TrackingScanIntegrationTest {
         parcelUnitRepository.saveAndFlush(unit);
         mockMvc.perform(get("/api/v1/tracking-events/scan-context/" + trackingId).header("Authorization", fieldToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.nextStatusCode").doesNotExist())
+                .andExpect(jsonPath("$.nextStatusCode").value("QR_GENERATED"))
                 .andExpect(jsonPath("$.requiresVehicle").value(false))
-                .andExpect(jsonPath("$.canScan").value(false));
+                .andExpect(jsonPath("$.canScan").value(true));
 
         // 3b. QR_GENERATED
         unit.setCurrentStatus(ParcelStatus.QR_GENERATED);
@@ -294,9 +299,9 @@ public class TrackingScanIntegrationTest {
         parcelUnitRepository.saveAndFlush(unit);
         mockMvc.perform(get("/api/v1/tracking-events/scan-context/" + trackingId).header("Authorization", fieldToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.nextStatusCode").doesNotExist())
+                .andExpect(jsonPath("$.nextStatusCode").value("LOADED_TO_HAULER"))
                 .andExpect(jsonPath("$.requiresVehicle").value(false))
-                .andExpect(jsonPath("$.canScan").value(false));
+                .andExpect(jsonPath("$.canScan").value(true));
 
         mockMvc.perform(get("/api/v1/tracking-events/scan-context/" + trackingId).header("Authorization", haulerToken))
                 .andExpect(status().isOk())
@@ -305,7 +310,7 @@ public class TrackingScanIntegrationTest {
                 .andExpect(jsonPath("$.canScan").value(true));
     }
 
-    // 4. LOADED_TO_HAULER and COMPLETED cannot be advanced through generic scanning
+    // 4. No-waybill parcels advertise direct completion and COMPLETED remains terminal
     @Test
     public void testTerminalStatusesReturnCannotScan() throws Exception {
         String trackingId = createTestShipment(1);
@@ -316,14 +321,14 @@ public class TrackingScanIntegrationTest {
         parcelUnitRepository.saveAndFlush(unit);
         mockMvc.perform(get("/api/v1/tracking-events/scan-context/" + trackingId).header("Authorization", fieldToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.canScan").value(false))
-                .andExpect(jsonPath("$.nextStatusCode").doesNotExist())
-                .andExpect(jsonPath("$.nextStatusLabel").doesNotExist());
+                .andExpect(jsonPath("$.canScan").value(true))
+                .andExpect(jsonPath("$.nextStatusCode").value("COMPLETED"))
+                .andExpect(jsonPath("$.nextStatusLabel").value("Completed"));
 
         mockMvc.perform(get("/api/v1/tracking-events/scan-context/" + trackingId).header("Authorization", haulerToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.canScan").value(false))
-                .andExpect(jsonPath("$.nextStatusCode").doesNotExist());
+                .andExpect(jsonPath("$.canScan").value(true))
+                .andExpect(jsonPath("$.nextStatusCode").value("COMPLETED"));
 
         // COMPLETED
         unit.setCurrentStatus(ParcelStatus.COMPLETED);
@@ -391,14 +396,17 @@ public class TrackingScanIntegrationTest {
                 .andExpect(jsonPath("$.previousStatusCode").value("ARRIVED_AT_TNL"))
                 .andExpect(jsonPath("$.newStatusCode").value("LOADED_TO_HAULER"));
 
-        // Generic completion is denied; returned-waybill completion is the only completion path.
+        // No-waybill direct completion remains available to Dispatch Staff.
         TrackingScanRequest req4 = new TrackingScanRequest(trackingId, ParcelStatus.COMPLETED, null, "Delivered");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .header("Authorization", haulerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req4)))
-                .andExpect(status().isForbidden());
-        assertEquals(ParcelStatus.LOADED_TO_HAULER,
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.transitionApplied").value(true))
+                .andExpect(jsonPath("$.previousStatusCode").value("LOADED_TO_HAULER"))
+                .andExpect(jsonPath("$.newStatusCode").value("COMPLETED"));
+        assertEquals(ParcelStatus.COMPLETED,
                 parcelUnitRepository.findById(trackingId).orElseThrow().getCurrentStatus());
     }
 
@@ -1047,8 +1055,8 @@ public class TrackingScanIntegrationTest {
                         .header("Authorization", haulerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(genericCompletion)))
-                .andExpect(status().isForbidden());
-        assertEquals(ParcelStatus.LOADED_TO_HAULER,
+                .andExpect(status().isOk());
+        assertEquals(ParcelStatus.COMPLETED,
                 parcelUnitRepository.findById(trackingId).orElseThrow().getCurrentStatus());
 
         String skippedTrackingId = createTestShipment(1);
@@ -1069,5 +1077,105 @@ public class TrackingScanIntegrationTest {
                 .andExpect(status().isBadRequest());
         assertEquals(ParcelStatus.LOADED_ON_TRUCK,
                 parcelUnitRepository.findById(skippedTrackingId).orElseThrow().getCurrentStatus());
+    }
+
+    @Test
+    public void testAdminAndReceivingRetainFullSequentialTransitionAccess() throws Exception {
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "AUTH-1005", "Full Access Truck"));
+
+        for (String token : List.of(adminToken, officeToken)) {
+            String trackingId = createTestShipment(1);
+            ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+            parcel.setCurrentStatus(ParcelStatus.REGISTERED);
+            parcelUnitRepository.saveAndFlush(parcel);
+
+            for (TrackingScanRequest request : List.of(
+                    new TrackingScanRequest(trackingId, ParcelStatus.QR_GENERATED, null, "QR generated"),
+                    new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Loaded"),
+                    new TrackingScanRequest(trackingId, ParcelStatus.ARRIVED_AT_TNL, null, "Arrived"),
+                    new TrackingScanRequest(trackingId, ParcelStatus.LOADED_TO_HAULER, null, "Handover"),
+                    new TrackingScanRequest(trackingId, ParcelStatus.COMPLETED, null, "Completed"))) {
+                mockMvc.perform(post("/api/v1/tracking-events/scan")
+                                .header("Authorization", token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.transitionApplied").value(true));
+            }
+
+            assertEquals(ParcelStatus.COMPLETED,
+                    parcelUnitRepository.findById(trackingId).orElseThrow().getCurrentStatus());
+        }
+    }
+
+    @Test
+    public void testCompleteRoleTransitionAuthorityMatrix() {
+        assertTransitionAuthority(UserRole.ADMIN, Set.of(ParcelStatus.values()));
+        assertTransitionAuthority(UserRole.RECEIVING_STAFF, Set.of(ParcelStatus.values()));
+        assertTransitionAuthority(UserRole.COURIER_STAFF,
+                Set.of(ParcelStatus.LOADED_ON_TRUCK, ParcelStatus.ARRIVED_AT_TNL));
+        assertTransitionAuthority(UserRole.DISPATCH_STAFF,
+                Set.of(ParcelStatus.LOADED_TO_HAULER, ParcelStatus.COMPLETED));
+        assertTransitionAuthority(UserRole.OFFICE_STAFF, Set.of());
+        assertTransitionAuthority(UserRole.FIELD_STAFF, Set.of());
+    }
+
+    @Test
+    public void testBatchScanEntryPointsRemainAvailableToAllTargetRoles() throws Exception {
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "AUTH-1006", "Batch Matrix Truck"));
+
+        for (String token : List.of(adminToken, officeToken, fieldToken)) {
+            List<String> trackingIds = createTestShipmentAllIds(1);
+            BatchTrackingScanRequest request = new BatchTrackingScanRequest(
+                    trackingIds, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Batch load");
+            mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
+                            .header("Authorization", token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].transitionApplied").value(true));
+        }
+
+        List<String> dispatchTrackingIds = createTestShipmentAllIds(1);
+        ParcelUnit dispatchParcel = parcelUnitRepository.findById(dispatchTrackingIds.get(0)).orElseThrow();
+        dispatchParcel.setCurrentStatus(ParcelStatus.ARRIVED_AT_TNL);
+        parcelUnitRepository.saveAndFlush(dispatchParcel);
+        BatchTrackingScanRequest dispatchRequest = new BatchTrackingScanRequest(
+                dispatchTrackingIds, ParcelStatus.LOADED_TO_HAULER, null, "Batch handover");
+        mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
+                        .header("Authorization", haulerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dispatchRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].transitionApplied").value(true));
+    }
+
+    @Test
+    public void testOperationalMetricsCountCourierAndDispatchActivity() throws Exception {
+        String trackingId = createTestShipment(1);
+        ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+        AppUser courier = appUserRepository.findById("USR-FIELD").orElseThrow();
+        AppUser dispatch = appUserRepository.findById("USR-HAULER").orElseThrow();
+        trackingEventRepository.saveAndFlush(new TrackingEvent(
+                parcel, ParcelStatus.LOADED_ON_TRUCK, null, courier, "Courier metric"));
+        trackingEventRepository.saveAndFlush(new TrackingEvent(
+                parcel, ParcelStatus.LOADED_TO_HAULER, null, dispatch, "Dispatch metric"));
+
+        MvcResult result = mockMvc.perform(get("/api/v1/tracking-events/metrics")
+                        .header("Authorization", adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        assertTrue(objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("activeCouriersCount").asLong() >= 2);
+    }
+
+    private void assertTransitionAuthority(UserRole role, Set<ParcelStatus> allowedStatuses) {
+        for (ParcelStatus targetStatus : ParcelStatus.values()) {
+            TrackingTransitionPolicy.StaffAuthorizationDecision expected = allowedStatuses.contains(targetStatus)
+                    ? TrackingTransitionPolicy.StaffAuthorizationDecision.ALLOWED
+                    : TrackingTransitionPolicy.StaffAuthorizationDecision.DENIED;
+            assertEquals(expected, transitionPolicy.decideStaffAuthorization(role, targetStatus),
+                    role + " authority mismatch for " + targetStatus);
+        }
     }
 }
