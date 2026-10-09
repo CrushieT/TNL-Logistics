@@ -69,11 +69,11 @@ test('isEligibleAdminToken requires an unexpired administrator role claim', () =
   const now = Math.floor(Date.now() / 1000);
   const nowMs = now * 1000;
   const adminToken = createMockJwt({ role: 'ADMIN', exp: now + 1800 });
-  const officeToken = createMockJwt({ role: 'OFFICE_STAFF', exp: now + 1800 });
+  const staffToken = createMockJwt({ role: 'RECEIVING_STAFF', exp: now + 1800 });
   const expiredAdminToken = createMockJwt({ role: 'ADMIN', exp: now + 10 });
 
   assert.equal(isEligibleAdminToken(adminToken, nowMs), true);
-  assert.equal(isEligibleAdminToken(officeToken, nowMs), false);
+  assert.equal(isEligibleAdminToken(staffToken, nowMs), false);
   assert.equal(isEligibleAdminToken(expiredAdminToken, nowMs), false);
   assert.equal(isEligibleAdminToken('malformed-token', nowMs), false);
 });
@@ -243,14 +243,14 @@ test('SessionCoordinator manages dual memory/localStorage and notifies invalidat
   unsubscribe();
 });
 
-test('SessionCoordinator evicts a stored staff token and user record', () => {
+test('SessionCoordinator evicts a stored non-admin token and user record', () => {
   const storage = createMockStorage();
   const coordinator = new SessionCoordinator(storage);
   const now = Math.floor(Date.now() / 1000);
-  const officeToken = createMockJwt({ role: 'OFFICE_STAFF', exp: now + 1800 });
+  const staffToken = createMockJwt({ role: 'RECEIVING_STAFF', exp: now + 1800 });
 
-  storage.setItem('tnl_admin_token', officeToken);
-  storage.setItem('tnl_user_info', JSON.stringify({ role: 'OFFICE_STAFF' }));
+  storage.setItem('tnl_admin_token', staffToken);
+  storage.setItem('tnl_user_info', JSON.stringify({ role: 'RECEIVING_STAFF' }));
 
   assert.equal(coordinator.getToken(), null);
   assert.equal(coordinator.getCurrentUser(), null);

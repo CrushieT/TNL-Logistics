@@ -65,6 +65,7 @@ import {
   parseWaybillQrPayload
 } from '../../features/waybills/waybillReturnFlow.mjs';
 import { colors, typography, spacing, radius } from '../../theme';
+import { canAccessMobileRoute, MOBILE_ROUTES } from '../../features/auth/services/roleAccess.mjs';
 
 const CAMERA_HEIGHTS = [0, 160, 280];
 const CAMERA_HEIGHT_LABELS = ['Collapsed', 'Compact', 'Expanded'];
@@ -79,7 +80,7 @@ function findNearestCameraHeightIndex(height) {
   ), 0);
 }
 
-export default function HaulerWaybillsScreen() {
+export default function DispatchWaybillsScreen() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
   const netInfo = useNetInfo();
@@ -241,12 +242,9 @@ export default function HaulerWaybillsScreen() {
     }
   }, [isKeyboardVisible, resizeCamera, toggleCameraHeight]);
 
-  // Role restriction: FIELD_STAFF with HAULER_STAFF staff type
   useEffect(() => {
-    if (!authLoading && user) {
-      if (user.role !== 'FIELD_STAFF' || user.staffType !== 'HAULER_STAFF') {
-        router.replace('/(main)');
-      }
+    if (!authLoading && user && !canAccessMobileRoute(user.role, MOBILE_ROUTES.WAYBILLS)) {
+      router.replace('/(main)');
     }
   }, [user, authLoading, router]);
 
@@ -300,7 +298,7 @@ export default function HaulerWaybillsScreen() {
   }, [user]);
 
   const loadRecentShipmentOptions = useCallback(async () => {
-    if (!isOnline || user?.staffType !== 'HAULER_STAFF' || mode !== 'load') return;
+    if (!isOnline || user?.role !== 'DISPATCH_STAFF' || mode !== 'load') return;
     const coordinator = shipmentOptionCoordinatorRef.current;
     const requestToken = coordinator.beginFirstPage();
     setIsLoadingShipments(true);
@@ -325,7 +323,7 @@ export default function HaulerWaybillsScreen() {
         setIsLoadingShipments(false);
       }
     }
-  }, [isOnline, mode, user?.staffType]);
+  }, [isOnline, mode, user?.role]);
 
   const loadNextShipmentOptions = useCallback(async () => {
     if (!isOnline || mode !== 'load' || !hasMoreShipments) return;
@@ -431,7 +429,7 @@ export default function HaulerWaybillsScreen() {
   ]);
 
   const loadRecentWaybillOptions = useCallback(async () => {
-    if (!isOnline || user?.staffType !== 'HAULER_STAFF' || mode !== 'return' || manifest) return;
+    if (!isOnline || user?.role !== 'DISPATCH_STAFF' || mode !== 'return' || manifest) return;
     const coordinator = waybillOptionCoordinatorRef.current;
     const requestToken = coordinator.beginFirstPage();
     setIsLoadingWaybillOptions(true);
@@ -457,7 +455,7 @@ export default function HaulerWaybillsScreen() {
         setIsLoadingWaybillOptions(false);
       }
     }
-  }, [isOnline, manifest, mode, user?.staffType]);
+  }, [isOnline, manifest, mode, user?.role]);
 
   const loadNextWaybillOptions = useCallback(async () => {
     if (!isOnline || mode !== 'return' || manifest || !hasMoreWaybillOptions) return;
@@ -964,7 +962,7 @@ export default function HaulerWaybillsScreen() {
     }
   };
 
-  if (user?.role !== 'FIELD_STAFF' || user?.staffType !== 'HAULER_STAFF') {
+  if (!canAccessMobileRoute(user?.role, MOBILE_ROUTES.WAYBILLS)) {
     return null;
   }
 

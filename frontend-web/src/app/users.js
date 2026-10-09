@@ -30,33 +30,21 @@ import {
   ResetPinModal,
   ConfirmActionModal,
 } from '../features/users';
+import {
+  getRoleLabel,
+  PLATFORM_ACCESS,
+  ROLE_CHIP_COLORS,
+  ROLE_FILTERS,
+} from '../features/users/userRoles.mjs';
 import { colors, fonts, spacing, radius, type } from '../theme';
 
-const ROLE_FILTERS = ['ALL', 'ADMIN', 'OFFICE_STAFF', 'FIELD_STAFF'];
 const STATUS_FILTERS = ['ALL', 'Active', 'Inactive'];
 
-const ROLE_LABELS = {
-  ADMIN: 'Administrator',
-  OFFICE_STAFF: 'Office Staff',
-  FIELD_STAFF: 'Field Staff',
-};
-
-const PLATFORM_ACCESS = {
-  ADMIN: 'Full access (shared system)',
-  OFFICE_STAFF: 'Mobile only (office workflows) | shared system',
-  FIELD_STAFF: 'Mobile (scan-only) | shared system',
-};
-
 function RoleChip({ role }) {
-  const colors = {
-    ADMIN: { bg: '#EFF6FF', text: '#1D4ED8' },
-    OFFICE_STAFF: { bg: '#F0FDF4', text: '#15803D' },
-    FIELD_STAFF: { bg: '#FFF7ED', text: '#C2410C' },
-  };
-  const c = colors[role] || { bg: '#F3F4F6', text: '#6B7280' };
+  const roleColors = ROLE_CHIP_COLORS[role] || { bg: '#F3F4F6', text: '#6B7280' };
   return (
-    <View style={[chipStyles.base, { backgroundColor: c.bg }]}>
-      <Text style={[chipStyles.text, { color: c.text }]}>{ROLE_LABELS[role] || role}</Text>
+    <View style={[chipStyles.base, { backgroundColor: roleColors.bg }]}>
+      <Text style={[chipStyles.text, { color: roleColors.text }]}>{getRoleLabel(role)}</Text>
     </View>
   );
 }
@@ -242,7 +230,7 @@ export default function UsersScreen() {
                     onPress={() => setRoleFilter(r)}
                   >
                     <Text style={[styles.filterPillText, roleFilter === r && styles.filterPillTextActive]}>
-                      {r === 'ALL' ? 'All' : ROLE_LABELS[r]}
+                      {r === 'ALL' ? 'All' : getRoleLabel(r)}
                     </Text>
                   </Pressable>
                 ))}

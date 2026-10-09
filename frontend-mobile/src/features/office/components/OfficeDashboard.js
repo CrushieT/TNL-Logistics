@@ -17,7 +17,7 @@ export function OfficeDashboard({ user, onAccount, onLock }) {
       <View style={styles.brandCard}>
         <Image source={require('../../../../assets/tracking-logo.png')} style={styles.brandLogo} resizeMode="contain" />
         <Text style={styles.brandTitle}>TNL LOGISTICS</Text>
-        <Text style={styles.brandSubtitle}>Office Intake & Dispatch Console</Text>
+        <Text style={styles.brandSubtitle}>Receiving Intake & Label Console</Text>
         <View style={styles.divider} />
         <PressableScale contentStyle={styles.statusRow} onPress={() => router.push('/(main)/printer')} activeScale={0.98} accessibilityRole="button" accessibilityLabel="Thermal printer setup">
           <View style={[styles.statusDot, { backgroundColor: isConnected ? colors.success : colors.danger }]} />
@@ -28,12 +28,13 @@ export function OfficeDashboard({ user, onAccount, onLock }) {
         <ActionCard iconName="magnify" title="FIND PARCEL" subtitle="PC or mobile records" onPress={() => router.push('/(main)/shipments')} />
         <ActionCard iconName="pencil-outline" title="REGISTER" subtitle="New shipment + labels" onPress={() => router.push('/(main)/register')} />
       </View>
+      <ActionCard iconName="qrcode-scan" title="SCAN QR" subtitle="Parcel lookup and permitted status updates" onPress={() => router.push('/(main)/scan')} />
       <PressableScale style={styles.accountWrapper} contentStyle={styles.accountCard} onPress={onAccount} activeScale={0.98} accessibilityRole="button" accessibilityLabel="Open account and shift settings">
         <Icon source="account-circle-outline" size={24} color={colors.ink} />
         <View style={styles.accountInfo}><Text style={styles.accountTitle}>ACCOUNT & SHIFT</Text><Text style={styles.accountSubtitle}>Profile, device access and security</Text></View>
         <Icon source="chevron-right" size={20} color={colors.inkFaint} />
       </PressableScale>
-      <View style={styles.footer}><Text style={styles.footerText}>TNL MOBILE · AUTHENTICATED OFFICE ACCESS</Text></View>
+      <View style={styles.footer}><Text style={styles.footerText}>TNL MOBILE · AUTHENTICATED RECEIVING ACCESS</Text></View>
     </ScrollView>
   );
 }

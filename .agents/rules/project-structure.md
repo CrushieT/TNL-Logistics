@@ -153,6 +153,13 @@ tnl-logistics/
 └── README.md                          # Project overview & quick start
 ```
 
+### Four-role client adoption additions
+
+- `frontend-web/src/features/users/userRoles.mjs`: explicit Admin/Receiving/Courier/Dispatch presentation metadata and role-only create/update request builders.
+- `frontend-web/tests/userRoles.test.mjs`: Admin user-management role selection, payload omission, and legacy-role rejection coverage.
+- `frontend-mobile/src/features/auth/services/roleAccess.mjs`: fail-closed mobile identity parsing, role labels, primary workflows, and direct-route capability matrix.
+- `frontend-mobile/tests/roleAccess.test.mjs`: primary routing, shared access, direct-navigation denial, and stale/unknown-role regression coverage.
+
 ### Folder Organization Philosophy
 
 **Backend (layered):** Features are structured using a traditional layered architecture (`config`, `controller`, `dto`, `model`, `repository`, `service`). 

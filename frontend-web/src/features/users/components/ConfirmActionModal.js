@@ -9,12 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
-
-const ROLE_LABELS = {
-  ADMIN: 'Administrator',
-  OFFICE_STAFF: 'Office Staff',
-  FIELD_STAFF: 'Field Staff',
-};
+import { getRoleLabel } from '../userRoles.mjs';
 
 export default function ConfirmActionModal({
   visible,
@@ -80,7 +75,7 @@ export default function ConfirmActionModal({
               <Text style={styles.userMeta}>@{user.username}</Text>
             </View>
             <View style={styles.roleBadge}>
-              <Text style={styles.roleBadgeText}>{ROLE_LABELS[user.role] || user.role}</Text>
+              <Text style={styles.roleBadgeText}>{getRoleLabel(user.role)}</Text>
             </View>
           </View>
 

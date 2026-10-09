@@ -25,6 +25,7 @@ import {
   replacePageZeroEvents,
 } from '../../../features/tracking-history/trackingHistoryFlow.mjs';
 import { createTrackingHistoryRequestCoordinator } from '../../../features/tracking-history/trackingHistoryRequestCoordinator.mjs';
+import { canAccessMobileRoute, MOBILE_ROUTES } from '../../../features/auth/services/roleAccess.mjs';
 
 export default function TrackingHistoryScreen() {
   const router = useRouter();
@@ -59,9 +60,8 @@ export default function TrackingHistoryScreen() {
   }
   const requestCoordinator = requestCoordinatorRef.current;
 
-  // Role Guard: Restrict strictly to FIELD_STAFF
   useEffect(() => {
-    if (!authLoading && user && user.role !== 'FIELD_STAFF') {
+    if (!authLoading && user && !canAccessMobileRoute(user.role, MOBILE_ROUTES.TRACKING_HISTORY)) {
       router.replace('/(main)');
     }
   }, [user, authLoading, router]);
@@ -229,7 +229,7 @@ export default function TrackingHistoryScreen() {
     router.push(`/(main)/tracking-history/${encoded}`);
   };
 
-  if (authLoading || !user || user.role !== 'FIELD_STAFF') {
+  if (authLoading || !user || !canAccessMobileRoute(user.role, MOBILE_ROUTES.TRACKING_HISTORY)) {
     return null;
   }
 
