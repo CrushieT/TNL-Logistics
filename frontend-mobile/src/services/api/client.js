@@ -1,6 +1,6 @@
 import axios from 'axios';
 import Constants from 'expo-constants';
-import { getToken } from '../storage/secureStore';
+import { authSessionCoordinator } from '../../features/auth/services/sessionCoordinator.mjs';
 import {
   buildSessionRetryConfig,
   classifySessionFailure,
@@ -40,12 +40,17 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   async (config) => {
+    const session = authSessionCoordinator.current();
+    if (config._sessionGeneration !== undefined && config._sessionGeneration !== session.generation) {
+      throw { code: 'SESSION_SUPERSEDED', message: 'This request belongs to an earlier session.' };
+    }
+    config._sessionGeneration = session.generation;
     if (config.skipAuth === true) {
       if (config.headers) delete config.headers.Authorization;
       return config;
     }
     try {
-      const token = await getToken();
+      const token = session.token;
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -64,24 +69,23 @@ export function setSessionEventCallback(callback) {
 }
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    authSessionCoordinator.assertCurrent(response.config._sessionGeneration);
+    return response;
+  },
   async (error) => {
-    let currentToken = null;
-    try {
-      currentToken = await getToken();
-    } catch {
-      currentToken = null;
-    }
-    const sessionFailure = classifySessionFailure(error, currentToken);
+    const session = authSessionCoordinator.current();
+    const currentToken = session.token || null;
+    const sessionFailure = classifySessionFailure(error, currentToken, session);
 
     if (sessionFailure.action === 'retry') {
       return apiClient.request(buildSessionRetryConfig(error.config, currentToken));
     }
 
     if (sessionFailure.action === 'reauthenticate' && typeof onSessionEventCallback === 'function') {
-      await onSessionEventCallback({ type: 'SESSION_REAUTH_REQUIRED' });
+      await onSessionEventCallback({ type: 'SESSION_REAUTH_REQUIRED', generation: session.generation });
     } else if (sessionFailure.action === 'clear-device' && typeof onSessionEventCallback === 'function') {
-      await onSessionEventCallback({ type: 'INVALID_DEVICE_CREDENTIALS' });
+      await onSessionEventCallback({ type: 'INVALID_DEVICE_CREDENTIALS', generation: session.generation });
     }
 
     if (error.config?.sensitivePayload === true) {

@@ -24,9 +24,12 @@ import org.springframework.http.HttpStatus;
 public class SecurityConfig {
 
 	private final com.tnl.logistics.repository.AppUserRepository appUserRepository;
+	private final com.tnl.logistics.repository.MobileDeviceBindingRepository mobileDeviceBindingRepository;
 
-	public SecurityConfig(com.tnl.logistics.repository.AppUserRepository appUserRepository) {
+	public SecurityConfig(com.tnl.logistics.repository.AppUserRepository appUserRepository,
+			com.tnl.logistics.repository.MobileDeviceBindingRepository mobileDeviceBindingRepository) {
 		this.appUserRepository = appUserRepository;
+		this.mobileDeviceBindingRepository = mobileDeviceBindingRepository;
 	}
 
 	@Bean
@@ -69,7 +72,7 @@ public class SecurityConfig {
 				.anyRequest().authenticated()
 			)
 			// Wire the JWT token verification filter
-			.addFilterBefore(new JwtAuthenticationFilter(appUserRepository), UsernamePasswordAuthenticationFilter.class);
+			.addFilterBefore(new JwtAuthenticationFilter(appUserRepository, mobileDeviceBindingRepository), UsernamePasswordAuthenticationFilter.class);
 
 		return http.build();
 	}

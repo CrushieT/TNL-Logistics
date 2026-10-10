@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -17,42 +17,84 @@ import { colors } from '../../theme';
 
 export default function ChangePasswordScreen() {
   const router = useRouter();
-  const { user, token, mustChangePassword, completeRequiredPasswordChange, isLoading: authLoading } = useAuth();
+  const { user, token, mustChangePassword, completeRequiredPasswordChange,
+    startPasswordReauthentication, isLoading: authLoading } = useAuth();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const isHandlingPasswordChange = useRef(false);
+  const shouldPreserveLoginNavigation = useRef(false);
+  const reauthenticationUsername = useRef('');
 
   useEffect(() => {
+    if (isHandlingPasswordChange.current || shouldPreserveLoginNavigation.current) return;
     if (!authLoading && (!token || !user || !mustChangePassword)) {
       router.replace('/(auth)/login');
     }
-  }, [authLoading, mustChangePassword, router, token, user]);
+  }, [authLoading, isCancelling, mustChangePassword, router, submitting, token, user]);
 
   const handleSubmit = async () => {
-    if (submitting || !currentPassword || !newPassword || !confirmPassword) return;
+    if (isHandlingPasswordChange.current || submitting || isCancelling || authLoading
+      || shouldPreserveLoginNavigation.current || !token || !user || !mustChangePassword
+      || !currentPassword || !newPassword || !confirmPassword) return;
     if (newPassword !== confirmPassword) {
       setErrorMessage('New passwords do not match.');
       return;
     }
 
+    isHandlingPasswordChange.current = true;
     setSubmitting(true);
     setErrorMessage('');
     try {
       const result = await completeRequiredPasswordChange(currentPassword, newPassword);
+      // Retain navigation ownership until this screen unmounts.
       router.replace({
         pathname: '/(auth)/login',
         params: { username: result.username || '', reason: 'password_changed' },
       });
     } catch (error) {
+      if (error.code === 'SESSION_SUPERSEDED') return;
+      if (error.code === 'PASSWORD_CHANGE_CLEANUP_FAILED') {
+        shouldPreserveLoginNavigation.current = true;
+        reauthenticationUsername.current = user?.username || '';
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+      isHandlingPasswordChange.current = false;
       setErrorMessage(error.message || 'Unable to update your password. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const isButtonEnabled = Boolean(currentPassword && newPassword && confirmPassword && !submitting);
+  const handleCancel = async () => {
+    if (isHandlingPasswordChange.current || submitting || isCancelling || authLoading) return;
+    if (!shouldPreserveLoginNavigation.current) reauthenticationUsername.current = user?.username || '';
+    shouldPreserveLoginNavigation.current = true;
+    isHandlingPasswordChange.current = true;
+    setIsCancelling(true);
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setErrorMessage('');
+    try {
+      await startPasswordReauthentication({ username: reauthenticationUsername.current, reason: 'password_change_cancelled' });
+    } catch (error) {
+      if (error.code === 'SESSION_SUPERSEDED') return;
+      isHandlingPasswordChange.current = false;
+      setErrorMessage('Unable to return to login. Please try again.');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  const isBusy = submitting || isCancelling || authLoading;
+  const isButtonEnabled = Boolean(currentPassword && newPassword && confirmPassword && !isBusy
+    && token && user && mustChangePassword && !shouldPreserveLoginNavigation.current);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -71,9 +113,9 @@ export default function ChangePasswordScreen() {
           )}
 
           <View style={styles.form}>
-            <PasswordField label="CURRENT PASSWORD" value={currentPassword} onChangeText={setCurrentPassword} editable={!submitting} />
-            <PasswordField label="NEW PASSWORD" value={newPassword} onChangeText={setNewPassword} editable={!submitting} />
-            <PasswordField label="CONFIRM NEW PASSWORD" value={confirmPassword} onChangeText={setConfirmPassword} editable={!submitting} />
+            <PasswordField label="CURRENT PASSWORD" value={currentPassword} onChangeText={setCurrentPassword} editable={!isBusy} />
+            <PasswordField label="NEW PASSWORD" value={newPassword} onChangeText={setNewPassword} editable={!isBusy} />
+            <PasswordField label="CONFIRM NEW PASSWORD" value={confirmPassword} onChangeText={setConfirmPassword} editable={!isBusy} />
 
             <PressableScale
               style={styles.actionButtonPressable}
@@ -83,6 +125,16 @@ export default function ChangePasswordScreen() {
               activeScale={0.97}
             >
               {submitting ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.actionText}>UPDATE PASSWORD</Text>}
+            </PressableScale>
+            <PressableScale
+              style={styles.actionButtonPressable}
+              contentStyle={[styles.cancelButton, isBusy && styles.cancelButtonDisabled]}
+              onPress={handleCancel}
+              disabled={isBusy}
+              activeScale={0.97}
+            >
+              {isCancelling ? <ActivityIndicator color={colors.inkSoft} size="small" />
+                : <Text style={styles.cancelText}>Cancel and return to login</Text>}
             </PressableScale>
           </View>
         </ScrollView>
@@ -126,4 +178,7 @@ const styles = StyleSheet.create({
   actionButtonActive: { backgroundColor: colors.black },
   actionButtonDisabled: { backgroundColor: '#8E8E8E' },
   actionText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800', letterSpacing: 0.8 },
+  cancelButton: { alignItems: 'center', justifyContent: 'center', minHeight: 48, marginTop: 8 },
+  cancelButtonDisabled: { opacity: 0.5 },
+  cancelText: { color: colors.inkSoft, fontSize: 13, fontWeight: '600' },
 });

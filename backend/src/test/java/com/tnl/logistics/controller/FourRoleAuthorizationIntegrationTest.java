@@ -37,6 +37,9 @@ import static org.hamcrest.Matchers.not;
 class FourRoleAuthorizationIntegrationTest {
 
     @Autowired
+    private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Autowired
@@ -189,7 +192,7 @@ class FourRoleAuthorizationIntegrationTest {
     void rejectsStaleTokenVersionAfterMigrationStyleIncrement() throws Exception {
         AppUser receiving = appUserRepository.findById("USR-OFFICE").orElseThrow();
         int staleVersion = receiving.getTokenVersion();
-        String staleToken = JwtTokenProvider.generateToken(
+        String staleToken = sessionTokens.generateToken(
                 receiving.getUserId(), receiving.getRole().name(), staleVersion);
         receiving.incrementTokenVersion();
         appUserRepository.saveAndFlush(receiving);
@@ -268,7 +271,7 @@ class FourRoleAuthorizationIntegrationTest {
     void finalIdentityResponsesOmitRetiredFieldsAndSecrets() throws Exception {
         for (String[] identity : roleIdentities()) {
             AppUser account = appUserRepository.findById(identity[0]).orElseThrow();
-            String token = JwtTokenProvider.generateToken(account.getUserId(), account.getRole().name(), account.getTokenVersion());
+            String token = sessionTokens.generateToken(account.getUserId(), account.getRole().name(), account.getTokenVersion());
             mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer " + token))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.role").value(identity[1]))

@@ -1,5 +1,16 @@
 # Project Structure
 
+### Mobile account-switch additions
+
+- `backend/src/main/java/com/tnl/logistics/dto/MobileLoginRequest.java`: explicit switch confirmation contract.
+- `backend/src/main/java/com/tnl/logistics/service/MobileSessionService.java`: transactional password/PIN login and binding transfer.
+- `backend/src/main/resources/db/migration/V38__version_mobile_device_sessions.sql`: per-binding session version.
+- `backend/src/test/java/com/tnl/logistics/controller/MobileBindingSwitchIntegrationTest.java`: ownership and concurrency regressions.
+- `backend/src/test/java/com/tnl/logistics/support/TestSessionTokenFactory.java`: binding-scoped test sessions.
+- `frontend-mobile/src/features/auth/services/sessionCoordinator.mjs`: session generations and serialized persistence.
+- `frontend-mobile/tests/accountSwitch.test.mjs`: stale-response and storage-failure regressions.
+- `.review/mobile-account-switch-evidence.md`: threat model and verification evidence.
+
 **TNL Logistics uses a monorepo layout with three independent codebases sharing a common backend API.**
 
 ### Complete Directory Structure

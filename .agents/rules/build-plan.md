@@ -8,6 +8,17 @@
 * **Label Status:** `Not Printed` -> `Printed` -> `Reprinted`
 * **Waybill Status (4-state):** `Not Generated` -> `Generated` -> `Sent to Hauler` -> `Signed / Completed`
 
+## Mobile Account-Switch Hardening [COMPLETED]
+
+- Password-update cleanup recovery [COMPLETED]: distinguishes a successful server password change from failed local cleanup, retains B password-login navigation and username, clears sensitive fields, and permits access-only cleanup retry without falling back to A PIN. Latest UI-only verification: 217 mobile tests, web/Android/iOS exports, and scoped audit passed. Prior user-reported Phase 6 phone acceptance remains recorded; this follow-up's targeted phone check is [UPCOMING].
+
+- Password-change cancellation [COMPLETED]: clears B access/password fields, retains A binding, and explicitly opens password login. Approved cleanup-failure remediation prevents fallback to A PIN and preserves B username for retry. Mobile: 212 passing; all-platform exports and scoped audit passed; physical acceptance [COMPLETED], reported by the user on 2026-10-10.
+
+- Extends the completed demo milestones with confirmed password-based phone transfer, binding-scoped JWT revocation, provisional onboarding, and stale-client-response protection.
+- Implementation, threat model, regression coverage, and scoped audit [COMPLETED]. Backend: 402 tests, zero failures/errors, five pre-existing skips. Mobile: 212 passing (latest UI-only run; backend/web counts are historical). Web: 78 passing. Web/Android/iOS production exports passed.
+- Physical-device acceptance [COMPLETED], reported by the user on 2026-10-10. The account-switch hardening milestone is [COMPLETED]. Printer acceptance remains deferred; no assistant-run phone verification is claimed.
+- Evidence and agreed security controls: `.review/mobile-account-switch-evidence.md`.
+
 ---
 
 ## Progress Overview
@@ -34,7 +45,7 @@
 | ↳ **Phase 6.4** | Field Staff: Camera QR Scanner & Status Flow Engine (Screens 45–48) | [COMPLETED] |
 | ↳ **Phase 6.5** | Field Staff: Personal Scan & Tracking History (Screens 49–52) | [COMPLETED] |
 | ↳ **Phase 6.6** | Mobile Staff Account, Security & 4-Digit PIN Settings (Screens 53–55) | [COMPLETED] |
-| **Phase 7** | Post-Demo Client Changes & System Enhancements | [IN PROGRESS] |
+| **Phase 7** | Post-Demo Client Changes & System Enhancements | [COMPLETED] |
 | ↳ **Phase 7.1** | Per-Unit Registration, Dynamic Rates & Settings-Based Pricing | [COMPLETED] |
 | ↳ **Phase 7.2** | Configurable SOA Bank Details & Formatted Statement Printing | [COMPLETED] |
 | ↳ **Phase 7.3** | Split Waybills, Hauler Console & 15-Item Manifest Printing | [COMPLETED] |
@@ -433,7 +444,7 @@
 
 ---
 
-## Phase 7 — Post-Demo Client Changes & System Enhancements — **[IN PROGRESS]**
+## Phase 7 — Post-Demo Client Changes & System Enhancements — **[COMPLETED]**
 *Consolidated client change requests, operational refinements, and quality infrastructure.*
 
 **7.1 — Per-Unit Registration, Dynamic Rates & Settings-Based Pricing** — **[COMPLETED]**

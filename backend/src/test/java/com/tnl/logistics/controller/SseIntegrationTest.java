@@ -61,6 +61,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public class SseIntegrationTest {
 
     @Autowired
+    private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Autowired
@@ -118,9 +121,9 @@ public class SseIntegrationTest {
         shipmentRepository.deleteAll();
         vehicleRepository.deleteAll();
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
-        adminToken = "Bearer " + JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
-        courierToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "COURIER_STAFF");
+        officeToken = "Bearer " + sessionTokens.generateToken("USR-OFFICE", "RECEIVING_STAFF");
+        adminToken = "Bearer " + sessionTokens.generateToken("USR-ADMIN", "ADMIN");
+        courierToken = "Bearer " + sessionTokens.generateToken("USR-FIELD", "COURIER_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {
@@ -171,7 +174,7 @@ public class SseIntegrationTest {
 
     @Test
     public void testSseStreamAcceptsTokenQueryParameter() throws Exception {
-        String rawToken = JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
+        String rawToken = sessionTokens.generateToken("USR-ADMIN", "ADMIN");
         MvcResult sseResult = mockMvc.perform(get("/api/v1/events/stream")
                         .param("token", rawToken))
                 .andExpect(status().isOk())
@@ -182,7 +185,7 @@ public class SseIntegrationTest {
 
     @Test
     public void testStandardEndpointsRejectTokenQueryParameter() throws Exception {
-        String rawToken = JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
+        String rawToken = sessionTokens.generateToken("USR-OFFICE", "RECEIVING_STAFF");
         mockMvc.perform(get("/api/v1/shipments")
                         .param("token", rawToken))
                 .andExpect(status().isUnauthorized());

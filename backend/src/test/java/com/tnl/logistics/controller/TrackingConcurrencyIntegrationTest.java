@@ -31,6 +31,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 public class TrackingConcurrencyIntegrationTest {
 
     @Autowired
+    private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Autowired
@@ -70,7 +73,7 @@ public class TrackingConcurrencyIntegrationTest {
         jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
         systemSettingService.refreshCachedSettings();
 
-        fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "COURIER_STAFF");
+        fieldToken = "Bearer " + sessionTokens.generateToken("USR-FIELD", "COURIER_STAFF");
 
         // Ensure client CL-001 exists and is active without clearing other clients
         Client client = clientRepository.findById("CL-001").orElse(null);

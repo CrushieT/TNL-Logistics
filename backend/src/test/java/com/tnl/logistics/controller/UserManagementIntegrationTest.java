@@ -30,6 +30,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public class UserManagementIntegrationTest {
 
     @Autowired
+    private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Autowired
@@ -312,7 +315,7 @@ public class UserManagementIntegrationTest {
     void testAdminResetPasswordInvalidatesExistingToken() throws Exception {
         var user = appUserRepository.findById("USR-OFFICE").orElseThrow();
         int initialVersion = user.getTokenVersion() != null ? user.getTokenVersion() : 1;
-        String oldToken = com.tnl.logistics.config.JwtTokenProvider.generateToken(user.getUserId(), user.getRole().name(), initialVersion);
+        String oldToken = sessionTokens.generateToken(user.getUserId(), user.getRole().name(), initialVersion);
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + oldToken))
@@ -321,7 +324,7 @@ public class UserManagementIntegrationTest {
         AdminPasswordResetRequest resetReq = new AdminPasswordResetRequest();
         resetReq.setNewPassword("TempPass123");
 
-        String adminToken = com.tnl.logistics.config.JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN", 1);
+        String adminToken = sessionTokens.generateToken("USR-ADMIN", "ADMIN", 1);
         mockMvc.perform(put("/api/v1/users/USR-OFFICE/reset-password")
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -338,14 +341,14 @@ public class UserManagementIntegrationTest {
     void testAdminResetPinInvalidatesExistingToken() throws Exception {
         var user = appUserRepository.findById("USR-FIELD").orElseThrow();
         int initialVersion = user.getTokenVersion() != null ? user.getTokenVersion() : 1;
-        String oldToken = com.tnl.logistics.config.JwtTokenProvider.generateToken(user.getUserId(), user.getRole().name(), initialVersion);
+        String oldToken = sessionTokens.generateToken(user.getUserId(), user.getRole().name(), initialVersion);
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + oldToken))
                 .andExpect(status().isOk());
 
         AdminPinResetRequest clearReq = new AdminPinResetRequest(true);
-        String adminToken = com.tnl.logistics.config.JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN", 1);
+        String adminToken = sessionTokens.generateToken("USR-ADMIN", "ADMIN", 1);
         mockMvc.perform(put("/api/v1/users/USR-FIELD/reset-pin")
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -418,7 +421,7 @@ public class UserManagementIntegrationTest {
     @Test
     void testDeletedAndRecreatedUsernameRejectsOriginalToken() throws Exception {
         var adminUser = appUserRepository.findById("USR-ADMIN").orElseThrow();
-        String adminToken = "Bearer " + com.tnl.logistics.config.JwtTokenProvider.generateToken(
+        String adminToken = "Bearer " + sessionTokens.generateToken(
                 adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion());
 
         UserCreateRequest originalRequest = new UserCreateRequest();
@@ -436,7 +439,7 @@ public class UserManagementIntegrationTest {
 
         String originalUserId = objectMapper.readTree(originalResponse).get("userId").asText();
         var originalUser = appUserRepository.findById(originalUserId).orElseThrow();
-        String originalToken = "Bearer " + com.tnl.logistics.config.JwtTokenProvider.generateToken(
+        String originalToken = "Bearer " + sessionTokens.generateToken(
                 originalUser.getUserId(), originalUser.getRole().name(), originalUser.getTokenVersion());
 
         mockMvc.perform(get("/api/v1/auth/me")
@@ -464,7 +467,7 @@ public class UserManagementIntegrationTest {
                 .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
 
         var replacementUser = appUserRepository.findById(replacementUserId).orElseThrow();
-        String replacementToken = "Bearer " + com.tnl.logistics.config.JwtTokenProvider.generateToken(
+        String replacementToken = "Bearer " + sessionTokens.generateToken(
                 replacementUser.getUserId(), replacementUser.getRole().name(), replacementUser.getTokenVersion());
 
         mockMvc.perform(get("/api/v1/auth/me")
@@ -579,9 +582,9 @@ public class UserManagementIntegrationTest {
     void testRoleChangeInvalidatesExistingToken() throws Exception {
         var officeUser = appUserRepository.findById("USR-OFFICE").orElseThrow();
         var adminUser = appUserRepository.findById("USR-ADMIN").orElseThrow();
-        String officeToken = com.tnl.logistics.config.JwtTokenProvider.generateToken(
+        String officeToken = sessionTokens.generateToken(
                 officeUser.getUserId(), officeUser.getRole().name(), officeUser.getTokenVersion());
-        String adminToken = com.tnl.logistics.config.JwtTokenProvider.generateToken(
+        String adminToken = sessionTokens.generateToken(
                 adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion());
 
         UserUpdateRequest updateRequest = new UserUpdateRequest();
@@ -606,9 +609,9 @@ public class UserManagementIntegrationTest {
     void testDeactivationInvalidatesExistingToken() throws Exception {
         var officeUser = appUserRepository.findById("USR-OFFICE").orElseThrow();
         var adminUser = appUserRepository.findById("USR-ADMIN").orElseThrow();
-        String officeToken = com.tnl.logistics.config.JwtTokenProvider.generateToken(
+        String officeToken = sessionTokens.generateToken(
                 officeUser.getUserId(), officeUser.getRole().name(), officeUser.getTokenVersion());
-        String adminToken = com.tnl.logistics.config.JwtTokenProvider.generateToken(
+        String adminToken = sessionTokens.generateToken(
                 adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion());
 
         UserUpdateRequest updateRequest = new UserUpdateRequest();

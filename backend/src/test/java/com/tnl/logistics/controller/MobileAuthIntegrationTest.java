@@ -62,6 +62,9 @@ public class MobileAuthIntegrationTest {
     private static final String WRONG_DEVICE_TOKEN = "d".repeat(64);
 
     @Autowired
+    private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Autowired
@@ -281,7 +284,7 @@ public class MobileAuthIntegrationTest {
     @Test
     void testMobileSetupPinSuccess() throws Exception {
         AppUser haulerUser = appUserRepository.findByUsername("hauler").orElseThrow();
-        String token = JwtTokenProvider.generateToken(haulerUser.getUserId(), haulerUser.getRole().name(), haulerUser.getTokenVersion());
+        String token = sessionTokens.generateToken(haulerUser.getUserId(), haulerUser.getRole().name(), haulerUser.getTokenVersion());
 
         MobilePinSetupRequest setupRequest = new MobilePinSetupRequest("7777");
 
@@ -308,7 +311,7 @@ public class MobileAuthIntegrationTest {
     @Test
     void testMobileSetupPinIncrementsTokenVersionAndRevokesOldToken() throws Exception {
         AppUser haulerUser = appUserRepository.findByUsername("hauler").orElseThrow();
-        String oldToken = JwtTokenProvider.generateToken(haulerUser.getUserId(), haulerUser.getRole().name(), haulerUser.getTokenVersion());
+        String oldToken = sessionTokens.generateToken(haulerUser.getUserId(), haulerUser.getRole().name(), haulerUser.getTokenVersion());
 
         // Pre-check: old token works
         mockMvc.perform(get("/api/v1/auth/me")
@@ -349,7 +352,7 @@ public class MobileAuthIntegrationTest {
         haulerUser.setMustChangePassword(true);
         appUserRepository.save(haulerUser);
 
-        String token = JwtTokenProvider.generateToken(haulerUser.getUserId(), haulerUser.getRole().name(), haulerUser.getTokenVersion());
+        String token = sessionTokens.generateToken(haulerUser.getUserId(), haulerUser.getRole().name(), haulerUser.getTokenVersion());
         MobilePinSetupRequest setupRequest = new MobilePinSetupRequest("4444");
 
         mockMvc.perform(post("/api/v1/auth/mobile-setup-pin")
@@ -365,7 +368,7 @@ public class MobileAuthIntegrationTest {
     @Test
     void testMobileSetupPinInvalidFormatReturnsBadRequest() throws Exception {
         AppUser haulerUser = appUserRepository.findByUsername("hauler").orElseThrow();
-        String token = JwtTokenProvider.generateToken(haulerUser.getUserId(), haulerUser.getRole().name(), haulerUser.getTokenVersion());
+        String token = sessionTokens.generateToken(haulerUser.getUserId(), haulerUser.getRole().name(), haulerUser.getTokenVersion());
 
         MobilePinSetupRequest setupRequest = new MobilePinSetupRequest("12"); // < 4 digits
 
@@ -656,7 +659,7 @@ public class MobileAuthIntegrationTest {
     @Test
     void testGetCurrentUserIncludesHasPinSet() throws Exception {
         AppUser officeUser = appUserRepository.findByUsername("office").orElseThrow();
-        String token = JwtTokenProvider.generateToken(officeUser.getUserId(), officeUser.getRole().name(), officeUser.getTokenVersion());
+        String token = sessionTokens.generateToken(officeUser.getUserId(), officeUser.getRole().name(), officeUser.getTokenVersion());
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + token))
@@ -700,7 +703,7 @@ public class MobileAuthIntegrationTest {
     @Test
     void testMobileSetupPinAdminRestrictedReturnsForbidden() throws Exception {
         AppUser adminUser = appUserRepository.findByUsername("admin").orElseThrow();
-        String token = JwtTokenProvider.generateToken(adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion());
+        String token = sessionTokens.generateToken(adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion());
 
         MobilePinSetupRequest setupRequest = new MobilePinSetupRequest("5555");
 
@@ -774,7 +777,7 @@ public class MobileAuthIntegrationTest {
     @Test
     void testCurrentUserReturnsCanonicalMaskedMobileProfileWithoutSecrets() throws Exception {
         AppUser officeUser = appUserRepository.findByUsername("office").orElseThrow();
-        String token = JwtTokenProvider.generateToken(
+        String token = sessionTokens.generateToken(
                 officeUser.getUserId(), officeUser.getRole().name(), officeUser.getTokenVersion());
 
         String response = mockMvc.perform(get("/api/v1/auth/me")
@@ -804,7 +807,7 @@ public class MobileAuthIntegrationTest {
     @Test
     void testCurrentUserSupportsFieldProfileAndWebSession() throws Exception {
         AppUser fieldUser = appUserRepository.findByUsername("field").orElseThrow();
-        String fieldToken = JwtTokenProvider.generateToken(
+        String fieldToken = sessionTokens.generateToken(
                 fieldUser.getUserId(), fieldUser.getRole().name(), fieldUser.getTokenVersion());
 
         mockMvc.perform(get("/api/v1/auth/me")
@@ -824,7 +827,7 @@ public class MobileAuthIntegrationTest {
     @Test
     void testCurrentUserRejectsIncompleteMalformedAndMismatchedDeviceCredentials() throws Exception {
         AppUser officeUser = appUserRepository.findByUsername("office").orElseThrow();
-        String token = JwtTokenProvider.generateToken(
+        String token = sessionTokens.generateToken(
                 officeUser.getUserId(), officeUser.getRole().name(), officeUser.getTokenVersion());
 
         mockMvc.perform(get("/api/v1/auth/me")
@@ -854,7 +857,7 @@ public class MobileAuthIntegrationTest {
         mobileDeviceBindingRepository.save(createBinding(
                 "dev-office-secondary", officeUser.getUserId(), "e".repeat(64)));
         int originalVersion = officeUser.getTokenVersion();
-        String oldToken = JwtTokenProvider.generateToken(
+        String oldToken = sessionTokens.generateToken(
                 officeUser.getUserId(), officeUser.getRole().name(), originalVersion);
 
         String response = mockMvc.perform(post("/api/v1/auth/password-change")
@@ -884,7 +887,7 @@ public class MobileAuthIntegrationTest {
         AppUser officeUser = appUserRepository.findByUsername("office").orElseThrow();
         int originalVersion = officeUser.getTokenVersion();
         String originalHash = officeUser.getPasswordHash();
-        String token = JwtTokenProvider.generateToken(
+        String token = sessionTokens.generateToken(
                 officeUser.getUserId(), officeUser.getRole().name(), originalVersion);
 
         List<PasswordChangeRequest> requests = List.of(
@@ -910,7 +913,7 @@ public class MobileAuthIntegrationTest {
     @Test
     void testPasswordAndVerificationRateLimitsAreIsolated() throws Exception {
         AppUser officeUser = appUserRepository.findByUsername("office").orElseThrow();
-        String token = JwtTokenProvider.generateToken(
+        String token = sessionTokens.generateToken(
                 officeUser.getUserId(), officeUser.getRole().name(), officeUser.getTokenVersion());
 
         for (int attempt = 0; attempt < 5; attempt++) {
@@ -946,7 +949,7 @@ public class MobileAuthIntegrationTest {
 
         binding.setLastAuthenticatedAt(LocalDateTime.now().plusSeconds(50));
         mobileDeviceBindingRepository.saveAndFlush(binding);
-        String skewedToken = JwtTokenProvider.generateToken(
+        String skewedToken = sessionTokens.generateToken(
                 haulerUser.getUserId(), haulerUser.getRole().name(), haulerUser.getTokenVersion(),
                 now + 50, now + 3600);
         mockMvc.perform(post("/api/v1/auth/mobile-setup-pin")
@@ -963,7 +966,7 @@ public class MobileAuthIntegrationTest {
         appUserRepository.saveAndFlush(haulerUser);
         binding.setLastAuthenticatedAt(LocalDateTime.now().minusMinutes(7));
         mobileDeviceBindingRepository.saveAndFlush(binding);
-        String freshToken = JwtTokenProvider.generateToken(
+        String freshToken = sessionTokens.generateToken(
                 haulerUser.getUserId(), haulerUser.getRole().name(), 1);
         mockMvc.perform(post("/api/v1/auth/mobile-setup-pin")
                         .header("Authorization", "Bearer " + freshToken)
@@ -984,7 +987,7 @@ public class MobileAuthIntegrationTest {
         AppUser officeUser = appUserRepository.findByUsername("office").orElseThrow();
         mobileDeviceBindingRepository.save(createBinding(
                 "dev-office-secondary", officeUser.getUserId(), "e".repeat(64)));
-        String token = JwtTokenProvider.generateToken(
+        String token = sessionTokens.generateToken(
                 officeUser.getUserId(), officeUser.getRole().name(), officeUser.getTokenVersion());
 
         mockMvc.perform(post("/api/v1/auth/mobile-setup-pin")
@@ -1034,7 +1037,7 @@ public class MobileAuthIntegrationTest {
     @Test
     void testPinValidationRejectsEveryNonFourAsciiDigitShape() throws Exception {
         AppUser officeUser = appUserRepository.findByUsername("office").orElseThrow();
-        String token = JwtTokenProvider.generateToken(
+        String token = sessionTokens.generateToken(
                 officeUser.getUserId(), officeUser.getRole().name(), officeUser.getTokenVersion());
         List<String> invalidPins = java.util.Arrays.asList(
                 "123", "12345", "123456", "12a4", "\u0661\u0662\u0663\u0664", "+123", "12.3", " 123", "", null);
@@ -1059,7 +1062,7 @@ public class MobileAuthIntegrationTest {
         mobileDeviceBindingRepository.save(createBinding(
                 "dev-office-secondary", officeUser.getUserId(), "e".repeat(64)));
         int originalVersion = officeUser.getTokenVersion();
-        String token = JwtTokenProvider.generateToken(
+        String token = sessionTokens.generateToken(
                 officeUser.getUserId(), officeUser.getRole().name(), originalVersion);
 
         mockMvc.perform(post("/api/v1/auth/mobile-unbind")
@@ -1081,7 +1084,7 @@ public class MobileAuthIntegrationTest {
     void testFailedUnbindDoesNotMutateBindingOrTokenVersion() throws Exception {
         AppUser officeUser = appUserRepository.findByUsername("office").orElseThrow();
         int originalVersion = officeUser.getTokenVersion();
-        String token = JwtTokenProvider.generateToken(
+        String token = sessionTokens.generateToken(
                 officeUser.getUserId(), officeUser.getRole().name(), originalVersion);
 
         mockMvc.perform(post("/api/v1/auth/mobile-unbind")
@@ -1100,7 +1103,7 @@ public class MobileAuthIntegrationTest {
     @Test
     void testObsoleteBearerDoesNotBlockPublicPinLogin() throws Exception {
         AppUser officeUser = appUserRepository.findByUsername("office").orElseThrow();
-        String obsoleteToken = JwtTokenProvider.generateToken(
+        String obsoleteToken = sessionTokens.generateToken(
                 officeUser.getUserId(), officeUser.getRole().name(), officeUser.getTokenVersion() + 20);
 
         mockMvc.perform(post("/api/v1/auth/mobile-pin-login")
@@ -1123,7 +1126,7 @@ public class MobileAuthIntegrationTest {
 
         try {
             AppUser officeUser = appUserRepository.findByUsername("office").orElseThrow();
-            String token = JwtTokenProvider.generateToken(
+            String token = sessionTokens.generateToken(
                     officeUser.getUserId(), officeUser.getRole().name(), officeUser.getTokenVersion());
 
             mockMvc.perform(post("/api/v1/auth/verify-password")
@@ -1168,7 +1171,7 @@ public class MobileAuthIntegrationTest {
                             .content("{\"pin\":\"" + submittedPin + "\",\"currentPassword\":\"office123\"}"))
                     .andExpect(status().isUnauthorized());
 
-            String staleToken = JwtTokenProvider.generateToken(
+            String staleToken = sessionTokens.generateToken(
                     officeUser.getUserId(), officeUser.getRole().name(), officeUser.getTokenVersion() + 1);
             mockMvc.perform(post("/api/v1/auth/mobile-unbind")
                             .header("Authorization", "Bearer " + staleToken)
@@ -1177,7 +1180,7 @@ public class MobileAuthIntegrationTest {
                     .andExpect(status().isUnauthorized());
 
             AppUser adminUser = appUserRepository.findById("USR-ADMIN").orElseThrow();
-            String adminToken = JwtTokenProvider.generateToken(
+            String adminToken = sessionTokens.generateToken(
                     adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion());
             mockMvc.perform(post("/api/v1/auth/mobile-unbind")
                             .header("Authorization", "Bearer " + adminToken)

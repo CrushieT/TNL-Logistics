@@ -46,6 +46,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public class ClientIntegrationTest {
 
     @Autowired
+    private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Autowired
@@ -92,15 +95,15 @@ public class ClientIntegrationTest {
         shipmentRepository.deleteAll();
         clientRepository.deleteAll();
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
+        officeToken = "Bearer " + sessionTokens.generateToken("USR-ADMIN", "ADMIN");
     }
 
     @Test
     public void testMobileClientCreationValidationAndRoleGates() throws Exception {
         ClientCreateRequest request = new ClientCreateRequest("Mobile test client", "Baguio test address", "09170000000", null);
         String payload = objectMapper.writeValueAsString(request);
-        String fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "COURIER_STAFF");
-        String mobileOfficeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
+        String fieldToken = "Bearer " + sessionTokens.generateToken("USR-FIELD", "COURIER_STAFF");
+        String mobileOfficeToken = "Bearer " + sessionTokens.generateToken("USR-OFFICE", "RECEIVING_STAFF");
         mockMvc.perform(post("/api/v1/clients").header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isForbidden());
@@ -235,8 +238,8 @@ public class ClientIntegrationTest {
         );
         clientRepository.saveAndFlush(client);
 
-        String mobileOfficeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
-        String fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "COURIER_STAFF");
+        String mobileOfficeToken = "Bearer " + sessionTokens.generateToken("USR-OFFICE", "RECEIVING_STAFF");
+        String fieldToken = "Bearer " + sessionTokens.generateToken("USR-FIELD", "COURIER_STAFF");
 
         mockMvc.perform(get("/api/v1/shipments/calculation-settings")
                         .header("Authorization", mobileOfficeToken)

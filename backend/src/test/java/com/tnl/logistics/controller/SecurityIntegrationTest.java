@@ -50,6 +50,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public class SecurityIntegrationTest {
 
     @Autowired
+    private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
+
+    @Autowired
+    private com.tnl.logistics.repository.MobileDeviceBindingRepository mobileDeviceBindingRepository;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Autowired
@@ -320,10 +326,11 @@ public class SecurityIntegrationTest {
 
         String refreshedToken = "Bearer " + objectMapper.readTree(changeResult.getResponse().getContentAsString()).get("token").asText();
 
-        // Now allowed on receiving shipment endpoints
+        // Provisional onboarding still requires permanent-password login.
         mockMvc.perform(get("/api/v1/shipments")
                         .header("Authorization", refreshedToken))
-                .andExpect(status().isOk());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PASSWORD_CHANGE_REQUIRED"));
     }
 
     @Test
@@ -497,7 +504,7 @@ public class SecurityIntegrationTest {
         appUserRepository.save(inactiveUser);
 
         // Generate a cryptographically valid token for the inactive user
-        String token = "Bearer " + com.tnl.logistics.config.JwtTokenProvider.generateToken("USR-INACTIVE", "RECEIVING_STAFF");
+        String token = "Bearer " + sessionTokens.generateToken("USR-INACTIVE", "RECEIVING_STAFF");
 
         // Attempting to access protected office endpoint must require session renewal.
         mockMvc.perform(get("/api/v1/test/receiving")
@@ -519,7 +526,7 @@ public class SecurityIntegrationTest {
     @Test
     public void testFutureTokenVersionIsRejected() throws Exception {
         AppUser adminUser = appUserRepository.findById("USR-ADMIN").orElseThrow();
-        String futureVersionToken = JwtTokenProvider.generateToken(
+        String futureVersionToken = sessionTokens.generateToken(
                 adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion() + 1);
 
         mockMvc.perform(get("/api/v1/auth/me")
@@ -531,7 +538,7 @@ public class SecurityIntegrationTest {
     @Test
     public void testMalformedAndForgedTokensRequireSessionRenewal() throws Exception {
         AppUser adminUser = appUserRepository.findById("USR-ADMIN").orElseThrow();
-        String validToken = JwtTokenProvider.generateToken(
+        String validToken = sessionTokens.generateToken(
                 adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion());
         char replacement = validToken.charAt(validToken.length() - 1) == 'a' ? 'b' : 'a';
         String forgedToken = validToken.substring(0, validToken.length() - 1) + replacement;
@@ -547,7 +554,7 @@ public class SecurityIntegrationTest {
     @Test
     public void testTokenContinuesToResolveUserAfterUsernameRename() throws Exception {
         AppUser adminUser = appUserRepository.findById("USR-ADMIN").orElseThrow();
-        String token = JwtTokenProvider.generateToken(
+        String token = sessionTokens.generateToken(
                 adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion());
 
         adminUser.setUsername("renamed-admin");
@@ -614,7 +621,7 @@ public class SecurityIntegrationTest {
         long expectedStaffTtlSeconds = JwtTokenProvider.getStaffExpirationMs() / 1000;
 
         // Office Staff
-        String officeToken = JwtTokenProvider.generateToken("USR-OFFICE-01", "RECEIVING_STAFF", 1);
+        String officeToken = sessionTokens.generateToken("USR-OFFICE-01", "RECEIVING_STAFF", 1);
         Long officeExp = JwtTokenProvider.getExpirationFromToken(officeToken);
         assertNotNull(officeExp);
         long actualOfficeTtl = officeExp - nowSeconds;
@@ -622,7 +629,7 @@ public class SecurityIntegrationTest {
                 "Office staff token TTL should match configured staff expiration (" + expectedStaffTtlSeconds + "s), but was: " + actualOfficeTtl);
 
         // Field Staff
-        String fieldToken = JwtTokenProvider.generateToken("USR-FIELD-01", "COURIER_STAFF", 1);
+        String fieldToken = sessionTokens.generateToken("USR-FIELD-01", "COURIER_STAFF", 1);
         Long fieldExp = JwtTokenProvider.getExpirationFromToken(fieldToken);
         assertNotNull(fieldExp);
         long actualFieldTtl = fieldExp - nowSeconds;
@@ -633,7 +640,7 @@ public class SecurityIntegrationTest {
     @Test
     public void testExpiredTokenIsRejected() throws Exception {
         // Generate an expired token (10 seconds in the past)
-        String expiredToken = JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN", 1, -10000L);
+        String expiredToken = sessionTokens.generateToken("USR-ADMIN", "ADMIN", 1, -10000L);
 
         // Validate token method rejects it
         assertFalse(JwtTokenProvider.validateToken(expiredToken));
@@ -652,7 +659,7 @@ public class SecurityIntegrationTest {
                 JwtTokenProvider.getStaffExpirationMs(),
                 JwtTokenProvider.getAdminExpirationMs() + (24L * 60 * 60 * 1000L)
         );
-        String legacyAdminToken = JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN", 1, overlongAdminMs);
+        String legacyAdminToken = sessionTokens.generateToken("USR-ADMIN", "ADMIN", 1, overlongAdminMs);
 
         // Token provider rejects legacy overlong admin token
         assertFalse(JwtTokenProvider.validateToken(legacyAdminToken),
@@ -670,7 +677,7 @@ public class SecurityIntegrationTest {
         long nowSeconds = System.currentTimeMillis() / 1000;
         long adminTtlSeconds = JwtTokenProvider.getAdminExpirationMs() / 1000;
         // Simulated token issued beyond configured admin lifetime with future-dated exp
-        String staleAdminToken = JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN", 1,
+        String staleAdminToken = sessionTokens.generateToken("USR-ADMIN", "ADMIN", 1,
                 nowSeconds - (adminTtlSeconds + 3600), nowSeconds + 3600);
 
         // Token provider rejects token whose elapsed time since issuance exceeds configured shift TTL
@@ -689,7 +696,7 @@ public class SecurityIntegrationTest {
         long nowSeconds = System.currentTimeMillis() / 1000;
         long adminTtlSeconds = JwtTokenProvider.getAdminExpirationMs() / 1000;
         // Token issued 120 seconds into the future (exceeding 60s tolerance)
-        String futureAdminToken = JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN", 1,
+        String futureAdminToken = sessionTokens.generateToken("USR-ADMIN", "ADMIN", 1,
                 nowSeconds + 120, nowSeconds + adminTtlSeconds + 120);
 
         assertFalse(JwtTokenProvider.validateToken(futureAdminToken),
@@ -699,7 +706,7 @@ public class SecurityIntegrationTest {
     @Test
     public void testValidStaffTokenWithConfiguredWindowIsAccepted() {
         // Staff token with configured validity window
-        String validStaffToken = JwtTokenProvider.generateToken("USR-OFFICE-01", "RECEIVING_STAFF", 1);
+        String validStaffToken = sessionTokens.generateToken("USR-OFFICE-01", "RECEIVING_STAFF", 1);
         assertTrue(JwtTokenProvider.validateToken(validStaffToken),
                 "Staff token with configured validity window must remain valid");
     }
@@ -795,7 +802,7 @@ public class SecurityIntegrationTest {
             return appUserRepository.saveAndFlush(u);
         });
 
-        String officeToken = JwtTokenProvider.generateToken(officeUser.getUserId(), "RECEIVING_STAFF", officeUser.getTokenVersion());
+        String officeToken = sessionTokens.generateToken(officeUser.getUserId(), "RECEIVING_STAFF", officeUser.getTokenVersion());
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + officeToken))
@@ -806,7 +813,7 @@ public class SecurityIntegrationTest {
     @Test
     public void testRoleMismatchBetweenTokenAndDatabaseIsRejected() throws Exception {
         AppUser admin = appUserRepository.findById("USR-ADMIN").orElseThrow();
-        String mismatchedToken = JwtTokenProvider.generateToken(admin.getUserId(), "RECEIVING_STAFF", admin.getTokenVersion());
+        String mismatchedToken = sessionTokens.generateToken(admin.getUserId(), "RECEIVING_STAFF", admin.getTokenVersion());
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + mismatchedToken))
@@ -835,7 +842,7 @@ public class SecurityIntegrationTest {
         long recentIat = nowSeconds - 10;
         long futureExp = nowSeconds + 1790;
 
-        String expiredShiftToken = JwtTokenProvider.generateToken(
+        String expiredShiftToken = sessionTokens.generateToken(
                 "USR-ADMIN", "ADMIN", 1, recentIat, futureExp, staleAuthTime);
 
         assertFalse(JwtTokenProvider.validateToken(expiredShiftToken),
@@ -876,7 +883,7 @@ public class SecurityIntegrationTest {
 
         String token = objectMapper.readValue(loginResult.getResponse().getContentAsString(), LoginResponse.class).getToken();
 
-        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(appUserRepository);
+        JwtAuthenticationFilter filter = new JwtAuthenticationFilter(appUserRepository, mobileDeviceBindingRepository);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/users");
         request.addHeader("Authorization", "Bearer " + token);
         MockHttpServletResponse response = new MockHttpServletResponse();
