@@ -1,5 +1,10 @@
 # Project Structure
 
+### V34 managed-MySQL compatibility
+
+- `backend/src/test/java/com/tnl/logistics/migration/V34PrimaryKeyMigrationIntegrationTest.java`: isolated local upgrade, backfill rejection, and recovery tests with required primary keys enabled.
+- `.review/v34-primary-key-recovery.md`: controlled recovery procedure for the failed deployed migration and applied-migration checksum handling.
+
 ### Pricing parity and registration retry additions
 
 - `frontend-web/src/features/shipments/fixedPointPricing.mjs`: feature-local decimal pricing arithmetic.
