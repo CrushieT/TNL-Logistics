@@ -239,8 +239,14 @@ export function AuthProvider({ children }) {
     try {
       const result = await authService.changePassword(currentPassword, newPassword);
       coordinator.assertCurrent(generation);
-      const nextGeneration = await clearAccessSessionPreservingBinding();
-      coordinator.assertCurrent(nextGeneration);
+      try {
+        const nextGeneration = await clearAccessSessionPreservingBinding();
+        coordinator.assertCurrent(nextGeneration);
+      } catch (error) {
+        if (error.code === 'SESSION_SUPERSEDED') throw error;
+        throw { code: 'PASSWORD_CHANGE_CLEANUP_FAILED',
+          message: 'Your password was changed. Select Cancel and return to login to sign in with your new password.' };
+      }
       return { ...result, username: result.username || user?.username || '' };
     } finally {
       if (coordinator.isCurrent(generation)) setIsLoading(false);

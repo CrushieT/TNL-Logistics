@@ -437,3 +437,101 @@ test('cancel cleanup failure after clearing memory stays on the password page fo
   assert.equal(cancellations, 2);
   assert.deepEqual(usernames, ['account_b', 'account_b']);
 });
+
+for (const guardOrder of ['during-cleanup', 'after-failure']) {
+  test(`successful B password update with failed cleanup retains password login recovery ${guardOrder}`, async () => {
+    const coordinator = createSessionCoordinator();
+    coordinator.publish(coordinator.begin(), { token: 'provisional-b', userId: 'B' });
+    const { state, adapter } = storageAdapter();
+    state.token = 'provisional-b';
+    state.user = { userId: 'B', username: 'account_b', mustChangePassword: true };
+    const retainedBinding = structuredClone({ boundUser: state.boundUser, credentials: state.deviceCredentials });
+    const removeToken = adapter.removeToken;
+    let cleanupAttempts = 0;
+    let passwordChanges = 0;
+    adapter.removeToken = async () => {
+      cleanupAttempts += 1;
+      if (cleanupAttempts === 1) throw new Error('Private storage failure details');
+      await removeToken();
+    };
+    let completePasswordChange;
+    let reauthenticate;
+    const harness = await createPasswordChangeScreenHarness(
+      (...args) => completePasswordChange(...args), (options) => reauthenticate(options));
+    const clearAccess = async () => {
+      const generation = coordinator.begin();
+      harness.clearSession();
+      if (guardOrder === 'during-cleanup') harness.render().flushEffects();
+      await coordinator.commit(generation, () => clearAccessSessionPreservingBinding(adapter));
+      return generation;
+    };
+    const source = await readFile(new URL('../src/features/auth/context/AuthContext.js', import.meta.url), 'utf8');
+    const passwordCallback = source.slice(source.indexOf('  const completeRequiredPasswordChange ='),
+      source.indexOf('  const rotatePasswordInSession ='));
+    completePasswordChange = new Function('useCallback', 'authService', 'coordinator', 'setIsLoading',
+      'clearAccessSessionPreservingBinding', 'user', passwordCallback + '\nreturn completeRequiredPasswordChange;')(
+      (callback) => callback, { changePassword: async () => { passwordChanges += 1; return { username: 'account_b' }; } },
+      coordinator, () => {}, clearAccess, state.user);
+    const reauthenticationCallback = source.slice(source.indexOf('  const startPasswordReauthentication ='),
+      source.indexOf('  useEffect(() => {', source.indexOf('  const startPasswordReauthentication =')));
+    reauthenticate = new Function('useCallback', 'user', 'boundUser', 'clearAccessSessionPreservingBinding',
+      'coordinator', 'router', reauthenticationCallback + '\nreturn startPasswordReauthentication;')(
+      (callback) => callback, null, { username: 'account_a' }, clearAccess, coordinator,
+      { replace: (route) => harness.routes.push(route) });
+    await harness.render().handleSubmit();
+    harness.render().flushEffects();
+    assert.deepEqual(harness.routes, []);
+    assert.deepEqual(harness.state.slice(0, 3), ['', '', '']);
+    assert.equal(harness.state[3], 'Your password was changed. Select Cancel and return to login to sign in with your new password.');
+    assert.equal(coordinator.current().token, undefined);
+    assert.deepEqual(state.boundUser, retainedBinding.boundUser);
+    assert.deepEqual(state.deviceCredentials, retainedBinding.credentials);
+    harness.state.splice(0, 3, 'temporary-password', 'permanent-password', 'permanent-password');
+    await harness.render().handleSubmit();
+    assert.equal(passwordChanges, 1);
+    await harness.render().handleCancel();
+    harness.render().flushEffects();
+    assert.equal(cleanupAttempts, 2);
+    assert.equal(state.token, null);
+    assert.equal(state.user, null);
+    assert.equal(state.isLocked, true);
+    assert.deepEqual(harness.routes, [{ pathname: '/(auth)/login',
+      params: { username: 'account_b', reason: 'password_change_cancelled' } }]);
+    assert.deepEqual(state.boundUser, retainedBinding.boundUser);
+    assert.deepEqual(state.deviceCredentials, retainedBinding.credentials);
+  });
+}
+
+test('superseded password update cannot trigger a competing session-guard redirect', async () => {
+  const harness = await createPasswordChangeScreenHarness(async () => {
+    harness.clearSession();
+    throw { code: 'SESSION_SUPERSEDED' };
+  });
+  await harness.render().handleSubmit();
+  harness.render().flushEffects();
+  assert.deepEqual(harness.routes, []);
+  assert.equal(harness.state[3], '');
+});
+
+for (const failureStage of ['password-request', 'superseded-cleanup']) {
+  test(`password-change context preserves the original error from ${failureStage}`, async () => {
+    const coordinator = createSessionCoordinator();
+    coordinator.begin();
+    const failure = failureStage === 'password-request'
+      ? { status: 400, message: 'Incorrect current password' }
+      : { code: 'SESSION_SUPERSEDED' };
+    let cleanupAttempts = 0;
+    const source = await readFile(new URL('../src/features/auth/context/AuthContext.js', import.meta.url), 'utf8');
+    const callbackSource = source.slice(source.indexOf('  const completeRequiredPasswordChange ='),
+      source.indexOf('  const rotatePasswordInSession ='));
+    const completePasswordChange = new Function('useCallback', 'authService', 'coordinator', 'setIsLoading',
+      'clearAccessSessionPreservingBinding', 'user', callbackSource + '\nreturn completeRequiredPasswordChange;')(
+      (callback) => callback, { changePassword: async () => {
+        if (failureStage === 'password-request') throw failure;
+        return { username: 'account_b' };
+      } }, coordinator, () => {}, async () => { cleanupAttempts += 1; throw failure; }, { username: 'account_b' });
+    await assert.rejects(completePasswordChange('temporary-password', 'permanent-password'),
+      (error) => error === failure);
+    assert.equal(cleanupAttempts, failureStage === 'password-request' ? 0 : 1);
+  });
+}

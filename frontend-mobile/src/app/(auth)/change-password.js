@@ -26,11 +26,11 @@ export default function ChangePasswordScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const isHandlingPasswordChange = useRef(false);
-  const hasStartedCancellation = useRef(false);
-  const cancellationUsername = useRef('');
+  const shouldPreserveLoginNavigation = useRef(false);
+  const reauthenticationUsername = useRef('');
 
   useEffect(() => {
-    if (isHandlingPasswordChange.current || hasStartedCancellation.current) return;
+    if (isHandlingPasswordChange.current || shouldPreserveLoginNavigation.current) return;
     if (!authLoading && (!token || !user || !mustChangePassword)) {
       router.replace('/(auth)/login');
     }
@@ -38,7 +38,7 @@ export default function ChangePasswordScreen() {
 
   const handleSubmit = async () => {
     if (isHandlingPasswordChange.current || submitting || isCancelling || authLoading
-      || hasStartedCancellation.current || !token || !user || !mustChangePassword
+      || shouldPreserveLoginNavigation.current || !token || !user || !mustChangePassword
       || !currentPassword || !newPassword || !confirmPassword) return;
     if (newPassword !== confirmPassword) {
       setErrorMessage('New passwords do not match.');
@@ -56,6 +56,14 @@ export default function ChangePasswordScreen() {
         params: { username: result.username || '', reason: 'password_changed' },
       });
     } catch (error) {
+      if (error.code === 'SESSION_SUPERSEDED') return;
+      if (error.code === 'PASSWORD_CHANGE_CLEANUP_FAILED') {
+        shouldPreserveLoginNavigation.current = true;
+        reauthenticationUsername.current = user?.username || '';
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      }
       isHandlingPasswordChange.current = false;
       setErrorMessage(error.message || 'Unable to update your password. Please try again.');
     } finally {
@@ -65,8 +73,8 @@ export default function ChangePasswordScreen() {
 
   const handleCancel = async () => {
     if (isHandlingPasswordChange.current || submitting || isCancelling || authLoading) return;
-    if (!hasStartedCancellation.current) cancellationUsername.current = user?.username || '';
-    hasStartedCancellation.current = true;
+    if (!shouldPreserveLoginNavigation.current) reauthenticationUsername.current = user?.username || '';
+    shouldPreserveLoginNavigation.current = true;
     isHandlingPasswordChange.current = true;
     setIsCancelling(true);
     setCurrentPassword('');
@@ -74,7 +82,7 @@ export default function ChangePasswordScreen() {
     setConfirmPassword('');
     setErrorMessage('');
     try {
-      await startPasswordReauthentication({ username: cancellationUsername.current, reason: 'password_change_cancelled' });
+      await startPasswordReauthentication({ username: reauthenticationUsername.current, reason: 'password_change_cancelled' });
     } catch (error) {
       if (error.code === 'SESSION_SUPERSEDED') return;
       isHandlingPasswordChange.current = false;
@@ -86,7 +94,7 @@ export default function ChangePasswordScreen() {
 
   const isBusy = submitting || isCancelling || authLoading;
   const isButtonEnabled = Boolean(currentPassword && newPassword && confirmPassword && !isBusy
-    && token && user && mustChangePassword && !hasStartedCancellation.current);
+    && token && user && mustChangePassword && !shouldPreserveLoginNavigation.current);
 
   return (
     <SafeAreaView style={styles.safeArea}>

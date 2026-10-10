@@ -10,6 +10,8 @@
 
 ## Mobile Account-Switch Hardening [COMPLETED]
 
+- Password-update cleanup recovery [COMPLETED]: distinguishes a successful server password change from failed local cleanup, retains B password-login navigation and username, clears sensitive fields, and permits access-only cleanup retry without falling back to A PIN. Latest UI-only verification: 217 mobile tests, web/Android/iOS exports, and scoped audit passed. Prior user-reported Phase 6 phone acceptance remains recorded; this follow-up's targeted phone check is [UPCOMING].
+
 - Password-change cancellation [COMPLETED]: clears B access/password fields, retains A binding, and explicitly opens password login. Approved cleanup-failure remediation prevents fallback to A PIN and preserves B username for retry. Mobile: 212 passing; all-platform exports and scoped audit passed; physical acceptance [COMPLETED], reported by the user on 2026-10-10.
 
 - Extends the completed demo milestones with confirmed password-based phone transfer, binding-scoped JWT revocation, provisional onboarding, and stale-client-response protection.
