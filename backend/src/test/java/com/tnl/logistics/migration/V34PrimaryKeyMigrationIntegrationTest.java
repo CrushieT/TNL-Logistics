@@ -44,7 +44,7 @@ class V34PrimaryKeyMigrationIntegrationTest {
     @BeforeEach
     void createIsolatedUpgradeDatabase() {
         String testUrl = dataSourceProperties.getUrl();
-        assertTrue(testUrl.matches("jdbc:mysql://(?:localhost|127\\.0\\.0\\.1):\\d+/tnl_test(?:\\?.*)?"),
+        assertTrue(testUrl.matches("jdbc:mysql://(?:localhost|127\\.0\\.0\\.1):\\d+/[^/?]+(?:\\?.*)?"),
                 "Migration regression must use the local dedicated test database configuration");
         DriverManagerDataSource testDataSource = dataSourceProperties.initializeDataSourceBuilder()
                 .type(DriverManagerDataSource.class).build();
@@ -54,7 +54,7 @@ class V34PrimaryKeyMigrationIntegrationTest {
 
         migrationDataSource = new DriverManagerDataSource();
         migrationDataSource.setDriverClassName(dataSourceProperties.getDriverClassName());
-        String migrationUrl = testUrl.replace("/tnl_test", "/" + DATABASE_NAME);
+        String migrationUrl = testUrl.replaceAll("(?<=:\\d{1,5}/)[^/?]+", DATABASE_NAME);
         migrationDataSource.setUrl(migrationUrl);
         migrationDataSource.setUsername(dataSourceProperties.getUsername());
         migrationDataSource.setPassword(dataSourceProperties.getPassword());
