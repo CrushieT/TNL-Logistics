@@ -8,13 +8,13 @@
 * **Label Status:** `Not Printed` -> `Printed` -> `Reprinted`
 * **Waybill Status (4-state):** `Not Generated` -> `Generated` -> `Sent to Hauler` -> `Signed / Completed`
 
-## Mobile Account-Switch Hardening [IN PROGRESS]
+## Mobile Account-Switch Hardening [COMPLETED]
 
-- Password-change cancellation [COMPLETED]: clears B access/password fields, retains A binding, and explicitly opens password login. Approved cleanup-failure remediation prevents fallback to A PIN and preserves B username for retry. Mobile: 212 passing; all-platform exports and scoped audit passed; physical acceptance [UPCOMING].
+- Password-change cancellation [COMPLETED]: clears B access/password fields, retains A binding, and explicitly opens password login. Approved cleanup-failure remediation prevents fallback to A PIN and preserves B username for retry. Mobile: 212 passing; all-platform exports and scoped audit passed; physical acceptance [COMPLETED], reported by the user on 2026-10-10.
 
 - Extends the completed demo milestones with confirmed password-based phone transfer, binding-scoped JWT revocation, provisional onboarding, and stale-client-response protection.
 - Implementation, threat model, regression coverage, and scoped audit [COMPLETED]. Backend: 402 tests, zero failures/errors, five pre-existing skips. Mobile: 212 passing (latest UI-only run; backend/web counts are historical). Web: 78 passing. Web/Android/iOS production exports passed.
-- Physical-device acceptance [UPCOMING]; the overall hardening milestone remains [IN PROGRESS] until that check passes. Printer acceptance remains deferred.
+- Physical-device acceptance [COMPLETED], reported by the user on 2026-10-10. The account-switch hardening milestone is [COMPLETED]. Printer acceptance remains deferred; no assistant-run phone verification is claimed.
 - Evidence and agreed security controls: `.review/mobile-account-switch-evidence.md`.
 
 ---
