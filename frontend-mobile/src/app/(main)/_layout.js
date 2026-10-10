@@ -74,6 +74,7 @@ export default function MainLayout() {
   return (
     <PrinterProvider>
       <Stack
+        key={user.userId}
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.canvas },

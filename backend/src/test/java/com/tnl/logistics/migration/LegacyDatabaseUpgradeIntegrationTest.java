@@ -277,7 +277,7 @@ public class LegacyDatabaseUpgradeIntegrationTest {
                 .load();
 
         var result = flyway.migrate();
-        assertEquals(4, result.migrationsExecuted);
+        assertEquals(5, result.migrationsExecuted);
         flyway.validate();
 
         assertEquals("Cordillera Freight", freshJdbcTemplate.queryForObject(
@@ -296,6 +296,28 @@ public class LegacyDatabaseUpgradeIntegrationTest {
     }
 
     @Test
+    public void testBindingVersionUpgradePreservesExistingOwnership() {
+        DriverManagerDataSource dataSource = createIsolatedDatabase(FOUR_ROLE_FRESH_DB_NAME);
+        Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").target("37").load().migrate();
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+        jdbcTemplate.update("INSERT INTO app_user (user_id, username, password_hash, full_name, role, token_version) " +
+                "VALUES ('USR-BIND-UPGRADE', 'binding_upgrade', 'hash', 'Binding Upgrade', 'COURIER_STAFF', 7)");
+        jdbcTemplate.update("INSERT INTO mobile_device_binding (device_id, user_id, device_token_hash, active) " +
+                "VALUES ('upgrade-phone', 'USR-BIND-UPGRADE', ?, TRUE)", "a".repeat(64));
+        Flyway flyway = Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load();
+        assertEquals(1, flyway.migrate().migrationsExecuted);
+        flyway.validate();
+        assertEquals("USR-BIND-UPGRADE", jdbcTemplate.queryForObject(
+                "SELECT user_id FROM mobile_device_binding WHERE device_id = 'upgrade-phone'", String.class));
+        assertEquals("a".repeat(64), jdbcTemplate.queryForObject(
+                "SELECT device_token_hash FROM mobile_device_binding WHERE device_id = 'upgrade-phone'", String.class));
+        assertEquals(1L, jdbcTemplate.queryForObject(
+                "SELECT binding_version FROM mobile_device_binding WHERE device_id = 'upgrade-phone'", Long.class));
+        assertEquals(7, jdbcTemplate.queryForObject(
+                "SELECT token_version FROM app_user WHERE user_id = 'USR-BIND-UPGRADE'", Integer.class));
+    }
+
+    @Test
     public void testFourRoleFreshMigrationPath() {
         DriverManagerDataSource dataSource = createIsolatedDatabase(FOUR_ROLE_FRESH_DB_NAME);
 
@@ -306,8 +328,8 @@ public class LegacyDatabaseUpgradeIntegrationTest {
                 .migrate();
 
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
-        assertTrue(result.migrationsExecuted >= 37);
-        assertEquals("37", jdbcTemplate.queryForObject(
+        assertTrue(result.migrationsExecuted >= 38);
+        assertEquals("38", jdbcTemplate.queryForObject(
                 "SELECT version FROM flyway_schema_history WHERE success = TRUE ORDER BY installed_rank DESC LIMIT 1",
                 String.class));
         assertTrue(upgradeService.tableExists(dataSource, "app_user"));
@@ -337,7 +359,7 @@ public class LegacyDatabaseUpgradeIntegrationTest {
                 .load()
                 .migrate();
 
-        assertEquals(2, result.migrationsExecuted);
+        assertEquals(3, result.migrationsExecuted);
         assertEquals("ADMIN:4", finalIdentity(jdbcTemplate, "USR-MIG-ADMIN"));
         assertEquals("RECEIVING_STAFF:6", finalIdentity(jdbcTemplate, "USR-MIG-RECEIVING"));
         assertEquals("COURIER_STAFF:7", finalIdentity(jdbcTemplate, "USR-MIG-COURIER"));

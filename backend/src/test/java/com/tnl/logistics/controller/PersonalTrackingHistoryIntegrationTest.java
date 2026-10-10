@@ -42,6 +42,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public class PersonalTrackingHistoryIntegrationTest {
 
     @Autowired
+    private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Autowired
@@ -135,10 +138,10 @@ public class PersonalTrackingHistoryIntegrationTest {
         adminUser.setTokenVersion(1);
         appUserRepository.save(adminUser);
 
-        field1Token = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD-1", "COURIER_STAFF");
-        field2Token = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD-2", "COURIER_STAFF");
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
-        adminToken = "Bearer " + JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
+        field1Token = "Bearer " + sessionTokens.generateToken("USR-FIELD-1", "COURIER_STAFF");
+        field2Token = "Bearer " + sessionTokens.generateToken("USR-FIELD-2", "COURIER_STAFF");
+        officeToken = "Bearer " + sessionTokens.generateToken("USR-OFFICE", "RECEIVING_STAFF");
+        adminToken = "Bearer " + sessionTokens.generateToken("USR-ADMIN", "ADMIN");
 
         if (!clientRepository.existsById("CL-001")) {
             clientRepository.save(new Client("CL-001", "Acme Client", "Manila", "09170000000", "client@acme.com", ChargeModel.FLAT, true));

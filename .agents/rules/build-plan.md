@@ -8,6 +8,15 @@
 * **Label Status:** `Not Printed` -> `Printed` -> `Reprinted`
 * **Waybill Status (4-state):** `Not Generated` -> `Generated` -> `Sent to Hauler` -> `Signed / Completed`
 
+## Mobile Account-Switch Hardening [IN PROGRESS]
+
+- Password-change cancellation [COMPLETED]: clears B access/password fields, retains A binding, and explicitly opens password login. Approved cleanup-failure remediation prevents fallback to A PIN and preserves B username for retry. Mobile: 212 passing; all-platform exports and scoped audit passed; physical acceptance [UPCOMING].
+
+- Extends the completed demo milestones with confirmed password-based phone transfer, binding-scoped JWT revocation, provisional onboarding, and stale-client-response protection.
+- Implementation, threat model, regression coverage, and scoped audit [COMPLETED]. Backend: 402 tests, zero failures/errors, five pre-existing skips. Mobile: 212 passing (latest UI-only run; backend/web counts are historical). Web: 78 passing. Web/Android/iOS production exports passed.
+- Physical-device acceptance [UPCOMING]; the overall hardening milestone remains [IN PROGRESS] until that check passes. Printer acceptance remains deferred.
+- Evidence and agreed security controls: `.review/mobile-account-switch-evidence.md`.
+
 ---
 
 ## Progress Overview
@@ -34,7 +43,7 @@
 | ↳ **Phase 6.4** | Field Staff: Camera QR Scanner & Status Flow Engine (Screens 45–48) | [COMPLETED] |
 | ↳ **Phase 6.5** | Field Staff: Personal Scan & Tracking History (Screens 49–52) | [COMPLETED] |
 | ↳ **Phase 6.6** | Mobile Staff Account, Security & 4-Digit PIN Settings (Screens 53–55) | [COMPLETED] |
-| **Phase 7** | Post-Demo Client Changes & System Enhancements | [IN PROGRESS] |
+| **Phase 7** | Post-Demo Client Changes & System Enhancements | [COMPLETED] |
 | ↳ **Phase 7.1** | Per-Unit Registration, Dynamic Rates & Settings-Based Pricing | [COMPLETED] |
 | ↳ **Phase 7.2** | Configurable SOA Bank Details & Formatted Statement Printing | [COMPLETED] |
 | ↳ **Phase 7.3** | Split Waybills, Hauler Console & 15-Item Manifest Printing | [COMPLETED] |
@@ -433,7 +442,7 @@
 
 ---
 
-## Phase 7 — Post-Demo Client Changes & System Enhancements — **[IN PROGRESS]**
+## Phase 7 — Post-Demo Client Changes & System Enhancements — **[COMPLETED]**
 *Consolidated client change requests, operational refinements, and quality infrastructure.*
 
 **7.1 — Per-Unit Registration, Dynamic Rates & Settings-Based Pricing** — **[COMPLETED]**

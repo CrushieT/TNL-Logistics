@@ -30,9 +30,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final Pattern DEVICE_ID_PATTERN = Pattern.compile("^[A-Za-z0-9._:-]{1,64}$");
 
     private final AppUserRepository appUserRepository;
+    private final com.tnl.logistics.repository.MobileDeviceBindingRepository mobileDeviceBindingRepository;
 
-    public JwtAuthenticationFilter(AppUserRepository appUserRepository) {
+    public JwtAuthenticationFilter(AppUserRepository appUserRepository,
+            com.tnl.logistics.repository.MobileDeviceBindingRepository mobileDeviceBindingRepository) {
         this.appUserRepository = appUserRepository;
+        this.mobileDeviceBindingRepository = mobileDeviceBindingRepository;
     }
 
     @Override
@@ -105,6 +108,26 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 auditSecurityMutationFailure(request, userId, user, "SESSION_REAUTH_REQUIRED");
                 sendSessionReauthenticationRequiredResponse(response);
                 return;
+            }
+
+            if (user.getRole().isMobileStaffRole()) {
+                String purpose = JwtTokenProvider.getSessionPurpose(token);
+                if ("PASSWORD_CHANGE".equals(purpose)) {
+                    if (!isPasswordChangeSessionRequest(request)) {
+                        sendPasswordChangeRequiredResponse(response);
+                        return;
+                    }
+                } else {
+                    Long bindingId = JwtTokenProvider.getBindingId(token);
+                    Long bindingVersion = JwtTokenProvider.getBindingVersion(token);
+                    var binding = bindingId == null ? null : mobileDeviceBindingRepository.findById(bindingId).orElse(null);
+                    if (!"MOBILE".equals(purpose) || binding == null || !Boolean.TRUE.equals(binding.getActive())
+                            || !Objects.equals(binding.getUserId(), userId)
+                            || !Objects.equals(binding.getBindingVersion(), bindingVersion)) {
+                        sendSessionReauthenticationRequiredResponse(response);
+                        return;
+                    }
+                }
             }
 
             String effectiveRole = user.getRole().name();
@@ -193,6 +216,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         return false;
+    }
+
+    private boolean isPasswordChangeSessionRequest(HttpServletRequest request) {
+        String path = request.getServletPath();
+        if (path == null || path.isEmpty()) path = request.getRequestURI();
+        return ("GET".equals(request.getMethod()) && "/api/v1/auth/me".equals(path))
+                || ("POST".equals(request.getMethod()) && "/api/v1/auth/password-change".equals(path));
     }
 
     private void sendPasswordChangeRequiredResponse(HttpServletResponse response) throws IOException {

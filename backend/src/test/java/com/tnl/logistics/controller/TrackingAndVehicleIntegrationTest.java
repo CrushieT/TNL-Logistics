@@ -32,6 +32,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public class TrackingAndVehicleIntegrationTest {
 
     @Autowired
+    private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Autowired
@@ -84,10 +87,10 @@ public class TrackingAndVehicleIntegrationTest {
         shipmentRepository.deleteAll();
         vehicleRepository.deleteAll();
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "RECEIVING_STAFF");
-        adminToken = "Bearer " + JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
-        fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "COURIER_STAFF");
-        haulerToken = "Bearer " + JwtTokenProvider.generateToken("USR-HAULER", "DISPATCH_STAFF");
+        officeToken = "Bearer " + sessionTokens.generateToken("USR-OFFICE", "RECEIVING_STAFF");
+        adminToken = "Bearer " + sessionTokens.generateToken("USR-ADMIN", "ADMIN");
+        fieldToken = "Bearer " + sessionTokens.generateToken("USR-FIELD", "COURIER_STAFF");
+        haulerToken = "Bearer " + sessionTokens.generateToken("USR-HAULER", "DISPATCH_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {

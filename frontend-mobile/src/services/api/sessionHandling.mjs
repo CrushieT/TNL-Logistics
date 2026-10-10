@@ -14,10 +14,12 @@ export function extractBearerToken(config) {
   return authorization.slice(7);
 }
 
-export function classifySessionFailure(error, currentToken) {
+export function classifySessionFailure(error, currentToken, currentSession) {
   const status = error?.response?.status;
   const code = error?.response?.data?.code;
   const config = error?.config || {};
+
+  if (currentSession && config._sessionGeneration !== currentSession.generation) return { action: 'none' };
 
   if (config.skipAuth || status !== 401) return { action: 'none' };
 
