@@ -454,6 +454,10 @@
 - Web Admin client profiles can enable, update, or disable the custom rate; web and mobile registration reload effective pricing dynamically after client selection.
 - Web and mobile registration applications updated with compact 10-unit paginated parcel editors, render-aware jump-to-error navigation, modular extracted components (`ParcelUnitsEditor.js`, `ShipmentPricingSummary.js`), read-only rate per kilo, live breakdown summaries, quantity sync with confirmation guards, and 409 stale-settings recovery.
 - Verification passed across backend (346 tests), web (53 tests), mobile (157 tests), and Expo web/Android production exports.
+- Decimal pricing parity [COMPLETED]: both frontends use feature-local fixed-point helpers for per-unit and legacy calculations, matching backend `HALF_UP` rounding order and using integer cents for totals.
+- Web client-retry handling [COMPLETED]: successful client creation selects the returned client in Existing mode before shipment submission, preserves shipment fields across rejection and explicit resubmission, and prevents duplicate in-flight submissions while disabling form editing.
+- Latest pricing/retry verification [COMPLETED]: 91 web tests, 226 mobile tests, 36 focused backend tests, and Admin web plus mobile web/Android/iOS production exports passed. Scoped audit and targeted merge-review follow-up against local `dev` found no unresolved code findings in the registration/pricing slice; broader historical branch changes are outside this follow-up.
+- Pricing/retry manual acceptance [UPCOMING]: browser retry transition and physical-phone decimal pricing checks remain pending. Evidence and approved remediation log: `.review/pricing-retry-evidence.md`.
 
 **7.2 — Configurable SOA Bank Details & Formatted Statement Printing** — **[COMPLETED]**
 - Migration `V33__add_soa_bank_details.sql`: adds nullable SOA bank name, account name, and text account number settings without embedding real account data.

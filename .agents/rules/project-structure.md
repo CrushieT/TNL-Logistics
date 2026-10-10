@@ -1,5 +1,14 @@
 # Project Structure
 
+### Pricing parity and registration retry additions
+
+- `frontend-web/src/features/shipments/fixedPointPricing.mjs`: feature-local decimal pricing arithmetic.
+- `frontend-mobile/src/features/shipments/fixedPointPricing.mjs`: independent mobile decimal pricing arithmetic.
+- `frontend-web/tests/pricingParity.test.mjs`: identical boundary vectors against both calculators.
+- `frontend-mobile/tests/pricingParity.test.mjs`: mobile suite entry for the same parity vectors.
+- `frontend-web/tests/registrationRetry.test.mjs`: production form and screen retry regressions.
+- `.review/pricing-retry-evidence.md`: verification, scoped audit, and merge review evidence.
+
 ### Mobile account-switch additions
 
 - `backend/src/main/java/com/tnl/logistics/dto/MobileLoginRequest.java`: explicit switch confirmation contract.

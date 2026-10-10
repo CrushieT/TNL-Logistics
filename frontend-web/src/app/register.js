@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import AppShell from '../components/layout/AppShell';
@@ -20,6 +20,7 @@ export default function RegisterShipmentScreen() {
   const router = useRouter();
   const [clients, setClients] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const submissionInFlight = useRef(false);
   const [result, setResult] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
@@ -107,7 +108,9 @@ export default function RegisterShipmentScreen() {
     };
   }, []);
 
-  const handleSubmit = useCallback(async (payload) => {
+  const handleSubmit = useCallback(async (payload, onClientCreated) => {
+    if (submissionInFlight.current) return;
+    submissionInFlight.current = true;
     setSubmitting(true);
     setErrorMessage(null);
 
@@ -122,7 +125,8 @@ export default function RegisterShipmentScreen() {
         finalClientName = createdClient.name;
 
         // Permanently add the newly registered client to state for dropdown reusability
-        setClients((prev) => [...prev, createdClient]);
+        setClients((prev) => prev.some((client) => client.id === createdClient.id) ? prev : [...prev, createdClient]);
+        onClientCreated?.(createdClient);
       } else {
         const clientRecord = clients.find((c) => c.id === payload.clientId);
         finalClientName = clientRecord?.name || 'Northbridge Trading';
@@ -146,6 +150,7 @@ export default function RegisterShipmentScreen() {
       if (err.response?.status === 409) {
         const errCode = err.response?.data?.code;
         if (errCode === 'STALE_SETTINGS' || err.response?.data?.message?.includes('STALE_SETTINGS')) {
+          setCalculationSettingsState('loading');
           setCalculationSettingsAttempt((prev) => prev + 1);
           msg = 'Calculation settings were updated on the server. Rates have been refreshed. Please review the updated amounts and submit again.';
         } else if (errCode === 'RATE_PER_KILO_NOT_CONFIGURED' || err.response?.data?.message?.includes('RATE_PER_KILO_NOT_CONFIGURED')) {
@@ -169,6 +174,7 @@ export default function RegisterShipmentScreen() {
 
       setErrorMessage(msg);
     } finally {
+      submissionInFlight.current = false;
       setSubmitting(false);
     }
   }, [clients, loadCanonicalResult]);

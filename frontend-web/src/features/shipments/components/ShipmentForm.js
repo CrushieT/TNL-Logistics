@@ -9,6 +9,7 @@ import ClientSelectDropdown from './ClientSelectDropdown';
 import ParcelUnitsEditor from './ParcelUnitsEditor';
 import ShipmentPricingSummary from './ShipmentPricingSummary';
 import { calculateShipmentMetrics } from '../registrationCalculations.mjs';
+import { calculateTotalCents } from '../fixedPointPricing.mjs';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
 
 const CHARGE_MODELS = [
@@ -283,9 +284,7 @@ export default function ShipmentForm({
   }, [parcels, volumetricDivisor, ratePerKilo]);
 
   const totalAmount = useMemo(() => {
-    const fee = shipmentMetrics.shippingFee || 0;
-    const other = parseFloat(otherCharges) || 0;
-    return Math.round((fee + other + Number.EPSILON) * 100) / 100;
+    return calculateTotalCents(shipmentMetrics.shippingFee, otherCharges) / 100;
   }, [shipmentMetrics.shippingFee, otherCharges]);
 
   function validateForm() {
@@ -389,6 +388,7 @@ export default function ShipmentForm({
   }
 
   function handleSubmit() {
+    if (submitting || discardModal.visible || calculationSettingsState !== 'ready') return;
     if (!validateForm()) return;
 
     const deliveryAddress = (clientMode === 'NEW' ? newClientAddress : address).trim();
@@ -425,7 +425,7 @@ export default function ShipmentForm({
       onSubmit?.({
         ...basePayload,
         clientId: activeClientId,
-      });
+      }, onClientCreated);
     } else {
       onSubmit?.({
         ...basePayload,
@@ -435,15 +435,22 @@ export default function ShipmentForm({
           contactNumber: newClientContact.trim(),
           email: newClientEmail.trim() || null,
         },
-      });
+      }, onClientCreated);
     }
+  }
+
+  function onClientCreated(client) {
+    setClientId(client.id);
+    setClientMode('EXISTING');
+    setAddress(newClientAddress.trim());
+    setContactNumber(newClientContact.trim());
   }
 
   const isRateReady = calculationSettingsState === 'ready' && Number.isFinite(ratePerKilo) && ratePerKilo > 0;
   const canSubmit = isRateReady && !submitting;
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} inert={submitting ? true : undefined} pointerEvents={submitting ? 'none' : 'auto'} aria-busy={submitting}>
       {/* Top Row: Client & Recipient */}
       <View style={[styles.topRow, isMobile && styles.topRowMobile]}>
         {/* 1. Client Card */}

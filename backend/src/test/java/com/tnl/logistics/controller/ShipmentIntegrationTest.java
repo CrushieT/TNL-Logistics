@@ -130,6 +130,44 @@ public class ShipmentIntegrationTest {
     }
 
     @Test
+    public void testHalfCentPricingMatchesFrontendPreviewAndPersistsTotals() throws Exception {
+        Client client = clientRepository.findById("CL-001").orElseThrow();
+        client.setRatePerKilo(new BigDecimal("34.25"));
+        clientRepository.saveAndFlush(client);
+        ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
+        request.setClientId("CL-001");
+        request.setRecipientAddress("Delivery street");
+        request.setRecipientContact("09170000000");
+        request.setQuantity(1);
+        request.setChargeModel(ChargeModel.PER_KILO);
+        request.setOtherCharges(new BigDecimal("0.29"));
+        request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        request.setExpectedRatePerKilo(new BigDecimal("34.25"));
+        request.setExpectedVolumetricDivisor(5000);
+        request.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("0.06"),
+                new BigDecimal("0.1"), new BigDecimal("0.1"), new BigDecimal("0.1"))));
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.shippingFee").value(2.06))
+                .andExpect(jsonPath("$.totalAmount").value(2.35))
+                .andReturn();
+        ShipmentResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), ShipmentResponse.class);
+        JsonNode responseJson = objectMapper.readTree(result.getResponse().getContentAsString());
+        java.util.Set<String> responseFields = new java.util.HashSet<>();
+        responseJson.fieldNames().forEachRemaining(responseFields::add);
+        assertEquals(java.util.Set.of("shipmentId", "clientId", "recipientName", "totalAmount",
+                "paidAtRegistration", "trackingIds", "appliedRatePerKilo", "appliedVolumetricDivisor",
+                "totalActualWeight", "totalVolumetricWeight", "billableWeight", "shippingFee", "otherCharges"), responseFields);
+        Shipment persisted = shipmentRepository.findById(response.getShipmentId()).orElseThrow();
+        assertEquals(0, new BigDecimal("2.06").compareTo(persisted.getShippingFee()));
+        assertEquals(0, new BigDecimal("2.35").compareTo(persisted.getTotalAmount()));
+    }
+
+    @Test
     public void testFlatRateShipmentRegistrationAndSequenceFormatting() throws Exception {
         ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.5"), new BigDecimal("10"), new BigDecimal("20"), new BigDecimal("30"));
         ParcelUnitRequest p2 = new ParcelUnitRequest(2, new BigDecimal("3.0"), new BigDecimal("10"), new BigDecimal("20"), new BigDecimal("30"));

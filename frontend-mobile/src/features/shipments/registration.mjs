@@ -1,3 +1,5 @@
+import { calculateFixedMetrics, calculateParcelTotals, parsePositiveDecimal } from './fixedPointPricing.mjs';
+
 export const MAX_PARCELS = 1000;
 
 export function createRegistrationForm() {
@@ -162,133 +164,45 @@ export function toCents(value) {
 }
 
 export function calculateRegistration(form, divisor, ratePerKilo = null) {
-  const qtyStr = String(form?.quantity ?? '').trim();
-  const quantity = /^\d+$/.test(qtyStr) && Number(qtyStr) >= 1 && Number(qtyStr) <= MAX_PARCELS
-    ? Number(qtyStr)
-    : null;
-
+  const quantityText = String(form?.quantity ?? '').trim();
+  const quantity = /^\d+$/.test(quantityText) && Number(quantityText) >= 1 && Number(quantityText) <= MAX_PARCELS
+    ? Number(quantityText) : null;
   const validDivisor = typeof divisor === 'number' && Number.isFinite(divisor) && divisor > 0 ? divisor : null;
-  const validRate = typeof ratePerKilo === 'number' && Number.isFinite(ratePerKilo) && ratePerKilo > 0
-    ? ratePerKilo
-    : (Number.isFinite(Number(ratePerKilo)) && Number(ratePerKilo) > 0 ? Number(ratePerKilo) : null);
-
-  if (hasPerUnitParcels(form)) {
-    let totalActualWeight = 0;
-    let totalVolumeCm3 = 0;
-    let allValid = true;
-
-    for (const parcel of form.parcels) {
-      if (!isDecimal(parcel.weightKg, 0.01, 6) ||
-          !isDecimal(parcel.lengthCm, 0.1, 6) ||
-          !isDecimal(parcel.widthCm, 0.1, 6) ||
-          !isDecimal(parcel.heightCm, 0.1, 6)) {
-        allValid = false;
-        break;
-      }
-      totalActualWeight += Number(parcel.weightKg);
-      totalVolumeCm3 += (Number(parcel.lengthCm) * Number(parcel.widthCm) * Number(parcel.heightCm));
+  const isPerUnit = hasPerUnitParcels(form);
+  let metrics;
+  if (isPerUnit) {
+    const isValid = form.parcels.every(parcel => isDecimal(parcel.weightKg, 0.01, 6)
+      && ['lengthCm', 'widthCm', 'heightCm'].every(field => isDecimal(parcel[field], 0.1, 6)));
+    const totals = isValid ? calculateParcelTotals(form.parcels) : null;
+    if (!totals) {
+      return { totalCents: null, totalAmount: null, shippingFee: null, unitVolume: null,
+        totalVolume: null, actualWeight: null, volumetricWeight: null, billableWeight: null,
+        ratePerKilo: parsePositiveDecimal(ratePerKilo) === null ? null : Number(ratePerKilo) };
     }
-
-    if (!allValid) {
-      return {
-        totalCents: null,
-        totalAmount: null,
-        shippingFee: null,
-        unitVolume: null,
-        totalVolume: null,
-        actualWeight: null,
-        volumetricWeight: null,
-        billableWeight: null,
-        ratePerKilo: validRate,
-      };
-    }
-
-    const roundedActualWeight = Math.round((totalActualWeight + Number.EPSILON) * 100) / 100;
-    const volumetricWeight = validDivisor !== null
-      ? Math.round((totalVolumeCm3 / validDivisor + Number.EPSILON) * 100) / 100
-      : null;
-    const billableWeight = volumetricWeight !== null
-      ? Math.round((Math.max(roundedActualWeight, volumetricWeight) + Number.EPSILON) * 100) / 100
-      : null;
-
-    let shippingFee = null;
-    let totalAmount = null;
-    let totalCents = null;
-
-    const otherCents = toCents(form.otherCharges ?? '0') ?? 0;
-
-    if (billableWeight !== null && validRate !== null) {
-      shippingFee = Math.round((billableWeight * validRate + Number.EPSILON) * 100) / 100;
-      totalAmount = Math.round((shippingFee + otherCents / 100 + Number.EPSILON) * 100) / 100;
-      totalCents = Math.round(totalAmount * 100);
-    } else if (form.shippingFee !== undefined && form.shippingFee !== null && form.shippingFee !== '') {
-      const fee = toCents(form.shippingFee);
-      if (fee !== null && quantity !== null) {
-        totalCents = fee * (form.chargeModel === 'PER_PARCEL' ? quantity : 1) + otherCents;
-        totalAmount = totalCents / 100;
-        shippingFee = fee / 100;
-      }
-    }
-
-    return {
-      totalCents,
-      totalAmount,
-      shippingFee,
-      unitVolume: form.parcels.length === 1 ? totalVolumeCm3 / 1000000 : null,
-      totalVolume: Math.round((totalVolumeCm3 / 1000000 + Number.EPSILON) * 10000) / 10000,
-      actualWeight: roundedActualWeight,
-      volumetricWeight,
-      billableWeight,
-      ratePerKilo: validRate,
-    };
+    metrics = calculateFixedMetrics(totals.actualUnits, totals.volumeUnits, validDivisor, ratePerKilo, form.parcels.length, true, form.otherCharges ?? '0');
+  } else {
+    const hasDimensions = ['lengthCm', 'widthCm', 'heightCm'].every(field => isDecimal(form?.[field], 0.1, 6));
+    const unitVolume = hasDimensions
+      ? ['lengthCm', 'widthCm', 'heightCm'].reduce((product, field) => product * parsePositiveDecimal(form[field]), 1n) : null;
+    const totalVolume = unitVolume === null || quantity === null ? null : unitVolume * BigInt(quantity);
+    const actualWeight = isDecimal(form?.weightKg, 0.01, 6) && quantity !== null
+      ? parsePositiveDecimal(form.weightKg) * BigInt(quantity) : null;
+    metrics = calculateFixedMetrics(actualWeight, totalVolume, validDivisor, ratePerKilo, quantity, false, form?.otherCharges ?? '0');
+    metrics.unitVolume = unitVolume === null ? null : Number(unitVolume) / 1e18;
   }
-
-  // Legacy single-spec model
-  const fee = toCents(form?.shippingFee);
-  const other = toCents(form?.otherCharges ?? '0');
-  const hasDimensions = ['lengthCm', 'widthCm', 'heightCm'].every((field) => isDecimal(form?.[field], 0.1, 6));
-  const unitVolumeCm3 = hasDimensions
-    ? Number(form.lengthCm) * Number(form.widthCm) * Number(form.heightCm)
-    : null;
-  const totalVolumeCm3 = unitVolumeCm3 !== null && quantity !== null
-    ? unitVolumeCm3 * quantity
-    : null;
-  const actualWeight = isDecimal(form?.weightKg, 0.01, 6) && quantity !== null
-    ? Math.round((Number(form.weightKg) * quantity + Number.EPSILON) * 100) / 100
-    : null;
-  const volumetricWeight = totalVolumeCm3 !== null && validDivisor !== null
-    ? Math.round((totalVolumeCm3 / validDivisor + Number.EPSILON) * 100) / 100
-    : null;
-  const billableWeight = actualWeight === null || volumetricWeight === null
-    ? null
-    : Math.round((Math.max(actualWeight, volumetricWeight) + Number.EPSILON) * 100) / 100;
 
   let totalCents = null;
-  let shippingFee = null;
-  let totalAmount = null;
-
-  if (validRate !== null && billableWeight !== null) {
-    shippingFee = Math.round((billableWeight * validRate + Number.EPSILON) * 100) / 100;
-    const otherCents = other ?? 0;
-    totalAmount = Math.round((shippingFee + otherCents / 100 + Number.EPSILON) * 100) / 100;
-    totalCents = Math.round(totalAmount * 100);
-  } else if (fee !== null && other !== null && quantity !== null) {
-    totalCents = fee * (form?.chargeModel === 'PER_PARCEL' ? quantity : 1) + other;
-    totalAmount = totalCents / 100;
-    shippingFee = fee / 100;
+  if (metrics.shippingFee !== null) {
+    totalCents = metrics.totalCents;
+  } else {
+    const fee = toCents(form?.shippingFee);
+    const other = toCents(form?.otherCharges ?? '0');
+    if (fee !== null && quantity !== null && (isPerUnit || other !== null)) {
+      totalCents = Number(BigInt(fee) * BigInt(form?.chargeModel === 'PER_PARCEL' ? quantity : 1) + BigInt(other ?? 0));
+      metrics.shippingFee = fee / 100;
+    }
   }
-
-  return {
-    totalCents,
-    totalAmount,
-    shippingFee,
-    unitVolume: unitVolumeCm3 === null ? null : unitVolumeCm3 / 1000000,
-    totalVolume: totalVolumeCm3 === null ? null : totalVolumeCm3 / 1000000,
-    actualWeight,
-    volumetricWeight,
-    billableWeight,
-    ratePerKilo: validRate,
-  };
+  return { ...metrics, totalCents, totalAmount: totalCents === null ? null : totalCents / 100 };
 }
 
 export function buildShipmentRequest(form, clientId = form.clientId, guards = {}) {
