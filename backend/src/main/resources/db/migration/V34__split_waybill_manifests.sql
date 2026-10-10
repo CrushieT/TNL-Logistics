@@ -1,5 +1,5 @@
 -- Existing waybills represented every unit of their shipment. Refuse an incomplete backfill.
-CREATE TABLE waybill_backfill_guard (valid TINYINT NOT NULL, CONSTRAINT chk_waybill_backfill CHECK (valid = 1));
+CREATE TABLE waybill_backfill_guard (valid TINYINT NOT NULL PRIMARY KEY, CONSTRAINT chk_waybill_backfill CHECK (valid = 1));
 INSERT INTO waybill_backfill_guard (valid)
 SELECT 0 FROM waybill w
 JOIN shipment s ON s.shipment_id = w.shipment_id
