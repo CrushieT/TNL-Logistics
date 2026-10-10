@@ -318,7 +318,7 @@ public class SseServiceImpl implements SseService {
     }
 
     private boolean isAllowedSseRole(UserRole role) {
-        return role == UserRole.ADMIN || role == UserRole.OFFICE_STAFF || role == UserRole.FIELD_STAFF;
+        return role == UserRole.ADMIN;
     }
 
     public int getActiveClientCount() {

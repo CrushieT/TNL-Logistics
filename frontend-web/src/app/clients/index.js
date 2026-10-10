@@ -12,7 +12,6 @@ import {
 import { useRouter } from 'expo-router';
 import AppShell from '../../components/layout/AppShell';
 import PageHeader from '../../components/layout/PageHeader';
-import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import StatusBadge from '../../components/common/StatusBadge';
 import {
@@ -228,11 +227,24 @@ export default function ClientsScreen() {
         </View>
       </View>
 
-      {/* Clients Table Card */}
-      <Card style={styles.card}>
+      {/* Clients Table */}
+      <View style={styles.table}>
+        {/* Table Header */}
+        <View style={styles.tableHeaderRow}>
+          <Text style={[styles.headerCell, { flex: 0.9 }]}>CLIENT ID</Text>
+          <Text style={[styles.headerCell, { flex: 2.1 }]}>NAME</Text>
+          <Text style={[styles.headerCell, { flex: 1.3 }]}>TIER</Text>
+          <Text style={[styles.headerCell, { flex: 1.3 }]}>CONTACT</Text>
+          <Text style={[styles.headerCell, { flex: 0.9, textAlign: 'center' }]}>SHIPMENTS</Text>
+          <Text style={[styles.headerCell, { flex: 1.2, textAlign: 'right' }]}>TOTAL CHARGES</Text>
+          <Text style={[styles.headerCell, { flex: 1.0, textAlign: 'right' }]}>PAID</Text>
+          <Text style={[styles.headerCell, { flex: 1.2, textAlign: 'right' }]}>OUTSTANDING</Text>
+          <Text style={[styles.headerCell, { flex: 1.5, textAlign: 'right' }]}>ACTIONS</Text>
+        </View>
+
         {loading && clients.length === 0 ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.ink} />
+            <ActivityIndicator size="small" color={colors.inkFaint} />
             <Text style={styles.loadingText}>Loading client directory...</Text>
           </View>
         ) : filteredClients.length === 0 ? (
@@ -242,128 +254,125 @@ export default function ClientsScreen() {
             </Text>
           </View>
         ) : (
-          <View style={styles.table}>
-            {/* Table Header */}
-            <View style={styles.tableHeaderRow}>
-              <Text style={[styles.headerCell, { flex: 1.0 }]}>CLIENT ID</Text>
-              <Text style={[styles.headerCell, { flex: 2.3 }]}>NAME</Text>
-              <Text style={[styles.headerCell, { flex: 1.4 }]}>CONTACT</Text>
-              <Text style={[styles.headerCell, { flex: 1.0, textAlign: 'center' }]}>SHIPMENTS</Text>
-              <Text style={[styles.headerCell, { flex: 1.3, textAlign: 'right' }]}>TOTAL CHARGES</Text>
-              <Text style={[styles.headerCell, { flex: 1.1, textAlign: 'right' }]}>PAID</Text>
-              <Text style={[styles.headerCell, { flex: 1.3, textAlign: 'right' }]}>OUTSTANDING</Text>
-              <Text style={[styles.headerCell, { flex: 1.6, textAlign: 'right' }]}>ACTIONS</Text>
-            </View>
+          paginatedClients.map((c, idx) => {
+            const cid = c.clientId || c.id;
+            const hasBalance = Number(c.outstandingBalance || 0) > 0;
+            return (
+              <View
+                key={cid}
+                style={[
+                  styles.tableRow,
+                  idx !== paginatedClients.length - 1 && styles.rowDivider,
+                  !c.active && styles.inactiveRow,
+                ]}
+              >
+                <Text style={[styles.cellMono, { flex: 0.9 }]}>{cid}</Text>
+                
+                <View style={[styles.nameCol, { flex: 2.1 }]}>
+                  <Text style={styles.cellStrong}>{c.name}</Text>
+                  <Text style={styles.cellSubtext} numberOfLines={1}>
+                    {c.email || c.address || '-'}
+                  </Text>
+                </View>
 
-            {/* Table Rows */}
-            {paginatedClients.map((c, idx) => {
-              const cid = c.clientId || c.id;
-              const hasBalance = Number(c.outstandingBalance || 0) > 0;
-              return (
-                <View
-                  key={cid}
+                <View style={[styles.tierCol, { flex: 1.3 }]}>
+                  {c.ratePerKilo !== null && c.ratePerKilo !== undefined ? (
+                    <View style={styles.vipBadge}>
+                      <Text style={styles.vipBadgeText}>VIP · ₱{Number(c.ratePerKilo).toFixed(2)}/kg</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.regularBadge}>
+                      <Text style={styles.regularBadgeText}>REGULAR</Text>
+                    </View>
+                  )}
+                </View>
+
+                <Text style={[styles.cell, { flex: 1.3 }]}>{c.contactNumber || '-'}</Text>
+                <Text style={[styles.cellCenterMono, { flex: 0.9 }]}>{c.totalShipments || 0}</Text>
+                <Text style={[styles.cellRightMono, { flex: 1.2 }]}>
+                  ₱{Number(c.totalCharges || 0).toLocaleString()}
+                </Text>
+                <Text style={[styles.paidRightMono, { flex: 1.0 }]}>
+                  ₱{Number(c.totalPaid || 0).toLocaleString()}
+                </Text>
+                <Text
                   style={[
-                    styles.tableRow,
-                    idx !== paginatedClients.length - 1 && styles.rowDivider,
-                    !c.active && styles.inactiveRow,
+                    styles.cellRightMono,
+                    hasBalance ? styles.outstandingDue : styles.outstandingZero,
+                    { flex: 1.2 },
                   ]}
                 >
-                  <Text style={[styles.cellMono, { flex: 1.0 }]}>{cid}</Text>
-                  
-                  <View style={[styles.nameCol, { flex: 2.3 }]}>
-                    <Text style={styles.cellStrong}>{c.name}</Text>
-                    <Text style={styles.cellSubtext} numberOfLines={1}>
-                      {c.email || c.address || '-'}
-                    </Text>
-                  </View>
-
-                  <Text style={[styles.cell, { flex: 1.4 }]}>{c.contactNumber || '-'}</Text>
-                  <Text style={[styles.cellCenterMono, { flex: 1.0 }]}>{c.totalShipments || 0}</Text>
-                  <Text style={[styles.cellRightMono, { flex: 1.3 }]}>
-                    ₱{Number(c.totalCharges || 0).toLocaleString()}
-                  </Text>
-                  <Text style={[styles.cellRightMono, { flex: 1.1 }]}>
-                    ₱{Number(c.totalPaid || 0).toLocaleString()}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.cellRightMono,
-                      hasBalance ? styles.outstandingDue : styles.outstandingZero,
-                      { flex: 1.3 },
-                    ]}
-                  >
-                    ₱{Number(c.outstandingBalance || 0).toLocaleString()}
-                  </Text>
-
-                  <View style={[styles.actionsCell, { flex: 1.6 }]}>
-                    <Pressable
-                      onPress={() => {
-                        setClientToEdit(c);
-                        setRegisterModalVisible(true);
-                      }}
-                    >
-                      <Text style={styles.actionEdit}>Edit</Text>
-                    </Pressable>
-                    <Text style={styles.actionSep}>|</Text>
-                    <Pressable onPress={() => setClientToDelete(c)}>
-                      <Text style={styles.actionDelete}>Delete</Text>
-                    </Pressable>
-                    <Text style={styles.actionSep}>|</Text>
-                    <Pressable onPress={() => router.push(`/clients/${cid}`)}>
-                      <Text style={styles.actionView}>View</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              );
-            })}
-
-            {/* Pagination Footer matching Shipments format */}
-            <View style={styles.paginationFooter}>
-              <View style={styles.paginationInfo}>
-                <Text style={styles.paginationText}>
-                  Showing <Text style={styles.paginationTextStrong}>{paginatedClients.length}</Text> of{' '}
-                  <Text style={styles.paginationTextStrong}>{filteredClients.length}</Text> clients
-                  <Text style={styles.paginationDot}> | </Text>
-                  Page <Text style={styles.paginationTextStrong}>{currentPage}</Text> of{' '}
-                  <Text style={styles.paginationTextStrong}>{totalPages || 1}</Text>
+                  ₱{Number(c.outstandingBalance || 0).toLocaleString()}
                 </Text>
+
+                <View style={[styles.actionsCell, { flex: 1.5 }]}>
+                  <Pressable
+                    onPress={() => {
+                      setClientToEdit(c);
+                      setRegisterModalVisible(true);
+                    }}
+                  >
+                    <Text style={styles.actionEdit}>Edit</Text>
+                  </Pressable>
+                  <Text style={styles.actionSep}>|</Text>
+                  <Pressable onPress={() => setClientToDelete(c)}>
+                    <Text style={styles.actionDelete}>Delete</Text>
+                  </Pressable>
+                  <Text style={styles.actionSep}>|</Text>
+                  <Pressable onPress={() => router.push(`/clients/${cid}`)}>
+                    <Text style={styles.actionView}>View</Text>
+                  </Pressable>
+                </View>
               </View>
-
-              <View style={styles.paginationActions}>
-                {Platform.OS === 'web' ? (
-                  <View style={styles.pageSizeSelectWrap}>
-                    <select
-                      value={pageSize}
-                      onChange={(e) => setPageSize(Number(e.target.value))}
-                      style={webSelectStyle}
-                    >
-                      <option value={10}>10 / page</option>
-                      <option value={20}>20 / page</option>
-                      <option value={50}>50 / page</option>
-                    </select>
-                  </View>
-                ) : null}
-
-                <Button
-                  label="Previous"
-                  variant="secondary"
-                  disabled={currentPage <= 1 || loading}
-                  onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  style={styles.pageBtn}
-                />
-
-                <Button
-                  label="Next"
-                  variant="secondary"
-                  disabled={currentPage >= totalPages || loading}
-                  onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  style={styles.pageBtn}
-                />
-              </View>
-            </View>
-          </View>
+            );
+          })
         )}
-      </Card>
+
+        {/* Pagination Footer matching Shipments format */}
+        <View style={styles.paginationFooter}>
+          <View style={styles.paginationInfo}>
+            <Text style={styles.paginationText}>
+              Showing <Text style={styles.paginationTextStrong}>{paginatedClients.length}</Text> of{' '}
+              <Text style={styles.paginationTextStrong}>{filteredClients.length}</Text> clients
+              <Text style={styles.paginationDot}> | </Text>
+              Page <Text style={styles.paginationTextStrong}>{currentPage}</Text> of{' '}
+              <Text style={styles.paginationTextStrong}>{totalPages || 1}</Text>
+            </Text>
+          </View>
+
+          <View style={styles.paginationActions}>
+            {Platform.OS === 'web' ? (
+              <View style={styles.pageSizeSelectWrap}>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  style={webSelectStyle}
+                >
+                  <option value={10}>10 / page</option>
+                  <option value={20}>20 / page</option>
+                  <option value={50}>50 / page</option>
+                </select>
+              </View>
+            ) : null}
+
+            <Button
+              label="Previous"
+              variant="secondary"
+              disabled={currentPage <= 1 || loading}
+              onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              style={styles.pageBtn}
+            />
+
+            <Button
+              label="Next"
+              variant="secondary"
+              disabled={currentPage >= totalPages || loading}
+              onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              style={styles.pageBtn}
+            />
+          </View>
+        </View>
+      </View>
 
       {/* Register / Edit Client Modal */}
       <RegisterClientModal
@@ -389,12 +398,12 @@ export default function ClientsScreen() {
 
 const webSelectStyle = {
   fontFamily: fonts.mono,
-  fontSize: 11.5,
-  color: colors.ink,
+  fontSize: 12.5,
+  color: colors.inkSoft,
+  backgroundColor: '#FAF9F5',
   border: `1px solid ${colors.border}`,
-  backgroundColor: '#FFFFFF',
-  padding: '6px 8px',
-  borderRadius: 3,
+  borderRadius: radius.sm,
+  padding: '6px 10px',
   outline: 'none',
   cursor: 'pointer',
 };
@@ -486,7 +495,7 @@ const styles = StyleSheet.create({
   },
   pillText: {
     fontFamily: fonts.sans,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.inkSoft,
   },
@@ -508,7 +517,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontFamily: fonts.sans,
-    fontSize: 12.5,
+    fontSize: 13.5,
     color: colors.ink,
     paddingVertical: 7,
   },
@@ -521,23 +530,21 @@ const styles = StyleSheet.create({
     color: colors.inkFaint,
     fontWeight: '700',
   },
-  card: {
-    padding: 0,
-    overflow: 'hidden',
-  },
   loadingContainer: {
-    padding: spacing.xxl,
+    paddingVertical: spacing.xxl,
     alignItems: 'center',
-    gap: spacing.md,
+    justifyContent: 'center',
+    gap: spacing.sm,
   },
   loadingText: {
     fontFamily: fonts.sans,
     fontSize: 13,
-    color: colors.inkFaint,
+    color: colors.inkSoft,
   },
   emptyContainer: {
-    padding: spacing.xxl,
+    paddingVertical: spacing.xxl,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyText: {
     fontFamily: fonts.sans,
@@ -545,80 +552,129 @@ const styles = StyleSheet.create({
     color: colors.inkFaint,
   },
   table: {
-    width: '100%',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
   },
   tableHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8F7F3',
+    backgroundColor: '#FAF9F5',
     paddingHorizontal: spacing.lg,
-    paddingVertical: 10,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   headerCell: {
-    ...type.label,
-    fontSize: 10,
+    fontFamily: fonts.mono,
+    fontSize: 11.5,
+    fontWeight: '700',
     color: colors.inkFaint,
     letterSpacing: 0.8,
-    fontWeight: '700',
+    textTransform: 'uppercase',
   },
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
+    paddingVertical: 14,
+    backgroundColor: colors.surface,
   },
   rowDivider: {
     borderBottomWidth: 1,
-    borderBottomColor: '#F0EFEA',
+    borderBottomColor: colors.border,
   },
   inactiveRow: {
     backgroundColor: '#FAF9F6',
   },
   cellMono: {
     fontFamily: fonts.mono,
-    fontSize: 12.5,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.ink,
   },
   nameCol: {
-    gap: 1,
+    gap: 2,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  tierCol: {
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  vipBadge: {
+    backgroundColor: colors.warningSoft,
+    borderWidth: 1,
+    borderColor: colors.warning,
+    borderRadius: radius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+  },
+  vipBadgeText: {
+    fontFamily: fonts.mono,
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.warning,
+  },
+  regularBadge: {
+    backgroundColor: colors.canvas,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+  },
+  regularBadgeText: {
+    fontFamily: fonts.mono,
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: colors.inkFaint,
   },
   cellStrong: {
     fontFamily: fonts.sans,
-    fontSize: 12.5,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.ink,
   },
   cellSubtext: {
     fontFamily: fonts.mono,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.inkFaint,
   },
   cell: {
     fontFamily: fonts.sans,
-    fontSize: 12.5,
+    fontSize: 14,
     color: colors.ink,
   },
   cellCenterMono: {
     fontFamily: fonts.mono,
-    fontSize: 12.5,
-    fontWeight: '600',
+    fontSize: 14,
     color: colors.ink,
     textAlign: 'center',
   },
   cellRightMono: {
     fontFamily: fonts.mono,
-    fontSize: 12.5,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     color: colors.ink,
+    textAlign: 'right',
+  },
+  paidRightMono: {
+    fontFamily: fonts.mono,
+    fontSize: 14,
+    color: colors.inkSoft,
     textAlign: 'right',
   },
   outstandingDue: {
     color: colors.accent,
-    fontWeight: '700',
   },
   outstandingZero: {
     color: colors.success,
@@ -631,25 +687,25 @@ const styles = StyleSheet.create({
   },
   actionEdit: {
     fontFamily: fonts.sans,
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.ink,
   },
   actionSep: {
     fontFamily: fonts.sans,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.inkFaint,
   },
   actionDelete: {
     fontFamily: fonts.sans,
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.danger,
   },
   actionView: {
     fontFamily: fonts.sans,
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.accent,
   },
   paginationFooter: {
@@ -658,7 +714,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
-    backgroundColor: colors.canvas,
+    backgroundColor: '#FAF9F5',
     borderTopWidth: 1,
     borderTopColor: colors.border,
     flexWrap: 'wrap',
@@ -670,8 +726,8 @@ const styles = StyleSheet.create({
   },
   paginationText: {
     fontFamily: fonts.mono,
-    fontSize: 12,
-    color: colors.inkFaint,
+    fontSize: 12.5,
+    color: colors.inkSoft,
   },
   paginationTextStrong: {
     fontFamily: fonts.mono,

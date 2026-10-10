@@ -9,17 +9,12 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
+import { getRoleLabel } from '../userRoles.mjs';
 
 function generateTemporaryPassword() {
   const randomSuffix = Math.floor(1000 + Math.random() * 9000);
   return `TNL-${randomSuffix}`;
 }
-
-const ROLE_LABELS = {
-  ADMIN: 'Administrator',
-  OFFICE_STAFF: 'Office Staff',
-  FIELD_STAFF: 'Field Staff',
-};
 
 export default function ResetPasswordModal({ visible, user, onClose, onRequestConfirm, onConfirm }) {
   const [tempPassword, setTempPassword] = useState('');
@@ -107,7 +102,7 @@ export default function ResetPasswordModal({ visible, user, onClose, onRequestCo
               <Text style={styles.userMeta}>@{user.username}</Text>
             </View>
             <View style={styles.roleBadge}>
-              <Text style={styles.roleBadgeText}>{ROLE_LABELS[user.role] || user.role}</Text>
+              <Text style={styles.roleBadgeText}>{getRoleLabel(user.role)}</Text>
             </View>
           </View>
 

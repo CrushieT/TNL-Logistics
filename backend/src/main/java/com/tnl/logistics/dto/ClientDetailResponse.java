@@ -17,6 +17,9 @@ public class ClientDetailResponse {
     private String contactNumber;
     private String email;
     private ChargeModel defaultRateType;
+    private BigDecimal ratePerKilo;
+    private BigDecimal globalRatePerKilo;
+    private BigDecimal effectiveRatePerKilo;
     private Boolean active;
     private LocalDateTime dateRegistered;
 
@@ -70,6 +73,15 @@ public class ClientDetailResponse {
 
     public ChargeModel getDefaultRateType() { return defaultRateType; }
     public void setDefaultRateType(ChargeModel defaultRateType) { this.defaultRateType = defaultRateType; }
+
+    public BigDecimal getRatePerKilo() { return ratePerKilo; }
+    public void setRatePerKilo(BigDecimal ratePerKilo) { this.ratePerKilo = ratePerKilo; }
+
+    public BigDecimal getGlobalRatePerKilo() { return globalRatePerKilo; }
+    public void setGlobalRatePerKilo(BigDecimal globalRatePerKilo) { this.globalRatePerKilo = globalRatePerKilo; }
+
+    public BigDecimal getEffectiveRatePerKilo() { return effectiveRatePerKilo; }
+    public void setEffectiveRatePerKilo(BigDecimal effectiveRatePerKilo) { this.effectiveRatePerKilo = effectiveRatePerKilo; }
 
     public Boolean getActive() { return active; }
     public void setActive(Boolean active) { this.active = active; }

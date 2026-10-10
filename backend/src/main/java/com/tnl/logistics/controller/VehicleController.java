@@ -29,7 +29,7 @@ public class VehicleController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('OFFICE_STAFF', 'FIELD_STAFF', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEIVING_STAFF', 'COURIER_STAFF', 'DISPATCH_STAFF')")
     public ResponseEntity<List<VehicleResponse>> listVehicles(
             @RequestParam(name = "all", defaultValue = "false") boolean includeInactive) {
         List<VehicleResponse> responses = includeInactive
@@ -39,7 +39,7 @@ public class VehicleController {
     }
 
     @GetMapping("/{vehicleId}")
-    @PreAuthorize("hasAnyRole('OFFICE_STAFF', 'FIELD_STAFF', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEIVING_STAFF', 'COURIER_STAFF', 'DISPATCH_STAFF')")
     public ResponseEntity<VehicleResponse> getVehicleById(@PathVariable String vehicleId) {
         VehicleResponse response = vehicleService.getVehicleById(vehicleId);
         return ResponseEntity.ok(response);

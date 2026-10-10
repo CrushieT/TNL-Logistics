@@ -13,8 +13,11 @@ export const shipmentApi = {
     const { data } = await apiClient.post('/shipments', payload);
     return data;
   },
-  async getCalculationSettings(signal) {
-    const { data } = await apiClient.get('/settings/branding', { signal });
+  async getCalculationSettings(clientId, signal) {
+    const url = clientId ? '/shipments/calculation-settings' : '/settings/branding';
+    const config = { signal };
+    if (clientId) config.params = { clientId };
+    const { data } = await apiClient.get(url, config);
     return data;
   },
   async listShipments({ search, status, labelStatus, page = 0, size = 20 }, signal) {

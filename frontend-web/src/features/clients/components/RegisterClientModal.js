@@ -8,6 +8,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Platform,
+  Switch,
 } from 'react-native';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
 
@@ -27,6 +28,8 @@ export default function RegisterClientModal({ visible, clientToEdit, onClose, on
   const [email, setEmail] = useState('');
   const [defaultRateType, setDefaultRateType] = useState('FLAT');
   const [status, setStatus] = useState('Active');
+  const [clientRateEnabled, setClientRateEnabled] = useState(false);
+  const [clientRateInput, setClientRateInput] = useState('');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -39,6 +42,9 @@ export default function RegisterClientModal({ visible, clientToEdit, onClose, on
       setEmail(clientToEdit.email || '');
       setDefaultRateType(clientToEdit.defaultRateType || 'FLAT');
       setStatus(clientToEdit.active ? 'Active' : 'Inactive');
+      const hasRate = clientToEdit.ratePerKilo !== null && clientToEdit.ratePerKilo !== undefined;
+      setClientRateEnabled(hasRate);
+      setClientRateInput(hasRate ? String(clientToEdit.ratePerKilo) : '');
       setError(null);
     } else {
       setName('');
@@ -47,6 +53,8 @@ export default function RegisterClientModal({ visible, clientToEdit, onClose, on
       setEmail('');
       setDefaultRateType('FLAT');
       setStatus('Active');
+      setClientRateEnabled(false);
+      setClientRateInput('');
       setError(null);
     }
   }, [clientToEdit, visible]);
@@ -87,6 +95,19 @@ export default function RegisterClientModal({ visible, clientToEdit, onClose, on
       return;
     }
 
+    let parsedRate = null;
+    if (clientRateEnabled) {
+      parsedRate = Number(clientRateInput);
+      if (!Number.isFinite(parsedRate) || parsedRate <= 0) {
+        setError('Please enter a valid rate per kilo greater than zero.');
+        return;
+      }
+      if (parsedRate > 99999.99) {
+        setError('Client rate per kilo cannot exceed ₱99,999.99.');
+        return;
+      }
+    }
+
     try {
       setSaving(true);
       setError(null);
@@ -97,6 +118,7 @@ export default function RegisterClientModal({ visible, clientToEdit, onClose, on
         contactNumber: contactNumber.trim(),
         email: email.trim() || null,
         defaultRateType,
+        ratePerKilo: clientRateEnabled ? parsedRate : null,
         active: status === 'Active',
       };
 
@@ -276,6 +298,42 @@ export default function RegisterClientModal({ visible, clientToEdit, onClose, on
                 </View>
               </View>
             )}
+
+            {/* Client-Specific Rate Per Kilo (VIP) Section */}
+            <View style={styles.clientRateContainer}>
+              <View style={styles.clientRateHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>CLIENT-SPECIFIC RATE PER KILO (VIP)</Text>
+                  <Text style={styles.rateHelper}>
+                    Enable to assign a negotiated rate per kilo for this client.
+                  </Text>
+                </View>
+                <Switch
+                  value={clientRateEnabled}
+                  onValueChange={(enabled) => {
+                    setClientRateEnabled(enabled);
+                    if (!enabled) setClientRateInput('');
+                  }}
+                  trackColor={{ false: colors.border, true: colors.ink }}
+                />
+              </View>
+
+              {clientRateEnabled ? (
+                <View style={styles.clientRateInputRow}>
+                  <Text style={styles.currencyPrefix}>₱</Text>
+                  <TextInput
+                    style={styles.clientRateInput}
+                    placeholder="0.00"
+                    placeholderTextColor={colors.inkFaint}
+                    value={clientRateInput}
+                    onChangeText={(val) => setClientRateInput(val.replace(/[^0-9.]/g, ''))}
+                    keyboardType="decimal-pad"
+                    maxLength={10}
+                  />
+                  <Text style={styles.rateUnit}>/ kg</Text>
+                </View>
+              ) : null}
+            </View>
           </View>
 
           {/* Footer Actions */}
@@ -410,6 +468,56 @@ const styles = StyleSheet.create({
   disabledInput: {
     backgroundColor: '#EFEFEA',
     color: colors.inkSoft,
+  },
+  clientRateContainer: {
+    padding: spacing.md,
+    backgroundColor: colors.canvas,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  clientRateHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  rateHelper: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    color: colors.inkFaint,
+    marginTop: 2,
+  },
+  clientRateInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  currencyPrefix: {
+    fontFamily: fonts.mono,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  clientRateInput: {
+    flex: 1,
+    height: 38,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    fontFamily: fonts.mono,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.ink,
+    borderRadius: radius.sm,
+  },
+  rateUnit: {
+    fontFamily: fonts.mono,
+    fontSize: 12,
+    color: colors.inkFaint,
   },
   footer: {
     flexDirection: 'row',

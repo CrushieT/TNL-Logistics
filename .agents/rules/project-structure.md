@@ -1,5 +1,25 @@
 # Project Structure
 
+### Pricing parity and registration retry additions
+
+- `frontend-web/src/features/shipments/fixedPointPricing.mjs`: feature-local decimal pricing arithmetic.
+- `frontend-mobile/src/features/shipments/fixedPointPricing.mjs`: independent mobile decimal pricing arithmetic.
+- `frontend-web/tests/pricingParity.test.mjs`: identical boundary vectors against both calculators.
+- `frontend-mobile/tests/pricingParity.test.mjs`: mobile suite entry for the same parity vectors.
+- `frontend-web/tests/registrationRetry.test.mjs`: production form and screen retry regressions.
+- `.review/pricing-retry-evidence.md`: verification, scoped audit, and merge review evidence.
+
+### Mobile account-switch additions
+
+- `backend/src/main/java/com/tnl/logistics/dto/MobileLoginRequest.java`: explicit switch confirmation contract.
+- `backend/src/main/java/com/tnl/logistics/service/MobileSessionService.java`: transactional password/PIN login and binding transfer.
+- `backend/src/main/resources/db/migration/V38__version_mobile_device_sessions.sql`: per-binding session version.
+- `backend/src/test/java/com/tnl/logistics/controller/MobileBindingSwitchIntegrationTest.java`: ownership and concurrency regressions.
+- `backend/src/test/java/com/tnl/logistics/support/TestSessionTokenFactory.java`: binding-scoped test sessions.
+- `frontend-mobile/src/features/auth/services/sessionCoordinator.mjs`: session generations and serialized persistence.
+- `frontend-mobile/tests/accountSwitch.test.mjs`: stale-response and storage-failure regressions.
+- `.review/mobile-account-switch-evidence.md`: threat model and verification evidence.
+
 **TNL Logistics uses a monorepo layout with three independent codebases sharing a common backend API.**
 
 ### Complete Directory Structure
@@ -8,18 +28,16 @@
 tnl-logistics/
 ├── .agents/
 │   └── rules/
-│       ├── build-plan.md             # Master 6-Phase development roadmap & progress tracking
+│       ├── build-plan.md             # Master development roadmap & progress tracking
 │       ├── git-conventions.md        # Git workflow, branch naming & commit rules
 │       ├── hardening-plan.md         # Post-review system hardening & lifecycle remediation plan
 │       ├── karpathy-guidelines.md    # LLM coding best practices
 │       └── project-structure.md      # Project directory layout & philosophies
-├── .review/
-│   ├── admin-partial-delivery-plan.md # Deferred Admin-only partial-delivery implementation plan
-│   └── BRANCH_PLAN.md                # Three-branch punch list and progress tracker
 ├── .github/
 │   ├── pull_request_template.md      # GitHub Pull Request template
 │   ├── PR_DRAFT.md                   # Current shipping-task handoff draft
 │   └── workflows/                    # GitHub Actions CI/CD workflows
+│       ├── ci.yml                    # Monorepo CI Pipeline (Backend, Web, Mobile)
 │       ├── dependency-review.yml     # Fast PR dependency vulnerability checks
 │       └── owasp-check.yml           # Scheduled and on-demand OWASP backend vulnerability scan
 ├── backend/                          # Spring Boot API (Java 21)
@@ -36,8 +54,8 @@ tnl-logistics/
 │   │   │       ├── application.properties
 │   │   │       ├── application-dev.properties
 │   │   │       ├── application-loadtest.properties
-│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V30); V30 is retained as immutable pre-deployment history
-│   │   └── test/                        # Integration and unit test suites, including AdminConsoleAuthorizationIntegrationTest and scanner API coverage
+│   │   │       └── db/migration/        # Flyway versioned SQL migrations (V1 to V37; V36 maps identities, V37 removes account subtype/company columns and closes the role domain)
+│   │   └── test/                        # Integration and unit test suites, including FourRoleAuthorizationIntegrationTest, AdminConsoleAuthorizationIntegrationTest, and scanner API coverage
 │   └── pom.xml
 │
 ├── frontend-web/                    # Admin Web Portal (React Native Web / Expo Router)
@@ -62,7 +80,8 @@ tnl-logistics/
 │   │   │   ├── statements/
 │   │   │   │   └── print.js         # Screen 22 Dedicated isolated printable SOA document
 │   │   │   ├── waybills/            # Waybills & printable manifest
-│   │   │   │   └── index.js         # Screens 23-25 Waybill workflow & printable manifest
+│   │   │   │   ├── index.js         # Paginated admin waybill directory
+│   │   │   │   └── [id].js          # Dedicated printable waybill manifest detail
 │   │   │   ├── reports.js           # Screen 26 Operational & Financial Reports
 │   │   │   ├── reports/
 │   │   │   │   └── print.js         # Dedicated isolated printable report document
@@ -70,14 +89,16 @@ tnl-logistics/
 │   │   │   └── settings.js          # Screen 28 System Settings
 │   │   ├── components/              # Shared design system (common/ atoms, layout/ AppShell)
 │   │   ├── features/                # Domain modules
-│   │   │   ├── shipments/           # ClientSelectDropdown, registrationCalculations.mjs, PrintLabelsModal, LabelPreview, durable outbox & isolated thermal print service
+│   │   │   ├── shipments/           # ClientSelectDropdown, ParcelUnitsEditor, ShipmentPricingSummary, parcelPagination.mjs, registrationCalculations.mjs, PrintLabelsModal, LabelPreview, durable outbox & isolated thermal print service
 │   │   │   ├── reports/             # Operational & financial report cards, PrintableReportDocument, reportPrintModel.mjs
-│   │   │   └── settings/            # AdminSecurityCard, ConfirmPasswordModal, settings components
+│   │   │   ├── collections/         # SOA components, API services, pagination, and hardened two-copy statementPrintModel.mjs
+│   │   │   ├── waybills/            # Waybill table, manifest, directory helpers, API client, and two-copy print service
+│   │   │   └── settings/            # Settings components plus shared SOA bank-detail normalization and validation
 │   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sessionCore.mjs, sseClient.js, sseClientCore.mjs)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
 │   │   ├── utils/                   # Shared QR facade
 │   │   └── vendor/qrcodegen/        # Vendored Project Nayuki QR generator
-│   ├── tests/                       # Web unit suites (authSlidingSession.test.mjs, labelPrint.test.mjs, qr.test.mjs, registrationCalculations.test.mjs, reportPrint.test.mjs, sseClient.test.mjs)
+│   ├── tests/                       # Web unit suites, including waybill directory, route, and two-copy print coverage
 │   ├── assets/                      # favicon.png, tracking-logo.png
 │   ├── app.json                     # Expo web configuration
 │   ├── package.json
@@ -103,6 +124,7 @@ tnl-logistics/
 │   │   │       │   └── parcel/
 │   │   │       │       └── [trackingId].js # Screen 40 Single Parcel Details & Scan Audit Timeline
 │   │   │       ├── scan.js           # Screen 45 online-only camera QR scanner with in-memory Rapid Batch
+│   │   │       ├── waybills.js       # Hauler Staff split waybill loading, Rapid Batch manifest queue, expo-print 2-copy A4 printing, driver handover, and return scan verification
 │   │   │       ├── settings/          # Screens 53–55 Mobile Account & Security
 │   │   │       │   ├── index.js       # Screen 53 account, session, and bound-device overview
 │   │   │       │   ├── password.js    # Screen 54 in-app password rotation
@@ -113,12 +135,13 @@ tnl-logistics/
 │   │   ├── components/               # Shared UI atoms (BackButton, Keypad, PinIndicator, PressableScale, ActionCard, MetricCard, NoticeBanner, StatusModal, QRCodeGenerator, ThermalLabelPreviewModal)
 │   │   │   ├── common/
 │   │   │   └── layout/               # MobileHeader
-│   │   ├── features/                 # Domain feature slices (auth, office, field, shipments, printer, scanner, tracking-history, settings)
+│   │   ├── features/                 # Domain feature slices (auth, office, field, shipments, printer, scanner, tracking-history, waybills, settings)
 │   │   │   ├── auth/services/        # Auth API, secure storage transitions, and pure cold-launch/PIN lifecycle helpers
 │   │   │   ├── settings/             # Account/security flow helpers and reusable settings components
-│   │   │   ├── shipments/            # Shipment registration, explorer, detail screens, and barcode scanner modal
+│   │   │   ├── shipments/            # Shipment registration with ParcelUnitsEditor and parcelPagination helpers, explorer, detail screens, and barcode scanner modal
 │   │   │   ├── printer/              # Driver isolation, audit outbox, ESC/POS formatter, and serialized PrinterContext
 │   │   │   ├── scanner/              # Field camera scanner (ScanViewfinder, SingleScanReview, BatchScanPanel, ScanResultPanel, scannerFlow.mjs, trackingScanApi.js, haptics.js, hapticsCore.mjs)
+│   │   │   ├── waybills/             # Split waybill client (waybillApi.js) and 2-copy portrait A4 print generator (printWaybill.mjs)
 │   │   │   ├── tracking-history/     # Field personal scan feed, metrics, parcel summary, personal timeline, pure flow logic (trackingHistoryFlow.mjs), request coordinator (trackingHistoryRequestCoordinator.mjs), and API client (trackingHistoryApi.js)
 │   │   ├── services/
 │   │   │   ├── api/                  # Axios client plus sessionHandling.mjs retry and redaction helpers
@@ -141,6 +164,13 @@ tnl-logistics/
 ├── .gitignore                        # Root-level git ignore
 └── README.md                          # Project overview & quick start
 ```
+
+### Four-role client adoption additions
+
+- `frontend-web/src/features/users/userRoles.mjs`: explicit Admin/Receiving/Courier/Dispatch presentation metadata and role-only create/update request builders.
+- `frontend-web/tests/userRoles.test.mjs`: Admin user-management role selection, payload omission, and legacy-role rejection coverage.
+- `frontend-mobile/src/features/auth/services/roleAccess.mjs`: fail-closed mobile identity parsing, role labels, primary workflows, and direct-route capability matrix.
+- `frontend-mobile/tests/roleAccess.test.mjs`: primary routing, shared access, direct-navigation denial, and stale/unknown-role regression coverage.
 
 ### Folder Organization Philosophy
 
@@ -165,8 +195,37 @@ tnl-logistics/
 
 ### Workflow & Load Testing
 
+- Flyway migration inventory spans V1 through V35; V34 adds split-waybill membership and legacy backfill, and V35 records returned QR scans.
 - `backend/src/main/resources/application-workflow.properties` selects the isolated `tnl_workflow` database and enables the production-shaped workflow fixtures.
 - `docker-compose.workflow.yml` overrides the default Compose stack for the same isolated workflow profile.
 - `backend/src/main/resources/application-loadtest.properties` selects the isolated `tnl_loadtest` database with configurable HikariCP concurrency tuning (default pool size 10), strict Hibernate `ddl-auto=validate`, and opt-in deterministic seeder (`LoadTestDataSeeder.java`).
 - `docker-compose.loadtest.yml` spins up `mysql-loadtest` (port 3307, 512M RAM / 0.5 vCPU) and `backend-loadtest` (port 8082, 512M RAM / 0.5 vCPU with Serial GC) using `.env.loadtest`.
 - `load-tests/` provides k6 smoke, 25-user baseline, and 20-courier + 1-admin realistic hybrid simulation scripts targeting `http://localhost:8082` with JWT credential sanitization.
+
+### Combined Phases 3-4 additions
+
+- `backend/src/main/java/com/tnl/logistics/dto/WaybillGenerationRequest.java`: selected-unit generation request.
+- `backend/src/main/resources/db/migration/V34__split_waybill_manifests.sql`: split manifests and legacy backfill.
+- `backend/src/test/java/com/tnl/logistics/controller/SplitWaybillIntegrationTest.java`: split-waybill workflow tests.
+- `frontend-mobile/src/app/(main)/waybills.js`: Hauler Staff loading, handoff, printing, exact lookup, and printed-waybill QR return confirmation screen.
+- `frontend-mobile/src/features/waybills/waybillApi.js`: waybill API calls.
+- `frontend-mobile/src/features/waybills/printWaybill.mjs` and `printWaybill.test.mjs`: two-copy A4 print model and tests.
+- `frontend-mobile/src/features/waybills/waybillReturnFlow.mjs` and `frontend-mobile/tests/waybillReturn.test.mjs`: strict QR parsing and completion-unlock rules.
+- `frontend-web/src/app/waybills/index.js`: Admin waybill lookup and selected-manifest printing.
+- `backend/src/main/resources/db/migration/V35__record_waybill_return_scans.sql` and its model/repository remain for historical return-scan records; the active return-scan endpoint is retired.
+- `frontend-web/src/features/waybills/services/waybillPrint.mjs` and `waybillPrint.test.mjs`: exact-manifest two-copy A4 print model with identical return-confirmation QRs and pagination tests.
+
+### Mobile shipment-option pagination additions
+
+- `backend/src/main/java/com/tnl/logistics/dto/PageResponse.java`: stable top-level page metadata response used by mobile shipment options.
+- `backend/src/test/java/com/tnl/logistics/controller/WaybillShipmentOptionsIntegrationTest.java`: pagination, ordering, search, bounds, empty-result, and authorization coverage.
+- `frontend-mobile/src/features/waybills/shipmentOptionsFlow.mjs`: pure page merging, query normalization, end detection, and cancellable request coordination.
+- `frontend-mobile/tests/shipmentOptions.test.mjs`: regression coverage for shipment-option pagination and stale-response protection.
+
+### Mobile returned waybill option pagination additions
+
+- `backend/src/main/java/com/tnl/logistics/dto/WaybillOptionResponse.java`: lightweight projection for returned waybill options (waybill ID, shipment ID, parcel count, status, status label, generated timestamp).
+- `frontend-mobile/src/features/waybills/waybillOptionsFlow.mjs`: pure option parameter construction, page merging, recommendation bounds, and cancellable request coordination.
+- `frontend-mobile/tests/waybillOptions.test.mjs`: unit tests for returned waybill pagination, recommendation capping, and cancellation.
+
+Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. The final account entity and DTOs expose role-only identities. `.review/four-role-ship-3-evidence.md` retains the baseline capability trace, company-column removal evidence, migration controls, and final verification reports.

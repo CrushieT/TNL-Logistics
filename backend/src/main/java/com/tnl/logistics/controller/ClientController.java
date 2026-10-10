@@ -2,6 +2,7 @@ package com.tnl.logistics.controller;
 
 import com.tnl.logistics.dto.ClientCreateRequest;
 import com.tnl.logistics.dto.ClientDetailResponse;
+import com.tnl.logistics.dto.ClientRatePerKiloRequest;
 import com.tnl.logistics.dto.ClientSummaryResponse;
 import com.tnl.logistics.service.ClientService;
 import jakarta.validation.Valid;
@@ -25,7 +26,7 @@ public class ClientController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEIVING_STAFF')")
     public ResponseEntity<?> getClients(
             @RequestParam(value = "page", required = false) Integer page,
             @RequestParam(value = "size", required = false) Integer size,
@@ -48,7 +49,7 @@ public class ClientController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEIVING_STAFF')")
     public ResponseEntity<ClientSummaryResponse> createClient(@Valid @RequestBody ClientCreateRequest request) {
         return ResponseEntity.ok(clientService.createClient(request));
     }
@@ -59,6 +60,15 @@ public class ClientController {
             @PathVariable("id") String id,
             @Valid @RequestBody ClientCreateRequest request) {
         return ResponseEntity.ok(clientService.updateClient(id, request));
+    }
+
+    @PutMapping("/{id}/rate-per-kilo")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> updateRatePerKilo(
+            @PathVariable("id") String id,
+            @Valid @RequestBody ClientRatePerKiloRequest request) {
+        clientService.updateRatePerKilo(id, request.getRatePerKilo());
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{id}")

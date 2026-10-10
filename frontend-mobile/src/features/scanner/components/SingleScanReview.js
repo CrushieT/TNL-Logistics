@@ -15,13 +15,13 @@ export default function SingleScanReview({
   onCancel,
   isSubmitting,
   isOnline,
-  staffType
+  role
 }) {
   if (!context) return null;
 
   const isVehicleRequired = Boolean(context.requiresVehicle);
-  const permission = getSingleScanPermission(context, staffType);
-  const canConfirm = canSubmitSingle(context, selectedVehicleId, staffType) && !isSubmitting && isOnline;
+  const permission = getSingleScanPermission(context, role);
+  const canConfirm = canSubmitSingle(context, selectedVehicleId, role) && !isSubmitting && isOnline;
 
   return (
     <View style={styles.container}>

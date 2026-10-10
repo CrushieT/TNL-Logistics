@@ -4,6 +4,10 @@ import com.tnl.logistics.config.JwtTokenProvider;
 import com.tnl.logistics.dto.FirstBootAdminRequest;
 import com.tnl.logistics.dto.FirstBootStatusResponse;
 import com.tnl.logistics.dto.LoginRequest;
+import com.tnl.logistics.dto.MobileLoginRequest;
+import com.tnl.logistics.service.MobileSessionService;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import com.tnl.logistics.dto.LoginResponse;
 import com.tnl.logistics.dto.MobilePinLoginRequest;
 import com.tnl.logistics.dto.MobilePinSetupRequest;
@@ -33,16 +37,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
-import java.time.LocalDateTime;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Controller handling authentication endpoints (Login and Password Change).
@@ -52,7 +49,6 @@ import java.util.UUID;
 public class AuthController {
 
     private static final Logger securityAuditLog = LoggerFactory.getLogger("SECURITY_AUDIT");
-    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final AppUserRepository appUserRepository;
     private final BCryptPasswordEncoder passwordEncoder;
@@ -61,6 +57,7 @@ public class AuthController {
     private final SseService sseService;
     private final MobileDeviceBindingRepository mobileDeviceBindingRepository;
     private final AuthSecurityService authSecurityService;
+    private final MobileSessionService mobileSessionService;
 
     public AuthController(
             AppUserRepository appUserRepository,
@@ -69,7 +66,8 @@ public class AuthController {
             SystemSettingRepository systemSettingRepository,
             SseService sseService,
             MobileDeviceBindingRepository mobileDeviceBindingRepository,
-            AuthSecurityService authSecurityService) {
+            AuthSecurityService authSecurityService,
+            MobileSessionService mobileSessionService) {
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
         this.rateLimiterService = rateLimiterService;
@@ -77,25 +75,7 @@ public class AuthController {
         this.sseService = sseService;
         this.mobileDeviceBindingRepository = mobileDeviceBindingRepository;
         this.authSecurityService = authSecurityService;
-    }
-
-    private String generateSecureDeviceToken() {
-        byte[] bytes = new byte[32];
-        SECURE_RANDOM.nextBytes(bytes);
-        return HexFormat.of().formatHex(bytes);
-    }
-
-    private String hashDeviceToken(String deviceToken) {
-        if (deviceToken == null || deviceToken.isBlank()) {
-            return "";
-        }
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(deviceToken.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 algorithm unavailable", e);
-        }
+        this.mobileSessionService = mobileSessionService;
     }
 
     private boolean isRateLimited(String... keys) {
@@ -184,7 +164,7 @@ public class AuthController {
     }
 
     @PostMapping("/mobile-login")
-    public ResponseEntity<?> mobileLogin(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
+    public ResponseEntity<?> mobileLogin(@Valid @RequestBody MobileLoginRequest request, HttpServletRequest servletRequest) {
         String clientIp = extractClientIp(servletRequest);
         String endpointIpKey = "ep:mobile-login:" + clientIp;
 
@@ -226,69 +206,35 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(Map.of("message", "Administrator accounts are restricted to the Web Portal."));
         }
+        if (user.getRole() == null || !user.getRole().isMobileStaffRole()) {
+            securityAuditLog.warn("AUTH_LOGIN_FAILURE userId={} role={} device=- ip={} reason=ROLE_NOT_SUPPORTED",
+                    user.getUserId(), user.getRole(), clientIp);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Account role is not supported. Contact an administrator."));
+        }
 
         recordRateLimitSuccess(endpointIpKey);
 
-        boolean hasPin = user.getPinHash() != null && !user.getPinHash().isBlank();
-        if (Boolean.TRUE.equals(user.getMustChangePassword())) {
-            securityAuditLog.info("AUTH_LOGIN_PASSWORD_CHANGE_REQUIRED userId={} role={} device=- ip={} reason=PASSWORD_CHANGE_REQUIRED",
-                    user.getUserId(), user.getRole(), clientIp);
-
-            String token = JwtTokenProvider.generateToken(user.getUserId(), user.getRole().name(), user.getTokenVersion());
-            return ResponseEntity.ok(new LoginResponse(
-                    token,
-                    user.getUserId(),
-                    user.getUsername(),
-                    user.getFullName(),
-                    user.getRole().name(),
-                    true,
-                    hasPin
-            ));
+        try {
+            LoginResponse response = mobileSessionService.loginWithPassword(user.getUserId(), request.getPassword(),
+                    servletRequest.getHeader("X-Device-Id"), servletRequest.getHeader("X-Device-Token"),
+                    request.isConfirmDeviceSwitch());
+            securityAuditLog.info("AUTH_LOGIN_SUCCESS userId={} role={} device={} ip={} reason={}",
+                    user.getUserId(), user.getRole(), authSecurityService.maskDeviceId(response.getDeviceId()), clientIp,
+                    request.isConfirmDeviceSwitch() ? "CONFIRMED_SWITCH" : "SUCCESS");
+            return ResponseEntity.ok(response);
+        } catch (AuthSecurityException exception) {
+            securityAuditLog.warn("AUTH_LOGIN_FAILURE userId={} role={} device=- ip={} reason={}",
+                    user.getUserId(), user.getRole(), clientIp, exception.getCode());
+            return authSecurityErrorResponse(exception);
+        } catch (DataIntegrityViolationException | PessimisticLockingFailureException exception) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("code", "DEVICE_BINDING_CHANGED",
+                    "message", "Device binding changed. Sign in again."));
         }
-
-        String deviceId = servletRequest.getHeader("X-Device-Id");
-        if (deviceId == null || deviceId.isBlank()) {
-            deviceId = UUID.randomUUID().toString();
-        } else if (!authSecurityService.isValidDeviceId(deviceId)) {
-            return invalidDeviceCredentialsResponse();
-        }
-
-        String rawDeviceToken = generateSecureDeviceToken();
-        String deviceTokenHash = hashDeviceToken(rawDeviceToken);
-
-        MobileDeviceBinding binding = mobileDeviceBindingRepository.findByDeviceId(deviceId).orElse(null);
-        if (binding == null) {
-            binding = new MobileDeviceBinding(deviceId, user.getUserId(), deviceTokenHash);
-        } else {
-            binding.setUserId(user.getUserId());
-            binding.setDeviceTokenHash(deviceTokenHash);
-            binding.setActive(true);
-        }
-        binding.setLastAuthenticatedAt(LocalDateTime.now());
-        mobileDeviceBindingRepository.save(binding);
-
-        securityAuditLog.info("AUTH_LOGIN_SUCCESS userId={} role={} device={} ip={} reason=SUCCESS",
-                user.getUserId(), user.getRole(), authSecurityService.maskDeviceId(deviceId), clientIp);
-
-        String token = JwtTokenProvider.generateToken(user.getUserId(), user.getRole().name(), user.getTokenVersion());
-
-        LoginResponse response = new LoginResponse(
-                token,
-                user.getUserId(),
-                user.getUsername(),
-                user.getFullName(),
-                user.getRole().name(),
-                user.getMustChangePassword(),
-                hasPin,
-                deviceId,
-                rawDeviceToken
-        );
-
-        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/mobile-setup-pin")
-    @PreAuthorize("hasAnyRole('FIELD_STAFF', 'OFFICE_STAFF')")
+    @PreAuthorize("hasAnyRole('RECEIVING_STAFF', 'COURIER_STAFF', 'DISPATCH_STAFF')")
     public ResponseEntity<?> mobileSetupPin(
             @Valid @RequestBody MobilePinSetupRequest request,
             @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
@@ -306,8 +252,8 @@ public class AuthController {
                     deviceId,
                     deviceToken,
                     extractClientIp(servletRequest));
-            String newToken = JwtTokenProvider.generateToken(
-                    result.userId(), result.role(), result.tokenVersion());
+            String newToken = JwtTokenProvider.replaceSessionToken(
+                    bearerToken, result.userId(), result.role(), result.tokenVersion());
             return ResponseEntity.ok(Map.of(
                     "message", "PIN updated successfully",
                     "hasPinSet", true,
@@ -360,7 +306,8 @@ public class AuthController {
 
         AppUser target = appUserRepository.findByUsername(normalized).orElse(null);
         if (target == null || !Boolean.TRUE.equals(target.getActive())
-                || target.getRole() == UserRole.ADMIN
+                || target.getRole() == null
+                || !target.getRole().isMobileStaffRole()
                 || !binding.getUserId().equals(target.getUserId())) {
             recordRateLimitFailure(endpointIpKey);
             securityAuditLog.warn("PIN_LOGIN_FAILURE userId=- role=- device={} ip={} reason=INVALID_DEVICE_CREDENTIALS",
@@ -409,27 +356,18 @@ public class AuthController {
 
         recordRateLimitSuccess(endpointIpKey, accountKey, deviceKey);
 
-        binding.setLastAuthenticatedAt(LocalDateTime.now());
-        mobileDeviceBindingRepository.save(binding);
-
-        securityAuditLog.info("PIN_LOGIN_SUCCESS userId={} role={} device={} ip={} reason=SUCCESS",
-                target.getUserId(), target.getRole(), authSecurityService.maskDeviceId(request.getDeviceId()), clientIp);
-
-        String token = JwtTokenProvider.generateToken(target.getUserId(), target.getRole().name(), target.getTokenVersion());
-
-        LoginResponse response = new LoginResponse(
-                token,
-                target.getUserId(),
-                target.getUsername(),
-                target.getFullName(),
-                target.getRole().name(),
-                target.getMustChangePassword(),
-                true,
-                request.getDeviceId(),
-                request.getDeviceToken()
-        );
-
-        return ResponseEntity.ok(response);
+        try {
+            LoginResponse response = mobileSessionService.loginWithPin(target.getUserId(), request.getPin(),
+                    request.getDeviceId(), request.getDeviceToken());
+            securityAuditLog.info("PIN_LOGIN_SUCCESS userId={} role={} device={} ip={} reason=SUCCESS",
+                    target.getUserId(), target.getRole(), authSecurityService.maskDeviceId(request.getDeviceId()), clientIp);
+            return ResponseEntity.ok(response);
+        } catch (AuthSecurityException exception) {
+            return authSecurityErrorResponse(exception);
+        } catch (PessimisticLockingFailureException exception) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("code", "DEVICE_BINDING_CHANGED",
+                    "message", "Device binding changed. Sign in again."));
+        }
     }
 
     @GetMapping("/mobile-pin-status")
@@ -480,7 +418,8 @@ public class AuthController {
         }
 
         AppUser user = appUserRepository.findByUsername(normalized).orElse(null);
-        if (user == null || !Boolean.TRUE.equals(user.getActive()) || user.getRole() == UserRole.ADMIN
+        if (user == null || !Boolean.TRUE.equals(user.getActive()) || user.getRole() == null
+                || !user.getRole().isMobileStaffRole()
                 || !binding.getUserId().equals(user.getUserId())) {
             recordRateLimitFailure(endpointIpKey);
             return ResponseEntity.ok(Map.of(
@@ -549,8 +488,8 @@ public class AuthController {
                     request.getOldPassword(),
                     request.getNewPassword(),
                     extractClientIp(servletRequest));
-            String newToken = JwtTokenProvider.generateToken(
-                    result.userId(), result.role(), result.tokenVersion());
+            String newToken = JwtTokenProvider.replaceSessionToken(
+                    bearerToken, result.userId(), result.role(), result.tokenVersion());
 
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("message", "Password updated successfully");
@@ -642,7 +581,7 @@ public class AuthController {
     }
 
     @PostMapping("/mobile-unbind")
-    @PreAuthorize("hasAnyRole('FIELD_STAFF', 'OFFICE_STAFF')")
+    @PreAuthorize("hasAnyRole('RECEIVING_STAFF', 'COURIER_STAFF', 'DISPATCH_STAFF')")
     public ResponseEntity<?> unbindCurrentDevice(
             @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
             @RequestHeader(value = "X-Device-Token", required = false) String deviceToken,
@@ -701,9 +640,7 @@ public class AuthController {
                 normalizedUsername,
                 passwordEncoder.encode(request.getPassword()),
                 request.getFullName().trim(),
-                UserRole.ADMIN,
-                null,
-                null
+                UserRole.ADMIN
         );
         adminUser.setActive(true);
         adminUser.setMustChangePassword(false);

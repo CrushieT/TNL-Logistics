@@ -74,3 +74,8 @@ frontend-mobile/credentials.json
 frontend-mobile/*.jks
 frontend-mobile/*.keystore
 frontend-mobile/credentials
+
+# --- Simulation & Heavy Benchmark Artifacts ---
+docker-compose.sim.yml
+load-tests/heavy-simulation.js
+load-tests/breakpoint-simulation.js

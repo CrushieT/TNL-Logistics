@@ -163,6 +163,7 @@ export default function RootLayout() {
           <Stack.Screen name="settings" />
           <Stack.Screen name="vehicles" />
           <Stack.Screen name="waybills/index" />
+          <Stack.Screen name="waybills/[id]" />
           <Stack.Screen name="+not-found" options={{ title: 'Page Not Found' }} />
         </Stack.Protected>
       </Stack>

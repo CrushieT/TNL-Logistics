@@ -1,50 +1,28 @@
+import { calculateFixedMetrics, calculateParcelTotals, parsePositiveDecimal } from './fixedPointPricing.mjs';
+
 const MAX_QUANTITY = 1000;
+const unavailableMetrics = () => ({
+  unitVolume: null, totalVolume: null, actualWeight: null,
+  volumetricWeight: null, billableWeight: null, shippingFee: null,
+});
 
-function parsePositiveNumber(value) {
-  const number = Number(value);
-  return Number.isFinite(number) && number > 0 ? number : null;
-}
+export function calculateShipmentMetrics(input, volumetricDivisor, ratePerKilo = null) {
+  if (!input) return unavailableMetrics();
+  if (Array.isArray(input.parcels) && input.parcels.length > 0) {
+    const totals = calculateParcelTotals(input.parcels);
+    if (!totals) return unavailableMetrics();
+    return calculateFixedMetrics(totals.actualUnits, totals.volumeUnits, volumetricDivisor, ratePerKilo, input.parcels.length, true);
+  }
 
-export function calculateShipmentMetrics({
-  quantity,
-  weightPerUnit,
-  lengthCm,
-  widthCm,
-  heightCm,
-}, volumetricDivisor) {
-  const parsedQuantity = /^\d+$/.test(String(quantity).trim())
-    && Number(quantity) >= 1
-    && Number(quantity) <= MAX_QUANTITY
-    ? Number(quantity)
-    : null;
-  const parsedWeight = parsePositiveNumber(weightPerUnit);
-  const parsedLength = parsePositiveNumber(lengthCm);
-  const parsedWidth = parsePositiveNumber(widthCm);
-  const parsedHeight = parsePositiveNumber(heightCm);
-  const hasDimensions = parsedLength !== null && parsedWidth !== null && parsedHeight !== null;
-
-  const unitVolumeCm3 = hasDimensions
-    ? parsedLength * parsedWidth * parsedHeight
-    : null;
-  const totalVolumeCm3 = unitVolumeCm3 !== null && parsedQuantity !== null
-    ? unitVolumeCm3 * parsedQuantity
-    : null;
-  const actualWeight = parsedWeight !== null && parsedQuantity !== null
-    ? parsedWeight * parsedQuantity
-    : null;
-  const volumetricWeight = totalVolumeCm3 !== null
-    && Number.isFinite(volumetricDivisor)
-    && volumetricDivisor > 0
-    ? Math.round((totalVolumeCm3 / volumetricDivisor + Number.EPSILON) * 100) / 100
-    : null;
-
-  return {
-    unitVolume: unitVolumeCm3 === null ? null : unitVolumeCm3 / 1000000,
-    totalVolume: totalVolumeCm3 === null ? null : totalVolumeCm3 / 1000000,
-    actualWeight,
-    volumetricWeight,
-    billableWeight: actualWeight === null || volumetricWeight === null
-      ? null
-      : Math.max(actualWeight, volumetricWeight),
-  };
+  const quantity = /^\d+$/.test(String(input.quantity || '').trim())
+    && Number(input.quantity) >= 1 && Number(input.quantity) <= MAX_QUANTITY
+    ? Number(input.quantity) : null;
+  const weight = parsePositiveDecimal(input.weightPerUnit);
+  const dimensions = [input.lengthCm, input.widthCm, input.heightCm].map(parsePositiveDecimal);
+  const unitVolume = dimensions.includes(null) ? null : dimensions.reduce((product, dimension) => product * dimension, 1n);
+  const totalVolume = unitVolume === null || quantity === null ? null : unitVolume * BigInt(quantity);
+  const actualWeight = weight === null || quantity === null ? null : weight * BigInt(quantity);
+  const metrics = calculateFixedMetrics(actualWeight, totalVolume,
+    Number.isFinite(volumetricDivisor) ? volumetricDivisor : null, ratePerKilo, quantity);
+  return { ...metrics, unitVolume: unitVolume === null ? null : Number(unitVolume) / 1e18 };
 }

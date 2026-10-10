@@ -14,6 +14,8 @@ public interface ShipmentService {
 
     ShipmentResponse registerShipment(ShipmentRegistrationRequest request, String actingStaffUserId);
 
+    ShipmentCalculationSettingsResponse getCalculationSettings(String clientId);
+
     Page<ShipmentSummaryResponse> getShipments(String search, String status, String paymentStatus, String vehicleId, String labelStatus, Pageable pageable);
 
     default Page<ShipmentSummaryResponse> getShipments(String search, String status, String paymentStatus, String vehicleId, Pageable pageable) {

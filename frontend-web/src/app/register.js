@@ -1,10 +1,17 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import AppShell from '../components/layout/AppShell';
 import PageHeader from '../components/layout/PageHeader';
 import Toast from '../components/common/Toast';
-import { ShipmentForm, ShipmentResultView, PrintLabelsModal, getShipment, registerShipment } from '../features/shipments';
+import {
+  ShipmentForm,
+  ShipmentResultView,
+  PrintLabelsModal,
+  getShipment,
+  getShipmentCalculationSettings,
+  registerShipment,
+} from '../features/shipments';
 import { listClients, createClient } from '../features/clients';
 import { getCompanyBranding } from '../features/settings';
 import { colors, fonts, spacing, radius } from '../theme';
@@ -13,14 +20,17 @@ export default function RegisterShipmentScreen() {
   const router = useRouter();
   const [clients, setClients] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const submissionInFlight = useRef(false);
   const [result, setResult] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
   const [detailLoadError, setDetailLoadError] = useState(null);
   const [volumetricDivisor, setVolumetricDivisor] = useState(null);
+  const [ratePerKilo, setRatePerKilo] = useState(null);
   const [calculationSettingsState, setCalculationSettingsState] = useState('loading');
   const [calculationSettingsAttempt, setCalculationSettingsAttempt] = useState(0);
+  const [pricingClientId, setPricingClientId] = useState(null);
 
   const loadCanonicalResult = useCallback(async (shipmentId) => {
     setDetailLoadError(null);
@@ -38,20 +48,31 @@ export default function RegisterShipmentScreen() {
     let isMounted = true;
     setCalculationSettingsState('loading');
 
-    getCompanyBranding(calculationSettingsAttempt > 0)
+    const calculationSettingsRequest = pricingClientId
+      ? getShipmentCalculationSettings(pricingClientId)
+      : getCompanyBranding(calculationSettingsAttempt > 0);
+
+    calculationSettingsRequest
       .then((settings) => {
         const divisor = Number(settings?.volumetricDivisor);
         if (!Number.isFinite(divisor) || divisor <= 0) {
           throw new Error('Invalid volumetric divisor');
         }
+        const rate = settings?.ratePerKilo != null ? Number(settings.ratePerKilo) : null;
         if (isMounted) {
           setVolumetricDivisor(divisor);
-          setCalculationSettingsState('ready');
+          setRatePerKilo(Number.isFinite(rate) && rate > 0 ? rate : null);
+          if (!Number.isFinite(rate) || rate <= 0) {
+            setCalculationSettingsState('unconfigured');
+          } else {
+            setCalculationSettingsState('ready');
+          }
         }
       })
       .catch(() => {
         if (isMounted) {
           setVolumetricDivisor(null);
+          setRatePerKilo(null);
           setCalculationSettingsState('error');
         }
       });
@@ -59,7 +80,7 @@ export default function RegisterShipmentScreen() {
     return () => {
       isMounted = false;
     };
-  }, [calculationSettingsAttempt]);
+  }, [calculationSettingsAttempt, pricingClientId]);
 
   // Load active clients from backend GET /api/v1/clients?active=true
   useEffect(() => {
@@ -87,7 +108,9 @@ export default function RegisterShipmentScreen() {
     };
   }, []);
 
-  const handleSubmit = useCallback(async (payload) => {
+  const handleSubmit = useCallback(async (payload, onClientCreated) => {
+    if (submissionInFlight.current) return;
+    submissionInFlight.current = true;
     setSubmitting(true);
     setErrorMessage(null);
 
@@ -102,7 +125,8 @@ export default function RegisterShipmentScreen() {
         finalClientName = createdClient.name;
 
         // Permanently add the newly registered client to state for dropdown reusability
-        setClients((prev) => [...prev, createdClient]);
+        setClients((prev) => prev.some((client) => client.id === createdClient.id) ? prev : [...prev, createdClient]);
+        onClientCreated?.(createdClient);
       } else {
         const clientRecord = clients.find((c) => c.id === payload.clientId);
         finalClientName = clientRecord?.name || 'Northbridge Trading';
@@ -123,7 +147,19 @@ export default function RegisterShipmentScreen() {
 
       // Extract accurate server or network error message
       let msg = 'Failed to register shipment.';
-      if (err.response?.data?.message) {
+      if (err.response?.status === 409) {
+        const errCode = err.response?.data?.code;
+        if (errCode === 'STALE_SETTINGS' || err.response?.data?.message?.includes('STALE_SETTINGS')) {
+          setCalculationSettingsState('loading');
+          setCalculationSettingsAttempt((prev) => prev + 1);
+          msg = 'Calculation settings were updated on the server. Rates have been refreshed. Please review the updated amounts and submit again.';
+        } else if (errCode === 'RATE_PER_KILO_NOT_CONFIGURED' || err.response?.data?.message?.includes('RATE_PER_KILO_NOT_CONFIGURED')) {
+          setCalculationSettingsState('unconfigured');
+          msg = 'Rate per kilo is not configured. An administrator must set the rate per kilo in Settings before shipments can be registered.';
+        } else if (err.response?.data?.message) {
+          msg = err.response.data.message;
+        }
+      } else if (err.response?.data?.message) {
         msg = err.response.data.message;
       } else if (err.response?.data?.errors) {
         const errList = Object.values(err.response.data.errors).join(', ');
@@ -138,6 +174,7 @@ export default function RegisterShipmentScreen() {
 
       setErrorMessage(msg);
     } finally {
+      submissionInFlight.current = false;
       setSubmitting(false);
     }
   }, [clients, loadCanonicalResult]);
@@ -206,7 +243,9 @@ export default function RegisterShipmentScreen() {
         onSubmit={handleSubmit}
         submitting={submitting}
         volumetricDivisor={volumetricDivisor}
+        ratePerKilo={ratePerKilo}
         calculationSettingsState={calculationSettingsState}
+        onPricingClientChange={setPricingClientId}
         onRetryCalculationSettings={() => setCalculationSettingsAttempt((attempt) => attempt + 1)}
       />
     </AppShell>

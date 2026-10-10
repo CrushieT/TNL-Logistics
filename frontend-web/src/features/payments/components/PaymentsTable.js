@@ -227,12 +227,12 @@ export default function PaymentsTable({
 
 const webPageSizeStyle = {
   fontFamily: fonts.mono,
-  fontSize: 11.5,
+  fontSize: 12.5,
   color: colors.inkSoft,
   backgroundColor: '#FAF9F5',
   border: `1px solid ${colors.border}`,
   borderRadius: radius.sm,
-  padding: '5px 8px',
+  padding: '6px 10px',
   outline: 'none',
   cursor: 'pointer',
 };
@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
   },
   headerCell: {
     fontFamily: fonts.mono,
-    fontSize: 10.5,
+    fontSize: 11.5,
     fontWeight: '700',
     color: colors.inkFaint,
     letterSpacing: 0.8,
@@ -284,35 +284,35 @@ const styles = StyleSheet.create({
   },
   shipmentId: {
     fontFamily: fonts.mono,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.ink,
   },
   clientName: {
     fontFamily: fonts.sans,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.ink,
   },
   qtyText: {
     fontFamily: fonts.mono,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.ink,
   },
   amountDueText: {
     fontFamily: fonts.mono,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.ink,
   },
   paidText: {
     fontFamily: fonts.mono,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.inkSoft,
   },
   balanceText: {
     fontFamily: fonts.mono,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.ink,
   },
@@ -324,7 +324,7 @@ const styles = StyleSheet.create({
   },
   settledText: {
     fontFamily: fonts.sans,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.inkFaint,
     fontWeight: '500',
   },
@@ -362,7 +362,7 @@ const styles = StyleSheet.create({
   },
   viewActionText: {
     fontFamily: fonts.sans,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.ink,
   },
@@ -383,7 +383,7 @@ const styles = StyleSheet.create({
   },
   recordActionText: {
     fontFamily: fonts.sans,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: '#C2410C',
   },
@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
   },
   paginationText: {
     fontFamily: fonts.mono,
-    fontSize: 11.5,
+    fontSize: 12.5,
     color: colors.inkSoft,
   },
   paginationStrong: {

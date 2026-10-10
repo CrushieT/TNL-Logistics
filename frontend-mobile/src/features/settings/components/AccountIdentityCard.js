@@ -19,12 +19,6 @@ export function AccountIdentityCard({ account }) {
           <Text style={styles.metaLabel}>ROLE</Text>
           <Text style={styles.metaValue}>{account.role}</Text>
         </View>
-        {account.staffType && (
-          <View style={styles.metaRow}>
-            <Text style={styles.metaLabel}>STAFF TYPE</Text>
-            <Text style={styles.metaValue}>{account.staffType}</Text>
-          </View>
-        )}
       </View>
     </View>
   );

@@ -1,4 +1,5 @@
 import apiClient from '../../../services/api/client';
+import { buildCreateUserRequest, buildUpdateUserRequest } from '../userRoles.mjs';
 
 /**
  * Users / Staff Management API Client
@@ -14,12 +15,12 @@ export async function getUser(userId) {
 }
 
 export async function createUser(payload) {
-  const { data } = await apiClient.post('/users', payload);
+  const { data } = await apiClient.post('/users', buildCreateUserRequest(payload));
   return data;
 }
 
 export async function updateUser(userId, payload) {
-  const { data } = await apiClient.put(`/users/${userId}`, payload);
+  const { data } = await apiClient.put(`/users/${userId}`, buildUpdateUserRequest(payload));
   return data;
 }
 

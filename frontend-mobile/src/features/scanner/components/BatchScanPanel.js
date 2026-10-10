@@ -18,11 +18,11 @@ export default function BatchScanPanel({
   onSubmit,
   isSubmitting,
   isOnline,
-  staffType
+  role
 }) {
-  const allowedOperations = getAllowedBatchOperations(staffType);
+  const allowedOperations = getAllowedBatchOperations(role);
   const isVehicleRequired = operation === 'LOADED_ON_TRUCK';
-  const canSubmit = canSubmitBatch(queue, operation, selectedVehicleId, staffType) && !isSubmitting && isOnline;
+  const canSubmit = canSubmitBatch(queue, operation, selectedVehicleId, role) && !isSubmitting && isOnline;
 
   const renderQueueItem = ({ item, index }) => (
     <View style={styles.queueItemRow}>
@@ -62,7 +62,7 @@ export default function BatchScanPanel({
           })}
         </View>
         {allowedOperations.length === 0 && (
-          <Text style={styles.permissionMessage}>No Rapid Batch operations are permitted for this staff type.</Text>
+          <Text style={styles.permissionMessage}>No Rapid Batch operations are permitted for this role.</Text>
         )}
       </View>
 

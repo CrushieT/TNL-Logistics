@@ -14,16 +14,12 @@ export function deriveInitials(fullName, username) {
 
 export function formatRole(role) {
   const knownRoles = {
-    FIELD_STAFF: 'FIELD STAFF',
-    OFFICE_STAFF: 'OFFICE STAFF',
+    RECEIVING_STAFF: 'RECEIVING STAFF',
+    COURIER_STAFF: 'COURIER STAFF',
+    DISPATCH_STAFF: 'DISPATCH STAFF',
     ADMIN: 'ADMINISTRATOR',
   };
   return knownRoles[role] || 'ROLE UNAVAILABLE';
-}
-
-export function formatStaffType(staffType) {
-  if (typeof staffType !== 'string' || !staffType.trim()) return 'UNAVAILABLE';
-  return staffType.trim().replace(/_/g, ' ');
 }
 
 export function maskDeviceId(deviceId) {
@@ -62,7 +58,6 @@ export function resolveAccountDisplay(profile, authState = {}) {
     username: username ? `@${username}` : MISSING_VALUE,
     userId: source.userId || MISSING_VALUE,
     role: formatRole(source.role),
-    staffType: source.staffType ? formatStaffType(source.staffType) : null,
     isUnlocked: Boolean(authState.isAuthenticated && !authState.isLocked),
     hasPinSet: source.hasPinSet === true,
     deviceBinding: source.deviceBinding?.active === true ? source.deviceBinding : null,

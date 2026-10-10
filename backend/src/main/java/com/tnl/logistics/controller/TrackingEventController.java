@@ -29,7 +29,7 @@ public class TrackingEventController {
     }
 
     @GetMapping("/scan-context/{trackingId}")
-    @PreAuthorize("hasRole('FIELD_STAFF')")
+    @PreAuthorize("hasAnyRole('COURIER_STAFF', 'DISPATCH_STAFF')")
     public ResponseEntity<TrackingScanContextResponse> getScanContext(
             @PathVariable String trackingId,
             Authentication authentication) {
@@ -41,7 +41,7 @@ public class TrackingEventController {
     }
 
     @GetMapping("/mine")
-    @PreAuthorize("hasRole('FIELD_STAFF')")
+    @PreAuthorize("hasAnyRole('COURIER_STAFF', 'DISPATCH_STAFF')")
     public ResponseEntity<Page<PersonalTrackingEventResponse>> getPersonalTrackingEvents(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) ParcelStatus status,
@@ -62,7 +62,7 @@ public class TrackingEventController {
     }
 
     @GetMapping("/mine/metrics")
-    @PreAuthorize("hasRole('FIELD_STAFF')")
+    @PreAuthorize("hasAnyRole('COURIER_STAFF', 'DISPATCH_STAFF')")
     public ResponseEntity<PersonalScanMetricsResponse> getPersonalScanMetrics(
             Authentication authentication) {
         if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
@@ -74,7 +74,7 @@ public class TrackingEventController {
     }
 
     @GetMapping("/mine/parcels/{trackingId}")
-    @PreAuthorize("hasRole('FIELD_STAFF')")
+    @PreAuthorize("hasAnyRole('COURIER_STAFF', 'DISPATCH_STAFF')")
     public ResponseEntity<PersonalParcelHistoryResponse> getPersonalParcelHistory(
             @PathVariable String trackingId,
             Authentication authentication) {
@@ -88,7 +88,7 @@ public class TrackingEventController {
     }
 
     @PostMapping("/scan")
-    @PreAuthorize("hasAnyRole('OFFICE_STAFF', 'FIELD_STAFF', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEIVING_STAFF', 'COURIER_STAFF', 'DISPATCH_STAFF')")
     public ResponseEntity<TrackingScanResponse> scanParcelStatus(
             @Valid @RequestBody TrackingScanRequest request,
             Authentication authentication) {
@@ -101,7 +101,7 @@ public class TrackingEventController {
     }
 
     @PostMapping("/batch-scan")
-    @PreAuthorize("hasAnyRole('OFFICE_STAFF', 'FIELD_STAFF', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEIVING_STAFF', 'COURIER_STAFF', 'DISPATCH_STAFF')")
     public ResponseEntity<List<TrackingScanResponse>> batchScanParcelStatus(
             @Valid @RequestBody BatchTrackingScanRequest request,
             Authentication authentication) {

@@ -10,7 +10,6 @@ import com.tnl.logistics.model.Payment;
 import com.tnl.logistics.model.PaymentMethod;
 import com.tnl.logistics.model.RegisteredVia;
 import com.tnl.logistics.model.Shipment;
-import com.tnl.logistics.model.StaffType;
 import com.tnl.logistics.model.TrackingEvent;
 import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.model.Vehicle;
@@ -104,9 +103,9 @@ public class LoadTestDataSeeder implements CommandLineRunner {
     }
 
     private void seedReferenceData() {
-        persistUser("LT-ADMIN", "loadtest-admin", "Load Test Admin", UserRole.ADMIN, null);
-        persistUser("LT-OFFICE", "loadtest-office", "Load Test Office", UserRole.OFFICE_STAFF, null);
-        persistUser("LT-FIELD", "loadtest-field", "Load Test Field", UserRole.FIELD_STAFF, StaffType.INTERNAL_TRUCK);
+        persistUser("LT-ADMIN", "loadtest-admin", "Load Test Admin", UserRole.ADMIN);
+        persistUser("LT-OFFICE", "loadtest-office", "Load Test Receiving", UserRole.RECEIVING_STAFF);
+        persistUser("LT-FIELD", "loadtest-field", "Load Test Courier", UserRole.COURIER_STAFF);
         for (int index = 1; index <= CLIENT_COUNT; index++) {
             entityManager.persist(new Client(String.format("LT-CL-%04d", index), "Synthetic Client " + index,
                     index + " Sample Avenue, Load Test City", "0917" + String.format("%07d", index), "client" + index + "@loadtest.invalid"));
@@ -116,8 +115,8 @@ public class LoadTestDataSeeder implements CommandLineRunner {
         }
     }
 
-    private void persistUser(String userId, String username, String fullName, UserRole role, StaffType staffType) {
-        AppUser user = new AppUser(userId, username, passwordEncoder.encode(seedPassword), fullName, role, staffType, null);
+    private void persistUser(String userId, String username, String fullName, UserRole role) {
+        AppUser user = new AppUser(userId, username, passwordEncoder.encode(seedPassword), fullName, role);
         user.setMustChangePassword(false);
         user.setTokenVersion(1);
         entityManager.persist(user);

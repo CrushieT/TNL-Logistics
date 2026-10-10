@@ -30,33 +30,21 @@ import {
   ResetPinModal,
   ConfirmActionModal,
 } from '../features/users';
+import {
+  getRoleLabel,
+  PLATFORM_ACCESS,
+  ROLE_CHIP_COLORS,
+  ROLE_FILTERS,
+} from '../features/users/userRoles.mjs';
 import { colors, fonts, spacing, radius, type } from '../theme';
 
-const ROLE_FILTERS = ['ALL', 'ADMIN', 'OFFICE_STAFF', 'FIELD_STAFF'];
 const STATUS_FILTERS = ['ALL', 'Active', 'Inactive'];
 
-const ROLE_LABELS = {
-  ADMIN: 'Administrator',
-  OFFICE_STAFF: 'Office Staff',
-  FIELD_STAFF: 'Field Staff',
-};
-
-const PLATFORM_ACCESS = {
-  ADMIN: 'Full access (shared system)',
-  OFFICE_STAFF: 'Mobile only (office workflows) | shared system',
-  FIELD_STAFF: 'Mobile (scan-only) | shared system',
-};
-
 function RoleChip({ role }) {
-  const colors = {
-    ADMIN: { bg: '#EFF6FF', text: '#1D4ED8' },
-    OFFICE_STAFF: { bg: '#F0FDF4', text: '#15803D' },
-    FIELD_STAFF: { bg: '#FFF7ED', text: '#C2410C' },
-  };
-  const c = colors[role] || { bg: '#F3F4F6', text: '#6B7280' };
+  const roleColors = ROLE_CHIP_COLORS[role] || { bg: '#F3F4F6', text: '#6B7280' };
   return (
-    <View style={[chipStyles.base, { backgroundColor: c.bg }]}>
-      <Text style={[chipStyles.text, { color: c.text }]}>{ROLE_LABELS[role] || role}</Text>
+    <View style={[chipStyles.base, { backgroundColor: roleColors.bg }]}>
+      <Text style={[chipStyles.text, { color: roleColors.text }]}>{getRoleLabel(role)}</Text>
     </View>
   );
 }
@@ -242,7 +230,7 @@ export default function UsersScreen() {
                     onPress={() => setRoleFilter(r)}
                   >
                     <Text style={[styles.filterPillText, roleFilter === r && styles.filterPillTextActive]}>
-                      {r === 'ALL' ? 'All' : ROLE_LABELS[r]}
+                      {r === 'ALL' ? 'All' : getRoleLabel(r)}
                     </Text>
                   </Pressable>
                 ))}
@@ -628,7 +616,7 @@ const styles = StyleSheet.create({
   filterGroup: { gap: 4 },
   filterGroupLabel: {
     fontFamily: fonts.sans,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.inkFaint,
     letterSpacing: 0.7,
@@ -643,7 +631,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   filterPillActive: { backgroundColor: colors.black, borderColor: colors.black },
-  filterPillText: { fontFamily: fonts.sans, fontSize: 11.5, fontWeight: '600', color: colors.ink },
+  filterPillText: { fontFamily: fonts.sans, fontSize: 12.5, fontWeight: '600', color: colors.ink },
   filterPillTextActive: { color: '#FFFFFF' },
   tableCard: {
     marginBottom: spacing.lg,
@@ -664,23 +652,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAF9F5',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   headerText: {
-    fontFamily: fonts.sans,
-    fontSize: 10,
-    fontWeight: '800',
+    fontFamily: fonts.mono,
+    fontSize: 11.5,
+    fontWeight: '700',
     color: colors.inkFaint,
-    letterSpacing: 0.7,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
   tableRow: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight || colors.border,
+    borderBottomColor: colors.border,
     alignItems: 'center',
     overflow: 'visible',
   },
@@ -692,9 +680,9 @@ const styles = StyleSheet.create({
   colAccess: { flex: 2 },
   colStatus: { width: 80 },
   colActions: { width: 180 },
-  monoText: { fontFamily: fonts.mono, fontSize: 12, fontWeight: '700', color: colors.ink },
-  cellText: { fontFamily: fonts.sans, fontSize: 13, color: colors.ink, fontWeight: '500' },
-  accessText: { fontFamily: fonts.sans, fontSize: 11.5, color: colors.inkSoft },
+  monoText: { fontFamily: fonts.mono, fontSize: 14, fontWeight: '700', color: colors.ink },
+  cellText: { fontFamily: fonts.sans, fontSize: 14, color: colors.ink, fontWeight: '600' },
+  accessText: { fontFamily: fonts.mono, fontSize: 12, color: colors.inkFaint },
   actionsRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   actionBtn: {
     borderWidth: 1,
@@ -709,7 +697,7 @@ const styles = StyleSheet.create({
     borderColor: colors.ink,
   },
   actionBtnDanger: { borderColor: '#FCA5A5', backgroundColor: '#FFF5F5' },
-  actionBtnText: { fontFamily: fonts.sans, fontSize: 11, fontWeight: '600', color: colors.ink },
+  actionBtnText: { fontFamily: fonts.sans, fontSize: 13, fontWeight: '600', color: colors.ink },
   actionBtnTextDanger: { color: colors.danger },
   moreActionWrapper: {
     position: 'relative',
@@ -755,7 +743,7 @@ const styles = StyleSheet.create({
   },
   popoverItemText: {
     fontFamily: fonts.sans,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.ink,
   },
@@ -789,7 +777,7 @@ const styles = StyleSheet.create({
   },
   capabilityTitle: {
     fontFamily: fonts.sans,
-    fontSize: 10.5,
+    fontSize: 11.5,
     fontWeight: '800',
     color: colors.ink,
     letterSpacing: 0.7,
@@ -797,7 +785,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   capabilityItem: { paddingVertical: 2 },
-  capabilityText: { fontFamily: fonts.sans, fontSize: 12.5, color: colors.ink, lineHeight: 18 },
+  capabilityText: { fontFamily: fonts.sans, fontSize: 13.5, color: colors.ink, lineHeight: 18 },
   capabilityDivider: {
     height: 1,
     backgroundColor: colors.border,
@@ -806,14 +794,14 @@ const styles = StyleSheet.create({
   },
   capabilityNote: {
     fontFamily: fonts.sans,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.inkSoft,
     fontStyle: 'italic',
     lineHeight: 16,
   },
   capabilityRestriction: {
     fontFamily: fonts.sans,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.danger,
     lineHeight: 16,
   },

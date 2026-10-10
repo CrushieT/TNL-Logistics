@@ -3,6 +3,7 @@ import {
   replaceAuthenticatedSession as replaceSession,
   clearAccessSessionPreservingBinding as clearAccessSession,
   clearDeviceSession as clearSession,
+  commitCompleteSession as commitSession,
 } from '../../features/auth/services/authStorageTransitions.mjs';
 
 const TOKEN_KEY = 'tnl_mobile_token';
@@ -11,6 +12,15 @@ const BOUND_USER_KEY = 'tnl_mobile_bound_user';
 const APP_LOCKED_KEY = 'tnl_mobile_locked';
 const DEVICE_ID_KEY = 'tnl_mobile_device_id';
 const DEVICE_TOKEN_KEY = 'tnl_mobile_device_token';
+const COMMIT_PENDING_KEY = 'tnl_mobile_session_commit_pending';
+
+export async function isSessionCommitPending() {
+  return (await getValue(COMMIT_PENDING_KEY)) === 'true';
+}
+
+export async function commitCompleteSession(session) {
+  return commitSession(transitionStorage, session);
+}
 
 let memoryStorage = {};
 
@@ -154,6 +164,12 @@ export async function removeDeviceCredentials() {
 }
 
 const transitionStorage = {
+  saveBoundUser,
+  saveDeviceCredentials,
+  setCommitPending: async (pending) => {
+    if (pending) await saveValue(COMMIT_PENDING_KEY, 'true');
+    else await removeValue(COMMIT_PENDING_KEY);
+  },
   saveToken,
   saveUser,
   removeToken,
@@ -172,5 +188,6 @@ export async function clearAccessSessionPreservingBinding() {
 }
 
 export async function clearDeviceSession() {
-  return clearSession(transitionStorage);
+  await clearSession(transitionStorage);
+  await removeValue(COMMIT_PENDING_KEY);
 }

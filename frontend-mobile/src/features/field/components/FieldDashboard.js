@@ -9,30 +9,56 @@ import { colors, typography } from '../../../theme';
 
 export function FieldDashboard({ user, onAccount, onLock }) {
   const router = useRouter();
+  const isDispatchStaff = user?.role === 'DISPATCH_STAFF';
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <MobileHeader role={user?.role} name={user?.fullName || user?.username} onAccount={onAccount} onLock={onLock} />
       <View style={styles.brandCard}>
         <Image source={require('../../../../assets/tracking-logo.png')} style={styles.brandLogo} resizeMode="contain" />
         <Text style={styles.brandTitle}>TNL LOGISTICS</Text>
-        <Text style={styles.brandSubtitle}>Field Courier & Transit Console</Text>
+        <Text style={styles.brandSubtitle}>
+          {isDispatchStaff ? 'Hauler Dispatch & Manifest Console' : 'Field Courier & Transit Console'}
+        </Text>
         <View style={styles.divider} />
-        <PressableScale contentStyle={styles.statusRow} onPress={() => router.push('/(main)/scan')} activeScale={0.98} accessibilityRole="button" accessibilityLabel="Open camera scanner">
+        <PressableScale
+          contentStyle={styles.statusRow}
+          onPress={() => router.push(isDispatchStaff ? '/(main)/waybills' : '/(main)/scan')}
+          activeScale={0.98}
+          accessibilityRole="button"
+          accessibilityLabel={isDispatchStaff ? 'Open waybill console' : 'Open camera scanner'}
+        >
           <View style={styles.statusDot} />
-          <Text style={styles.statusText}>Camera scanner active · Ready for scans</Text>
+          <Text style={styles.statusText}>
+            {isDispatchStaff ? 'Camera scanner active · Ready for waybills' : 'Camera scanner active · Ready for scans'}
+          </Text>
           <Icon source="chevron-right" size={16} color={colors.inkFaint} />
         </PressableScale>
       </View>
       <View style={styles.gridRow}>
-        <ActionCard iconName="qrcode-scan" title="SCAN QR" subtitle="Advance parcel tracking" onPress={() => router.push('/(main)/scan')} />
+        {isDispatchStaff ? (
+          <ActionCard
+            iconName="qrcode-scan"
+            title="SCAN QR"
+            subtitle="Hauler waybill & manifest dispatch"
+            onPress={() => router.push('/(main)/waybills')}
+          />
+        ) : (
+          <ActionCard
+            iconName="qrcode-scan"
+            title="SCAN QR"
+            subtitle="Advance parcel tracking"
+            onPress={() => router.push('/(main)/scan')}
+          />
+        )}
         <ActionCard iconName="history" title="TRACKING HISTORY" subtitle="Recent parcels & events" onPress={() => router.push('/(main)/tracking-history')} />
       </View>
+
       <PressableScale style={styles.accountWrapper} contentStyle={styles.accountCard} onPress={onAccount} activeScale={0.98} accessibilityRole="button" accessibilityLabel="Open account and shift settings">
         <Icon source="account-circle-outline" size={24} color={colors.ink} />
         <View style={styles.accountInfo}><Text style={styles.accountTitle}>ACCOUNT & SHIFT</Text><Text style={styles.accountSubtitle}>Profile, device access and security</Text></View>
         <Icon source="chevron-right" size={20} color={colors.inkFaint} />
       </PressableScale>
-      <View style={styles.footer}><Text style={styles.footerText}>TNL MOBILE · AUTHENTICATED FIELD ACCESS</Text></View>
+      <View style={styles.footer}><Text style={styles.footerText}>TNL MOBILE · AUTHENTICATED {isDispatchStaff ? 'DISPATCH' : 'COURIER'} ACCESS</Text></View>
     </ScrollView>
   );
 }

@@ -92,10 +92,10 @@ public class TrackingServiceImpl implements TrackingService {
                 canScan = true;
                 break;
             case LOADED_TO_HAULER:
-                nextStatusCode = ParcelStatus.COMPLETED.name();
-                nextStatusLabel = formatStatusDisplay(ParcelStatus.COMPLETED);
+                nextStatusCode = parcel.getWaybill() == null ? ParcelStatus.COMPLETED.name() : null;
+                nextStatusLabel = parcel.getWaybill() == null ? formatStatusDisplay(ParcelStatus.COMPLETED) : null;
                 requiresVehicle = false;
-                canScan = true;
+                canScan = parcel.getWaybill() == null;
                 break;
             case COMPLETED:
             default:
@@ -278,6 +278,9 @@ public class TrackingServiceImpl implements TrackingService {
             AppUser actingStaff) {
 
         ParcelStatus currentStatus = parcel.getCurrentStatus();
+        if (targetStatus == ParcelStatus.COMPLETED && parcel.getWaybill() != null) {
+            throw new IllegalStateException("Assigned parcel can only be completed through its returned waybill");
+        }
         TrackingTransitionPolicy.Decision decision = transitionPolicy.decide(currentStatus, targetStatus,
                 vehicleId(parcel.getCurrentVehicle()), requestedVehicleId);
         requireOnlineDecision(decision, parcel, targetStatus, requestedVehicleId);
@@ -381,9 +384,9 @@ public class TrackingServiceImpl implements TrackingService {
 
     private void requireStaffAuthorization(AppUser actingStaff, ParcelStatus targetStatus) {
         TrackingTransitionPolicy.StaffAuthorizationDecision decision =
-                transitionPolicy.decideStaffAuthorization(actingStaff.getStaffType(), targetStatus);
+                transitionPolicy.decideStaffAuthorization(actingStaff.getRole(), targetStatus);
         if (decision == TrackingTransitionPolicy.StaffAuthorizationDecision.DENIED) {
-            throw new AccessDeniedException("Staff type is not permitted to perform this tracking transition");
+            throw new AccessDeniedException("Staff role is not permitted to perform this tracking transition");
         }
     }
 
@@ -522,7 +525,6 @@ public class TrackingServiceImpl implements TrackingService {
                     (staff != null) ? staff.getUsername() : null,
                     (staff != null) ? staff.getFullName() : null,
                     (staff != null && staff.getRole() != null) ? staff.getRole().name() : null,
-                    (staff != null && staff.getStaffType() != null) ? staff.getStaffType().name() : null,
                     event.getRemarks(),
                     event.getEventTimestamp(),
                     formattedTimestamp
@@ -538,7 +540,7 @@ public class TrackingServiceImpl implements TrackingService {
         LocalDateTime endOfDay = today.atTime(23, 59, 59, 999999999);
 
         long totalScans = trackingEventRepository.countOperationalScansBetween(startOfDay, endOfDay);
-        long activeCouriers = trackingEventRepository.countDistinctCouriersBetween(startOfDay, endOfDay);
+        long activeCouriers = trackingEventRepository.countDistinctOperationalStaffBetween(startOfDay, endOfDay);
         long loadedOnTruck = trackingEventRepository.countStatusBetween(ParcelStatus.LOADED_ON_TRUCK, startOfDay, endOfDay);
         long handedToHauler = trackingEventRepository.countStatusBetween(ParcelStatus.LOADED_TO_HAULER, startOfDay, endOfDay);
 

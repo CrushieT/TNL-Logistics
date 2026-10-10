@@ -2,37 +2,38 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import { Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { authService } from '../services/authService';
+import { authSessionCoordinator as coordinator, commitSessionState, refreshMatchingProfile } from '../services/sessionCoordinator.mjs';
 import { setSessionEventCallback } from '../../../services/api/client';
 import { StatusModal } from '../../../components/common/StatusModal';
 import {
   clearAccessSessionPreservingBinding as clearStoredAccessSession,
   clearDeviceSession as clearStoredDeviceSession,
+  commitCompleteSession,
   getBoundUser,
   getDeviceCredentials,
   getToken,
   getUser,
   isAppLocked,
-  replaceAuthenticatedSession,
+  isSessionCommitPending,
   saveBoundUser,
-  saveDeviceCredentials,
-  saveToken,
-  saveUser,
   setAppLocked,
 } from '../../../services/storage/secureStore';
 import { shouldRestoreLockedSession } from '../services/appLifecycleLock.mjs';
+import { isSupportedMobileRole, sanitizeMobileUser } from '../services/roleAccess.mjs';
 
 const AuthContext = createContext(null);
 
+function requireSupportedMobileUser(user) {
+  const nextUser = sanitizeMobileUser(user);
+  if (!nextUser?.userId || !nextUser?.username) {
+    throw { status: 403, code: 'UNSUPPORTED_MOBILE_ROLE', message: 'This account is not authorized for the mobile application.' };
+  }
+  return nextUser;
+}
+
 function toBoundUser(user) {
-  if (!user) return null;
-  return {
-    userId: user.userId,
-    username: user.username,
-    fullName: user.fullName,
-    role: user.role,
-    staffType: user.staffType ?? null,
-    hasPinSet: user.hasPinSet,
-  };
+  const { userId, username, fullName, role, hasPinSet } = requireSupportedMobileUser(user);
+  return { userId, username, fullName, role, hasPinSet };
 }
 
 export function AuthProvider({ children }) {
@@ -44,281 +45,286 @@ export function AuthProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true);
   const [popupNotice, setPopupNotice] = useState(null);
 
-  const installSession = useCallback(async (replacementToken, nextUser) => {
-    await replaceAuthenticatedSession({ token: replacementToken, user: nextUser });
-    setToken(replacementToken);
-    setUser(nextUser);
-    setIsLocked(false);
-  }, []);
-
-  const clearAccessSessionPreservingBinding = useCallback(async () => {
-    await clearStoredAccessSession();
+  const clearSession = useCallback(async (preserveBinding) => {
+    const generation = coordinator.begin();
     setToken(null);
     setUser(null);
     setIsLocked(true);
+    setIsLoading(true);
+    try {
+      const remainingBoundUser = await coordinator.commit(generation, async () => {
+        if (preserveBinding && !await isSessionCommitPending()) {
+          await clearStoredAccessSession();
+          return getBoundUser();
+        }
+        await clearStoredDeviceSession();
+        return null;
+      });
+      setBoundUser(remainingBoundUser);
+      setIsLocked(Boolean(remainingBoundUser));
+      return generation;
+    } finally {
+      if (coordinator.isCurrent(generation)) setIsLoading(false);
+    }
   }, []);
 
-  const clearInvalidDeviceSession = useCallback(async () => {
-    await clearStoredDeviceSession();
-    setToken(null);
-    setUser(null);
-    setBoundUser(null);
+  const clearAccessSessionPreservingBinding = useCallback(() => clearSession(true), [clearSession]);
+  const clearInvalidDeviceSession = useCallback(() => clearSession(false), [clearSession]);
+
+  const installSession = useCallback(async (replacementToken, nextUser, generation = coordinator.generation(), deviceCredentials) => {
+    const roleOnlyUser = requireSupportedMobileUser(nextUser);
+    let installedBoundUser;
+    try {
+      await commitSessionState(coordinator, generation, async () => {
+        const credentials = roleOnlyUser.mustChangePassword ? null : deviceCredentials || await getDeviceCredentials();
+        installedBoundUser = credentials ? toBoundUser(roleOnlyUser) : await getBoundUser();
+        if (!roleOnlyUser.mustChangePassword && !credentials) {
+          throw { code: 'MISSING_DEVICE_CREDENTIALS', message: 'Password sign in is required.' };
+        }
+        await commitCompleteSession({
+          token: replacementToken, user: roleOnlyUser,
+          deviceCredentials: credentials, boundUser: installedBoundUser,
+        });
+      });
+    } catch (error) {
+      if (coordinator.isCurrent(generation) || coordinator.isCurrent(error?.invalidatedGeneration)) {
+        setToken(null);
+        setUser(null);
+        setBoundUser(null);
+        setIsLocked(true);
+        setIsLoading(false);
+      }
+      throw error;
+    }
+    coordinator.publish(generation, {
+      token: replacementToken, userId: roleOnlyUser.userId,
+      deviceId: deviceCredentials?.deviceId || (await getDeviceCredentials())?.deviceId,
+    });
+    setToken(replacementToken);
+    setUser(roleOnlyUser);
+    setBoundUser(installedBoundUser);
     setIsLocked(false);
   }, []);
 
+  const refreshAuthenticatedUser = useCallback(async (authenticatedUser) => {
+    const snapshot = coordinator.current();
+    try {
+      const refreshedUser = await refreshMatchingProfile(coordinator, snapshot, authenticatedUser,
+        () => authService.fetchCurrentUser(), async (profile) => {
+          const nextUser = requireSupportedMobileUser(profile);
+          await commitCompleteSession({
+            token: snapshot.token, user: nextUser,
+            deviceCredentials: await getDeviceCredentials(), boundUser: toBoundUser(nextUser),
+          });
+        });
+      if (!refreshedUser) return;
+      setUser(refreshedUser);
+      setBoundUser(toBoundUser(refreshedUser));
+    } catch (error) {
+      if (error?.code === 'SESSION_PERSISTENCE_FAILED' && coordinator.isCurrent(error.invalidatedGeneration)) {
+        await clearInvalidDeviceSession();
+        return;
+      }
+      if (coordinator.matches(snapshot) && ['UNSUPPORTED_MOBILE_ROLE', 'PROFILE_IDENTITY_MISMATCH'].includes(error?.code)) {
+        await clearInvalidDeviceSession();
+      }
+    }
+  }, [clearInvalidDeviceSession]);
+
   const showSessionNotice = useCallback((notice) => {
     setPopupNotice({
-      eyebrow: notice.eyebrow || 'SECURITY NOTICE',
-      title: notice.title || 'Sign In Required',
+      eyebrow: notice.eyebrow || 'SECURITY NOTICE', title: notice.title || 'Sign In Required',
       message: notice.message || 'Please sign in with your password to continue.',
-      confirmText: notice.confirmText || 'CONTINUE',
-      action: notice.action || 'password-login',
-      username: notice.username || '',
-      reason: notice.reason || 'session_expired',
+      confirmText: notice.confirmText || 'CONTINUE', action: notice.action || 'password-login',
+      username: notice.username || '', reason: notice.reason || 'session_expired',
     });
   }, []);
 
   const startPasswordReauthentication = useCallback(async ({
-    username,
-    reason = 'password_reauthentication',
+    username, reason = 'password_reauthentication',
   } = {}) => {
     const targetUsername = username || user?.username || boundUser?.username || '';
-    await clearAccessSessionPreservingBinding();
-    router.replace({
-      pathname: '/(auth)/login',
-      params: { username: targetUsername, reason },
-    });
+    const generation = await clearAccessSessionPreservingBinding();
+    coordinator.assertCurrent(generation);
+    router.replace({ pathname: '/(auth)/login', params: { username: targetUsername, reason } });
   }, [boundUser?.username, clearAccessSessionPreservingBinding, router, user?.username]);
 
   useEffect(() => {
     setSessionEventCallback(async (event) => {
-      const storedUser = await getUser();
-      const storedBoundUser = await getBoundUser();
-      const username = storedUser?.username || storedBoundUser?.username || '';
-
+      if (!coordinator.isCurrent(event.generation)) return;
+      const username = user?.username || boundUser?.username || '';
       if (event.type === 'SESSION_REAUTH_REQUIRED') {
-        await clearAccessSessionPreservingBinding();
+        const generation = await clearAccessSessionPreservingBinding();
+        coordinator.assertCurrent(generation);
         router.replace('/(auth)/pin');
-        showSessionNotice({
-          eyebrow: 'SESSION RENEWAL',
-          title: 'Unlock Required',
-          message: 'Your account security changed. Unlock this device with your PIN to renew the session.',
-          action: 'dismiss',
-        });
       } else if (event.type === 'INVALID_DEVICE_CREDENTIALS') {
-        await clearInvalidDeviceSession();
-        router.replace({
-          pathname: '/(auth)/login',
-          params: { username, reason: 'device_credentials_invalid' },
-        });
-        showSessionNotice({
-          eyebrow: 'DEVICE SECURITY',
-          title: 'Password Sign In Required',
-          message: 'This device binding is no longer valid. Sign in with your password to bind it again.',
-          action: 'dismiss',
-        });
+        const generation = await clearInvalidDeviceSession();
+        coordinator.assertCurrent(generation);
+        router.replace({ pathname: '/(auth)/login', params: { username, reason: 'device_credentials_invalid' } });
       }
     });
     return () => setSessionEventCallback(null);
-  }, [clearAccessSessionPreservingBinding, clearInvalidDeviceSession, router, showSessionNotice]);
+  }, [boundUser?.username, user?.username, clearAccessSessionPreservingBinding, clearInvalidDeviceSession, router]);
 
   useEffect(() => {
     let isMounted = true;
-
+    const generation = coordinator.begin();
     async function restoreSession() {
       try {
-        const [storedBoundUser, storedToken, storedUser, deviceCredentials, locked] = await Promise.all([
-          getBoundUser(), getToken(), getUser(), getDeviceCredentials(), isAppLocked(),
+        const [storedBoundUser, storedToken, storedUser, deviceCredentials, locked, pending] = await Promise.all([
+          getBoundUser(), getToken(), getUser(), getDeviceCredentials(), isAppLocked(), isSessionCommitPending(),
         ]);
-
-        if (!isMounted) return;
-        if ((storedBoundUser || (storedUser && !storedUser.mustChangePassword)) && !deviceCredentials) {
+        if (!isMounted || !coordinator.isCurrent(generation)) return;
+        const restoredBoundUser = storedBoundUser ? sanitizeMobileUser(storedBoundUser) : null;
+        const restoredUser = storedUser ? sanitizeMobileUser(storedUser) : null;
+        if (pending || (storedBoundUser && !restoredBoundUser) || (storedUser && !restoredUser)
+            || (restoredUser && !restoredUser.mustChangePassword && restoredBoundUser?.userId !== restoredUser.userId)
+            || ((restoredBoundUser || (restoredUser && !restoredUser.mustChangePassword)) && !deviceCredentials)) {
           await clearInvalidDeviceSession();
-          showSessionNotice({
-            eyebrow: 'DEVICE SECURITY',
-            title: 'Password Sign In Required',
-            message: 'This device must be bound with a password before PIN unlock can be used.',
-            action: 'password-login',
-            username: storedUser?.username || storedBoundUser?.username,
-            reason: 'device_credentials_missing',
-          });
           return;
         }
-
-        setBoundUser(storedBoundUser || null);
-        if (storedToken && storedUser) {
-          const restoredLocked = shouldRestoreLockedSession({
-            platform: Platform.OS,
-            boundUser: storedBoundUser,
-            user: storedUser,
-            hasDeviceCredentials: Boolean(deviceCredentials),
-            persistedLocked: locked,
+        setBoundUser(restoredBoundUser);
+        setToken(storedToken);
+        setUser(restoredUser);
+        const restoredLocked = shouldRestoreLockedSession({
+          platform: Platform.OS, boundUser: restoredBoundUser, user: restoredUser,
+          hasDeviceCredentials: Boolean(deviceCredentials), persistedLocked: locked,
+        });
+        setIsLocked(restoredLocked);
+        if (restoredLocked) {
+          await coordinator.commit(generation, () => setAppLocked(true));
+        } else if (storedToken && restoredUser) {
+          coordinator.publish(generation, {
+            token: storedToken, userId: restoredUser.userId, deviceId: deviceCredentials?.deviceId,
           });
-          setToken(storedToken);
-          setUser(storedUser);
-          setIsLocked(restoredLocked);
-          if (restoredLocked && !locked) {
-            await setAppLocked(true);
-          }
-
-          if (!restoredLocked && !storedUser.mustChangePassword && deviceCredentials) {
-            authService.fetchCurrentUser()
-              .then(async (profile) => {
-                if (isMounted) {
-                  const refreshedUser = { ...storedUser, ...profile };
-                  await saveUser(refreshedUser);
-                  setUser(refreshedUser);
-                }
-              })
-              .catch(() => {
-                // The API interceptor owns session and device credential failures.
-              });
-          }
-        } else if (storedBoundUser && deviceCredentials) {
-          const restoredLocked = shouldRestoreLockedSession({
-            platform: Platform.OS,
-            boundUser: storedBoundUser,
-            user: null,
-            hasDeviceCredentials: true,
-            persistedLocked: locked,
-          });
-          setIsLocked(restoredLocked);
-          if (restoredLocked && !locked) {
-            await setAppLocked(true);
+          if (!restoredUser.mustChangePassword && deviceCredentials) {
+            void refreshAuthenticatedUser(restoredUser);
           }
         }
       } catch {
-        if (isMounted) {
-          setToken(null);
-          setUser(null);
-          setBoundUser(null);
-          setIsLocked(false);
-        }
+        if (isMounted && coordinator.isCurrent(generation)) await clearInvalidDeviceSession();
       } finally {
-        if (isMounted) setIsLoading(false);
+        if (isMounted && coordinator.isCurrent(generation)) setIsLoading(false);
       }
     }
-
-    restoreSession();
+    void restoreSession();
     return () => { isMounted = false; };
-  }, [clearInvalidDeviceSession, showSessionNotice]);
+  }, [clearInvalidDeviceSession, refreshAuthenticatedUser]);
 
-  const loginWithPassword = useCallback(async (username, password) => {
+  const loginWithPassword = useCallback(async (username, password, confirmDeviceSwitch = false) => {
+    const generation = coordinator.begin();
     setIsLoading(true);
+    setToken(null);
+    setUser(null);
+    setIsLocked(true);
     try {
-      const existingDeviceCredentials = await getDeviceCredentials();
-      const data = await authService.loginWithPassword(username, password, existingDeviceCredentials?.deviceId);
-      const { token: receivedToken, deviceId, deviceToken, ...userData } = data;
-
-      if (userData.mustChangePassword) {
-        await saveToken(receivedToken);
-        await saveUser(userData);
-        await setAppLocked(false);
-        setToken(receivedToken);
-        setUser(userData);
-        setIsLocked(false);
-        return userData;
-      }
-
-      await saveDeviceCredentials(deviceId, deviceToken);
-      const nextBoundUser = toBoundUser(userData);
-      await saveBoundUser(nextBoundUser);
-      await installSession(receivedToken, userData);
-      setBoundUser(nextBoundUser);
+      const credentials = await getDeviceCredentials();
+      coordinator.assertCurrent(generation);
+      const data = await authService.loginWithPassword(username, password, credentials, confirmDeviceSwitch);
+      coordinator.assertCurrent(generation);
+      const { token: receivedToken, deviceId, deviceToken, ...rawUserData } = data;
+      const userData = requireSupportedMobileUser(rawUserData);
+      await installSession(receivedToken, userData, generation,
+        userData.mustChangePassword ? null : { deviceId, deviceToken });
+      coordinator.assertCurrent(generation);
       return userData;
     } finally {
-      setIsLoading(false);
+      if (coordinator.isCurrent(generation)) setIsLoading(false);
     }
   }, [installSession]);
 
   const completeRequiredPasswordChange = useCallback(async (currentPassword, newPassword) => {
+    const generation = coordinator.generation();
     setIsLoading(true);
     try {
       const result = await authService.changePassword(currentPassword, newPassword);
-      const existingBinding = await getBoundUser();
-      if (existingBinding) await clearAccessSessionPreservingBinding();
-      else await clearInvalidDeviceSession();
+      coordinator.assertCurrent(generation);
+      try {
+        const nextGeneration = await clearAccessSessionPreservingBinding();
+        coordinator.assertCurrent(nextGeneration);
+      } catch (error) {
+        if (error.code === 'SESSION_SUPERSEDED') throw error;
+        throw { code: 'PASSWORD_CHANGE_CLEANUP_FAILED',
+          message: 'Your password was changed. Select Cancel and return to login to sign in with your new password.' };
+      }
       return { ...result, username: result.username || user?.username || '' };
     } finally {
-      setIsLoading(false);
+      if (coordinator.isCurrent(generation)) setIsLoading(false);
     }
-  }, [clearAccessSessionPreservingBinding, clearInvalidDeviceSession, user?.username]);
+  }, [clearAccessSessionPreservingBinding, user?.username]);
 
   const rotatePasswordInSession = useCallback(async (currentPassword, newPassword) => {
+    const generation = coordinator.generation();
     const result = await authService.changePassword(currentPassword, newPassword);
-    const nextUser = { ...user, ...result };
+    coordinator.assertCurrent(generation);
+    const nextUser = requireSupportedMobileUser({ ...user, ...result });
     delete nextUser.token;
     delete nextUser.message;
-    await installSession(result.token, nextUser);
-    const nextBoundUser = toBoundUser(nextUser);
-    await saveBoundUser(nextBoundUser);
-    setBoundUser(nextBoundUser);
+    await installSession(result.token, nextUser, generation);
     return result;
   }, [installSession, user]);
 
   const setupInitialPin = useCallback(async (pin) => {
+    const generation = coordinator.generation();
     const result = await authService.setupInitialPin(pin);
-    const nextUser = { ...user, hasPinSet: true };
-    const nextBoundUser = { ...(boundUser || toBoundUser(nextUser)), hasPinSet: true };
-    await installSession(result.token, nextUser);
-    await saveBoundUser(nextBoundUser);
-    setBoundUser(nextBoundUser);
+    coordinator.assertCurrent(generation);
+    await installSession(result.token, { ...user, hasPinSet: true }, generation);
     return result;
-  }, [boundUser, installSession, user]);
+  }, [installSession, user]);
 
   const rotateUserPin = useCallback(async (pin, currentPassword) => {
+    const generation = coordinator.generation();
     const result = await authService.rotatePin(pin, currentPassword);
-    const nextUser = { ...user, hasPinSet: true };
-    const nextBoundUser = { ...(boundUser || toBoundUser(nextUser)), hasPinSet: true };
-    await installSession(result.token, nextUser);
-    await saveBoundUser(nextBoundUser);
-    setBoundUser(nextBoundUser);
+    coordinator.assertCurrent(generation);
+    await installSession(result.token, { ...user, hasPinSet: true }, generation);
     return result;
-  }, [boundUser, installSession, user]);
+  }, [installSession, user]);
 
   const unlockWithPin = useCallback(async (pin) => {
+    const targetUsername = boundUser?.username;
+    const generation = coordinator.begin();
     setIsLoading(true);
     try {
-      const targetUsername = boundUser?.username || user?.username;
-      const deviceCredentials = await getDeviceCredentials();
-      if (!targetUsername || !deviceCredentials) {
-        await clearInvalidDeviceSession();
+      const credentials = await getDeviceCredentials();
+      coordinator.assertCurrent(generation);
+      if (!targetUsername || !credentials) {
         throw { code: 'MISSING_DEVICE_CREDENTIALS', message: 'Password sign in is required.' };
       }
-      const data = await authService.loginWithPin(targetUsername, pin, deviceCredentials);
-      const { token: receivedToken, deviceId, deviceToken, ...userData } = data;
-      await saveDeviceCredentials(deviceId, deviceToken);
-      await installSession(receivedToken, userData);
-      const nextBoundUser = toBoundUser(userData);
-      await saveBoundUser(nextBoundUser);
-      setBoundUser(nextBoundUser);
+      const data = await authService.loginWithPin(targetUsername, pin, credentials);
+      coordinator.assertCurrent(generation);
+      const { token: receivedToken, deviceId, deviceToken, ...rawUserData } = data;
+      const userData = requireSupportedMobileUser(rawUserData);
+      await installSession(receivedToken, userData, generation, { deviceId, deviceToken });
+      coordinator.assertCurrent(generation);
       return userData;
     } finally {
-      setIsLoading(false);
+      if (coordinator.isCurrent(generation)) setIsLoading(false);
     }
-  }, [boundUser?.username, clearInvalidDeviceSession, installSession, user?.username]);
+  }, [boundUser?.username, installSession]);
 
   const lockSession = useCallback(async () => {
-    setIsLocked(true);
-    const persistLock = setAppLocked(true);
+    const generation = await clearAccessSessionPreservingBinding();
+    coordinator.assertCurrent(generation);
     router.replace('/(auth)/pin');
-    await persistLock;
-  }, [router]);
+  }, [clearAccessSessionPreservingBinding, router]);
 
   const unbindCurrentDevice = useCallback(async () => {
+    const generation = coordinator.generation();
     const result = await authService.unbindCurrentDevice();
-    await clearInvalidDeviceSession();
+    coordinator.assertCurrent(generation);
+    const nextGeneration = await clearInvalidDeviceSession();
+    coordinator.assertCurrent(nextGeneration);
     router.replace('/(auth)/login');
     return result;
   }, [clearInvalidDeviceSession, router]);
 
   const updateBoundUserPinStatus = useCallback(async (hasPinSet) => {
-    const currentBoundUser = boundUser || await getBoundUser();
-    if (!currentBoundUser) return;
-    const nextBoundUser = { ...currentBoundUser, hasPinSet };
-    await saveBoundUser(nextBoundUser);
+    const snapshot = coordinator.current();
+    if (!boundUser) return;
+    const nextBoundUser = { ...boundUser, hasPinSet };
+    await coordinator.commit(snapshot.generation, () => saveBoundUser(nextBoundUser));
     setBoundUser(nextBoundUser);
-    setUser((currentUser) => currentUser ? { ...currentUser, hasPinSet } : currentUser);
+    setUser((currentUser) => currentUser?.userId === nextBoundUser.userId ? { ...currentUser, hasPinSet } : currentUser);
   }, [boundUser]);
 
   const handleNoticeConfirm = async () => {
@@ -331,7 +337,8 @@ export function AuthProvider({ children }) {
 
   const mustChangePassword = Boolean(user?.mustChangePassword);
   const mustSetupPin = Boolean(user && !mustChangePassword && user.hasPinSet === false);
-  const isAuthenticated = Boolean(token && user && !isLocked && !mustChangePassword && !mustSetupPin);
+  const isAuthenticated = Boolean(token && user && isSupportedMobileRole(user.role)
+    && !isLocked && !mustChangePassword && !mustSetupPin && !isLoading);
 
   return (
     <AuthContext.Provider value={{
@@ -339,17 +346,13 @@ export function AuthProvider({ children }) {
       loginWithPassword, completeRequiredPasswordChange, rotatePasswordInSession, setupInitialPin,
       rotateUserPin, unlockWithPin, loginWithPin: unlockWithPin, lockSession,
       startPasswordReauthentication, unbindCurrentDevice, clearInvalidDeviceSession,
+      cancelPendingAuthentication: clearAccessSessionPreservingBinding,
       updateBoundUserPinStatus, showSessionNotice,
     }}>
       {children}
-      <StatusModal
-        visible={Boolean(popupNotice)}
-        title={popupNotice?.title}
-        eyebrow={popupNotice?.eyebrow}
-        message={popupNotice?.message}
-        confirmText={popupNotice?.confirmText || 'CONTINUE'}
-        onConfirm={handleNoticeConfirm}
-      />
+      <StatusModal visible={Boolean(popupNotice)} title={popupNotice?.title}
+        eyebrow={popupNotice?.eyebrow} message={popupNotice?.message}
+        confirmText={popupNotice?.confirmText || 'CONTINUE'} onConfirm={handleNoticeConfirm} />
     </AuthContext.Provider>
   );
 }

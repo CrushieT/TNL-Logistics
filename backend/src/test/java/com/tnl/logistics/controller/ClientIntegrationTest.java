@@ -46,6 +46,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public class ClientIntegrationTest {
 
     @Autowired
+    private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Autowired
@@ -72,10 +75,19 @@ public class ClientIntegrationTest {
     @Autowired
     private ShipmentService shipmentService;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
     private String officeToken;
 
     @BeforeEach
     public void setup() {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
         waybillRepository.deleteAll();
         trackingEventRepository.deleteAll();
         parcelUnitRepository.deleteAll();
@@ -83,15 +95,15 @@ public class ClientIntegrationTest {
         shipmentRepository.deleteAll();
         clientRepository.deleteAll();
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
+        officeToken = "Bearer " + sessionTokens.generateToken("USR-ADMIN", "ADMIN");
     }
 
     @Test
     public void testMobileClientCreationValidationAndRoleGates() throws Exception {
         ClientCreateRequest request = new ClientCreateRequest("Mobile test client", "Baguio test address", "09170000000", null);
         String payload = objectMapper.writeValueAsString(request);
-        String fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
-        String mobileOfficeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
+        String fieldToken = "Bearer " + sessionTokens.generateToken("USR-FIELD", "COURIER_STAFF");
+        String mobileOfficeToken = "Bearer " + sessionTokens.generateToken("USR-OFFICE", "RECEIVING_STAFF");
         mockMvc.perform(post("/api/v1/clients").header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isForbidden());
@@ -102,7 +114,7 @@ public class ClientIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
         request.setEmail("invalid-email");
-        MvcResult invalid = mockMvc.perform(post("/api/v1/clients").header("Authorization", mobileOfficeToken)
+        MvcResult invalid = mockMvc.perform(post("/api/v1/clients").header("Authorization", officeToken)
                         .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest()).andReturn();
         assertTrue(objectMapper.readTree(invalid.getResponse().getContentAsString()).get("fieldErrors").has("email"));
@@ -111,18 +123,21 @@ public class ClientIntegrationTest {
         // Verify contact number length and format rejection
         request.setEmail(null);
         request.setContactNumber("091700000000"); // 12 digits
-        MvcResult invalidContactLen = mockMvc.perform(post("/api/v1/clients").header("Authorization", mobileOfficeToken)
+        MvcResult invalidContactLen = mockMvc.perform(post("/api/v1/clients").header("Authorization", officeToken)
                         .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest()).andReturn();
         assertTrue(objectMapper.readTree(invalidContactLen.getResponse().getContentAsString()).get("fieldErrors").has("contactNumber"));
 
         request.setContactNumber("0917-555-014"); // contains dashes
-        MvcResult invalidContactFmt = mockMvc.perform(post("/api/v1/clients").header("Authorization", mobileOfficeToken)
+        MvcResult invalidContactFmt = mockMvc.perform(post("/api/v1/clients").header("Authorization", officeToken)
                         .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest()).andReturn();
         assertTrue(objectMapper.readTree(invalidContactFmt.getResponse().getContentAsString()).get("fieldErrors").has("contactNumber"));
 
         request.setContactNumber("09170000000"); // restore valid
+        mockMvc.perform(get("/api/v1/clients").header("Authorization", mobileOfficeToken))
+        // Verified receiving staff can query clients and register walk-in clients
+                .andExpect(status().isOk());
         MvcResult created = mockMvc.perform(post("/api/v1/clients").header("Authorization", mobileOfficeToken)
                         .contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isOk()).andReturn();
@@ -132,7 +147,7 @@ public class ClientIntegrationTest {
         assertTrue(body.get("email").isNull());
         java.util.Set<String> fields = new java.util.HashSet<>();
         body.fieldNames().forEachRemaining(fields::add);
-        assertEquals(java.util.Set.of("clientId", "name", "address", "contactNumber", "email", "defaultRateType", "active", "dateRegistered",
+        assertEquals(java.util.Set.of("clientId", "name", "address", "contactNumber", "email", "defaultRateType", "ratePerKilo", "active", "dateRegistered",
                 "totalShipments", "totalParcels", "totalCharges", "totalPaid", "outstandingBalance"), fields);
         assertEquals(1, clientRepository.count());
 
@@ -211,6 +226,86 @@ public class ClientIntegrationTest {
     }
 
     @Test
+    public void testAdminManagesClientRateAndOfficeReadsEffectiveRate() throws Exception {
+        Client client = new Client(
+                "CL-001",
+                "Negotiated Rate Client",
+                "Baguio City",
+                "09170000000",
+                null,
+                ChargeModel.FLAT,
+                true
+        );
+        clientRepository.saveAndFlush(client);
+
+        String mobileOfficeToken = "Bearer " + sessionTokens.generateToken("USR-OFFICE", "RECEIVING_STAFF");
+        String fieldToken = "Bearer " + sessionTokens.generateToken("USR-FIELD", "COURIER_STAFF");
+
+        mockMvc.perform(get("/api/v1/shipments/calculation-settings")
+                        .header("Authorization", mobileOfficeToken)
+                        .param("clientId", "CL-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.clientId").value("CL-001"))
+                .andExpect(jsonPath("$.ratePerKilo").value(100.00))
+                .andExpect(jsonPath("$.volumetricDivisor").value(5000));
+
+        String customRatePayload = "{\"ratePerKilo\":75.50}";
+        mockMvc.perform(put("/api/v1/clients/CL-001/rate-per-kilo")
+                        .header("Authorization", mobileOfficeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(customRatePayload))
+                .andExpect(status().isForbidden());
+        assertNull(clientRepository.findById("CL-001").orElseThrow().getRatePerKilo());
+
+        mockMvc.perform(put("/api/v1/clients/CL-001/rate-per-kilo")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(customRatePayload))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/clients/CL-001")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ratePerKilo").value(75.50))
+                .andExpect(jsonPath("$.globalRatePerKilo").value(100.00))
+                .andExpect(jsonPath("$.effectiveRatePerKilo").value(75.50));
+
+        mockMvc.perform(get("/api/v1/shipments/calculation-settings")
+                        .header("Authorization", mobileOfficeToken)
+                        .param("clientId", "CL-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ratePerKilo").value(75.50));
+
+        mockMvc.perform(put("/api/v1/clients/CL-001/rate-per-kilo")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ratePerKilo\":-1}"))
+                .andExpect(status().isBadRequest());
+        assertEquals(0, new BigDecimal("75.50").compareTo(
+                clientRepository.findById("CL-001").orElseThrow().getRatePerKilo()));
+
+        mockMvc.perform(get("/api/v1/shipments/calculation-settings")
+                        .header("Authorization", fieldToken)
+                        .param("clientId", "CL-001"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/shipments/calculation-settings")
+                        .param("clientId", "CL-001"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(put("/api/v1/clients/CL-001/rate-per-kilo")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ratePerKilo\":null}"))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/shipments/calculation-settings")
+                        .header("Authorization", mobileOfficeToken)
+                        .param("clientId", "CL-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ratePerKilo").value(100.00));
+    }
+
+    @Test
     public void testPaginatedSearchAndZeroNPlusOneAggregations() throws Exception {
         // 1. Create client
         Client client = new Client(
@@ -235,10 +330,12 @@ public class ClientIntegrationTest {
         regReq1.setShippingFee(new BigDecimal("1550.00"));
         regReq1.setPaidAtRegistration(false);
         regReq1.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq1.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq1.setExpectedVolumetricDivisor(5000);
         regReq1.setParcels(List.of(
-                new ParcelUnitRequest(1, new BigDecimal("2"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10")),
-                new ParcelUnitRequest(2, new BigDecimal("2"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10")),
-                new ParcelUnitRequest(3, new BigDecimal("2"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10"))
+                new ParcelUnitRequest(1, new BigDecimal("5.5"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10")),
+                new ParcelUnitRequest(2, new BigDecimal("5.0"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10")),
+                new ParcelUnitRequest(3, new BigDecimal("5.0"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10"))
         ));
         shipmentService.registerShipment(regReq1, "USR-OFFICE");
 
@@ -253,8 +350,10 @@ public class ClientIntegrationTest {
         regReq2.setShippingFee(new BigDecimal("450.00"));
         regReq2.setPaidAtRegistration(true);
         regReq2.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq2.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq2.setExpectedVolumetricDivisor(5000);
         regReq2.setParcels(List.of(
-                new ParcelUnitRequest(1, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))
+                new ParcelUnitRequest(1, new BigDecimal("4.5"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))
         ));
         shipmentService.registerShipment(regReq2, "USR-OFFICE");
 
@@ -395,6 +494,8 @@ public class ClientIntegrationTest {
         regReq.setShippingFee(new BigDecimal("1000.00"));
         regReq.setPaidAtRegistration(true);
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setParcels(List.of(
                 new ParcelUnitRequest(1, new BigDecimal("2"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10")),
                 new ParcelUnitRequest(2, new BigDecimal("3"), new BigDecimal("25"), new BigDecimal("15"), new BigDecimal("10"))
@@ -423,6 +524,24 @@ public class ClientIntegrationTest {
         assertEquals(1, detail.getShipments().size());
         assertEquals("Completed", detail.getShipments().get(0).getStatus());
         assertEquals("2 / 2 Completed", detail.getShipments().get(0).getStatusRollup());
+    }
+
+    @Test
+    public void testGetAllClientsIncludesRatePerKilo() throws Exception {
+        Client vipClient = new Client("CL-001", "VIP Client", "Manila", "09170001111", "vip@tnl.ph", ChargeModel.FLAT, true);
+        vipClient.setRatePerKilo(new BigDecimal("75.00"));
+        clientRepository.saveAndFlush(vipClient);
+
+        Client regClient = new Client("CL-002", "Regular Client", "Cebu", "09170002222", "reg@tnl.ph", ChargeModel.FLAT, true);
+        clientRepository.saveAndFlush(regClient);
+
+        mockMvc.perform(get("/api/v1/clients")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].clientId").value("CL-001"))
+                .andExpect(jsonPath("$.content[0].ratePerKilo").value(75.00))
+                .andExpect(jsonPath("$.content[1].clientId").value("CL-002"))
+                .andExpect(jsonPath("$.content[1].ratePerKilo").doesNotExist());
     }
 }
 

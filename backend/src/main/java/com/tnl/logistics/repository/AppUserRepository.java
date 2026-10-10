@@ -37,8 +37,6 @@ public interface AppUserRepository extends JpaRepository<AppUser, String> {
     @Query("select user from AppUser user where user.userId = :userId")
     Optional<AppUser> findByIdForUpdate(@Param("userId") String userId);
 
-    List<AppUser> findByStaffTypeAndActiveTrue(com.tnl.logistics.model.StaffType staffType);
-
     List<AppUser> findByRoleAndActiveTrue(UserRole role);
 
 

@@ -125,6 +125,7 @@ export default function PinUnlockScreen() {
       await unlockWithPin(pin);
       router.replace('/(main)');
     } catch (error) {
+      if (error.code === 'SESSION_SUPERSEDED') return;
       setPin('');
       if (error.code === 'PASSWORD_CHANGE_REQUIRED') {
         await startPasswordReauthentication({

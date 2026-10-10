@@ -44,7 +44,7 @@ public class RepositoryIntegrationTest {
     @Test
     public void testCrudOperations() {
         // 1. AppUser CRUD
-        AppUser user = new AppUser("USR-001", "office_staff", "hashed_pwd", "Juan Dela Cruz", UserRole.OFFICE_STAFF);
+        AppUser user = new AppUser("USR-001", "office_staff", "hashed_pwd", "Juan Dela Cruz", UserRole.RECEIVING_STAFF);
         appUserRepository.save(user);
         Optional<AppUser> foundUser = appUserRepository.findByUsername("office_staff");
         assertTrue(foundUser.isPresent());

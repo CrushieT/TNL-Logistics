@@ -3,9 +3,10 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { colors } from '../../theme';
 import { PressableScale } from '../common/PressableScale';
+import { getMobileRoleLabel } from '../../features/auth/services/roleAccess.mjs';
 
 export function MobileHeader({ role, name, onAccount, onLock }) {
-  const roleDisplay = role ? role.replace(/_/g, ' ') : 'ROLE UNAVAILABLE';
+  const roleDisplay = getMobileRoleLabel(role);
 
   return (
     <View style={styles.header}>

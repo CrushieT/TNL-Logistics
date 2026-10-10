@@ -1,54 +1,83 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, Image, StyleSheet, Platform } from 'react-native';
 import { colors, fonts, spacing, radius } from '../../../theme';
 import { formatCurrency } from '../utils/collectionsUtils';
-import { getCompanyBranding } from '../../settings/services/settingsApi';
+import {
+  createStatementPrintSheetSequence,
+  paginateStatementItems,
+} from '../utils/statementPrintModel.mjs';
 
-/**
- * Chunks shipments into physical A4 pages based on vertical capacity budgets.
- * - Single-page statement (<= 10 items): 1 page total (with summary & signatures).
- * - Multi-page statement:
- *     Page 1: up to 14 items
- *     Middle pages: up to 16 items
- *     Final page: up to 10 items (preserving space for summary & signatures).
- */
-export function paginateStatementItems(items = []) {
-  if (!items || items.length === 0) {
-    return [[]];
-  }
-  // Single-page statement fits up to 10 items with summary and signatures
-  if (items.length <= 10) {
-    return [items];
-  }
+export { paginateStatementItems } from '../utils/statementPrintModel.mjs';
 
-  const pages = [];
-  let remaining = [...items];
+export const STATEMENT_LOGO_SOURCE = require('../../../../assets/tracking-logo.png');
 
-  // Page 1 capacity: budget up to 18 items to comfortably fill Page 1
-  const page1Count = Math.min(18, Math.max(14, remaining.length - 6));
-  pages.push(remaining.slice(0, page1Count));
-  remaining = remaining.slice(page1Count);
+function StatementLogo({ compact = false, forceFallback = false, size = 150 }) {
+  const [hasLoadError, setHasLoadError] = React.useState(false);
 
-  while (remaining.length > 0) {
-    // If remaining items fit on the final page with summary & signatures (<= 10)
-    if (remaining.length <= 10) {
-      pages.push(remaining);
-      break;
-    }
-    // If remaining items are between 11 and 20:
-    // Balance evenly between middle page and final page
-    if (remaining.length <= 20) {
-      const splitPoint = Math.ceil(remaining.length / 2);
-      pages.push(remaining.slice(0, splitPoint));
-      pages.push(remaining.slice(splitPoint));
-      break;
-    }
-    // Full middle continuation page: up to 18 items
-    pages.push(remaining.slice(0, 18));
-    remaining = remaining.slice(18);
+  const logoWidth = compact ? 88 : size;
+  const logoHeight = Math.round(logoWidth * (580 / 1800));
+
+  if (forceFallback || hasLoadError) {
+    return (
+      <View style={[styles.logoFallback, { width: logoWidth, height: logoHeight }]}>
+        <Text style={[styles.logoFallbackText, compact && styles.logoFallbackTextCompact]}>TNL</Text>
+      </View>
+    );
   }
 
-  return pages;
+  const asset = Image.resolveAssetSource ? Image.resolveAssetSource(STATEMENT_LOGO_SOURCE) : null;
+  const logoUri = asset?.uri || (typeof STATEMENT_LOGO_SOURCE === 'string' ? STATEMENT_LOGO_SOURCE : (STATEMENT_LOGO_SOURCE?.uri || STATEMENT_LOGO_SOURCE?.default || ''));
+
+  if (Platform.OS === 'web' && logoUri) {
+    return (
+      <img
+        src={logoUri}
+        alt="TNL Logistics"
+        onError={() => setHasLoadError(true)}
+        style={{
+          width: logoWidth,
+          height: logoHeight,
+          objectFit: 'contain',
+          display: 'block',
+          margin: '0 auto',
+        }}
+      />
+    );
+  }
+
+  return (
+    <Image
+      source={STATEMENT_LOGO_SOURCE}
+      resizeMode="contain"
+      onError={() => setHasLoadError(true)}
+      style={[{ width: logoWidth, height: logoHeight }]}
+    />
+  );
+}
+
+function PaymentInstructionsBox({ bankName, accountName, accountNumber }) {
+  return (
+    <View style={styles.paymentInstructionsBox}>
+      <Text style={styles.paymentInstructionsTitle}>PAYMENT INSTRUCTIONS</Text>
+      <Text style={styles.paymentInstructionsText}>
+        Please settle the amount due on or before the stated collection date. Make checks payable to the account name below. For bank deposits or transfers, use the following details and include the SOA number as the payment reference.
+      </Text>
+      <View style={styles.bankDetailsGrid}>
+        <View style={styles.bankDetailRow}>
+          <Text style={styles.bankDetailLabel}>Bank:</Text>
+          <Text style={styles.bankDetailValue}>{bankName}</Text>
+        </View>
+        <View style={styles.bankDetailRow}>
+          <Text style={styles.bankDetailLabel}>Account Name:</Text>
+          <Text style={styles.bankDetailValue}>{accountName}</Text>
+        </View>
+        <View style={styles.bankDetailRow}>
+          <Text style={styles.bankDetailLabel}>Account Number:</Text>
+          <Text style={styles.bankAccountNumber}>{accountNumber}</Text>
+        </View>
+      </View>
+    </View>
+  );
 }
 
 /**
@@ -58,28 +87,15 @@ export function paginateStatementItems(items = []) {
 export default function StatementPaperCard({
   data,
   currentUser = { name: 'Maria Santos', role: 'Administrator' },
-  liveDeduction = 0,
-  liveDeductionNote = '',
-  liveCollectedBy = '',
+  liveDeduction,
+  liveDeductionNote,
+  liveCollectedBy,
   companyBranding = null,
+  copies = 1,
+  showLogo = true,
+  logoLoadFailed = false,
 }) {
   if (!data) return null;
-
-  const [branding, setBranding] = React.useState(companyBranding || null);
-
-  React.useEffect(() => {
-    if (!companyBranding) {
-      let mounted = true;
-      getCompanyBranding()
-        .then((res) => {
-          if (mounted && res) setBranding(res);
-        })
-        .catch(() => {});
-      return () => {
-        mounted = false;
-      };
-    }
-  }, [companyBranding]);
 
   const {
     clientName = '-',
@@ -97,8 +113,8 @@ export default function StatementPaperCard({
   } = data;
 
   const deductionVal = Number(liveDeduction ?? data.deductionAmount ?? 0);
-  const deductionReason = liveDeductionNote || data.deductionNote || '';
-  const collector = liveCollectedBy || data.collectedBy || '';
+  const deductionReason = liveDeductionNote ?? data.deductionNote ?? '';
+  const collector = liveCollectedBy ?? data.collectedBy ?? '';
 
   const finalAmountDue = Math.max(0, Number(totalCharges || 0) - Number(totalPaid || 0) - deductionVal);
 
@@ -110,113 +126,97 @@ export default function StatementPaperCard({
     ? `${new Date(collectionDate).toLocaleDateString('en-US', { weekday: 'short' })}, ${new Date(collectionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
     : '-';
 
-  const brandName = (branding?.companyName || 'TNL LOGISTICS').toUpperCase();
-  const brandAddress = branding?.companyAddress || 'Manila Central Hub';
-  const brandContact = branding?.companyContact || '0917-555-0000';
-  const brandEmail = branding?.billingEmail || 'billing@tnllogistics.ph';
+  const branding = companyBranding || data;
+  const brandName = (branding.companyName || 'TNL LOGISTICS').toUpperCase();
+  const brandAddress = branding.companyAddress || 'Manila Central Hub';
+  const brandContact = branding.companyContact || '0917-555-0000';
+  const brandEmail = branding.billingEmail || 'billing@tnllogistics.ph';
   const brandSubtext = `${brandAddress} | ${brandContact} | ${brandEmail}`;
+  const bankName = data.soaBankName || 'Not configured';
+  const accountName = data.soaAccountName || 'Not configured';
+  const accountNumber = data.soaAccountNumber || 'Not configured';
 
   // Paginate statement items into distinct physical A4 sheets
   const paginatedPages = useMemo(() => paginateStatementItems(items), [items]);
   const totalPages = paginatedPages.length;
+  const printSheets = useMemo(
+    () => createStatementPrintSheetSequence(paginatedPages, copies),
+    [paginatedPages, copies],
+  );
 
   return (
     <View style={styles.container}>
-      {paginatedPages.map((pageItems, pageIdx) => {
-        const isFirstPage = pageIdx === 0;
-        const isLastPage = pageIdx === totalPages - 1;
-        const pageNumber = pageIdx + 1;
-
+      {printSheets.map(({ copyIndex, pageIndex, pageNumber, isLastPage, pageItems }) => {
         return (
           <View
-            key={`soa-sheet-${pageIdx}`}
+            key={`soa-copy-${copyIndex}-sheet-${pageIndex}`}
             style={[
               styles.paper,
               totalPages > 1 && styles.stackedPaper,
             ]}
             className="soa-paper-sheet"
-            nativeID={`soa-printable-sheet-${pageIdx}`}
+            nativeID={`soa-printable-sheet-${copyIndex}-${pageIndex}`}
           >
-            {/* Page Header */}
-            {isFirstPage ? (
-              <>
-                {/* Full Brand & Statement Header (Page 1) */}
-                <View style={styles.headerRow}>
-                  <View style={styles.brandCol}>
-                    <View style={styles.brandRow}>
-                      <View style={styles.logoMark}>
-                        <Text style={styles.logoMarkText}>T</Text>
-                      </View>
-                      <View>
-                        <Text style={styles.companyName}>{brandName}</Text>
-                        <Text style={styles.companySubtext}>{brandSubtext}</Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  <View style={styles.metaCol}>
-                    <Text style={styles.documentTitle}>STATEMENT OF ACCOUNT</Text>
-                    <Text style={styles.metaLine}>
-                      <Text style={styles.metaLabel}>SOA No. </Text>
-                      <Text style={styles.metaValueMono}>{soaNo}</Text>
-                    </Text>
-                    <Text style={styles.metaLine}>
-                      <Text style={styles.metaLabel}>Statement Date: </Text>
-                      <Text style={styles.metaValue}>{formattedStatementDate}</Text>
-                    </Text>
-                    <Text style={styles.metaLine}>
-                      <Text style={styles.metaLabel}>Collection Date: </Text>
-                      <Text style={styles.metaValue}>{formattedCollectionDate}</Text>
-                    </Text>
-                  </View>
+            {/* Top-Centered Letterhead Brand Header (Rendered on Every Page) */}
+            <View style={styles.letterheadBlock}>
+              {showLogo && (
+                <View style={styles.letterheadLogoWrap}>
+                  <StatementLogo forceFallback={logoLoadFailed} size={150} />
                 </View>
+              )}
+              <Text style={styles.companyNameCentered}>{brandName}</Text>
+              <Text style={styles.companySubtextCentered}>{brandSubtext}</Text>
+            </View>
 
-                {/* Solid Black Divider Line */}
-                <View style={styles.solidDivider} />
+            {/* Hairline Divider below Letterhead */}
+            <View style={styles.letterheadDivider} />
 
-                {/* Bill To & Collection Week Information Row */}
-                <View style={styles.infoRow}>
-                  <View style={styles.billToCol}>
-                    <Text style={styles.sectionEyebrow}>BILL TO</Text>
-                    <Text style={styles.clientName}>{clientName}</Text>
-                    {clientAddress ? <Text style={styles.clientAddress}>{clientAddress}</Text> : null}
-                    {(clientContact || clientEmail) ? (
-                      <Text style={styles.clientContact}>
-                        {[clientContact, clientEmail].filter(Boolean).join(' | ')}
-                      </Text>
-                    ) : null}
-                  </View>
+            {/* Document Meta Row: Title on Left, SOA Metadata on Right */}
+            <View style={styles.metaRow}>
+              <View style={styles.titleCol}>
+                <Text style={styles.documentTitle}>STATEMENT OF ACCOUNT</Text>
+              </View>
 
-                  <View style={styles.weekCol}>
-                    <Text style={styles.sectionEyebrowRight}>COLLECTION WEEK</Text>
-                    <Text style={styles.weekRange}>{cycleRangeLabel || 'Current Billing Cycle'}</Text>
-                    <Text style={styles.outstandingCount}>
-                      {shipmentsCount} {shipmentsCount === 1 ? 'outstanding shipment' : 'outstanding shipments'}
-                    </Text>
-                  </View>
-                </View>
-              </>
-            ) : (
-              <>
-                {/* Streamlined Continuation Header (Page 2+) */}
-                <View style={styles.continuationHeaderRow}>
-                  <View style={styles.continuationBrand}>
-                    <View style={styles.continuationLogoMark}>
-                      <Text style={styles.continuationLogoText}>T</Text>
-                    </View>
-                    <Text style={styles.continuationTitle}>
-                      TNL LOGISTICS: <Text style={styles.continuationSubTitle}>STATEMENT OF ACCOUNT (Continuation)</Text>
-                    </Text>
-                  </View>
-                  <View style={styles.continuationMeta}>
-                    <Text style={styles.continuationMetaText}>
-                      <Text style={styles.continuationMetaMono}>{soaNo}</Text> | {clientName}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.continuationDivider} />
-              </>
-            )}
+              <View style={styles.metaCol}>
+                <Text style={styles.metaLine}>
+                  <Text style={styles.metaLabel}>SOA No. </Text>
+                  <Text style={styles.metaValueMono}>{soaNo}</Text>
+                </Text>
+                <Text style={styles.metaLine}>
+                  <Text style={styles.metaLabel}>Statement Date: </Text>
+                  <Text style={styles.metaValue}>{formattedStatementDate}</Text>
+                </Text>
+                <Text style={styles.metaLine}>
+                  <Text style={styles.metaLabel}>Collection Date: </Text>
+                  <Text style={styles.metaValue}>{formattedCollectionDate}</Text>
+                </Text>
+              </View>
+            </View>
+
+            {/* Bill To & Collection Week Information Row (Rendered on Every Page) */}
+            <View style={styles.infoRow}>
+              <View style={styles.billToCol}>
+                <Text style={styles.sectionEyebrow}>BILL TO</Text>
+                <Text style={styles.clientName}>{clientName}</Text>
+                {clientAddress ? <Text style={styles.clientAddress}>{clientAddress}</Text> : null}
+                {(clientContact || clientEmail) ? (
+                  <Text style={styles.clientContact}>
+                    {[clientContact, clientEmail].filter(Boolean).join(' | ')}
+                  </Text>
+                ) : null}
+              </View>
+
+              <View style={styles.weekCol}>
+                <Text style={styles.sectionEyebrowRight}>COLLECTION WEEK</Text>
+                <Text style={styles.weekRange}>{cycleRangeLabel || 'Current Billing Cycle'}</Text>
+                <Text style={styles.outstandingCount}>
+                  {shipmentsCount} {shipmentsCount === 1 ? 'outstanding shipment' : 'outstanding shipments'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Single Solid Black Divider Line */}
+            <View style={styles.solidDivider} />
 
             {/* Itemized Shipments Table */}
             <View style={styles.tableContainer}>
@@ -224,14 +224,13 @@ export default function StatementPaperCard({
               <View style={styles.tableHeaderRow}>
                 <Text style={[styles.thText, styles.colDate]}>DATE</Text>
                 <Text style={[styles.thText, styles.colShipment]}>SHIPMENT</Text>
-                <Text style={[styles.thText, styles.colDesc]}>DESCRIPTION</Text>
                 <Text style={[styles.thText, styles.colQty]}>QTY</Text>
                 <Text style={[styles.thText, styles.colCharges]}>CHARGES</Text>
-                <Text style={[styles.thText, styles.colOther]}>OTHER</Text>
                 <Text style={[styles.thText, styles.colDue]}>DUE</Text>
                 <Text style={[styles.thText, styles.colPaid]}>PAID</Text>
                 <Text style={[styles.thText, styles.colBalance]}>BALANCE</Text>
               </View>
+              <View style={styles.tableHeaderDivider} />
 
               {/* Table Body */}
               {pageItems.length === 0 ? (
@@ -239,23 +238,39 @@ export default function StatementPaperCard({
                   <Text style={styles.emptyText}>No shipments found for this client in the selected cycle.</Text>
                 </View>
               ) : (
-                pageItems.map((item, rowIdx) => (
-                  <View key={item.shipmentId || rowIdx} style={styles.tableRow}>
-                    <Text style={[styles.tdTextMono, styles.colDate]} numberOfLines={1}>{item.dateRegistered}</Text>
-                    <Text style={[styles.tdTextMono, styles.colShipment]} numberOfLines={1}>{item.shipmentId}</Text>
-                    <Text style={[styles.tdText, styles.colDesc]} numberOfLines={1}>{item.description}</Text>
-                    <Text style={[styles.tdTextCenter, styles.colQty]}>{item.quantity}</Text>
-                    <Text style={[styles.tdTextRight, styles.colCharges]}>{formatCurrency(item.charges)}</Text>
-                    <Text style={[styles.tdTextRight, styles.colOther]}>{formatCurrency(item.otherCharges)}</Text>
-                    <Text style={[styles.tdTextRight, styles.colDue]}>{formatCurrency(item.due)}</Text>
-                    <Text style={[styles.tdTextRight, styles.colPaid]}>{formatCurrency(item.paid)}</Text>
-                    <Text style={[styles.tdTextRight, styles.colBalance]}>{formatCurrency(item.balance)}</Text>
-                  </View>
-                ))
+                pageItems.map((item, rowIdx) => {
+                  const itemChargesTotal = Number(item.charges || 0) + Number(item.otherCharges || 0);
+                  return (
+                    <View
+                      key={item.shipmentId || rowIdx}
+                      style={styles.tableRow}
+                    >
+                      <Text style={[styles.tdTextMono, styles.colDate]} numberOfLines={1}>{item.dateRegistered}</Text>
+                      <Text style={[styles.tdTextMono, styles.colShipment]} numberOfLines={1}>{item.shipmentId}</Text>
+                      <Text style={[styles.tdTextCenter, styles.colQty]}>{item.quantity}</Text>
+                      <Text style={[styles.tdTextRight, styles.colCharges]}>{formatCurrency(itemChargesTotal)}</Text>
+                      <Text style={[styles.tdTextRight, styles.colDue]}>{formatCurrency(item.due)}</Text>
+                      <Text style={[styles.tdTextRight, styles.colPaid]}>{formatCurrency(item.paid)}</Text>
+                      <Text style={[styles.tdTextRight, styles.colBalance]}>{formatCurrency(item.balance)}</Text>
+                    </View>
+                  );
+                })
               )}
             </View>
 
-            {/* Final Page Summary, Totals & Signatures */}
+            {/* Non-Final Page: Payment Instructions */}
+            {!isLastPage && (
+              <>
+                <View style={styles.nonLastPageSpacer} />
+                <PaymentInstructionsBox
+                  bankName={bankName}
+                  accountName={accountName}
+                  accountNumber={accountNumber}
+                />
+              </>
+            )}
+
+            {/* Final Page Summary, Totals, Payment Instructions & Signatures */}
             {isLastPage && (
               <>
                 <View style={styles.summaryRow}>
@@ -297,12 +312,14 @@ export default function StatementPaperCard({
                   </View>
                 </View>
 
-                {/* Printable Remittance Instructions & Signature Blocks */}
-                <View style={styles.printFooter}>
-                  <Text style={styles.remittanceNote}>
-                    Please settle on or before the collection date. Make cheques payable to TNL Logistics. For GCash/bank transfer, use SOA No. as reference.
-                  </Text>
+                <PaymentInstructionsBox
+                  bankName={bankName}
+                  accountName={accountName}
+                  accountNumber={accountNumber}
+                />
 
+                {/* Printable Signature Blocks */}
+                <View style={styles.printFooter}>
                   <View style={styles.signatureRow}>
                     {/* Signature 1: Prepared by */}
                     <View style={styles.sigCol}>
@@ -357,7 +374,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.sm,
-    padding: 36,
+    paddingHorizontal: 28,
+    paddingTop: 14,
+    paddingBottom: 14,
     width: '100%',
     maxWidth: 840,
     alignSelf: 'center',
@@ -369,52 +388,71 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   stackedPaper: {
-    marginBottom: 28,
+    marginBottom: 24,
   },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  brandCol: {
-    flex: 1,
-    minWidth: 260,
-  },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  logoMark: {
-    width: 36,
-    height: 36,
-    backgroundColor: '#111110',
-    borderWidth: 1,
-    borderColor: '#111110',
-    borderRadius: 2,
+  letterheadBlock: {
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 4,
   },
-  logoMarkText: {
+  letterheadLogoWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 3,
+  },
+  companyNameCentered: {
     fontFamily: fonts.sans,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '900',
-    color: '#FFFFFF',
-  },
-  companyName: {
-    fontFamily: fonts.sans,
-    fontSize: 16,
-    fontWeight: '800',
     color: '#111110',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
+    textAlign: 'center',
+    textTransform: 'uppercase',
   },
-  companySubtext: {
+  companySubtextCentered: {
     fontFamily: fonts.sans,
     fontSize: 11,
     color: colors.inkMuted,
-    marginTop: 2,
+    marginTop: 1,
+    textAlign: 'center',
+  },
+  letterheadDivider: {
+    borderTopWidth: 1,
+    borderTopColor: '#E1DFD5',
+    height: 0,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingTop: 4,
+    marginBottom: 4,
+  },
+  titleCol: {
+    justifyContent: 'flex-end',
+  },
+  logoFallback: {
+    width: 150,
+    height: 48,
+    borderWidth: 2,
+    borderColor: '#111110',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoFallbackCompact: {
+    width: 88,
+    height: 28,
+  },
+  logoFallbackText: {
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#111110',
+  },
+  logoFallbackTextCompact: {
+    fontSize: 9,
   },
   metaCol: {
     alignItems: 'flex-end',
@@ -422,45 +460,45 @@ const styles = StyleSheet.create({
   },
   documentTitle: {
     fontFamily: fonts.sans,
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 17,
+    fontWeight: '900',
     color: '#111110',
     letterSpacing: 0.5,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   metaLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 2,
+    marginTop: 1.5,
   },
   metaLabel: {
     fontFamily: fonts.sans,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.inkMuted,
   },
   metaValue: {
     fontFamily: fonts.sans,
-    fontSize: 11,
+    fontSize: 12,
     color: '#111110',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   metaValueMono: {
     fontFamily: fonts.mono,
-    fontSize: 11,
+    fontSize: 16,
     color: '#111110',
-    fontWeight: '700',
+    fontWeight: '900',
   },
   solidDivider: {
     borderTopWidth: 1.5,
     borderTopColor: '#111110',
     height: 0,
-    marginVertical: 20,
+    marginVertical: 6,
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 20,
+    marginBottom: 6,
     gap: spacing.md,
   },
   billToCol: {
@@ -468,165 +506,116 @@ const styles = StyleSheet.create({
   },
   sectionEyebrow: {
     fontFamily: fonts.mono,
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
     color: colors.inkFaint,
     letterSpacing: 0.8,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   clientName: {
     fontFamily: fonts.sans,
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
     color: '#111110',
   },
   clientAddress: {
     fontFamily: fonts.sans,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.ink,
-    marginTop: 2,
+    marginTop: 1,
   },
   clientContact: {
     fontFamily: fonts.sans,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.inkMuted,
-    marginTop: 2,
+    marginTop: 1,
   },
   weekCol: {
     alignItems: 'flex-end',
   },
   sectionEyebrowRight: {
     fontFamily: fonts.mono,
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
     color: colors.inkFaint,
     letterSpacing: 0.8,
     textAlign: 'right',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   weekRange: {
     fontFamily: fonts.sans,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
     color: '#111110',
     textAlign: 'right',
   },
   outstandingCount: {
     fontFamily: fonts.sans,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.inkMuted,
     textAlign: 'right',
-    marginTop: 2,
-  },
-
-  /* Continuation Page Styles */
-  continuationHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingBottom: 4,
-  },
-  continuationBrand: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  continuationLogoMark: {
-    width: 24,
-    height: 24,
-    backgroundColor: '#111110',
-    borderRadius: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  continuationLogoText: {
-    fontFamily: fonts.sans,
-    fontSize: 14,
-    fontWeight: '900',
-    color: '#FFFFFF',
-  },
-  continuationTitle: {
-    fontFamily: fonts.sans,
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#111110',
-  },
-  continuationSubTitle: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.inkMuted,
-  },
-  continuationMeta: {
-    alignItems: 'flex-end',
-  },
-  continuationMetaText: {
-    fontFamily: fonts.sans,
-    fontSize: 11,
-    color: colors.inkMuted,
-  },
-  continuationMetaMono: {
-    fontFamily: fonts.mono,
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#111110',
-  },
-  continuationDivider: {
-    borderTopWidth: 1,
-    borderTopColor: '#111110',
-    height: 0,
-    marginTop: 10,
-    marginBottom: 16,
+    marginTop: 1,
   },
 
   tableContainer: {
-    marginBottom: 20,
+    marginBottom: 6,
   },
   tableHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#111110',
+    paddingVertical: 5,
+    marginTop: 4,
+  },
+  tableHeaderDivider: {
+    borderTopWidth: 1.5,
+    borderTopColor: '#111110',
+    height: 0,
+    width: '100%',
+    marginBottom: 2,
   },
   thText: {
     fontFamily: fonts.mono,
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.inkMuted,
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.ink,
     letterSpacing: 0.5,
   },
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 9.5,
+    paddingVertical: 7.5,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
   },
+  nonLastPageSpacer: {
+    height: 36,
+  },
   tdText: {
     fontFamily: fonts.sans,
-    fontSize: 12.5,
+    fontSize: 14.5,
     color: '#111110',
   },
   tdTextMono: {
     fontFamily: fonts.mono,
-    fontSize: 11.5,
+    fontSize: 14.5,
     color: '#111110',
   },
   tdTextCenter: {
     fontFamily: fonts.mono,
-    fontSize: 11.5,
+    fontSize: 14.5,
     color: '#111110',
     textAlign: 'center',
+    fontWeight: '600',
   },
   tdTextRight: {
     fontFamily: fonts.mono,
-    fontSize: 11.5,
+    fontSize: 14.5,
     color: '#111110',
     textAlign: 'right',
+    fontWeight: '700',
   },
   emptyRow: {
-    paddingVertical: 32,
+    paddingVertical: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -636,188 +625,233 @@ const styles = StyleSheet.create({
     color: colors.inkMuted,
     fontStyle: 'italic',
   },
-  colDate: { width: 78, flexShrink: 0 },
-  colShipment: { width: 96, flexShrink: 0 },
-  colDesc: { flex: 1, paddingRight: 8 },
-  colQty: { width: 36, textAlign: 'center', flexShrink: 0 },
-  colCharges: { width: 68, textAlign: 'right', flexShrink: 0 },
-  colOther: { width: 52, textAlign: 'right', flexShrink: 0 },
-  colDue: { width: 68, textAlign: 'right', flexShrink: 0 },
-  colPaid: { width: 62, textAlign: 'right', flexShrink: 0 },
-  colBalance: { width: 68, textAlign: 'right', flexShrink: 0 },
+  colDate: { width: 110, flexShrink: 0 },
+  colShipment: { width: 140, flexShrink: 0 },
+  colQty: { width: 50, textAlign: 'center', flexShrink: 0 },
+  colCharges: { flex: 1, textAlign: 'right' },
+  colDue: { flex: 1, textAlign: 'right' },
+  colPaid: { flex: 1, textAlign: 'right' },
+  colBalance: { flex: 1, textAlign: 'right' },
 
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    gap: 24,
-    marginBottom: 24,
+    gap: 20,
+    marginBottom: 6,
   },
   deductionsBox: {
     backgroundColor: '#F8F7F4',
     borderWidth: 1,
     borderColor: '#EBE9E2',
     borderRadius: 3,
-    padding: 12,
-    minWidth: 260,
-    maxWidth: 340,
+    padding: 10,
+    minWidth: 250,
+    maxWidth: 350,
     flex: 1,
   },
   deductionsBoxTitle: {
     fontFamily: fonts.mono,
-    fontSize: 9,
-    fontWeight: '700',
+    fontSize: 11.5,
+    fontWeight: '800',
     color: colors.inkMuted,
     letterSpacing: 0.8,
-    marginBottom: 4,
+    marginBottom: 3,
   },
   deductionsEmptyText: {
     fontFamily: fonts.sans,
-    fontSize: 11,
+    fontSize: 13,
     color: colors.inkMuted,
     fontStyle: 'italic',
   },
   deductionAmountText: {
     fontFamily: fonts.mono,
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 16.5,
+    fontWeight: '800',
     color: '#111110',
   },
   deductionReasonText: {
     fontFamily: fonts.sans,
-    fontSize: 11,
+    fontSize: 12.5,
     color: colors.inkMuted,
-    marginTop: 2,
+    marginTop: 1,
   },
   totalsBox: {
-    minWidth: 220,
+    minWidth: 250,
     alignItems: 'flex-end',
   },
   totalLine: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: 220,
-    marginBottom: 4,
+    width: 250,
+    marginBottom: 3,
   },
   totalLabel: {
     fontFamily: fonts.sans,
-    fontSize: 12,
-    color: colors.inkMuted,
+    fontSize: 15,
+    color: '#111110',
+    fontWeight: '700',
   },
   totalVal: {
     fontFamily: fonts.mono,
-    fontSize: 12,
+    fontSize: 16,
     color: '#111110',
-    fontWeight: '600',
+    fontWeight: '800',
   },
   totalDivider: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
     height: 0,
-    width: 220,
-    marginVertical: 6,
+    width: 250,
+    marginVertical: 5,
   },
   amountDueRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'baseline',
-    width: 220,
+    width: 250,
     marginTop: 2,
   },
   amountDueLabel: {
     fontFamily: fonts.sans,
-    fontSize: 14,
-    fontWeight: '800',
+    fontSize: 18,
+    fontWeight: '900',
     color: '#111110',
   },
   amountDueValue: {
     fontFamily: fonts.mono,
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 24,
+    fontWeight: '900',
     color: '#111110',
   },
   settledStatus: {
     fontFamily: fonts.mono,
-    fontSize: 10,
+    fontSize: 11.5,
     fontWeight: '800',
     color: colors.success,
-    marginTop: 6,
+    marginTop: 3,
     letterSpacing: 0.8,
   },
   collectionStatus: {
     fontFamily: fonts.mono,
-    fontSize: 10,
+    fontSize: 11.5,
     fontWeight: '800',
     color: colors.warning,
-    marginTop: 6,
+    marginTop: 3,
     letterSpacing: 0.8,
   },
 
-  printFooter: {
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
-    paddingTop: 16,
+  paymentInstructionsBox: {
+    borderWidth: 1.5,
+    borderColor: '#111110',
+    padding: 8,
+    marginTop: 5,
+    marginBottom: 6,
   },
-  remittanceNote: {
+  paymentInstructionsTitle: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#111110',
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  paymentInstructionsText: {
     fontFamily: fonts.sans,
     fontSize: 11,
-    color: colors.inkMuted,
-    lineHeight: 16,
-    marginBottom: 24,
+    lineHeight: 15,
+    color: '#111110',
+    marginBottom: 4,
+  },
+  bankDetailsGrid: {
+    gap: 2,
+  },
+  bankDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  bankDetailLabel: {
+    width: 110,
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#111110',
+  },
+  bankDetailValue: {
+    flex: 1,
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#111110',
+  },
+  bankAccountNumber: {
+    flex: 1,
+    fontFamily: fonts.mono,
+    fontSize: 13.5,
+    fontWeight: '900',
+    color: '#111110',
+    letterSpacing: 0.5,
+  },
+  printFooter: {
+    paddingTop: 6,
   },
   signatureRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 32,
-    marginBottom: 16,
+    alignItems: 'flex-start',
+    gap: 28,
   },
   sigCol: {
     flex: 1,
+    alignItems: 'center',
   },
   sigNameWrap: {
-    minHeight: 22,
+    minHeight: 18,
     justifyContent: 'flex-end',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   sigNameText: {
     fontFamily: fonts.sans,
     fontSize: 12,
     fontWeight: '700',
     color: '#111110',
+    textAlign: 'center',
   },
   sigLine: {
     borderTopWidth: 1,
     borderTopColor: '#111110',
-    height: 0,
-    marginBottom: 6,
+    width: '100%',
+    marginBottom: 3,
   },
   sigText: {
     fontFamily: fonts.sans,
     fontSize: 11,
+    fontWeight: '700',
     color: colors.inkMuted,
+    textAlign: 'center',
   },
+
   pageFootnoteRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: colors.borderLight,
-    marginTop: 8,
+    paddingTop: 4,
+    marginTop: 6,
   },
   pageFootnoteLast: {
-    borderTopWidth: 0,
-    paddingTop: 4,
+    marginTop: 6,
   },
   pageFootnoteText: {
     fontFamily: fonts.sans,
-    fontSize: 10,
+    fontSize: 11,
     color: colors.inkMuted,
   },
   pageNumberText: {
-    fontFamily: fonts.mono,
-    fontSize: 10,
-    fontWeight: '700',
+    fontFamily: fonts.sans,
+    fontSize: 11,
     color: colors.inkMuted,
+    fontWeight: '700',
   },
 });

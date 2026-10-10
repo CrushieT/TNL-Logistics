@@ -3,11 +3,22 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useAuth } from '../../features/auth/context/AuthContext';
 import { colors } from '../../theme';
+import {
+  isSupportedMobileRole,
+} from '../../features/auth/services/roleAccess.mjs';
 
 import { PrinterProvider } from '../../features/printer/context/PrinterContext';
 
 export default function MainLayout() {
-  const { isAuthenticated, isLoading, isLocked, mustSetupPin, boundUser } = useAuth();
+  const {
+    isAuthenticated,
+    isLoading,
+    isLocked,
+    mustSetupPin,
+    boundUser,
+    user,
+    clearInvalidDeviceSession,
+  } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -23,14 +34,30 @@ export default function MainLayout() {
       return;
     }
 
+    if (user && !isSupportedMobileRole(user.role)) {
+      clearInvalidDeviceSession().finally(() => router.replace('/(auth)/login'));
+      return;
+    }
+
     if (!isAuthenticated) {
       if (boundUser) {
         router.replace('/(auth)/pin');
       } else {
         router.replace('/(auth)/login');
       }
+      return;
     }
-  }, [isLoading, isLocked, mustSetupPin, isAuthenticated, boundUser, router]);
+
+  }, [
+    isLoading,
+    isLocked,
+    mustSetupPin,
+    isAuthenticated,
+    boundUser,
+    user?.role,
+    clearInvalidDeviceSession,
+    router,
+  ]);
 
   if (isLoading) {
     return (
@@ -40,13 +67,14 @@ export default function MainLayout() {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || !isSupportedMobileRole(user?.role)) {
     return null;
   }
 
   return (
     <PrinterProvider>
       <Stack
+        key={user.userId}
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.canvas },
@@ -56,6 +84,7 @@ export default function MainLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="register" options={{ gestureEnabled: false }} />
         <Stack.Screen name="scan" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="waybills" />
         <Stack.Screen name="printer" />
         <Stack.Screen name="shipments/index" />
         <Stack.Screen name="shipments/[id]" />

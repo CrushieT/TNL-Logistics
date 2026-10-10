@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -10,13 +10,15 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../features/auth/context/AuthContext';
 import { colors } from '../../theme';
 import { PressableScale } from '../../components/common/PressableScale';
 import { NoticeBanner } from '../../components/common/NoticeBanner';
+import { StatusModal } from '../../components/common/StatusModal';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -29,6 +31,7 @@ export default function LoginScreen() {
     mustChangePassword,
     mustSetupPin,
     isLoading: authLoading,
+    cancelPendingAuthentication,
   } = useAuth();
 
   const isPinClearedNotice = params?.reason === 'pin_cleared';
@@ -43,6 +46,36 @@ export default function LoginScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const [lockoutSeconds, setLockoutSeconds] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [isSwitchConfirmationVisible, setIsSwitchConfirmationVisible] = useState(false);
+  const activeSubmission = useRef(false);
+  const submissionSequence = useRef(0);
+  const screenActive = useRef(true);
+
+  const clearSensitiveInput = useCallback(() => {
+    submissionSequence.current += 1;
+    setPassword('');
+    setIsSwitchConfirmationVisible(false);
+    if (activeSubmission.current) {
+      activeSubmission.current = false;
+      void cancelPendingAuthentication();
+    }
+    setSubmitting(false);
+  }, [cancelPendingAuthentication]);
+
+  useFocusEffect(useCallback(() => {
+    screenActive.current = true;
+    return () => {
+      screenActive.current = false;
+      clearSensitiveInput();
+    };
+  }, [clearSensitiveInput]));
+
+  useEffect(() => {
+    const listener = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') clearSensitiveInput();
+    });
+    return () => listener.remove();
+  }, [clearSensitiveInput]);
 
   // Pre-fill username from route param or cleared bound account
   useEffect(() => {
@@ -87,15 +120,21 @@ export default function LoginScreen() {
     return () => clearInterval(interval);
   }, [lockoutSeconds]);
 
-  const handleSignIn = async () => {
+  const handleSignIn = async (confirmDeviceSwitch = false) => {
     const trimmedUsername = username.trim();
-    if (!trimmedUsername || !password || submitting || lockoutSeconds > 0) return;
+    if (!trimmedUsername || !password || activeSubmission.current || lockoutSeconds > 0) return;
 
+    activeSubmission.current = true;
+    const submissionId = ++submissionSequence.current;
+    setIsSwitchConfirmationVisible(false);
     setSubmitting(true);
     setErrorMessage('');
 
     try {
-      const userData = await loginWithPassword(trimmedUsername, password);
+      const userData = await loginWithPassword(trimmedUsername, password, confirmDeviceSwitch);
+      if (!screenActive.current || submissionId !== submissionSequence.current) return;
+      activeSubmission.current = false;
+      setPassword('');
       if (userData.mustChangePassword) {
         router.replace('/(auth)/change-password');
       } else if (userData.hasPinSet === false) {
@@ -104,6 +143,12 @@ export default function LoginScreen() {
         router.replace('/(main)');
       }
     } catch (error) {
+      if (!screenActive.current || submissionId !== submissionSequence.current || error.code === 'SESSION_SUPERSEDED') return;
+      if (error.code === 'DEVICE_SWITCH_CONFIRMATION_REQUIRED') {
+        setIsSwitchConfirmationVisible(true);
+        return;
+      }
+      setPassword('');
       if (error.status === 429) {
         const retryAfter = error.retryAfterSeconds || 60;
         setLockoutSeconds(retryAfter);
@@ -114,7 +159,10 @@ export default function LoginScreen() {
         setErrorMessage('Unable to sign in. Please verify your credentials and network connection.');
       }
     } finally {
-      setSubmitting(false);
+      if (submissionId === submissionSequence.current) {
+        activeSubmission.current = false;
+        setSubmitting(false);
+      }
     }
   };
 
@@ -265,7 +313,7 @@ export default function LoginScreen() {
                 styles.signInButton,
                 isButtonEnabled ? styles.signInButtonActive : styles.signInButtonDisabled,
               ]}
-              onPress={handleSignIn}
+              onPress={() => handleSignIn(false)}
               disabled={!isButtonEnabled}
               activeScale={0.97}
             >
@@ -287,6 +335,16 @@ export default function LoginScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      <StatusModal
+        visible={isSwitchConfirmationVisible}
+        eyebrow="SWITCH ACCOUNT"
+        title="Switch this phone?"
+        message={`Sign in as @${username.trim()}? The current account will be replaced on this phone. Its other phones will stay signed in.`}
+        cancelText="Cancel"
+        confirmText="SWITCH ACCOUNT"
+        onCancel={clearSensitiveInput}
+        onConfirm={() => handleSignIn(true)}
+      />
     </SafeAreaView>
   );
 }

@@ -1,11 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, View, Text, StyleSheet, Switch, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, Switch, TouchableOpacity, useWindowDimensions } from 'react-native';
 import Card from '../../../components/common/Card';
 import FormField from '../../../components/common/FormField';
 import SelectField from '../../../components/common/SelectField';
 import Button from '../../../components/common/Button';
+import StatusModal from '../../../components/common/StatusModal';
 import ClientSelectDropdown from './ClientSelectDropdown';
+import ParcelUnitsEditor from './ParcelUnitsEditor';
+import ShipmentPricingSummary from './ShipmentPricingSummary';
 import { calculateShipmentMetrics } from '../registrationCalculations.mjs';
+import { calculateTotalCents } from '../fixedPointPricing.mjs';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
 
 const CHARGE_MODELS = [
@@ -13,17 +17,15 @@ const CHARGE_MODELS = [
   { value: 'PER_UNIT', label: 'Per unit' },
 ];
 
-function formatMeasure(value, digits, suffix) {
-  return value === null ? 'Unavailable' : `${value.toFixed(digits)} ${suffix}`;
-}
-
 export default function ShipmentForm({
   clients = [],
   nextShipmentPreview,
   onSubmit,
   submitting,
   volumetricDivisor,
+  ratePerKilo,
   calculationSettingsState = 'loading',
+  onPricingClientChange,
   onRetryCalculationSettings,
 }) {
   const { width } = useWindowDimensions();
@@ -38,28 +40,35 @@ export default function ShipmentForm({
   const [newClientContact, setNewClientContact] = useState('');
   const [newClientEmail, setNewClientEmail] = useState('');
 
-  // Recipient Details
-  const [recipientName, setRecipientName] = useState('');
+  // Delivery Details (recipient name is derived from billing client)
   const [address, setAddress] = useState('');
   const [contactNumber, setContactNumber] = useState('');
 
   // Shipment & Parcel Details
   const [description, setDescription] = useState('');
-  const [quantity, setQuantity] = useState('1');
-  const [weightPerUnit, setWeightPerUnit] = useState('1');
-  const [lengthCm, setLengthCm] = useState('20');
-  const [widthCm, setWidthCm] = useState('10');
-  const [heightCm, setHeightCm] = useState('15');
+  const [quantityInput, setQuantityInput] = useState('1');
+  const [parcels, setParcels] = useState([
+    { id: 'unit-1', seq: 1, weightKg: '', lengthCm: '', widthCm: '', heightCm: '' },
+  ]);
+  const [parcelPage, setParcelPage] = useState(0);
 
   // Charges & Options
   const [route, setRoute] = useState('Manila to TNL Labo C.N.');
-  const [chargeModel, setChargeModel] = useState('FLAT');
-  const [shippingFee, setShippingFee] = useState('500');
   const [otherCharges, setOtherCharges] = useState('0');
   const [paidAtRegistration, setPaidAtRegistration] = useState(false);
 
   // Field Validation Errors
   const [errors, setErrors] = useState({});
+
+  // Discard Confirmation Modal State
+  const [discardModal, setDiscardModal] = useState({
+    visible: false,
+    type: null, // 'remove_unit' | 'reduce_quantity'
+    targetIndex: null,
+    targetQty: null,
+    unitSeq: null,
+    discardedSeqs: [],
+  });
 
   // Automatically sync client selection to first active client when clients list loads
   useEffect(() => {
@@ -67,31 +76,216 @@ export default function ShipmentForm({
     if (activeClients.length > 0) {
       const isCurrentActive = activeClients.some((c) => (c.id || c.clientId) === clientId);
       if (!clientId || !isCurrentActive) {
-        const defaultId = activeClients[0].id || activeClients[0].clientId || '';
+        const defaultClient = activeClients[0];
+        const defaultId = defaultClient.id || defaultClient.clientId || '';
         setClientId(defaultId);
         setErrors((prev) => ({ ...prev, clientId: null }));
+        if (!address.trim() && defaultClient.address) {
+          setAddress(defaultClient.address);
+        }
+        const defaultContact = defaultClient.contactNumber || defaultClient.contact || '';
+        if (!contactNumber.trim() && defaultContact) {
+          setContactNumber(String(defaultContact).replace(/[^0-9]/g, ''));
+        }
       }
     }
   }, [clients, clientId]);
 
-  // Live Total Calculation
-  const totalAmount = useMemo(() => {
-    const fee = parseFloat(shippingFee) || 0;
-    const other = parseFloat(otherCharges) || 0;
-    const qty = parseInt(quantity, 10) || 0;
-    if (chargeModel === 'PER_UNIT') {
-      return fee * qty + other;
-    }
-    return fee + other;
-  }, [shippingFee, otherCharges, chargeModel, quantity]);
+  const selectedClient = useMemo(() => {
+    return (clients || []).find((c) => (c.id || c.clientId) === clientId);
+  }, [clients, clientId]);
 
-  const shipmentMetrics = useMemo(() => calculateShipmentMetrics({
-    quantity,
-    weightPerUnit,
-    lengthCm,
-    widthCm,
-    heightCm,
-  }, volumetricDivisor), [quantity, weightPerUnit, lengthCm, widthCm, heightCm, volumetricDivisor]);
+  const derivedRecipientName = clientMode === 'EXISTING'
+    ? (selectedClient?.name || '')
+    : (newClientName.trim() || '');
+
+  useEffect(() => {
+    onPricingClientChange?.(clientMode === 'EXISTING' ? clientId : null);
+  }, [clientId, clientMode, onPricingClientChange]);
+
+  function handleQuantityChange(value) {
+    const cleaned = value.replace(/[^0-9]/g, '');
+    setQuantityInput(cleaned);
+
+    if (cleaned === '0') {
+      setErrors((prev) => ({ ...prev, quantity: 'Quantity must be between 1 and 1,000.' }));
+      return;
+    }
+    const qtyNum = parseInt(cleaned, 10);
+    if (!isNaN(qtyNum) && qtyNum >= 1 && qtyNum <= 1000) {
+      setErrors((prev) => ({ ...prev, quantity: null }));
+      if (qtyNum > parcels.length) {
+        syncQuantityToParcels(qtyNum, false);
+      } else if (qtyNum < parcels.length) {
+        const discarded = parcels.slice(qtyNum);
+        const isPopulated = discarded.some(
+          (p) => Boolean(p.weightKg?.trim() || p.lengthCm?.trim() || p.widthCm?.trim() || p.heightCm?.trim())
+        );
+        if (!isPopulated) {
+          syncQuantityToParcels(qtyNum, false);
+        }
+      }
+    }
+  }
+
+  function handleQuantityBlur() {
+    const qtyNum = parseInt(quantityInput, 10);
+    if (isNaN(qtyNum) || qtyNum < 1 || qtyNum > 1000) {
+      setQuantityInput(String(Math.max(1, parcels.length)));
+      setErrors((prev) => ({ ...prev, quantity: null }));
+      return;
+    }
+    syncQuantityToParcels(qtyNum, true);
+  }
+
+  function syncQuantityToParcels(targetQty, confirmIfPopulated = true) {
+    if (targetQty === parcels.length) return;
+
+    if (targetQty > parcels.length) {
+      const added = [];
+      for (let i = parcels.length + 1; i <= targetQty; i++) {
+        added.push({
+          id: `unit-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+          seq: i,
+          weightKg: '',
+          lengthCm: '',
+          widthCm: '',
+          heightCm: '',
+        });
+      }
+      setParcels((prev) => [...prev, ...added]);
+      setQuantityInput(String(targetQty));
+      setErrors((prev) => ({ ...prev, quantity: null }));
+    } else {
+      const discarded = parcels.slice(targetQty);
+      const isPopulated = discarded.some(
+        (p) => Boolean(p.weightKg?.trim() || p.lengthCm?.trim() || p.widthCm?.trim() || p.heightCm?.trim())
+      );
+      if (isPopulated && confirmIfPopulated) {
+        setDiscardModal({
+          visible: true,
+          type: 'reduce_quantity',
+          targetIndex: null,
+          targetQty,
+          unitSeq: null,
+          discardedSeqs: discarded.map((p) => p.seq),
+        });
+        return;
+      } else if (isPopulated && !confirmIfPopulated) {
+        return;
+      }
+      performReduceQuantity(targetQty);
+    }
+  }
+
+  function performReduceQuantity(targetQty) {
+    setParcels((prev) => prev.slice(0, targetQty));
+    setQuantityInput(String(targetQty));
+    setErrors((prev) => ({ ...prev, quantity: null }));
+    const maxPage = Math.max(0, Math.ceil(targetQty / 10) - 1);
+    setParcelPage((prev) => Math.min(prev, maxPage));
+  }
+
+  function addUnit() {
+    if (parcels.length >= 1000) return;
+    const nextSeq = parcels.length + 1;
+    const lastUnit = parcels[parcels.length - 1];
+    const newUnit = {
+      id: `unit-${Date.now()}-${nextSeq}-${Math.random().toString(36).slice(2, 6)}`,
+      seq: nextSeq,
+      weightKg: lastUnit ? lastUnit.weightKg || '' : '',
+      lengthCm: lastUnit ? lastUnit.lengthCm || '' : '',
+      widthCm: lastUnit ? lastUnit.widthCm || '' : '',
+      heightCm: lastUnit ? lastUnit.heightCm || '' : '',
+    };
+    setParcels((prev) => [...prev, newUnit]);
+    setQuantityInput(String(nextSeq));
+    setParcelPage(Math.floor((nextSeq - 1) / 10));
+  }
+
+  function removeUnit(indexToRemove) {
+    if (parcels.length <= 1) return;
+    const unitToRemove = parcels[indexToRemove];
+    const isPopulated = Boolean(
+      unitToRemove.weightKg?.trim() || unitToRemove.lengthCm?.trim() ||
+      unitToRemove.widthCm?.trim() || unitToRemove.heightCm?.trim()
+    );
+    if (isPopulated) {
+      setDiscardModal({
+        visible: true,
+        type: 'remove_unit',
+        targetIndex: indexToRemove,
+        targetQty: null,
+        unitSeq: unitToRemove.seq,
+        discardedSeqs: [],
+      });
+      return;
+    }
+    performRemoveUnit(indexToRemove);
+  }
+
+  function performRemoveUnit(indexToRemove) {
+    const nextParcels = parcels
+      .filter((_, idx) => idx !== indexToRemove)
+      .map((p, idx) => ({ ...p, seq: idx + 1 }));
+    setParcels(nextParcels);
+    setQuantityInput(String(nextParcels.length));
+    const maxPage = Math.max(0, Math.ceil(nextParcels.length / 10) - 1);
+    setParcelPage((prev) => Math.min(prev, maxPage));
+  }
+
+  function handleConfirmDiscardModal() {
+    if (discardModal.type === 'remove_unit' && discardModal.targetIndex !== null) {
+      performRemoveUnit(discardModal.targetIndex);
+    } else if (discardModal.type === 'reduce_quantity' && discardModal.targetQty !== null) {
+      performReduceQuantity(discardModal.targetQty);
+    }
+    setDiscardModal({
+      visible: false,
+      type: null,
+      targetIndex: null,
+      targetQty: null,
+      unitSeq: null,
+      discardedSeqs: [],
+    });
+  }
+
+  function handleCancelDiscardModal() {
+    if (discardModal.type === 'reduce_quantity') {
+      setQuantityInput(String(parcels.length));
+    }
+    setDiscardModal({
+      visible: false,
+      type: null,
+      targetIndex: null,
+      targetQty: null,
+      unitSeq: null,
+      discardedSeqs: [],
+    });
+  }
+
+  function updateParcelField(index, field, value) {
+    setParcels((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: value };
+      return copy;
+    });
+    if (errors[`parcel_${index}_${field}`]) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[`parcel_${index}_${field}`];
+        return next;
+      });
+    }
+  }
+
+  const shipmentMetrics = useMemo(() => {
+    return calculateShipmentMetrics({ parcels }, volumetricDivisor, ratePerKilo);
+  }, [parcels, volumetricDivisor, ratePerKilo]);
+
+  const totalAmount = useMemo(() => {
+    return calculateTotalCents(shipmentMetrics.shippingFee, otherCharges) / 100;
+  }, [shipmentMetrics.shippingFee, otherCharges]);
 
   function validateForm() {
     const newErrors = {};
@@ -99,6 +293,20 @@ export default function ShipmentForm({
     if (clientMode === 'EXISTING') {
       const activeClientId = clientId || (clients.length > 0 ? (clients[0].id || clients[0].clientId) : '');
       if (!activeClientId) newErrors.clientId = 'Please select a billing client.';
+
+      if (!address.trim()) {
+        newErrors.address = 'Complete delivery address is required.';
+      } else if (address.trim().length > 255) {
+        newErrors.address = 'Complete delivery address cannot exceed 255 characters.';
+      }
+
+      if (!contactNumber.trim() || contactNumber.trim().length < 7) {
+        newErrors.contactNumber = 'Valid contact number is required (min 7 digits).';
+      } else if (contactNumber.trim().length > 11) {
+        newErrors.contactNumber = 'Contact number cannot exceed 11 characters.';
+      } else if (!/^\d+$/.test(contactNumber.trim())) {
+        newErrors.contactNumber = 'Contact number must contain digits only.';
+      }
     } else {
       if (!newClientName.trim()) {
         newErrors.newClientName = 'Client / Company name is required.';
@@ -125,26 +333,6 @@ export default function ShipmentForm({
       }
     }
 
-    if (!recipientName.trim()) {
-      newErrors.recipientName = 'Recipient full name is required.';
-    } else if (recipientName.trim().length > 150) {
-      newErrors.recipientName = 'Recipient full name cannot exceed 150 characters.';
-    }
-
-    if (!address.trim()) {
-      newErrors.address = 'Complete delivery address is required.';
-    } else if (address.trim().length > 255) {
-      newErrors.address = 'Complete delivery address cannot exceed 255 characters.';
-    }
-
-    if (!contactNumber.trim() || contactNumber.trim().length < 7) {
-      newErrors.contactNumber = 'Valid contact number is required (min 7 digits).';
-    } else if (contactNumber.trim().length > 11) {
-      newErrors.contactNumber = 'Contact number cannot exceed 11 characters.';
-    } else if (!/^\d+$/.test(contactNumber.trim())) {
-      newErrors.contactNumber = 'Contact number must contain digits only.';
-    }
-
     if (description.trim().length > 255) {
       newErrors.description = 'Description cannot exceed 255 characters.';
     }
@@ -153,53 +341,83 @@ export default function ShipmentForm({
       newErrors.route = 'Route cannot exceed 150 characters.';
     }
 
-    const qtyNum = parseInt(quantity, 10);
-    if (!quantity || isNaN(qtyNum) || qtyNum < 1 || qtyNum > 1000) {
+    const qtyNum = parseInt(quantityInput, 10);
+    if (!quantityInput || isNaN(qtyNum) || qtyNum < 1 || qtyNum > 1000 || parcels.length < 1) {
       newErrors.quantity = 'Quantity must be between 1 and 1,000.';
+    } else if (parcels.length !== qtyNum) {
+      newErrors.quantity = `Parcel count (${parcels.length}) must match quantity (${qtyNum}).`;
     }
 
-    const wtNum = parseFloat(weightPerUnit);
-    if (!weightPerUnit || isNaN(wtNum) || wtNum <= 0) {
-      newErrors.weightPerUnit = 'Weight must be greater than 0 kg.';
+    // Per-unit validation
+    parcels.forEach((p, idx) => {
+      const wtNum = parseFloat(p.weightKg);
+      if (!p.weightKg || isNaN(wtNum) || wtNum <= 0) {
+        newErrors[`parcel_${idx}_weightKg`] = 'Required (> 0 kg)';
+      }
+
+      const lNum = parseFloat(p.lengthCm);
+      const wNum = parseFloat(p.widthCm);
+      const hNum = parseFloat(p.heightCm);
+
+      if (!p.lengthCm || isNaN(lNum) || lNum <= 0) newErrors[`parcel_${idx}_lengthCm`] = 'Required (> 0)';
+      if (!p.widthCm || isNaN(wNum) || wNum <= 0) newErrors[`parcel_${idx}_widthCm`] = 'Required (> 0)';
+      if (!p.heightCm || isNaN(hNum) || hNum <= 0) newErrors[`parcel_${idx}_heightCm`] = 'Required (> 0)';
+    });
+
+    const otherNum = parseFloat(otherCharges);
+    if (otherCharges !== '' && (isNaN(otherNum) || otherNum < 0)) {
+      newErrors.otherCharges = 'Charges cannot be negative.';
     }
 
-    const lNum = parseFloat(lengthCm);
-    const wNum = parseFloat(widthCm);
-    const hNum = parseFloat(heightCm);
-    if (isNaN(lNum) || lNum <= 0) newErrors.lengthCm = 'Required';
-    if (isNaN(wNum) || wNum <= 0) newErrors.widthCm = 'Required';
-    if (isNaN(hNum) || hNum <= 0) newErrors.heightCm = 'Required';
-
-    const feeNum = parseFloat(shippingFee);
-    if (shippingFee === '' || isNaN(feeNum) || feeNum < 0) {
-      newErrors.shippingFee = 'Shipping fee is required (cannot be negative).';
+    if (calculationSettingsState !== 'ready' || !Number.isFinite(ratePerKilo) || ratePerKilo <= 0) {
+      newErrors.calculationSettings = 'Rate per kilo is not configured.';
     }
 
     setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) {
+      const firstParcelErrorKey = Object.keys(newErrors).find((k) => k.startsWith('parcel_'));
+      if (firstParcelErrorKey) {
+        const match = firstParcelErrorKey.match(/^parcel_(\d+)_/);
+        if (match) {
+          const errorUnitIndex = parseInt(match[1], 10);
+          setParcelPage(Math.floor(errorUnitIndex / 10));
+        }
+      }
+    }
     return Object.keys(newErrors).length === 0;
   }
 
   function handleSubmit() {
+    if (submitting || discardModal.visible || calculationSettingsState !== 'ready') return;
     if (!validateForm()) return;
+
+    const deliveryAddress = (clientMode === 'NEW' ? newClientAddress : address).trim();
+    const deliveryContact = (clientMode === 'NEW' ? newClientContact : contactNumber).trim();
 
     const basePayload = {
       recipient: {
-        fullName: recipientName.trim(),
-        address: address.trim(),
-        contactNumber: contactNumber.trim(),
+        fullName: derivedRecipientName,
+        address: deliveryAddress,
+        contactNumber: deliveryContact,
       },
+      recipientAddress: deliveryAddress,
+      recipientContact: deliveryContact,
       description: description.trim() || 'General Goods',
-      quantity: parseInt(quantity, 10),
-      weightPerUnit: parseFloat(weightPerUnit),
-      lengthCm: parseFloat(lengthCm) || 20.0,
-      widthCm: parseFloat(widthCm) || 10.0,
-      heightCm: parseFloat(heightCm) || 15.0,
+      quantity: parcels.length,
       route: route.trim() || 'Manila to TNL Labo C.N.',
-      chargeModel,
-      shippingFee: parseFloat(shippingFee) || 0,
+      chargeModel: 'PER_KILO',
       otherCharges: parseFloat(otherCharges) || 0,
       paidAtRegistration,
       totalAmount,
+      parcels: parcels.map((p, idx) => ({
+        seq: idx + 1,
+        weightKg: parseFloat(p.weightKg),
+        lengthCm: parseFloat(p.lengthCm),
+        widthCm: parseFloat(p.widthCm),
+        heightCm: parseFloat(p.heightCm),
+      })),
+      expectedRatePerKilo: ratePerKilo,
+      expectedVolumetricDivisor: volumetricDivisor,
     };
 
     if (clientMode === 'EXISTING') {
@@ -207,7 +425,7 @@ export default function ShipmentForm({
       onSubmit?.({
         ...basePayload,
         clientId: activeClientId,
-      });
+      }, onClientCreated);
     } else {
       onSubmit?.({
         ...basePayload,
@@ -217,12 +435,22 @@ export default function ShipmentForm({
           contactNumber: newClientContact.trim(),
           email: newClientEmail.trim() || null,
         },
-      });
+      }, onClientCreated);
     }
   }
 
+  function onClientCreated(client) {
+    setClientId(client.id);
+    setClientMode('EXISTING');
+    setAddress(newClientAddress.trim());
+    setContactNumber(newClientContact.trim());
+  }
+
+  const isRateReady = calculationSettingsState === 'ready' && Number.isFinite(ratePerKilo) && ratePerKilo > 0;
+  const canSubmit = isRateReady && !submitting;
+
   return (
-    <View style={styles.container}>
+    <View style={styles.container} inert={submitting ? true : undefined} pointerEvents={submitting ? 'none' : 'auto'} aria-busy={submitting}>
       {/* Top Row: Client & Recipient */}
       <View style={[styles.topRow, isMobile && styles.topRowMobile]}>
         {/* 1. Client Card */}
@@ -240,6 +468,17 @@ export default function ShipmentForm({
                     newClientAddress: null,
                     newClientContact: null,
                   }));
+                  if (selectedClient) {
+                    if (!address || address === newClientAddress) {
+                      setAddress(selectedClient.address || '');
+                      if (selectedClient.address) setErrors((prev) => ({ ...prev, address: null }));
+                    }
+                    const selectedContact = (selectedClient.contactNumber || selectedClient.contact || '').replace(/[^0-9]/g, '');
+                    if (!contactNumber || contactNumber === newClientContact) {
+                      setContactNumber(selectedContact);
+                      if (selectedContact) setErrors((prev) => ({ ...prev, contactNumber: null }));
+                    }
+                  }
                 }}
               >
                 <Text style={[styles.pillBtnText, clientMode === 'EXISTING' && styles.pillBtnTextActive]}>
@@ -250,7 +489,12 @@ export default function ShipmentForm({
                 style={[styles.pillBtn, clientMode === 'NEW' && styles.pillBtnActive]}
                 onPress={() => {
                   setClientMode('NEW');
-                  setErrors((prev) => ({ ...prev, clientId: null }));
+                  setErrors((prev) => ({
+                    ...prev,
+                    clientId: null,
+                    address: null,
+                    contactNumber: null,
+                  }));
                 }}
               >
                 <Text style={[styles.pillBtnText, clientMode === 'NEW' && styles.pillBtnTextActive]}>
@@ -259,7 +503,11 @@ export default function ShipmentForm({
               </TouchableOpacity>
             </View>
           }
-          style={[styles.halfCard, isMobile && styles.cardMobile, styles.clientCard]}
+          style={[
+            clientMode === 'EXISTING' ? styles.halfCard : styles.fullWidthCard,
+            isMobile && styles.cardMobile,
+            styles.clientCard,
+          ]}
           bodyStyle={styles.clientCardBody}
         >
           {clientMode === 'EXISTING' ? (
@@ -268,6 +516,20 @@ export default function ShipmentForm({
                 label="Select Client"
                 required
                 value={clientId}
+                onSelectClient={(client) => {
+                  if (client) {
+                    if (client.address) {
+                      setAddress(client.address);
+                      setErrors((prev) => ({ ...prev, address: null }));
+                    }
+                    const rawContact = client.contactNumber || client.contact || '';
+                    if (rawContact) {
+                      const sanitized = String(rawContact).replace(/[^0-9]/g, '');
+                      setContactNumber(sanitized);
+                      setErrors((prev) => ({ ...prev, contactNumber: null }));
+                    }
+                  }
+                }}
                 onValueChange={(val) => {
                   setClientId(val);
                   if (errors.clientId) setErrors((prev) => ({ ...prev, clientId: null }));
@@ -333,53 +595,54 @@ export default function ShipmentForm({
           )}
         </Card>
 
-        {/* 2. Recipient Card */}
-        <Card title="Recipient" style={[styles.halfCard, isMobile && styles.cardMobile]}>
-          <FormField
-            label="Full Name"
-            required
-            value={recipientName}
-            onChangeText={(val) => {
-              setRecipientName(val);
-              if (errors.recipientName) setErrors((prev) => ({ ...prev, recipientName: null }));
-            }}
-            placeholder="Juan Dela Cruz"
-            maxLength={150}
-            error={errors.recipientName}
-          />
-          <FormField
-            label="Complete Address"
-            required
-            value={address}
-            onChangeText={(val) => {
-              setAddress(val);
-              if (errors.address) setErrors((prev) => ({ ...prev, address: null }));
-            }}
-            placeholder="Unit, Street, Barangay, City, Province"
-            maxLength={255}
-            error={errors.address}
-          />
-          <FormField
-            label="Contact Number"
-            required
-            value={contactNumber}
-            onChangeText={(val) => {
-              const sanitized = val.replace(/[^0-9]/g, '');
-              setContactNumber(sanitized);
-              if (errors.contactNumber) setErrors((prev) => ({ ...prev, contactNumber: null }));
-            }}
-            placeholder="09170000000"
-            keyboardType="phone-pad"
-            integerOnly
-            maxLength={11}
-            error={errors.contactNumber}
-          />
-        </Card>
+        {/* 2. Recipient Card (shown only when selecting an EXISTING client) */}
+        {clientMode === 'EXISTING' ? (
+          <Card title="Recipient" style={[styles.halfCard, isMobile && styles.cardMobile]}>
+            <View style={styles.derivedRecipientContainer}>
+              <Text style={type.label}>RECIPIENT / CONSIGNEE</Text>
+              <View style={styles.derivedRecipientBox}>
+                <Text style={styles.derivedRecipientName}>
+                  {derivedRecipientName || 'Select a billing client'}
+                </Text>
+                <Text style={styles.derivedRecipientSub}>
+                  Automatically derived from billing client
+                </Text>
+              </View>
+            </View>
+            <FormField
+              label="Complete Address"
+              required
+              value={address}
+              onChangeText={(val) => {
+                setAddress(val);
+                if (errors.address) setErrors((prev) => ({ ...prev, address: null }));
+              }}
+              placeholder="Unit, Street, Barangay, City, Province"
+              maxLength={255}
+              error={errors.address}
+            />
+            <FormField
+              label="Contact Number"
+              required
+              value={contactNumber}
+              onChangeText={(val) => {
+                const sanitized = val.replace(/[^0-9]/g, '');
+                setContactNumber(sanitized);
+                if (errors.contactNumber) setErrors((prev) => ({ ...prev, contactNumber: null }));
+              }}
+              placeholder="09170000000"
+              keyboardType="phone-pad"
+              integerOnly
+              maxLength={11}
+              error={errors.contactNumber}
+            />
+          </Card>
+        ) : null}
       </View>
 
       {/* 3. Shipment & Charges Card */}
       <Card title="Shipment & Charges" style={styles.fullWidthCard}>
-        {/* Row 1: Description, Quantity, Weight, Route */}
+        {/* Row 1: Description, Route, Quantity, Add Unit Button */}
         <View style={styles.gridRow}>
           <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
             <FormField
@@ -393,186 +656,65 @@ export default function ShipmentForm({
 
           <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
             <FormField
+              label="Route"
+              value={route}
+              onChangeText={setRoute}
+              placeholder="Manila to TNL Labo C.N."
+              maxLength={150}
+            />
+          </View>
+
+          <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
+            <FormField
               label="Quantity (Parcel Units)"
               required
-              value={quantity}
-              onChangeText={(val) => {
-                setQuantity(val);
-                if (errors.quantity) setErrors((prev) => ({ ...prev, quantity: null }));
-              }}
+              value={quantityInput}
+              onChangeText={handleQuantityChange}
+              onBlur={handleQuantityBlur}
+              onSubmitEditing={handleQuantityBlur}
               integerOnly
               placeholder="1"
               maxLength={4}
-              helper="One unique QR per unit (max 1,000)"
+              helper="1–1,000 units. One QR per unit."
               error={errors.quantity}
             />
           </View>
 
-          <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
-            <FormField
-              label="Weight per Unit (kg)"
-              required
-              value={weightPerUnit}
-              onChangeText={(val) => {
-                setWeightPerUnit(val);
-                if (errors.weightPerUnit) setErrors((prev) => ({ ...prev, weightPerUnit: null }));
-              }}
-              numericOnly
-              placeholder="1.0"
-              maxLength={9}
-              suffix="kg"
-              error={errors.weightPerUnit}
-            />
-          </View>
-
-          <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
-            <FormField label="Route" value={route} onChangeText={setRoute} placeholder="Manila to TNL Labo C.N." maxLength={150} />
+          <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth, styles.addUnitCol]}>
+            <Text style={type.label}>Add Parcel</Text>
+            <TouchableOpacity
+              style={styles.addUnitButton}
+              onPress={addUnit}
+              disabled={parcels.length >= 1000}
+            >
+              <Text style={styles.addUnitButtonText}>+ Add Unit #{parcels.length + 1}</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* Row 2: Parcel Dimensions & Auto-Calculated Weight and Volume */}
-        <View style={styles.dimensionsBox}>
-          <Text style={styles.dimensionsHeader}>PARCEL DIMENSIONS & BILLABLE WEIGHT</Text>
-          <View style={styles.dimensionsRow}>
-            <View style={styles.dimField}>
-              <FormField
-                label="Length (cm)"
-                value={lengthCm}
-                onChangeText={(val) => {
-                  setLengthCm(val);
-                  if (errors.lengthCm) setErrors((prev) => ({ ...prev, lengthCm: null }));
-                }}
-                numericOnly
-                placeholder="20"
-                maxLength={9}
-                suffix="cm"
-                error={errors.lengthCm}
-              />
-            </View>
-            <View style={styles.dimField}>
-              <FormField
-                label="Width (cm)"
-                value={widthCm}
-                onChangeText={(val) => {
-                  setWidthCm(val);
-                  if (errors.widthCm) setErrors((prev) => ({ ...prev, widthCm: null }));
-                }}
-                numericOnly
-                placeholder="10"
-                maxLength={9}
-                suffix="cm"
-                error={errors.widthCm}
-              />
-            </View>
-            <View style={styles.dimField}>
-              <FormField
-                label="Height (cm)"
-                value={heightCm}
-                onChangeText={(val) => {
-                  setHeightCm(val);
-                  if (errors.heightCm) setErrors((prev) => ({ ...prev, heightCm: null }));
-                }}
-                numericOnly
-                placeholder="15"
-                maxLength={9}
-                suffix="cm"
-                error={errors.heightCm}
-              />
-            </View>
-            <View style={styles.metricsResultBox}>
-              <Text style={styles.volumeLabel}>WEIGHT / VOLUME · AUTO-COMPUTED</Text>
-              <View style={styles.metricRow}>
-                <Text style={styles.metricLabel}>Volume / unit</Text>
-                <Text style={styles.metricValue}>{formatMeasure(shipmentMetrics.unitVolume, 4, 'm³')}</Text>
-              </View>
-              <View style={styles.metricRow}>
-                <Text style={styles.metricLabel}>Total volume</Text>
-                <Text style={styles.metricValue}>{formatMeasure(shipmentMetrics.totalVolume, 4, 'm³')}</Text>
-              </View>
-              <View style={styles.metricRow}>
-                <Text style={styles.metricLabel}>Total actual weight</Text>
-                <Text style={styles.metricValue}>{formatMeasure(shipmentMetrics.actualWeight, 2, 'kg')}</Text>
-              </View>
-              <View style={styles.metricRow}>
-                <Text style={styles.metricLabel}>Volumetric weight</Text>
-                <Text style={styles.metricValue}>{formatMeasure(shipmentMetrics.volumetricWeight, 2, 'kg')}</Text>
-              </View>
-              <View style={[styles.metricRow, styles.billableRow]}>
-                <Text style={styles.billableLabel}>Billable weight</Text>
-                <Text style={styles.billableValue}>{formatMeasure(shipmentMetrics.billableWeight, 2, 'kg')}</Text>
-              </View>
-              {calculationSettingsState === 'loading' ? (
-                <View style={styles.settingsStatusRow}>
-                  <ActivityIndicator color={colors.inkSoft} size="small" />
-                  <Text style={styles.settingsMessage}>Loading weight calculation settings...</Text>
-                </View>
-              ) : null}
-              {calculationSettingsState === 'error' ? (
-                <View style={styles.settingsError}>
-                  <Text style={styles.settingsMessage}>Weight estimates are unavailable. You can still register this shipment.</Text>
-                  <TouchableOpacity accessibilityRole="button" onPress={onRetryCalculationSettings} style={styles.settingsRetry}>
-                    <Text style={styles.settingsRetryText}>Retry weight settings</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
-              {calculationSettingsState === 'ready' ? (
-                <Text style={styles.settingsMessage}>Estimates only. Shipping charges use the rate entered below.</Text>
-              ) : null}
-            </View>
-          </View>
-        </View>
+        {/* Row 2: Per-Unit Measurements Editor (Paginated) */}
+        <ParcelUnitsEditor
+          parcels={parcels}
+          errors={errors}
+          currentPage={parcelPage}
+          onPageChange={setParcelPage}
+          onUpdateParcelField={updateParcelField}
+          onRemoveUnit={removeUnit}
+          pageSize={10}
+        />
 
-        {/* Row 3: Charge Model, Shipping Fee, Charges, Total Amount */}
-        <View style={styles.gridRow}>
-          <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
-            <SelectField
-              label="Charge Model"
-              value={chargeModel}
-              onValueChange={setChargeModel}
-              options={CHARGE_MODELS}
-              helper={chargeModel === 'FLAT' ? 'Flat rate for entire shipment' : 'Multiplies shipping fee by parcel quantity'}
-            />
-          </View>
-
-          <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
-            <FormField
-              label="Shipping Fee (₱)"
-              required
-              value={shippingFee}
-              onChangeText={(val) => {
-                setShippingFee(val);
-                if (errors.shippingFee) setErrors((prev) => ({ ...prev, shippingFee: null }));
-              }}
-              numericOnly
-              placeholder="500"
-              maxLength={13}
-              error={errors.shippingFee}
-            />
-          </View>
-
-          <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
-            <FormField
-              label="Charges (₱)"
-              value={otherCharges}
-              onChangeText={setOtherCharges}
-              numericOnly
-              placeholder="0"
-              maxLength={13}
-              helper="Valuation, packaging, etc."
-            />
-          </View>
-
-          <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth]}>
-            <Text style={type.label}>Total Amount</Text>
-            <View style={styles.totalBox}>
-              <Text style={styles.totalValue}>₱{totalAmount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</Text>
-              <Text style={styles.totalFormula}>
-                {chargeModel === 'FLAT' ? 'flat' : `₱${(parseFloat(shippingFee) || 0).toLocaleString()} × ${quantity || 1}`}
-                {' + ₱'}{(parseFloat(otherCharges) || 0).toLocaleString()}
-              </Text>
-            </View>
-          </View>
-        </View>
+        {/* Row 3: Live Rating Breakdown & Summary */}
+        <ShipmentPricingSummary
+          ratePerKilo={ratePerKilo}
+          volumetricDivisor={volumetricDivisor}
+          shipmentMetrics={shipmentMetrics}
+          otherCharges={otherCharges}
+          onOtherChargesChange={setOtherCharges}
+          totalAmount={totalAmount}
+          errors={errors}
+          calculationSettingsState={calculationSettingsState}
+          onRetryCalculationSettings={onRetryCalculationSettings}
+        />
 
         {/* Footer Row: Paid at Registration Toggle & Submit Button */}
         <View style={[styles.footerRow, isMobile && styles.footerRowMobile]}>
@@ -593,15 +735,36 @@ export default function ShipmentForm({
 
           <View style={[styles.submitContainer, isMobile && styles.submitContainerMobile]}>
             <Button
-              label={submitting ? 'Registering...' : `Register & Generate ${quantity || 1} QR`}
+              label={submitting ? 'Registering...' : `Register & Generate ${parcels.length} QR`}
               variant="primary"
               onPress={handleSubmit}
               loading={submitting}
+              disabled={!canSubmit}
               fullWidth={isMobile}
             />
           </View>
         </View>
       </Card>
+
+      <StatusModal
+        visible={discardModal.visible}
+        eyebrow="SHIPMENT REGISTRATION"
+        title={
+          discardModal.type === 'remove_unit'
+            ? `Discard measurements for parcel unit #${discardModal.unitSeq}?`
+            : 'Discard excess parcel units?'
+        }
+        message={
+          discardModal.type === 'remove_unit'
+            ? 'This unit contains entered measurements that will be removed.'
+            : `Reducing quantity to ${discardModal.targetQty} will discard measurements for parcel unit(s) ${discardModal.discardedSeqs.map((s) => `#${s}`).join(', ')}.`
+        }
+        confirmText={discardModal.type === 'remove_unit' ? 'Discard' : 'Discard Units'}
+        cancelText="Cancel"
+        confirmVariant="danger"
+        onConfirm={handleConfirmDiscardModal}
+        onCancel={handleCancelDiscardModal}
+      />
     </View>
   );
 }
@@ -816,6 +979,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 70,
   },
+  totalLabel: {
+    fontFamily: fonts.sans,
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.inkFaint,
+    letterSpacing: 0.8,
+  },
   totalValue: {
     fontFamily: fonts.sans,
     fontSize: 24,
@@ -828,6 +998,50 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.inkFaint,
     marginTop: 2,
+  },
+  derivedRecipientContainer: {
+    marginBottom: spacing.md,
+  },
+  derivedRecipientBox: {
+    backgroundColor: '#FAF9F6',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    marginTop: spacing.xs,
+  },
+  derivedRecipientName: {
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  derivedRecipientSub: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    color: colors.inkFaint,
+    marginTop: 2,
+  },
+  addUnitCol: {
+    justifyContent: 'flex-start',
+  },
+  addUnitButton: {
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.ink,
+    borderRadius: radius.sm,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.xs,
+    backgroundColor: '#FFFFFF',
+  },
+  addUnitButtonText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.ink,
   },
   footerRow: {
     flexDirection: 'row',
