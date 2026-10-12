@@ -5,6 +5,9 @@ import AppShell from '../../components/layout/AppShell';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import StatusBadge from '../../components/common/StatusBadge';
+import ExceptionAction from '../../components/common/ExceptionAction';
+import apiClient from '../../services/api/client';
+import { subscribeRealtimeEvents } from '../../services/api/sseClient';
 import { getWaybillByNumber, WaybillManifestCard } from '../../features/waybills';
 import { getCompanyBranding } from '../../features/settings/services/settingsApi';
 import {
@@ -18,24 +21,28 @@ export default function WaybillDetailScreen() {
   const params = useLocalSearchParams();
   const waybillId = Array.isArray(params.id) ? params.id[0] : params.id;
   const [manifest, setManifest] = useState(null);
+  const [reconciliationHistory, setReconciliationHistory] = useState([]);
   const [branding, setBranding] = useState(null);
   const [state, setState] = useState('loading');
 
-  const loadManifest = useCallback(async () => {
+  const loadManifest = useCallback(async (showSpinner = true) => {
     if (!waybillId) {
       setState('notFound');
       return;
     }
-    setState('loading');
+    if (showSpinner === true) setState('loading');
     try {
       const [result, brandingResult] = await Promise.all([
         getWaybillByNumber(waybillId),
         getCompanyBranding().catch(() => null),
       ]);
       setManifest(result);
+      const { data: history } = await apiClient.get(`/waybills/${encodeURIComponent(waybillId)}/reconciliation-history`);
+      setReconciliationHistory(history);
       if (brandingResult) setBranding(brandingResult);
       setState('ready');
     } catch (error) {
+      if (showSpinner === false) return;
       const message = error?.response?.data?.message || '';
       const isNotFound = error?.response?.status === 404 || /waybill not found/i.test(message);
       setManifest(null);
@@ -46,6 +53,10 @@ export default function WaybillDetailScreen() {
   useEffect(() => {
     loadManifest();
   }, [loadManifest]);
+
+  useEffect(() => subscribeRealtimeEvents((event) => {
+    if (event.data?.shipmentId === manifest?.shipmentId) loadManifest(false);
+  }), [loadManifest, manifest?.shipmentId]);
 
   const printManifest = () => {
     if (!manifest || typeof document === 'undefined') return;
@@ -102,9 +113,29 @@ export default function WaybillDetailScreen() {
             <View style={styles.headerActions}>
               <StatusBadge value={manifest.statusLabel || manifest.status} kind="waybill" />
               <Button label="Print two A4 copies" onPress={printManifest} />
+                  <ExceptionAction label="Close as All Lost" record={manifest}
+                    isAvailable={manifest.status !== 'SIGNED_COMPLETED' && manifest.lostCount > 0
+                      && manifest.lostCount === manifest.totalQuantity}
+                    endpoint={`/waybills/${encodeURIComponent(waybillId)}/close-all-lost`}
+                    onRefresh={async () => {
+                      const record = await getWaybillByNumber(waybillId);
+                      const { data: history } = await apiClient.get(`/waybills/${encodeURIComponent(waybillId)}/reconciliation-history`);
+                      setManifest(record);
+                      setReconciliationHistory(history);
+                      return record;
+                    }}>
+                    <Text>This records an Admin closure without delivery or signed-paper return.</Text>
+                  </ExceptionAction>
             </View>
           </View>
           <WaybillManifestCard manifest={manifest} companyBranding={branding} />
+          {reconciliationHistory.length > 0 && <Card title="RECONCILIATION HISTORY">
+            {reconciliationHistory.map((event) => <View key={event.eventId} style={{ marginBottom: 12 }}>
+              <Text>{event.action} — {event.outcome || 'Open'} — {event.occurredAt}</Text>
+              <Text>By {event.actorId}{event.signedBy ? ` | Signed by ${event.signedBy}` : ''}</Text>
+              {event.reason && <Text>{event.reason}</Text>}
+            </View>)}
+          </Card>}
         </>
       )}
     </AppShell>

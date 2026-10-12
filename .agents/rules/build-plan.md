@@ -8,6 +8,16 @@
 * **Label Status:** `Not Printed` -> `Printed` -> `Reprinted`
 * **Waybill Status (4-state):** `Not Generated` -> `Generated` -> `Sent to Hauler` -> `Signed / Completed`
 
+## Admin-only Lost Parcel Workflow [IN PROGRESS]
+
+- Separate implementation plan: `.review/lost-parcel-plan.md`. Admin loss/recovery, immutable manifests, explicit all-lost closure, exception-aware return QR completion, and recovery reopening; billing remains unchanged. Completed demo work remains closed.
+- Loss/recovery foundation and Admin confirmation UI [COMPLETED]: V39 additive persistence, append-only history, active-Admin authorization, revision and request-ID guards, and loss-aware scans/generation.
+- Waybill reconciliation [COMPLETED]: mixed returned-waybill completion, explicit all-lost Admin closure, original-waybill reopening, preserved closure history, and fresh manifest revision confirmation.
+- Cross-platform visibility and automated verification [COMPLETED]: delivered/lost summaries, active-cargo exclusions, report/dashboard Lost distribution, retained manifest reprints, backend integration and migration checks, 99 web tests, 232 mobile tests, and Admin web plus mobile web/Android/iOS production exports. Evidence and audit: `.review/lost-parcel-evidence.md`.
+- Browser and physical-phone acceptance [UPCOMING]: Admin modals, Dispatch loss review, reopened waybill, and stale-QR recovery require hands-on checks. The existing test schema has a historical V34 checksum mismatch; automated tests used an isolated test schema without modifying that history.
+- Local `tnl_dev` startup recovery [COMPLETED]: after a restorable local backup and successful restored-copy V39 startup, exactly one successful V34 Flyway checksum was reconciled. Flyway then applied V39 on `tnl_dev`; Hibernate schema validation and Spring startup passed with seeders disabled. Parcel, assigned-parcel, and waybill counts remained 57, 50, and 13. The separate `tnl_test` and deployed-database recovery states are unchanged.
+- Admin shipment status presentation [COMPLETED]: the shipment detail Parcel Units table no longer uses a Label column; its heading always displays the loss count, including `0 Lost`. Shipment directory summaries show counts such as `2 Lost`, and each affected parcel shows a primary Lost badge with its last confirmed position beneath it. Label printing and audit details remain in the parcel view. The 99-test web suite and production web export passed; browser acceptance remains [UPCOMING].
+
 ## Mobile Account-Switch Hardening [COMPLETED]
 
 - Password-update cleanup recovery [COMPLETED]: distinguishes a successful server password change from failed local cleanup, retains B password-login navigation and username, clears sensitive fields, and permits access-only cleanup retry without falling back to A PIN. Latest UI-only verification: 217 mobile tests, web/Android/iOS exports, and scoped audit passed. Prior user-reported Phase 6 phone acceptance remains recorded; this follow-up's targeted phone check is [UPCOMING].
@@ -22,6 +32,8 @@
 ---
 
 ## Progress Overview
+
+Post-client-demo implementation plan closeout [COMPLETED] on 2026-10-12 at the user's request. `.review/client-demo-change-plan.md` now records the delivered scope merged into `dev` via #72 and the V34 MySQL compatibility follow-up via #73. Pending pricing/retry browser/phone checks, targeted password-cleanup phone verification, deployment smoke checks, and deferred physical-printer acceptance remain separate release follow-ups; this closeout does not claim they passed.
 
 | Phase | Description | Status |
 | :--- | :--- | :---: |

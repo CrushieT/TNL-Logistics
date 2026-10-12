@@ -137,7 +137,7 @@ export default function ShipmentsListScreen() {
     // 1. Subscribe to real-time status updates, shipment creation, label printing, and payment recording
     const unsubscribe = subscribeRealtimeEvents((event) => {
       if (
-        event.type === 'STATUS_UPDATE' ||
+        event.type === 'PARCEL_EXCEPTION' || event.type === 'WAYBILL_UPDATE' || event.type === 'STATUS_UPDATE' ||
         event.type === 'SHIPMENT_CREATED' ||
         event.type === 'LABEL_PRINTED' ||
         event.type === 'PAYMENT_RECORDED'

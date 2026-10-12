@@ -6,6 +6,21 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public class WaybillManifestResponse {
+    private long manifestRevision;
+    private String reconciliationOutcome;
+    private int deliveredCount;
+    private int lostCount;
+    private int remainingCount;
+    public long getManifestRevision() { return manifestRevision; }
+    public void setManifestRevision(long revision) { manifestRevision = revision; }
+    public String getReconciliationOutcome() { return reconciliationOutcome; }
+    public void setReconciliationOutcome(String outcome) { reconciliationOutcome = outcome; }
+    public int getDeliveredCount() { return deliveredCount; }
+    public void setDeliveredCount(int count) { deliveredCount = count; }
+    public int getLostCount() { return lostCount; }
+    public void setLostCount(int count) { lostCount = count; }
+    public int getRemainingCount() { return remainingCount; }
+    public void setRemainingCount(int count) { remainingCount = count; }
     private String waybillId;
     private String shipmentId;
     private WaybillStatus status;

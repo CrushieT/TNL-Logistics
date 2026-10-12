@@ -35,19 +35,28 @@ public class WaybillServiceImpl implements WaybillService {
     private final TrackingEventRepository trackingEventRepository;
     private final AppUserRepository appUserRepository;
     private final IdentifierCounterService identifierCounterService;
+    private final com.tnl.logistics.service.ParcelCustodyLocks custodyLocks;
+    private final WaybillReconciliationEventRepository reconciliations;
+    private final com.tnl.logistics.service.SseService sseService;
 
     public WaybillServiceImpl(WaybillRepository waybillRepository,
                               ShipmentRepository shipmentRepository,
                               ParcelUnitRepository parcelUnitRepository,
                               TrackingEventRepository trackingEventRepository,
                               AppUserRepository appUserRepository,
-                              IdentifierCounterService identifierCounterService) {
+                              IdentifierCounterService identifierCounterService,
+                              com.tnl.logistics.service.ParcelCustodyLocks custodyLocks,
+                              WaybillReconciliationEventRepository reconciliations,
+                              com.tnl.logistics.service.SseService sseService) {
         this.waybillRepository = waybillRepository;
         this.shipmentRepository = shipmentRepository;
         this.parcelUnitRepository = parcelUnitRepository;
         this.trackingEventRepository = trackingEventRepository;
         this.appUserRepository = appUserRepository;
         this.identifierCounterService = identifierCounterService;
+        this.custodyLocks = custodyLocks;
+        this.reconciliations = reconciliations;
+        this.sseService = sseService;
     }
 
     @Override
@@ -113,7 +122,7 @@ public class WaybillServiceImpl implements WaybillService {
                 if (w.getStatus() == WaybillStatus.SENT_TO_HAULER) {
                     statusStr = "Sent to Hauler";
                 } else if (w.getStatus() == WaybillStatus.SIGNED_COMPLETED) {
-                    statusStr = "Signed / Completed";
+                    statusStr = statusLabel(w);
                 } else {
                     statusStr = "Generated";
                 }
@@ -121,7 +130,10 @@ public class WaybillServiceImpl implements WaybillService {
 
             List<String> trackingNumbers = trackingMap.getOrDefault(s.getShipmentId(), java.util.Collections.emptyList());
             long completed = completedByShipment.getOrDefault(s.getShipmentId(), 0L);
-            if (completed > 0 && completed < trackingNumbers.size()) statusStr = completed + " of " + trackingNumbers.size() + " completed";
+            if (completed > 0 && completed < trackingNumbers.size()
+                    && (w == null || w.getReconciliationOutcome() == null)) {
+                statusStr = completed + " of " + trackingNumbers.size() + " completed";
+            }
 
             return new WaybillShipmentOptionResponse(
                     s.getShipmentId(),
@@ -182,7 +194,7 @@ public class WaybillServiceImpl implements WaybillService {
         Shipment shipment = shipmentRepository.findById(shipmentId)
                 .orElseThrow(() -> new IllegalArgumentException("Shipment not found: " + shipmentId));
         return parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId).stream()
-                .filter(parcel -> parcel.getWaybill() == null
+                .filter(parcel -> !parcel.isLost() && parcel.getWaybill() == null
                         && (parcel.getCurrentStatus() == ParcelStatus.LOADED_TO_HAULER
                         || parcel.getCurrentStatus() == ParcelStatus.ARRIVED_AT_TNL))
                 .map(parcel -> toParcelResponse(parcel, shipment.getQuantity())).toList();
@@ -194,8 +206,11 @@ public class WaybillServiceImpl implements WaybillService {
         String key = request.getIdempotencyKey().trim();
         if (key.length() > 100) throw new IllegalArgumentException("Idempotency key is too long");
         List<String> ids = normalizeIds(request.getTrackingIds());
-        Shipment shipment = shipmentRepository.findByIdForUpdate(request.getShipmentId())
-                .orElseThrow(() -> new IllegalArgumentException("Shipment not found: " + request.getShipmentId()));
+        if (parcelUnitRepository.findByShipment_ShipmentIdAndTrackingIdIn(request.getShipmentId(), ids).size() != ids.size()) {
+            throw new IllegalArgumentException("Every parcel must belong to the requested shipment.");
+        }
+        List<ParcelUnit> lockedParcels = custodyLocks.lockParcels(ids);
+        Shipment shipment = lockedParcels.get(0).getShipment();
 
         Waybill replay = waybillRepository.findByGenerationKey(key).orElse(null);
         if (replay != null) {
@@ -209,13 +224,12 @@ public class WaybillServiceImpl implements WaybillService {
         }
 
         List<ParcelUnit> parcels = new ArrayList<>();
-        for (String trackingId : ids.stream().sorted().toList()) {
-            ParcelUnit parcel = parcelUnitRepository.findByIdWithPessimisticLock(trackingId)
-                    .orElseThrow(() -> new IllegalArgumentException("Parcel unit not found: " + trackingId));
+        for (ParcelUnit parcel : lockedParcels) {
+            String trackingId = parcel.getTrackingId();
             if (!parcel.getShipment().getShipmentId().equals(shipment.getShipmentId())) {
                 throw new IllegalArgumentException("Parcel is not in shipment: " + trackingId);
             }
-            if (parcel.getCurrentStatus() != ParcelStatus.LOADED_TO_HAULER || parcel.getWaybill() != null) {
+            if (parcel.isLost() || parcel.getCurrentStatus() != ParcelStatus.LOADED_TO_HAULER || parcel.getWaybill() != null) {
                 throw new IllegalStateException("Parcel is not loaded and unassigned: " + trackingId);
             }
             parcels.add(parcel);
@@ -233,15 +247,18 @@ public class WaybillServiceImpl implements WaybillService {
         waybillRepository.save(waybill);
         for (ParcelUnit parcel : parcels) parcel.setWaybill(waybill);
         parcelUnitRepository.saveAll(parcels);
+        parcelUnitRepository.flush();
         return buildManifestResponse(shipment, waybill, parcels);
     }
 
     @Override
     public WaybillManifestResponse sendToHauler(String waybillId, String actingStaffUserId) {
         AppUser actor = requireDispatchStaff(actingStaffUserId);
-        Waybill waybill = waybillRepository.findByIdForUpdate(waybillId)
-                .orElseThrow(() -> new IllegalArgumentException("Waybill not found: " + waybillId));
-        shipmentRepository.findByIdForUpdate(waybill.getShipment().getShipmentId()).orElseThrow();
+        Waybill waybill = lockExistingManifest(waybillId, "Waybill not found: " + waybillId);
+        List<ParcelUnit> manifest = custodyLocks.lockManifestParcels(waybillId);
+        if (manifest.isEmpty() || manifest.stream().allMatch(ParcelUnit::isLost)) {
+            throw new IllegalStateException("An all-lost waybill cannot be sent. Admin must close it as all lost.");
+        }
         if (waybill.getStatus() == WaybillStatus.SENT_TO_HAULER) return getManifestById(waybillId);
         if (waybill.getStatus() != WaybillStatus.GENERATED) {
             throw new IllegalStateException("Cannot send waybill in status " + waybill.getStatus());
@@ -259,18 +276,25 @@ public class WaybillServiceImpl implements WaybillService {
                 || !waybillId.equals(request.getConfirmedWaybillId())) {
             throw new IllegalArgumentException(COMPLETION_DENIED_MESSAGE);
         }
-        Waybill waybill = waybillRepository.findByIdForUpdate(waybillId)
-                .orElseThrow(() -> new IllegalArgumentException(COMPLETION_DENIED_MESSAGE));
-        Shipment shipment = shipmentRepository.findByIdForUpdate(waybill.getShipment().getShipmentId()).orElseThrow();
+        Waybill waybill = lockExistingManifest(waybillId, COMPLETION_DENIED_MESSAGE);
+        Shipment shipment = waybill.getShipment();
+        if ((request.getManifestRevision() == null && waybill.getManifestRevision() > 0)
+                || (request.getManifestRevision() != null && request.getManifestRevision() != waybill.getManifestRevision())) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                    "Manifest changed. Refresh and scan the printed QR again.");
+        }
         if (waybill.getStatus() == WaybillStatus.SIGNED_COMPLETED) return getManifestById(waybillId);
         if (waybill.getStatus() != WaybillStatus.SENT_TO_HAULER) {
             throw new IllegalStateException(COMPLETION_DENIED_MESSAGE);
         }
-        List<ParcelUnit> parcels = parcelUnitRepository.findByWaybill_WaybillIdOrderBySeqAsc(waybillId);
+        List<ParcelUnit> parcels = custodyLocks.lockManifestParcels(waybillId);
         if (parcels.isEmpty()) throw new IllegalStateException(COMPLETION_DENIED_MESSAGE);
+        if (parcels.stream().allMatch(ParcelUnit::isLost)) {
+            throw new IllegalStateException("Admin must explicitly close an all-lost waybill.");
+        }
         for (ParcelUnit parcel : parcels) {
-            parcelUnitRepository.findByIdWithPessimisticLock(parcel.getTrackingId());
-            if (parcel.getCurrentStatus() != ParcelStatus.LOADED_TO_HAULER) {
+            if (!parcel.isLost() && parcel.getCurrentStatus() != ParcelStatus.COMPLETED
+                    && parcel.getCurrentStatus() != ParcelStatus.LOADED_TO_HAULER) {
                 throw new IllegalStateException(COMPLETION_DENIED_MESSAGE);
             }
         }
@@ -281,6 +305,7 @@ public class WaybillServiceImpl implements WaybillService {
                 ? "Signed waybill " + waybillId + " by " + signatory
                 : "Signed waybill " + waybillId + " completed";
         for (ParcelUnit parcel : parcels) {
+            if (parcel.isLost() || parcel.getCurrentStatus() == ParcelStatus.COMPLETED) continue;
             parcel.setCurrentStatus(ParcelStatus.COMPLETED);
             parcel.setCurrentVehicle(null);
             trackingEventRepository.save(new TrackingEvent(parcel, ParcelStatus.COMPLETED, null, actor, eventRemark));
@@ -291,6 +316,10 @@ public class WaybillServiceImpl implements WaybillService {
         waybill.setSignedBy(signatory);
         waybill.setSignedAt(signedAt);
         waybill.setRemarks(request.getRemarks());
+        waybill.setReconciliationOutcome(parcels.stream().anyMatch(ParcelUnit::isLost) ? "WITH_LOSS" : "ALL_DELIVERED");
+        reconciliations.save(new WaybillReconciliationEvent(waybill, "CLOSED", null, actingStaffUserId, null, request.getManifestRevision()));
+        sseService.broadcastEvent("WAYBILL_UPDATE", Map.of("shipmentId", shipment.getShipmentId(), "waybillId", waybillId));
+        parcelUnitRepository.flush();
         return buildManifestResponse(shipment, waybill, parcels);
     }
 
@@ -313,8 +342,7 @@ public class WaybillServiceImpl implements WaybillService {
 
         List<WaybillSummaryResponse> summaries = page.getContent().stream().map(w -> {
             Shipment s = w.getShipment();
-            String statusLabel = w.getStatus() == WaybillStatus.SIGNED_COMPLETED ? "Signed / Completed"
-                    : (w.getStatus() == WaybillStatus.SENT_TO_HAULER ? "Sent to Hauler" : "Generated");
+            String statusLabel = statusLabel(w);
 
             return new WaybillSummaryResponse(
                     w.getWaybillId(),
@@ -355,11 +383,7 @@ public class WaybillServiceImpl implements WaybillService {
                         waybill.getShipment().getShipmentId(),
                         parcelCounts.getOrDefault(waybill.getWaybillId(), 0L),
                         waybill.getStatus(),
-                        waybill.getStatus() == WaybillStatus.SIGNED_COMPLETED
-                                ? "Signed / Completed"
-                                : waybill.getStatus() == WaybillStatus.SENT_TO_HAULER
-                                        ? "Sent to Hauler"
-                                        : "Generated",
+                        statusLabel(waybill),
                         waybill.getGeneratedAt()))
                 .toList();
         return new PageImpl<>(options, pageable, waybillPage.getTotalElements());
@@ -393,9 +417,32 @@ public class WaybillServiceImpl implements WaybillService {
     }
 
     private ParcelUnitResponse toParcelResponse(ParcelUnit parcel, int shipmentQuantity) {
-        return new ParcelUnitResponse(parcel.getTrackingId(), parcel.getSeq(), shipmentQuantity,
+        ParcelUnitResponse response = new ParcelUnitResponse(parcel.getTrackingId(), parcel.getSeq(), shipmentQuantity,
                 parcel.getCurrentStatus().name(), parcel.getLabelStatus().name(), parcel.getReprintCount(),
                 parcel.getWeightKg(), parcel.getLengthCm(), parcel.getWidthCm(), parcel.getHeightCm(), parcel.getVolumeCbm());
+        response.setLost(parcel.isLost());
+        response.setRevision(parcel.getRevision());
+        return response;
+    }
+
+    private String statusLabel(Waybill waybill) {
+        if (waybill.getStatus() == WaybillStatus.SIGNED_COMPLETED) {
+            if ("ALL_LOST".equals(waybill.getReconciliationOutcome())) return "Closed as All Lost";
+            if ("WITH_LOSS".equals(waybill.getReconciliationOutcome())) return "Closed with Loss";
+            return "Signed / Completed";
+        }
+        return waybill.getStatus() == WaybillStatus.SENT_TO_HAULER ? "Sent to Hauler" : "Generated";
+    }
+
+    private Waybill lockExistingManifest(String waybillId, String missingMessage) {
+        try {
+            return custodyLocks.lockManifest(waybillId);
+        } catch (org.springframework.web.server.ResponseStatusException exception) {
+            if (exception.getStatusCode() == org.springframework.http.HttpStatus.NOT_FOUND) {
+                throw new IllegalArgumentException(missingMessage);
+            }
+            throw exception;
+        }
     }
 
     private WaybillManifestResponse buildManifestResponse(Shipment s, Waybill w, List<ParcelUnit> parcels) {
@@ -403,6 +450,11 @@ public class WaybillServiceImpl implements WaybillService {
         resp.setShipmentId(s.getShipmentId());
         resp.setDescription(s.getDescription() != null ? s.getDescription() : "General Goods");
         resp.setTotalQuantity(parcels.size());
+        int delivered = (int) parcels.stream().filter(parcel -> !parcel.isLost() && parcel.getCurrentStatus() == ParcelStatus.COMPLETED).count();
+        int lost = (int) parcels.stream().filter(ParcelUnit::isLost).count();
+        resp.setDeliveredCount(delivered);
+        resp.setLostCount(lost);
+        resp.setRemainingCount(parcels.size() - delivered - lost);
         resp.setRoute(s.getRoute() != null ? s.getRoute() : "Manila → TNL Baguio Hub");
 
         // Destination Hub derivation
@@ -431,8 +483,9 @@ public class WaybillServiceImpl implements WaybillService {
         if (w != null) {
             resp.setWaybillId(w.getWaybillId());
             resp.setStatus(w.getStatus());
-            resp.setStatusLabel(w.getStatus() == WaybillStatus.SIGNED_COMPLETED ? "Signed / Completed"
-                    : (w.getStatus() == WaybillStatus.SENT_TO_HAULER ? "Sent to Hauler" : "Generated"));
+            resp.setStatusLabel(statusLabel(w));
+            resp.setManifestRevision(w.getManifestRevision());
+            resp.setReconciliationOutcome(w.getReconciliationOutcome());
             resp.setHaulerName(w.getHaulerName());
             resp.setDriverName(w.getDriverName());
             resp.setDriverContact(w.getDriverContact());

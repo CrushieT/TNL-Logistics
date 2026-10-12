@@ -1,5 +1,24 @@
 # Project Structure
 
+### Lost parcel workflow
+
+- `.review/lost-parcel-evidence.md`: scoped test results, audit, remediation log, and manual acceptance guide.
+- `backend/src/main/java/com/tnl/logistics/service/ParcelCustodyLocks.java`: ordered shipment/waybill/parcel locks and fresh locked state.
+- `backend/src/main/java/com/tnl/logistics/service/ParcelExceptionService.java`: authenticated Admin commands, replay protection, closure, and reopening.
+- `backend/src/main/java/com/tnl/logistics/model/ParcelExceptionCommand.java` and `repository/ParcelExceptionCommandRepository.java`: shared command request-ID registry.
+- `backend/src/main/java/com/tnl/logistics/dto/ParcelLossEventResponse.java` and `WaybillReconciliationResponse.java`: restricted history DTOs.
+- `backend/src/test/java/com/tnl/logistics/controller/ParcelLossIntegrationTest.java`: exception contracts, lifecycle, atomicity, and concurrency regressions.
+- `backend/src/test/java/com/tnl/logistics/migration/ParcelLossMigrationIntegrationTest.java`: isolated fresh and V38-upgrade migration checks.
+- `frontend-web/src/components/common/ExceptionAction.js`: Admin confirmation, reason, retry, and conflict-review interaction.
+- `frontend-web/tests/parcelException.test.mjs`: confirmation behavior and lost-manifest reprints.
+- `frontend-mobile/tests/parcelLoss.test.mjs`: loss-aware scanner, revision gates, and reprints.
+
+- `.review/lost-parcel-plan.md`: implementation slices, threat controls, and acceptance scope.
+- `backend/src/main/resources/db/migration/V39__add_parcel_loss_reconciliation.sql`: additive loss, revision, and audit persistence.
+- `backend/src/main/java/com/tnl/logistics/dto/ParcelExceptionRequest.java`: validated Admin exception command.
+- `backend/src/main/java/com/tnl/logistics/model/ParcelLossEvent.java` and `WaybillReconciliationEvent.java`: immutable exception history.
+- `backend/src/main/java/com/tnl/logistics/repository/ParcelLossEventRepository.java` and `WaybillReconciliationEventRepository.java`: exception history persistence.
+
 ### V34 managed-MySQL compatibility
 
 - `backend/src/test/java/com/tnl/logistics/migration/V34PrimaryKeyMigrationIntegrationTest.java`: isolated local upgrade, backfill rejection, and recovery tests with required primary keys enabled.

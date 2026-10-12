@@ -14,7 +14,7 @@ export default function StatusBadge({ value, kind = 'status', style }) {
   } else if (kind === 'waybill') {
     cfg = waybillStyles[value] || cfg;
   } else {
-    cfg = statusStyles[value] || cfg;
+    cfg = statusStyles[value] || (/^[0-9]+ Lost$/.test(value) ? statusStyles.Lost : cfg);
   }
 
   return (

@@ -44,6 +44,7 @@ export function PersonalParcelSummary({ parcel }) {
     <View style={styles.card}>
       <Text style={styles.eyebrow}>Tracking ID</Text>
       <Text style={styles.trackingId}>{trackingId}</Text>
+      {parcel.lost && <Text>Lost | Last confirmed: {currentStatusDisplay}</Text>}
 
       <View style={styles.packageBadgeWrapper}>
         <View style={styles.packageBadge}>

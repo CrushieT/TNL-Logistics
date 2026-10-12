@@ -6,6 +6,13 @@ package com.tnl.logistics.dto;
  */
 public class TrackingScanContextResponse {
 
+    private boolean lost;
+    private String scanBlockedReason;
+    public boolean isLost() { return lost; }
+    public void setLost(boolean lost) { this.lost = lost; }
+    public String getScanBlockedReason() { return scanBlockedReason; }
+    public void setScanBlockedReason(String reason) { scanBlockedReason = reason; }
+
     private String trackingId;
     private String shipmentId;
     private Integer packageIndex;

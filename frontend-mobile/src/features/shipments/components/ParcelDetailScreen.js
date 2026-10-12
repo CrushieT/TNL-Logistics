@@ -190,7 +190,7 @@ export function ParcelDetailScreen({ trackingId }) {
             <Text style={styles.metaLabel}>Current Status</Text>
             <View style={styles.statusBadge}>
               <View style={styles.badgeDot} />
-              <Text style={styles.badgeText}>{parcel.status || 'QR Generated'}</Text>
+              <Text style={styles.badgeText}>{parcel.lost ? `Lost | Last confirmed: ${parcel.status}` : parcel.status || 'QR Generated'}</Text>
             </View>
           </View>
 

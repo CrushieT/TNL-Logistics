@@ -35,20 +35,26 @@ public interface ParcelUnitRepository extends JpaRepository<ParcelUnit, String> 
            "WHERE p.waybill.waybillId IN :waybillIds GROUP BY p.waybill.waybillId")
     List<Object[]> countByWaybillIds(@Param("waybillIds") Collection<String> waybillIds);
 
-    long countByCurrentVehicle_VehicleIdAndCurrentStatus(String vehicleId, com.tnl.logistics.model.ParcelStatus currentStatus);
+    @Query("select count(p) from ParcelUnit p where p.currentVehicle.vehicleId = :vehicleId and p.currentStatus = :currentStatus and p.lost = false")
+    long countByCurrentVehicle_VehicleIdAndCurrentStatus(@Param("vehicleId") String vehicleId, @Param("currentStatus") com.tnl.logistics.model.ParcelStatus currentStatus);
 
     long countByCurrentVehicle_VehicleId(String vehicleId);
 
     @Query("SELECT p.currentVehicle.vehicleId, COUNT(p) FROM ParcelUnit p " +
-           "WHERE p.currentStatus = :status AND p.currentVehicle IS NOT NULL " +
+           "WHERE p.lost = false AND p.currentStatus = :status AND p.currentVehicle IS NOT NULL " +
            "GROUP BY p.currentVehicle.vehicleId")
     List<Object[]> countLoadedParcelsGroupedByVehicle(@Param("status") com.tnl.logistics.model.ParcelStatus status);
 
-    @Query("SELECT p.currentStatus, COUNT(p) FROM ParcelUnit p GROUP BY p.currentStatus")
+    @Query("SELECT p.currentStatus, COUNT(p) FROM ParcelUnit p WHERE p.lost = false GROUP BY p.currentStatus")
     List<Object[]> countParcelsGroupedByStatus();
 
     @Query("SELECT p.currentStatus, COUNT(p) FROM ParcelUnit p " +
-           "WHERE p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered <= :cycleEnd " +
+           "WHERE p.lost = false AND p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered <= :cycleEnd " +
            "GROUP BY p.currentStatus")
     List<Object[]> countParcelsGroupedByStatusBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart, @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
+
+    @Query("SELECT COUNT(p) FROM ParcelUnit p WHERE p.lost = true " +
+           "AND p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered <= :cycleEnd")
+    long countLostParcelsBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart,
+                                 @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
 }

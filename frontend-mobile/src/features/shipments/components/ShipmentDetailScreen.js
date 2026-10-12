@@ -273,7 +273,7 @@ export function ShipmentDetailScreen({ shipmentId }) {
               <View style={styles.unitRight}>
                 <View style={styles.unitBadge}>
                   <View style={styles.unitBadgeDot} />
-                  <Text style={styles.unitBadgeText}>{item.currentStatus || item.status || 'QR Generated'}</Text>
+                  <Text style={styles.unitBadgeText}>{item.lost ? `Lost | Last confirmed: ${item.status}` : item.currentStatus || item.status || 'QR Generated'}</Text>
                 </View>
 
                 <View style={[styles.unitBadge, isPrinted ? styles.badgePrinted : styles.badgeNotPrinted]}>

@@ -387,6 +387,11 @@ public class ClientServiceImpl implements ClientService {
         }
 
         int total = parcels.size();
+        long lost = parcels.stream().filter(ParcelUnit::isLost).count();
+        if (lost > 0) {
+            long delivered = parcels.stream().filter(parcel -> !parcel.isLost() && parcel.getCurrentStatus() == ParcelStatus.COMPLETED).count();
+            return new RollupStatus("With Loss", delivered + " / " + total + " Delivered; " + lost + " Lost");
+        }
         Map<ParcelStatus, Long> counts = parcels.stream()
                 .collect(Collectors.groupingBy(ParcelUnit::getCurrentStatus, Collectors.counting()));
 

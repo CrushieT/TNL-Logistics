@@ -79,9 +79,9 @@ export default function SingleScanReview({
         ) : (
           <View style={styles.terminalCard}>
             <Icon source="check-circle-outline" size={24} color={colors.success} />
-            <Text style={styles.terminalTitle}>Final Scanner Status Reached</Text>
+            <Text style={styles.terminalTitle}>{context.lost ? 'Lost Parcel' : 'Final Scanner Status Reached'}</Text>
             <Text style={styles.terminalDescription}>
-              This package is already at {context.currentStatusLabel}. Further status changes are managed by hauler delivery or waybill POD.
+              {context.scanBlockedReason || `This package is already at ${context.currentStatusLabel}. Further status changes are managed by hauler delivery or waybill POD.`}
             </Text>
           </View>
         )}

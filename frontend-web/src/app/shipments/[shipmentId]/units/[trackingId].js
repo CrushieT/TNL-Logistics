@@ -5,6 +5,7 @@ import AppShell from '../../../../components/layout/AppShell';
 import Card from '../../../../components/common/Card';
 import StatusBadge from '../../../../components/common/StatusBadge';
 import QRCodeGenerator from '../../../../components/common/QRCodeGenerator';
+import ExceptionAction from '../../../../components/common/ExceptionAction';
 import { getParcelUnit, getShipment, PrintLabelsModal, subscribeRealtimeEvents } from '../../../../features/shipments';
 import { colors, fonts, spacing, radius, type } from '../../../../theme';
 
@@ -117,14 +118,35 @@ export default function ParcelUnitDetailScreen() {
           <Text style={styles.title}>{(unit.recipientName || '').toUpperCase()}</Text>
         </View>
         <View style={styles.badgeRow}>
-          <StatusBadge value={unit.status} kind="status" />
+          <StatusBadge value={unit.lost ? 'Lost' : unit.status} kind="status" />
+          {unit.lost && <Text style={styles.lastConfirmedStatus}>Last confirmed: {unit.status}</Text>}
           <StatusBadge value={unit.labelStatus} kind="label" />
+          {unit.status !== 'Completed' && (
+            <ExceptionAction label={unit.lost ? 'Mark as Found' : 'Mark as Lost'} record={unit}
+              endpoint={`/parcel-units/${encodeURIComponent(unit.trackingId)}/${unit.lost ? 'found' : 'lost'}`}
+              onRefresh={async () => {
+                const current = await getParcelUnit(trackingId);
+                setUnit(current);
+                return current;
+              }} />
+          )}
         </View>
       </View>
 
       <View style={styles.row}>
         {/* Left Column: Metadata & Tracking History */}
         <View style={styles.mainCol}>
+          {unit.lossHistory?.length > 0 && (
+            <Card title="LOSS & RECOVERY HISTORY" style={styles.cardSpacing}>
+              {unit.lossHistory.map((event) => (
+                <View key={event.eventId} style={{ marginBottom: 12 }}>
+                  <Text>{event.action === 'LOST' ? 'Marked as Lost' : 'Marked as Found'} — {event.occurredAt}</Text>
+                  <Text>By {event.actorId} | Last confirmed: {event.previousStatus}</Text>
+                  <Text>{event.reason}</Text>
+                </View>
+              ))}
+            </Card>
+          )}
           {/* Card 1: Package & Recipient */}
           <Card title="PACKAGE & RECIPIENT" style={styles.cardSpacing}>
             <View style={styles.gridRow}>
@@ -260,6 +282,11 @@ export default function ParcelUnitDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  lastConfirmedStatus: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    color: colors.inkFaint,
+  },
   backLink: {
     fontFamily: fonts.mono,
     fontSize: 12,

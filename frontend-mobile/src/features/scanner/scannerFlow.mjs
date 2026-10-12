@@ -109,7 +109,7 @@ export function validateBatchCandidate(context, targetOperation, role) {
     const currentLabel = context.currentStatusLabel || formatStatusLabel(context.currentStatusCode) || 'Completed';
     return {
       isValid: false,
-      error: `Parcel ${context.trackingId} has reached terminal status (${currentLabel}) and cannot be scanned.`
+      error: context.scanBlockedReason || `Parcel ${context.trackingId} has reached terminal status (${currentLabel}) and cannot be scanned.`
     };
   }
 

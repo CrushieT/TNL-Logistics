@@ -71,7 +71,7 @@ export function buildWaybillHtml(manifest, logoUri, branding = null, copies = WA
       const weightDisplay = parcel.weightKg !== undefined && parcel.weightKg !== null && parcel.weightKg !== ''
         ? `${Number(parcel.weightKg).toFixed(1)} kg`
         : '2.5 kg';
-      return `<tr><td>${escapeHtml(parcel.trackingId)}</td><td>${escapeHtml(packageDisplay)}</td><td>${escapeHtml(manifest.description || 'General Cargo')}</td><td>${escapeHtml(weightDisplay)}</td></tr>`;
+      return `<tr><td>${escapeHtml(parcel.trackingId)}${parcel.lost ? " | LOST" : ""}</td><td>${escapeHtml(packageDisplay)}</td><td>${escapeHtml(manifest.description || 'General Cargo')}</td><td>${escapeHtml(weightDisplay)}</td></tr>`;
     }).join('');
 
     return `<section class="copy">
@@ -85,6 +85,7 @@ export function buildWaybillHtml(manifest, logoUri, branding = null, copies = WA
         <div class="meta-row">
           <div class="meta-col">
             <h1>WAYBILL</h1>
+            <p>${escapeHtml(manifest.statusLabel || "")} | Delivered: ${manifest.deliveredCount || 0} | Lost: ${manifest.lostCount || 0}</p>
             <p class="meta-line"><span class="meta-label">Waybill No. </span><span class="meta-mono">${escapeHtml(manifest.waybillId)}</span></p>
             <p class="meta-line"><span class="meta-label">Shipment No. </span><span class="meta-mono">${escapeHtml(manifest.shipmentId)}</span></p>
             <p class="meta-line"><span class="meta-label">Date: </span><span class="meta-val">${escapeHtml(manifest.generatedDate)}</span></p>

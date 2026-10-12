@@ -186,7 +186,7 @@ export default function WaybillManifestCard({ manifest, selectedHauler, companyB
                   return (
                     <View key={parcel.trackingId || overallIndex} style={styles.tableRow}>
                       <Text style={[styles.tdCell, styles.monoText, { flex: 2 }]}>
-                        {parcel.trackingId}
+                        {parcel.trackingId}{parcel.lost ? ' — LOST' : ''}
                       </Text>
                       <Text style={[styles.tdCell, { flex: 1 }]}>
                         {packageDisplay}

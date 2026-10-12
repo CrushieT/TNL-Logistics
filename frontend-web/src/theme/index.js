@@ -112,6 +112,8 @@ export const statusStyles = {
   'Loaded on Truck': { fg: colors.inkSoft, bg: colors.surface, dot: colors.warning, outline: true },
   'Arrived at TNL': { fg: colors.success, bg: colors.successSoft, dot: colors.success, outline: true },
   'Loaded to Hauler': { fg: colors.success, bg: colors.successSoft, dot: colors.success, outline: true },
+  Lost: { fg: colors.danger, bg: colors.dangerSoft, border: colors.danger, dot: colors.danger },
+  'With Loss': { fg: colors.danger, bg: colors.dangerSoft, border: colors.danger, dot: colors.danger },
   Completed: { fg: colors.success, bg: colors.successSoft, dot: colors.success, outline: true },
   'Delivered / Completed': { fg: colors.success, bg: colors.successSoft, dot: colors.success, outline: true },
   Active: { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success },
