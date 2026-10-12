@@ -7,6 +7,11 @@ import java.time.LocalDateTime;
 
 public class WaybillStatusUpdateRequest {
 
+    @jakarta.validation.constraints.PositiveOrZero
+    private Long manifestRevision;
+    public Long getManifestRevision() { return manifestRevision; }
+    public void setManifestRevision(Long revision) { manifestRevision = revision; }
+
     @NotBlank(message = "Waybill completion is not permitted.")
     @Size(max = 20, message = "Waybill completion is not permitted.")
     private String confirmedWaybillId;

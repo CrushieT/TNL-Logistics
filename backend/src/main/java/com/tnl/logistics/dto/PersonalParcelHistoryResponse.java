@@ -3,6 +3,9 @@ package com.tnl.logistics.dto;
 import java.util.List;
 
 public class PersonalParcelHistoryResponse {
+    private boolean lost;
+    public boolean isLost() { return lost; }
+    public void setLost(boolean lost) { this.lost = lost; }
 
     private String trackingId;
     private String shipmentId;

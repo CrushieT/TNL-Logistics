@@ -38,17 +38,20 @@ public class TrackingServiceImpl implements TrackingService {
     private final AppUserRepository appUserRepository;
     private final SseService sseService;
     private final TrackingTransitionPolicy transitionPolicy;
+    private final com.tnl.logistics.service.ParcelCustodyLocks custodyLocks;
 
     public TrackingServiceImpl(ParcelUnitRepository parcelUnitRepository,
                                TrackingEventRepository trackingEventRepository,
                                AppUserRepository appUserRepository,
                                SseService sseService,
-                               TrackingTransitionPolicy transitionPolicy) {
+                               TrackingTransitionPolicy transitionPolicy,
+                               com.tnl.logistics.service.ParcelCustodyLocks custodyLocks) {
         this.parcelUnitRepository = parcelUnitRepository;
         this.trackingEventRepository = trackingEventRepository;
         this.appUserRepository = appUserRepository;
         this.sseService = sseService;
         this.transitionPolicy = transitionPolicy;
+        this.custodyLocks = custodyLocks;
     }
 
     @Override
@@ -114,7 +117,7 @@ public class TrackingServiceImpl implements TrackingService {
         String assignedVehicleId = currentVehicle != null ? currentVehicle.getVehicleId() : null;
         String assignedVehiclePlateNumber = currentVehicle != null ? currentVehicle.getPlateNumber() : null;
 
-        return new TrackingScanContextResponse(
+        TrackingScanContextResponse response = new TrackingScanContextResponse(
                 parcel.getTrackingId(),
                 shipmentId,
                 packageIndex,
@@ -128,6 +131,15 @@ public class TrackingServiceImpl implements TrackingService {
                 assignedVehiclePlateNumber,
                 canScan
         );
+        response.setLost(parcel.isLost());
+        if (parcel.isLost()) {
+            response.setCanScan(false);
+            response.setNextStatusCode(null);
+            response.setNextStatusLabel(null);
+            response.setRequiresVehicle(false);
+            response.setScanBlockedReason("Parcel is lost. Admin must mark it found before scanning.");
+        }
+        return response;
     }
 
     @Override
@@ -151,8 +163,7 @@ public class TrackingServiceImpl implements TrackingService {
             }
         }
 
-        ParcelUnit parcel = parcelUnitRepository.findByIdWithPessimisticLock(normalizedTrackingId)
-                .orElseThrow(() -> new IllegalArgumentException("Parcel unit not found: " + normalizedTrackingId));
+        ParcelUnit parcel = lockScanParcels(List.of(normalizedTrackingId)).get(0);
 
         TrackingTransitionPolicy.Decision decision = transitionPolicy.decide(parcel.getCurrentStatus(), request.getTargetStatus(),
                 vehicleId(parcel.getCurrentVehicle()), normalizedVehicleId);
@@ -220,10 +231,8 @@ public class TrackingServiceImpl implements TrackingService {
         List<String> sortedIds = new ArrayList<>(normalizedIds);
         Collections.sort(sortedIds);
         Map<String, ParcelUnit> lockedParcels = new HashMap<>();
-        for (String id : sortedIds) {
-            ParcelUnit p = parcelUnitRepository.findByIdWithPessimisticLock(id)
-                    .orElseThrow(() -> new IllegalArgumentException("Parcel unit not found: " + id));
-            lockedParcels.put(id, p);
+        for (ParcelUnit parcel : lockScanParcels(sortedIds)) {
+            lockedParcels.put(parcel.getTrackingId(), parcel);
         }
 
         // Pre-validate all transitions before mutating entities
@@ -377,6 +386,17 @@ public class TrackingServiceImpl implements TrackingService {
         return resolution.vehicle();
     }
 
+    private List<ParcelUnit> lockScanParcels(List<String> trackingIds) {
+        try {
+            return custodyLocks.lockParcels(trackingIds);
+        } catch (ResponseStatusException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                throw new IllegalArgumentException("Parcel unit not found");
+            }
+            throw exception;
+        }
+    }
+
     private AppUser requireActingStaff(String actingStaffUserId) {
         return appUserRepository.findById(actingStaffUserId)
                 .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
@@ -396,6 +416,12 @@ public class TrackingServiceImpl implements TrackingService {
 
     private void requireOnlineDecision(TrackingTransitionPolicy.Decision decision, ParcelUnit parcel,
                                        ParcelStatus target, String requestedVehicleId) {
+        if (parcel.isLost()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Parcel is lost. Admin must mark it found before scanning.");
+        }
+        if (target == ParcelStatus.COMPLETED && parcel.getWaybill() != null) {
+            throw new IllegalStateException("Assigned parcel can only be completed through its returned waybill");
+        }
         if (decision.kind() == TrackingTransitionPolicy.DecisionKind.VEHICLE_MISMATCH) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     String.format("Parcel %s is already LOADED_ON_TRUCK with vehicle %s, cannot assign different vehicle %s",
@@ -459,6 +485,11 @@ public class TrackingServiceImpl implements TrackingService {
         if (parcels.isEmpty()) return "0 / 0 Registered";
 
         int total = parcels.size();
+        long lostCount = parcels.stream().filter(ParcelUnit::isLost).count();
+        if (lostCount > 0) {
+            long delivered = parcels.stream().filter(parcel -> !parcel.isLost() && parcel.getCurrentStatus() == ParcelStatus.COMPLETED).count();
+            return delivered + " / " + total + " Delivered; " + lostCount + " Lost";
+        }
         Map<ParcelStatus, Long> counts = parcels.stream()
                 .collect(Collectors.groupingBy(ParcelUnit::getCurrentStatus, Collectors.counting()));
 
@@ -634,7 +665,7 @@ public class TrackingServiceImpl implements TrackingService {
         String labelStatusCode = parcel.getLabelStatus() != null ? parcel.getLabelStatus().name() : LabelStatus.NOT_PRINTED.name();
         String labelStatusDisplay = formatLabelStatus(parcel.getLabelStatus());
 
-        return new PersonalParcelHistoryResponse(
+        PersonalParcelHistoryResponse response = new PersonalParcelHistoryResponse(
                 parcel.getTrackingId(),
                 shipmentId,
                 packageIndex,
@@ -647,6 +678,8 @@ public class TrackingServiceImpl implements TrackingService {
                 currentVehiclePlateNumber,
                 eventResponses
         );
+        response.setLost(parcel.isLost());
+        return response;
     }
 
     private PersonalTrackingEventResponse mapToPersonalTrackingEventResponse(TrackingEvent event) {

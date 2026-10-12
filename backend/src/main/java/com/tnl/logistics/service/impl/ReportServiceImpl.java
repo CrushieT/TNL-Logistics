@@ -351,6 +351,7 @@ public class ReportServiceImpl implements ReportService {
 
         // 10. Status Distribution
         Map<ParcelStatus, Long> statusCounts = periodParcels.stream()
+                .filter(parcel -> !parcel.isLost())
                 .collect(Collectors.groupingBy(ParcelUnit::getCurrentStatus, Collectors.counting()));
 
         List<StatusDistributionReportRow> statusDistributionRows = new ArrayList<>();
@@ -366,6 +367,12 @@ public class ReportServiceImpl implements ReportService {
                     pct
             ));
         }
+        long lostParcelsCount = periodParcels.stream().filter(ParcelUnit::isLost).count();
+        double lostPercentage = totalParcelsCount > 0
+                ? BigDecimal.valueOf((double) lostParcelsCount * 100.0 / totalParcelsCount)
+                        .setScale(1, RoundingMode.HALF_UP).doubleValue()
+                : 0.0;
+        statusDistributionRows.add(new StatusDistributionReportRow("LOST", "Lost", lostParcelsCount, lostPercentage));
 
         return new ReportSummaryResponse(
                 resolvedStart,

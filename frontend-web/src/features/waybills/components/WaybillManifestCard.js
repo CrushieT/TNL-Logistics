@@ -184,9 +184,9 @@ export default function WaybillManifestCard({ manifest, selectedHauler, companyB
                     : '2.5 kg';
 
                   return (
-                    <View key={parcel.trackingId || overallIndex} style={styles.tableRow}>
+                    <View key={parcel.trackingId || overallIndex} style={[styles.tableRow, parcel.lost && styles.lostTableRow]}>
                       <Text style={[styles.tdCell, styles.monoText, { flex: 2 }]}>
-                        {parcel.trackingId}
+                        {parcel.trackingId}{parcel.lost ? <Text style={styles.lostMarker}>  LOST</Text> : null}
                       </Text>
                       <Text style={[styles.tdCell, { flex: 1 }]}>
                         {packageDisplay}
@@ -504,6 +504,8 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F0EFEA',
     alignItems: 'center',
   },
+  lostTableRow: { backgroundColor: colors.dangerSoft },
+  lostMarker: { color: colors.danger, fontWeight: '800', fontSize: 11 },
   tdCell: {
     fontFamily: fonts.sans,
     fontSize: 14,

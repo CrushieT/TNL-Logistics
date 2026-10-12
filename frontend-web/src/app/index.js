@@ -96,7 +96,7 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     const unsubscribe = subscribeRealtimeEvents((event) => {
-      if (['STATUS_UPDATE', 'SHIPMENT_CREATED', 'PAYMENT_RECORDED', 'SOA_GENERATED'].includes(event.type)) {
+      if (['PARCEL_EXCEPTION', 'WAYBILL_UPDATE', 'STATUS_UPDATE', 'SHIPMENT_CREATED', 'PAYMENT_RECORDED', 'SOA_GENERATED'].includes(event.type)) {
         if (selectedCycle) {
           load(selectedCycle);
         }

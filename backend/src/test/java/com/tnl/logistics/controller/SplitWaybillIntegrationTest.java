@@ -69,6 +69,7 @@ class SplitWaybillIntegrationTest {
                 "SELECT shipment_id FROM shipment WHERE recipient_name = 'Waybill Client'", String.class);
         for (String shipmentId : leftovers) {
             jdbcTemplate.update("DELETE FROM tracking_event WHERE tracking_id IN (SELECT tracking_id FROM parcel_unit WHERE shipment_id = ?)", shipmentId);
+            jdbcTemplate.update("DELETE FROM waybill_reconciliation_event WHERE waybill_id IN (SELECT waybill_id FROM waybill WHERE shipment_id = ?)", shipmentId);
             jdbcTemplate.update("DELETE FROM waybill_return_scan WHERE waybill_id IN (SELECT waybill_id FROM waybill WHERE shipment_id = ?)", shipmentId);
             jdbcTemplate.update("UPDATE parcel_unit SET waybill_id = NULL WHERE shipment_id = ?", shipmentId);
             jdbcTemplate.update("DELETE FROM waybill WHERE shipment_id = ?", shipmentId);
@@ -314,7 +315,8 @@ class SplitWaybillIntegrationTest {
             executor.shutdownNow();
             if (shipmentId != null) {
                 jdbcTemplate.update("DELETE FROM tracking_event WHERE tracking_id IN (SELECT tracking_id FROM parcel_unit WHERE shipment_id = ?)", shipmentId);
-                jdbcTemplate.update("DELETE FROM waybill_return_scan WHERE waybill_id IN (SELECT waybill_id FROM waybill WHERE shipment_id = ?)", shipmentId);
+                jdbcTemplate.update("DELETE FROM waybill_reconciliation_event WHERE waybill_id IN (SELECT waybill_id FROM waybill WHERE shipment_id = ?)", shipmentId);
+            jdbcTemplate.update("DELETE FROM waybill_return_scan WHERE waybill_id IN (SELECT waybill_id FROM waybill WHERE shipment_id = ?)", shipmentId);
                 jdbcTemplate.update("UPDATE parcel_unit SET waybill_id = NULL WHERE shipment_id = ?", shipmentId);
                 jdbcTemplate.update("DELETE FROM waybill WHERE shipment_id = ?", shipmentId);
                 jdbcTemplate.update("DELETE FROM parcel_unit WHERE shipment_id = ?", shipmentId);

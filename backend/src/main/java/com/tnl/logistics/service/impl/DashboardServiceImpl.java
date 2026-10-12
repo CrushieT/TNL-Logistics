@@ -118,6 +118,10 @@ public class DashboardServiceImpl implements DashboardService {
             parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto(
                     "Completed", statusCounts.get(ParcelStatus.COMPLETED), "#059669"));
         }
+        long lostCount = parcelUnitRepository.countLostParcelsBetween(cycleStart, cycleEnd);
+        if (lostCount > 0) {
+            parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto("Lost", lostCount, "#B91C1C"));
+        }
 
         // 6. Weekly shipment volume aligned to active 7-day billing cycle
         List<Object[]> dailyRows = shipmentRepository.countDailyShipmentsBetween(cycleStart, cycleEnd);

@@ -12,6 +12,17 @@ import org.springframework.data.domain.Persistable;
 @Table(name = "parcel_unit")
 public class ParcelUnit implements Persistable<String> {
 
+    @Column(name = "is_lost", nullable = false)
+    private boolean lost;
+
+    @Version
+    @Column(name = "revision", nullable = false)
+    private long revision;
+
+    public boolean isLost() { return lost; }
+    public void setLost(boolean lost) { this.lost = lost; }
+    public long getRevision() { return revision; }
+
     @Id
     @Column(name = "tracking_id", length = 30)
     private String trackingId;

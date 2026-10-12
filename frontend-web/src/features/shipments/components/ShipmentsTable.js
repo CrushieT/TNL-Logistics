@@ -70,8 +70,10 @@ export default function ShipmentsTable({
               <Text style={styles.primaryText}>{s.quantity} pcs</Text>
             </View>
             <View style={[styles.cell, { flex: COLUMNS[4].flex }]}>
-              <StatusBadge value={s.status} kind="status" />
-              {s.statusRollup ? <Text style={styles.rollupText}>{s.statusRollup}</Text> : null}
+              <StatusBadge value={s.lostCount > 0 ? `${s.lostCount} Lost` : s.status} kind="status" />
+              {s.lostCount > 0 ? (
+                <Text style={styles.rollupText}>{s.deliveredCount} of {s.quantity} delivered</Text>
+              ) : s.statusRollup ? <Text style={styles.rollupText}>{s.statusRollup}</Text> : null}
               {s.vehiclePlate ? (
                 <Text style={styles.vehicleText}>
                   {s.vehicleId ? `${s.vehicleId} | ` : ''}{s.vehiclePlate}

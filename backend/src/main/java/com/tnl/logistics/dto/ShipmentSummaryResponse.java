@@ -7,6 +7,12 @@ import java.time.LocalDateTime;
  * Summary DTO for shipments data table and paginated search.
  */
 public class ShipmentSummaryResponse {
+    private long lostCount;
+    private long deliveredCount;
+    public long getLostCount() { return lostCount; }
+    public void setLostCount(long count) { lostCount = count; }
+    public long getDeliveredCount() { return deliveredCount; }
+    public void setDeliveredCount(long count) { deliveredCount = count; }
 
     private String shipmentId;
     private String clientId;

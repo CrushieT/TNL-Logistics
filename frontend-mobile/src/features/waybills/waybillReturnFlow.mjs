@@ -24,11 +24,13 @@ export function parseWaybillQrPayload(rawValue) {
   return { isValid: true, waybillId };
 }
 
-export function isWaybillCompletionUnlocked(manifest, confirmedWaybillId) {
+export function isWaybillCompletionUnlocked(manifest, confirmedWaybillId, confirmedRevision) {
   return Boolean(
     manifest?.status === 'SENT_TO_HAULER'
       && manifest.waybillId
       && manifest.waybillId === confirmedWaybillId
+      && (manifest.manifestRevision == null || manifest.manifestRevision === 0 || manifest.manifestRevision === confirmedRevision)
+      && !(manifest.lostCount > 0 && manifest.lostCount === manifest.totalQuantity)
   );
 }
 

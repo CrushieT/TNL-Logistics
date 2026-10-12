@@ -209,7 +209,7 @@ export default function ShipmentDetailScreen() {
 
           {/* Card 2: Parcel Units */}
           <Card
-            title={`PARCEL UNITS (${shipment.units?.length || 0})`}
+            title={`PARCEL UNITS (${shipment.units?.length || 0}) | ${shipment.lostCount ?? 0} LOST`}
             right={
               <Button
                 label={`Print All Labels (${shipment.units?.length || 0})`}
@@ -224,7 +224,6 @@ export default function ShipmentDetailScreen() {
                 <Text style={[styles.unitsHeaderCell, { flex: 1.3 }]}>PACKAGE</Text>
                 <Text style={[styles.unitsHeaderCell, { flex: 1.4 }]}>TRACKING ID</Text>
                 <Text style={[styles.unitsHeaderCell, { flex: 1.2 }]}>STATUS</Text>
-                <Text style={[styles.unitsHeaderCell, { flex: 1.2 }]}>LABEL</Text>
                 <Text style={[styles.unitsHeaderCell, { flex: 0.9, textAlign: 'right' }]} />
               </View>
               {shipment.units?.map((u, idx) => (
@@ -237,13 +236,8 @@ export default function ShipmentDetailScreen() {
                   </Text>
                   <Text style={[styles.unitCellStrong, { flex: 1.4 }]}>{u.trackingId}</Text>
                   <View style={{ flex: 1.2 }}>
-                    <StatusBadge value={u.status} kind="status" />
-                  </View>
-                  <View style={{ flex: 1.2 }}>
-                    <StatusBadge
-                      value={u.labelStatus === 'Printed' ? 'Label: Printed' : 'Label: Pending'}
-                      kind="label"
-                    />
+                    <StatusBadge value={u.lost ? 'Lost' : u.status} kind="status" />
+                    {u.lost && <Text style={styles.lastConfirmedStatus}>Last confirmed: {u.status}</Text>}
                   </View>
                   <View style={{ flex: 0.9, flexDirection: 'row', gap: spacing.md, justifyContent: 'flex-end' }}>
                     <Pressable onPress={() => router.push(`/shipments/${shipmentId}/units/${u.trackingId}`)}>
@@ -401,6 +395,12 @@ function PaymentLine({ label, value, strong, accent }) {
 }
 
 const styles = StyleSheet.create({
+  lastConfirmedStatus: {
+    fontFamily: fonts.mono,
+    fontSize: 10.5,
+    color: colors.inkFaint,
+    marginTop: 4,
+  },
   backLink: {
     fontFamily: fonts.mono,
     fontSize: 12,

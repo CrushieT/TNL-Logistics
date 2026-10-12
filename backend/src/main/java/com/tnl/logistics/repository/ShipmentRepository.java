@@ -55,7 +55,7 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
            "  OR (:labelFilter = 'NEEDS_LABEL' AND EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.labelStatus = com.tnl.logistics.model.LabelStatus.NOT_PRINTED)) " +
            "  OR (:labelFilter = 'PRINTED' AND NOT EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.labelStatus = com.tnl.logistics.model.LabelStatus.NOT_PRINTED))) " +
            "AND (:vehicleFilter IS NULL " +
-           "  OR EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND (pu.currentVehicle.vehicleId = :vehicleFilter OR EXISTS (SELECT te FROM TrackingEvent te WHERE te.parcelUnit = pu AND te.vehicle.vehicleId = :vehicleFilter))))",
+           "  OR EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.lost = false AND (pu.currentVehicle.vehicleId = :vehicleFilter OR EXISTS (SELECT te FROM TrackingEvent te WHERE te.parcelUnit = pu AND te.vehicle.vehicleId = :vehicleFilter))))",
            countQuery = "SELECT COUNT(s) FROM Shipment s JOIN s.client c WHERE " +
            "(:search IS NULL OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(s.recipientName) LIKE LOWER(CONCAT('%', :search, '%')) " +
@@ -78,7 +78,7 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
            "  OR (:labelFilter = 'NEEDS_LABEL' AND EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.labelStatus = com.tnl.logistics.model.LabelStatus.NOT_PRINTED)) " +
            "  OR (:labelFilter = 'PRINTED' AND NOT EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.labelStatus = com.tnl.logistics.model.LabelStatus.NOT_PRINTED))) " +
            "AND (:vehicleFilter IS NULL " +
-           "  OR EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND (pu.currentVehicle.vehicleId = :vehicleFilter OR EXISTS (SELECT te FROM TrackingEvent te WHERE te.parcelUnit = pu AND te.vehicle.vehicleId = :vehicleFilter))))")
+           "  OR EXISTS (SELECT pu FROM ParcelUnit pu WHERE pu.shipment = s AND pu.lost = false AND (pu.currentVehicle.vehicleId = :vehicleFilter OR EXISTS (SELECT te FROM TrackingEvent te WHERE te.parcelUnit = pu AND te.vehicle.vehicleId = :vehicleFilter))))")
     Page<Shipment> searchShipmentsWithFilters(
             @Param("search") String search,
             @Param("statusFilter") String statusFilter,

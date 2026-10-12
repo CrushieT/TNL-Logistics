@@ -126,6 +126,8 @@ export default function DispatchWaybillsScreen() {
   const [waybillRecommendationRetryVersion, setWaybillRecommendationRetryVersion] = useState(0);
   const [manifest, setManifest] = useState(null);
   const [confirmedWaybillId, setConfirmedWaybillId] = useState(null);
+  const [confirmedManifestRevision, setConfirmedManifestRevision] = useState(null);
+  const isCompletingWaybill = useRef(false);
 
   // UI state
   const [busy, setBusy] = useState(false);
@@ -745,6 +747,11 @@ export default function DispatchWaybillsScreen() {
         setError(`${cleanId} belongs to ${context.shipmentId}, not ${shipmentId}.`);
         return;
       }
+      if (context.lost) {
+        safeHaptics.error();
+        setError(context.scanBlockedReason || 'Parcel is lost. Admin must mark it found before scanning.');
+        return;
+      }
       const statusCode = context.currentStatusCode;
       const isLoaded = statusCode === 'LOADED_TO_HAULER';
       const isArrived = statusCode === 'ARRIVED_AT_TNL';
@@ -813,6 +820,7 @@ export default function DispatchWaybillsScreen() {
       setManifest(record);
       setWaybillInput(record.waybillId);
       setConfirmedWaybillId(record.waybillId);
+      setConfirmedManifestRevision(record.manifestRevision);
       safeHaptics.success();
       setNotice(`${record.waybillId} return confirmed. Review the manifest, then complete the waybill.`);
     } catch {
@@ -936,28 +944,41 @@ export default function DispatchWaybillsScreen() {
 
   // Complete returned signed waybill
   const handleCompleteWaybill = async () => {
-    if (!manifest || busy || !isOnline) return;
-    if (!isWaybillCompletionUnlocked(manifest, confirmedWaybillId)) {
+    if (!manifest || busy || !isOnline || isCompletingWaybill.current) return;
+    if (!isWaybillCompletionUnlocked(manifest, confirmedWaybillId, confirmedManifestRevision)) {
       safeHaptics.error();
       setError('Scan the matching return confirmation QR printed on this waybill first.');
       return;
     }
 
+    isCompletingWaybill.current = true;
     setBusy(true);
     setError('');
     try {
       const record = await completeWaybill(manifest.waybillId, {
-        confirmedWaybillId
+        confirmedWaybillId,
+        manifestRevision: confirmedManifestRevision
       });
       setManifest(record);
       setConfirmedWaybillId(null);
       safeHaptics.success();
-      setNotice(`${record.waybillId} completed! Listed parcels are now marked Delivered.`);
+      setNotice(`${record.waybillId}: ${record.deliveredCount} delivered, ${record.lostCount} lost. ${record.statusLabel}.`);
       if (shipmentId) await refreshShipmentData(shipmentId);
     } catch (err) {
       safeHaptics.error();
-      setError(err?.response?.data?.message || err?.message || 'Failed to complete waybill.');
+      if (err?.response?.status === 409) {
+        setConfirmedWaybillId(null);
+        setConfirmedManifestRevision(null);
+        try {
+          const refreshed = await getWaybill(manifest.waybillId);
+          setManifest(refreshed);
+        } catch {
+          setManifest(null);
+        }
+      }
+      setError(err?.response?.data?.message || 'Failed to complete waybill.');
     } finally {
+      isCompletingWaybill.current = false;
       setBusy(false);
     }
   };
@@ -973,7 +994,7 @@ export default function DispatchWaybillsScreen() {
   );
 
   const canGenerate = Boolean(shipmentId) && batchQueue.length > 0 && isOnline && !busy;
-  const canComplete = isWaybillCompletionUnlocked(manifest, confirmedWaybillId)
+  const canComplete = isWaybillCompletionUnlocked(manifest, confirmedWaybillId, confirmedManifestRevision)
     && isOnline
     && !busy;
 
@@ -1612,7 +1633,9 @@ export default function DispatchWaybillsScreen() {
                   <View
                     style={[
                       styles.statusPill,
-                      manifest.status === 'SIGNED_COMPLETED'
+                      manifest.lostCount > 0
+                        ? styles.statusPillLoss
+                        : manifest.status === 'SIGNED_COMPLETED'
                         ? styles.statusPillSuccess
                         : manifest.status === 'SENT_TO_HAULER'
                         ? styles.statusPillWarning
@@ -1622,7 +1645,9 @@ export default function DispatchWaybillsScreen() {
                     <Text
                       style={[
                         styles.statusPillText,
-                        manifest.status === 'SIGNED_COMPLETED'
+                        manifest.lostCount > 0
+                          ? styles.statusPillTextLoss
+                          : manifest.status === 'SIGNED_COMPLETED'
                           ? styles.statusPillTextSuccess
                           : manifest.status === 'SENT_TO_HAULER'
                           ? styles.statusPillTextWarning
@@ -1637,6 +1662,30 @@ export default function DispatchWaybillsScreen() {
                 <Text style={styles.manifestMeta}>
                   Shipment: {manifest.shipmentId} · Units: {manifest.parcels?.length || 0}
                 </Text>
+                <View style={styles.manifestCounts}>
+                  <View style={styles.manifestCountItem}>
+                    <Text style={styles.manifestCountLabel}>DELIVERED</Text>
+                    <Text style={styles.manifestCountValue}>{manifest.deliveredCount || 0}</Text>
+                  </View>
+                  <View style={[styles.manifestCountItem, manifest.lostCount > 0 && styles.manifestLostCountItem]}>
+                    <Text style={[styles.manifestCountLabel, manifest.lostCount > 0 && styles.manifestLostText]}>LOST</Text>
+                    <Text style={[styles.manifestCountValue, manifest.lostCount > 0 && styles.manifestLostText]}>{manifest.lostCount || 0}</Text>
+                  </View>
+                  <View style={styles.manifestCountItem}>
+                    <Text style={styles.manifestCountLabel}>REMAINING</Text>
+                    <Text style={styles.manifestCountValue}>{manifest.remainingCount ?? manifest.parcels?.length}</Text>
+                  </View>
+                </View>
+                {manifest.lostCount > 0 && <View style={styles.lossNotice}>
+                  <Icon source="alert-circle-outline" size={18} color={colors.danger} />
+                  <View style={styles.lossNoticeCopy}>
+                    <Text style={styles.lossNoticeTitle}>LOSS EXCEPTION</Text>
+                    <Text style={styles.lossNoticeText}>
+                      Lost parcels remain listed and will not be marked delivered.
+                      {manifest.lostCount === manifest.totalQuantity ? ' Admin must close this waybill as all lost.' : ''}
+                    </Text>
+                  </View>
+                </View>}
 
                 <View style={styles.verificationBox}>
                   <Text style={styles.verificationSummaryText}>
@@ -1644,9 +1693,12 @@ export default function DispatchWaybillsScreen() {
                   </Text>
                   <View style={styles.manifestUnitsList}>
                     {manifest.parcels?.map((unit) => (
-                      <View key={unit.trackingId} style={styles.manifestUnitRow}>
+                      <View key={unit.trackingId} style={[styles.manifestUnitRow, unit.lost && styles.manifestUnitLost]}>
                         <Icon source="package-variant-closed" size={18} color={colors.inkFaint} />
                         <Text style={styles.manifestUnitTrackingId}>{unit.trackingId}</Text>
+                        {unit.lost && <View style={styles.manifestLossTag}>
+                          <Text style={styles.manifestLossTagText}>LOST</Text>
+                        </View>}
                         <Text style={styles.manifestUnitSeq}>#{unit.seq}</Text>
                       </View>
                     ))}
@@ -1684,7 +1736,7 @@ export default function DispatchWaybillsScreen() {
                   <View style={styles.actionBlock}>
                     <Text style={styles.actionHint}>
                       {canComplete
-                        ? 'The matching printed waybill QR was scanned. Confirm to complete only the listed units.'
+                        ? 'The printed QR was scanned. Review delivered, lost, and remaining counts. Confirm to deliver only remaining non-lost units.'
                         : 'Manual lookup is for review and reprinting. Scan this waybill\'s printed return QR to enable completion.'}
                     </Text>
                     <TouchableOpacity
@@ -2286,6 +2338,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.inkSoft
   },
+  manifestCounts: { flexDirection: 'row', gap: spacing.xs },
+  manifestCountItem: { flex: 1, minWidth: 0, backgroundColor: colors.canvas,
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, padding: spacing.sm, gap: 3 },
+  manifestCountLabel: { ...typography.eyebrow, fontSize: 9, color: colors.inkFaint },
+  manifestCountValue: { fontFamily: 'monospace', fontSize: 19, fontWeight: '800', color: colors.ink },
+  manifestLostCountItem: { backgroundColor: colors.dangerSoft, borderColor: colors.danger },
+  manifestLostText: { color: colors.danger },
+  lossNotice: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm,
+    padding: spacing.sm, backgroundColor: colors.dangerSoft, borderWidth: 1,
+    borderColor: colors.danger, borderRadius: radius.sm },
+  lossNoticeCopy: { flex: 1, gap: 3 },
+  lossNoticeTitle: { ...typography.eyebrow, fontSize: 10, color: colors.danger },
+  lossNoticeText: { ...typography.bodySmall, color: colors.inkSoft },
   statusPill: {
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -2300,6 +2365,7 @@ const styles = StyleSheet.create({
   statusPillSuccess: {
     backgroundColor: colors.successSoft
   },
+  statusPillLoss: { backgroundColor: colors.dangerSoft },
   statusPillText: {
     fontSize: 10,
     fontWeight: '800'
@@ -2313,6 +2379,7 @@ const styles = StyleSheet.create({
   statusPillTextSuccess: {
     color: colors.success
   },
+  statusPillTextLoss: { color: colors.danger },
   verificationBox: {
     gap: spacing.xs,
     paddingVertical: 4
@@ -2334,6 +2401,10 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: colors.canvas
   },
+  manifestUnitLost: { backgroundColor: colors.dangerSoft, borderLeftWidth: 2, borderLeftColor: colors.danger },
+  manifestLossTag: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.danger,
+    borderRadius: radius.sm, paddingHorizontal: 5, paddingVertical: 2 },
+  manifestLossTagText: { color: colors.danger, fontSize: 9, fontWeight: '800' },
   manifestUnitTrackingId: {
     flex: 1,
     fontSize: 12,

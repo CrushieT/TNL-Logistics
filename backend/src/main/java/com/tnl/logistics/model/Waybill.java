@@ -14,6 +14,15 @@ import org.springframework.data.domain.Persistable;
 @Table(name = "waybill")
 public class Waybill implements Persistable<String> {
 
+    @Column(name = "manifest_revision", nullable = false)
+    private long manifestRevision;
+    @Column(name = "reconciliation_outcome", length = 20)
+    private String reconciliationOutcome;
+    public long getManifestRevision() { return manifestRevision; }
+    public void advanceManifestRevision() { manifestRevision++; }
+    public String getReconciliationOutcome() { return reconciliationOutcome; }
+    public void setReconciliationOutcome(String outcome) { this.reconciliationOutcome = outcome; }
+
     @Id
     @Column(name = "waybill_id", length = 20)
     private String waybillId;

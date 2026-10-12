@@ -7,6 +7,13 @@ import java.math.BigDecimal;
  */
 public class ParcelUnitResponse {
 
+    private boolean lost;
+    private long revision;
+    public boolean isLost() { return lost; }
+    public void setLost(boolean lost) { this.lost = lost; }
+    public long getRevision() { return revision; }
+    public void setRevision(long revision) { this.revision = revision; }
+
     private String trackingId;
     private Integer packageIndex;
     private Integer packageCount;

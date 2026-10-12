@@ -50,6 +50,7 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final PrintAuditJobRepository printAuditJobRepository;
     private final com.tnl.logistics.service.SystemSettingService systemSettingService;
     private final IdentifierCounterService identifierCounterService;
+    private final ParcelLossEventRepository lossEvents;
 
     public ShipmentServiceImpl(ShipmentRepository shipmentRepository,
                                ParcelUnitRepository parcelUnitRepository,
@@ -63,7 +64,8 @@ public class ShipmentServiceImpl implements ShipmentService {
                                PrintEventRepository printEventRepository,
                                PrintAuditJobRepository printAuditJobRepository,
                                com.tnl.logistics.service.SystemSettingService systemSettingService,
-                               IdentifierCounterService identifierCounterService) {
+                               IdentifierCounterService identifierCounterService,
+                               ParcelLossEventRepository lossEvents) {
         this.shipmentRepository = shipmentRepository;
         this.parcelUnitRepository = parcelUnitRepository;
         this.clientRepository = clientRepository;
@@ -77,6 +79,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         this.printAuditJobRepository = printAuditJobRepository;
         this.systemSettingService = systemSettingService;
         this.identifierCounterService = identifierCounterService;
+        this.lossEvents = lossEvents;
     }
 
     @Override
@@ -552,10 +555,13 @@ public class ShipmentServiceImpl implements ShipmentService {
         Waybill waybill = shipmentWaybills.isEmpty() ? null : shipmentWaybills.get(0);
         if (waybill != null) {
             String wbStatusLabel = waybill.getStatus() == com.tnl.logistics.model.WaybillStatus.SIGNED_COMPLETED
-                    ? "Waybill: Signed / Completed"
+                    ? ("ALL_LOST".equals(waybill.getReconciliationOutcome()) ? "Waybill: Closed as All Lost"
+                    : "WITH_LOSS".equals(waybill.getReconciliationOutcome()) ? "Waybill: Closed with Loss" : "Waybill: Signed / Completed")
                     : (waybill.getStatus() == com.tnl.logistics.model.WaybillStatus.SENT_TO_HAULER ? "Waybill: Sent to Hauler" : "Waybill: Generated");
             long completedCount = parcels.stream().filter(parcel -> parcel.getCurrentStatus() == ParcelStatus.COMPLETED).count();
-            resp.setWaybillStatus(completedCount > 0 && completedCount < parcels.size()
+            boolean hasClosedWithLoss = "WITH_LOSS".equals(waybill.getReconciliationOutcome())
+                    || "ALL_LOST".equals(waybill.getReconciliationOutcome());
+            resp.setWaybillStatus(!hasClosedWithLoss && completedCount > 0 && completedCount < parcels.size()
                     ? "Waybills: " + completedCount + " of " + parcels.size() + " completed" : wbStatusLabel);
             resp.setHauler(waybill.getHaulerName());
             resp.setWaybillGeneratedDate(waybill.getGeneratedAt() != null ? waybill.getGeneratedAt().format(DATE_FORMATTER) : "—");
@@ -582,6 +588,20 @@ public class ShipmentServiceImpl implements ShipmentService {
         )).collect(Collectors.toList());
 
         resp.setUnits(unitResponses);
+        Map<String, ParcelUnit> parcelsById = parcels.stream().collect(Collectors.toMap(ParcelUnit::getTrackingId, parcel -> parcel));
+        for (ParcelUnitResponse unit : unitResponses) {
+            ParcelUnit parcel = parcelsById.get(unit.getTrackingId());
+            unit.setLost(parcel.isLost());
+            unit.setRevision(parcel.getRevision());
+        }
+        long lostCount = parcels.stream().filter(ParcelUnit::isLost).count();
+        long deliveredCount = parcels.stream().filter(parcel -> !parcel.isLost() && parcel.getCurrentStatus() == ParcelStatus.COMPLETED).count();
+        resp.setLostCount(lostCount);
+        resp.setDeliveredCount(deliveredCount);
+        if (lostCount > 0) {
+            resp.setStatusRollup(deliveredCount + " / " + parcels.size() + " Delivered; " + lostCount + " Lost");
+            resp.setStatus("With Loss");
+        }
         return resp;
     }
 
@@ -596,6 +616,17 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         ParcelUnitDetailResponse resp = new ParcelUnitDetailResponse();
         resp.setTrackingId(parcel.getTrackingId());
+        resp.setLost(parcel.isLost());
+        resp.setRevision(parcel.getRevision());
+        resp.setLossHistory(lossEvents.findByTrackingIdOrderByEventIdAsc(trackingId).stream().map(event -> {
+            String actorName = appUserRepository.findById(event.getActorId()).map(AppUser::getFullName).orElse(event.getActorId());
+            String formattedPrevStatus = event.getPreviousStatus();
+            try {
+                formattedPrevStatus = formatStatus(ParcelStatus.valueOf(event.getPreviousStatus()));
+            } catch (Exception ignored) {}
+            return ParcelLossEventResponse.from(event, actorName, formattedPrevStatus);
+        }).toList());
+        resp.setWaybillId(parcel.getWaybill() == null ? null : parcel.getWaybill().getWaybillId());
         resp.setPackageIndex(parcel.getSeq());
         resp.setPackageCount(shipment.getQuantity());
         resp.setRecipientName(shipment.getRecipientName());
@@ -831,6 +862,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         String vehicleId = null;
         String vehiclePlate = null;
         for (ParcelUnit p : parcels) {
+            if (p.isLost()) continue;
             if (p.getCurrentVehicle() != null) {
                 vehicleId = p.getCurrentVehicle().getVehicleId();
                 vehiclePlate = p.getCurrentVehicle().getPlateNumber();
@@ -839,6 +871,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
         if (vehicleId == null && !parcels.isEmpty() && latestEventWithVehicleByTrackingId != null) {
             for (ParcelUnit p : parcels) {
+                if (p.isLost()) continue;
                 TrackingEvent ev = latestEventWithVehicleByTrackingId.get(p.getTrackingId());
                 if (ev != null && ev.getVehicle() != null) {
                     vehicleId = ev.getVehicle().getVehicleId();
@@ -878,6 +911,8 @@ public class ShipmentServiceImpl implements ShipmentService {
         response.setFinancialStatus(financialStatus);
         response.setCollectibleBalance(collectibleBalance);
         response.setStatementId(s.getStatementId());
+        response.setLostCount(parcels.stream().filter(ParcelUnit::isLost).count());
+        response.setDeliveredCount(parcels.stream().filter(parcel -> !parcel.isLost() && parcel.getCurrentStatus() == ParcelStatus.COMPLETED).count());
         return response;
     }
 
@@ -915,6 +950,11 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
 
         int total = parcels.size();
+        long lost = parcels.stream().filter(ParcelUnit::isLost).count();
+        if (lost > 0) {
+            long delivered = parcels.stream().filter(parcel -> !parcel.isLost() && parcel.getCurrentStatus() == ParcelStatus.COMPLETED).count();
+            return new RollupStatus("With Loss", delivered + " / " + total + " Delivered; " + lost + " Lost");
+        }
         Map<ParcelStatus, Long> counts = parcels.stream()
                 .collect(Collectors.groupingBy(ParcelUnit::getCurrentStatus, Collectors.counting()));
 

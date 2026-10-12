@@ -7,6 +7,12 @@ import java.util.List;
  * Detailed response for shipment details page matching the August 26 prototype specification.
  */
 public class ShipmentDetailResponse {
+    private long lostCount;
+    private long deliveredCount;
+    public long getLostCount() { return lostCount; }
+    public void setLostCount(long count) { lostCount = count; }
+    public long getDeliveredCount() { return deliveredCount; }
+    public void setDeliveredCount(long count) { deliveredCount = count; }
 
     private String shipmentId;
     private String origin;

@@ -24,9 +24,24 @@ public class WaybillController {
     private static final int MAX_PAGE_SIZE = 100;
 
     private final WaybillService waybillService;
+    private final com.tnl.logistics.service.ParcelExceptionService exceptionService;
 
-    public WaybillController(WaybillService waybillService) {
+    public WaybillController(WaybillService waybillService, com.tnl.logistics.service.ParcelExceptionService exceptionService) {
         this.waybillService = waybillService;
+        this.exceptionService = exceptionService;
+    }
+
+    @PostMapping("/{waybillId}/close-all-lost")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<WaybillManifestResponse> closeAllLost(@PathVariable String waybillId,
+            @Valid @RequestBody ParcelExceptionRequest request, Principal principal) {
+        return ResponseEntity.ok(exceptionService.closeAllLost(waybillId, request, actor(principal)));
+    }
+
+    @GetMapping("/{waybillId}/reconciliation-history")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEIVING_STAFF')")
+    public ResponseEntity<List<WaybillReconciliationResponse>> getReconciliationHistory(@PathVariable String waybillId) {
+        return ResponseEntity.ok(exceptionService.getReconciliationHistory(waybillId));
     }
 
     @GetMapping("/shipments")
