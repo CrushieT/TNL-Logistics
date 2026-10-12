@@ -20,7 +20,9 @@ function mount({ post, onRefresh = async () => {} }) {
   const source = readFileSync(new URL('../src/components/common/ExceptionAction.js', import.meta.url), 'utf8')
     .replace(/^import.*;\r?\n/gm, '').replace('export default function', 'function');
   const compiled = transformSync(source, { babelrc: false, configFile: false, plugins: ['@babel/plugin-transform-react-jsx'] }).code;
-  const bindings = { React, useState, useRef, Modal: 'Modal', Pressable: 'Pressable', Text: 'Text', TextInput: 'TextInput', View: 'View', apiClient: { post } };
+  const bindings = { React, useState, useRef, Modal: 'Modal', Pressable: 'Pressable', Text: 'Text', TextInput: 'TextInput',
+    View: 'View', ScrollView: 'ScrollView', ActivityIndicator: 'ActivityIndicator', StyleSheet: { create: value => value },
+    colors: {}, fonts: {}, radius: {}, spacing: {}, type: { label: {}, bodySmall: {} }, apiClient: { post } };
   const Component = new Function(...Object.keys(bindings), `${compiled}; return ExceptionAction;`)(...Object.values(bindings));
   let record = { trackingId: 'TRK-1', shipmentId: 'SHP-1', revision: 3, status: 'Loaded to Hauler' };
   let isAvailable = true;
@@ -30,7 +32,8 @@ function mount({ post, onRefresh = async () => {} }) {
     if (Array.isArray(tree)) return tree.flatMap(child => nodes(child, type));
     return [...(tree.type === type ? [tree] : []), ...nodes(tree.props?.children, type)];
   };
-  const button = label => nodes(render(), 'Pressable').find(node => nodes(node, 'Text').some(text => text.props.children.includes(label)));
+  const button = label => nodes(render(), 'Pressable').find(node => nodes(node, 'Text')
+    .some(text => text.props.children.flat(Infinity).join('').includes(label)));
   return {
     open() { button('Mark as Lost').props.onPress(); },
     reason(value) { nodes(render(), 'TextInput')[0].props.onChangeText(value); },

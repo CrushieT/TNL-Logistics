@@ -85,10 +85,11 @@ export function buildWaybillHtml(manifest, logoUri, branding = null, copies = WA
         <div class="meta-row">
           <div class="meta-col">
             <h1>WAYBILL</h1>
-            <p>${escapeHtml(manifest.statusLabel || "")} | Delivered: ${manifest.deliveredCount || 0} | Lost: ${manifest.lostCount || 0}</p>
             <p class="meta-line"><span class="meta-label">Waybill No. </span><span class="meta-mono">${escapeHtml(manifest.waybillId)}</span></p>
             <p class="meta-line"><span class="meta-label">Shipment No. </span><span class="meta-mono">${escapeHtml(manifest.shipmentId)}</span></p>
             <p class="meta-line"><span class="meta-label">Date: </span><span class="meta-val">${escapeHtml(manifest.generatedDate)}</span></p>
+            <p class="meta-line"><span class="meta-label">Status: </span><span class="meta-val">${escapeHtml(manifest.statusLabel || '')}</span></p>
+            <p class="meta-line"><span class="meta-label">Reconciliation: </span><span class="meta-val">Delivered: ${manifest.deliveredCount || 0} | Lost: ${manifest.lostCount || 0}</span></p>
           </div>
           ${returnQr}
           <div class="delivery-col">

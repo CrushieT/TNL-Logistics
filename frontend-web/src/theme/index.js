@@ -138,6 +138,10 @@ export const labelStyles = {
 export const waybillStyles = {
   'Signed / Completed': { fg: colors.ink, bg: colors.canvas, border: colors.borderStrong },
   'Waybill: Signed / Completed': { fg: colors.ink, bg: colors.canvas, border: colors.borderStrong },
+  'Closed with Loss': { fg: colors.danger, bg: colors.dangerSoft, border: colors.danger },
+  'Waybill: Closed with Loss': { fg: colors.danger, bg: colors.dangerSoft, border: colors.danger },
+  'Closed as All Lost': { fg: colors.danger, bg: colors.dangerSoft, border: colors.danger },
+  'Waybill: Closed as All Lost': { fg: colors.danger, bg: colors.dangerSoft, border: colors.danger },
   'Sent to Hauler': { fg: colors.info, bg: colors.infoSoft, border: colors.info },
   'Waybill: Sent to Hauler': { fg: colors.info, bg: colors.infoSoft, border: colors.info },
   Generated: { fg: colors.warning, bg: colors.warningSoft, border: colors.warning },

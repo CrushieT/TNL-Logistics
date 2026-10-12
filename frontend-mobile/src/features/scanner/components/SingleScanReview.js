@@ -33,12 +33,15 @@ export default function SingleScanReview({
               PACKAGE {context.packageIndex || 1} OF {context.packageCount || 1}
             </Text>
           </View>
-          <View style={[styles.statusBadge, !context.canScan && styles.terminalBadge]}>
-            <Text style={[styles.statusBadgeText, !context.canScan && styles.terminalBadgeText]}>
-              {context.currentStatusLabel || context.currentStatusCode}
+          <View style={[styles.statusBadge, !context.canScan && styles.terminalBadge, context.lost && styles.lostBadge]}>
+            <Text style={[styles.statusBadgeText, !context.canScan && styles.terminalBadgeText, context.lost && styles.lostBadgeText]}>
+              {context.lost ? 'Lost' : context.currentStatusLabel || context.currentStatusCode}
             </Text>
           </View>
         </View>
+        {context.lost && <Text style={styles.lastConfirmedStatus}>
+          Last confirmed: {context.currentStatusLabel || context.currentStatusCode}
+        </Text>}
 
         {/* Identifier Information */}
         <View style={styles.idCard}>
@@ -56,7 +59,7 @@ export default function SingleScanReview({
             <View style={styles.assignedVehicleRow}>
               <Icon source="truck" size={16} color={colors.inkFaint} />
               <Text style={styles.assignedVehicleText}>
-                Currently on {context.assignedVehiclePlateNumber} ({context.assignedVehicleId})
+                {context.lost ? 'Last confirmed on' : 'Currently on'} {context.assignedVehiclePlateNumber} ({context.assignedVehicleId})
               </Text>
             </View>
           )}
@@ -77,9 +80,12 @@ export default function SingleScanReview({
             </View>
           </View>
         ) : (
-          <View style={styles.terminalCard}>
-            <Icon source="check-circle-outline" size={24} color={colors.success} />
-            <Text style={styles.terminalTitle}>{context.lost ? 'Lost Parcel' : 'Final Scanner Status Reached'}</Text>
+          <View style={[styles.terminalCard, context.lost && styles.lostCard]}>
+            <Icon source={context.lost ? 'alert-circle-outline' : 'check-circle-outline'} size={24}
+              color={context.lost ? colors.danger : colors.success} />
+            <Text style={[styles.terminalTitle, context.lost && styles.lostTitle]}>
+              {context.lost ? 'Lost Parcel' : 'Final Scanner Status Reached'}
+            </Text>
             <Text style={styles.terminalDescription}>
               {context.scanBlockedReason || `This package is already at ${context.currentStatusLabel}. Further status changes are managed by hauler delivery or waybill POD.`}
             </Text>
@@ -221,6 +227,9 @@ const styles = StyleSheet.create({
   terminalBadgeText: {
     color: colors.success
   },
+  lostBadge: { backgroundColor: colors.dangerSoft, borderWidth: 1, borderColor: colors.danger },
+  lostBadgeText: { color: colors.danger },
+  lastConfirmedStatus: { ...typography.mono, color: colors.inkSoft, marginBottom: spacing.sm },
   idCard: {
     backgroundColor: colors.canvas,
     borderRadius: radius.md,
@@ -314,6 +323,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.md
   },
+  lostCard: { backgroundColor: colors.dangerSoft, borderWidth: 1, borderColor: colors.danger },
   permissionCard: {
     backgroundColor: colors.warningSoft || colors.canvas,
     borderRadius: radius.md,
@@ -343,6 +353,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
     marginBottom: 4
   },
+  lostTitle: { color: colors.danger },
   terminalDescription: {
     fontSize: 12,
     color: colors.inkSoft,

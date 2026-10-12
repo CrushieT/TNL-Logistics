@@ -37,14 +37,15 @@ export function PersonalParcelSummary({ parcel }) {
       : parcel.currentVehicleId
     : null;
 
-  const statusBadgeStyle = getStatusBadgeStyle(parcel.currentStatusCode);
+  const statusBadgeStyle = parcel.lost
+    ? { borderColor: colors.danger, textColor: colors.danger, dotColor: colors.danger }
+    : getStatusBadgeStyle(parcel.currentStatusCode);
   const isLabelPrinted = parcel.labelStatusCode === 'PRINTED' || parcel.labelStatusCode === 'REPRINTED';
 
   return (
     <View style={styles.card}>
       <Text style={styles.eyebrow}>Tracking ID</Text>
       <Text style={styles.trackingId}>{trackingId}</Text>
-      {parcel.lost && <Text>Lost | Last confirmed: {currentStatusDisplay}</Text>}
 
       <View style={styles.packageBadgeWrapper}>
         <View style={styles.packageBadge}>
@@ -68,13 +69,17 @@ export function PersonalParcelSummary({ parcel }) {
 
       <View style={styles.statusRow}>
         <Text style={styles.statusFieldLabel}>Current Status</Text>
-        <View style={[styles.statusBadge, { borderColor: statusBadgeStyle.borderColor }]}>
-          {statusBadgeStyle.dotColor && (
-            <View style={[styles.statusDot, { backgroundColor: statusBadgeStyle.dotColor }]} />
-          )}
-          <Text style={[styles.statusBadgeText, { color: statusBadgeStyle.textColor }]}>
-            {currentStatusDisplay}
-          </Text>
+        <View style={styles.statusStack}>
+          <View style={[styles.statusBadge, { borderColor: statusBadgeStyle.borderColor },
+            parcel.lost && styles.lostBadge]}>
+            {statusBadgeStyle.dotColor && (
+              <View style={[styles.statusDot, { backgroundColor: statusBadgeStyle.dotColor }]} />
+            )}
+            <Text style={[styles.statusBadgeText, { color: statusBadgeStyle.textColor }]}>
+              {parcel.lost ? 'Lost' : currentStatusDisplay}
+            </Text>
+          </View>
+          {parcel.lost && <Text style={styles.lastConfirmedStatus}>Last confirmed: {currentStatusDisplay}</Text>}
         </View>
       </View>
 
@@ -174,6 +179,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 6,
   },
+  statusStack: { alignItems: 'flex-end', gap: 4, flexShrink: 1 },
+  lostBadge: { backgroundColor: colors.dangerSoft },
+  lastConfirmedStatus: { ...typography.mono, color: colors.inkSoft, textAlign: 'right' },
   statusFieldLabel: {
     fontSize: 13,
     color: colors.inkSoft,

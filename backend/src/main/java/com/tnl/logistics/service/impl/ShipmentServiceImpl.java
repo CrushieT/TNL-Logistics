@@ -618,8 +618,15 @@ public class ShipmentServiceImpl implements ShipmentService {
         resp.setTrackingId(parcel.getTrackingId());
         resp.setLost(parcel.isLost());
         resp.setRevision(parcel.getRevision());
+        resp.setLossHistory(lossEvents.findByTrackingIdOrderByEventIdAsc(trackingId).stream().map(event -> {
+            String actorName = appUserRepository.findById(event.getActorId()).map(AppUser::getFullName).orElse(event.getActorId());
+            String formattedPrevStatus = event.getPreviousStatus();
+            try {
+                formattedPrevStatus = formatStatus(ParcelStatus.valueOf(event.getPreviousStatus()));
+            } catch (Exception ignored) {}
+            return ParcelLossEventResponse.from(event, actorName, formattedPrevStatus);
+        }).toList());
         resp.setWaybillId(parcel.getWaybill() == null ? null : parcel.getWaybill().getWaybillId());
-        resp.setLossHistory(lossEvents.findByTrackingIdOrderByEventIdAsc(trackingId).stream().map(ParcelLossEventResponse::from).toList());
         resp.setPackageIndex(parcel.getSeq());
         resp.setPackageCount(shipment.getQuantity());
         resp.setRecipientName(shipment.getRecipientName());

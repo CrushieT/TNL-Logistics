@@ -118,9 +118,10 @@ export default function ParcelUnitDetailScreen() {
           <Text style={styles.title}>{(unit.recipientName || '').toUpperCase()}</Text>
         </View>
         <View style={styles.badgeRow}>
-          <StatusBadge value={unit.lost ? 'Lost' : unit.status} kind="status" />
-          {unit.lost && <Text style={styles.lastConfirmedStatus}>Last confirmed: {unit.status}</Text>}
-          <StatusBadge value={unit.labelStatus} kind="label" />
+          <View style={styles.statusStack}>
+            <StatusBadge value={unit.lost ? 'Lost' : unit.status} kind="status" />
+            {unit.lost && <Text style={styles.lastConfirmedStatus}>Last confirmed: {unit.status}</Text>}
+          </View>
           {unit.status !== 'Completed' && (
             <ExceptionAction label={unit.lost ? 'Mark as Found' : 'Mark as Lost'} record={unit}
               endpoint={`/parcel-units/${encodeURIComponent(unit.trackingId)}/${unit.lost ? 'found' : 'lost'}`}
@@ -137,12 +138,19 @@ export default function ParcelUnitDetailScreen() {
         {/* Left Column: Metadata & Tracking History */}
         <View style={styles.mainCol}>
           {unit.lossHistory?.length > 0 && (
-            <Card title="LOSS & RECOVERY HISTORY" style={styles.cardSpacing}>
+            <Card title="LOSS / RECOVERY HISTORY" style={styles.cardSpacing}>
               {unit.lossHistory.map((event) => (
-                <View key={event.eventId} style={{ marginBottom: 12 }}>
-                  <Text>{event.action === 'LOST' ? 'Marked as Lost' : 'Marked as Found'} — {event.occurredAt}</Text>
-                  <Text>By {event.actorId} | Last confirmed: {event.previousStatus}</Text>
-                  <Text>{event.reason}</Text>
+                <View key={event.eventId} style={[styles.lossEvent, event.action === 'LOST' && styles.lostEvent]}>
+                  <View style={styles.lossEventHeader}>
+                    <Text style={[styles.lossEventTitle, event.action === 'LOST' && styles.lostEventTitle]}>
+                      {event.action === 'LOST' ? 'MARKED LOST' : 'MARKED FOUND'}
+                    </Text>
+                    <Text style={styles.lossEventTime}>{new Date(event.occurredAt).toLocaleString()}</Text>
+                  </View>
+                  <Text style={styles.lossEventMeta}>
+                    By {event.actorName || event.actorId} | Last confirmed: {event.previousStatus}
+                  </Text>
+                  <Text style={styles.lossEventReason}>{event.reason}</Text>
                 </View>
               ))}
             </Card>
@@ -282,11 +290,27 @@ export default function ParcelUnitDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  statusStack: { gap: spacing.xs },
   lastConfirmedStatus: {
     fontFamily: fonts.mono,
     fontSize: 11,
-    color: colors.inkFaint,
+    color: colors.inkSoft,
   },
+  lossEvent: {
+    borderLeftWidth: 3,
+    borderLeftColor: colors.success,
+    backgroundColor: colors.canvas,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  lostEvent: { borderLeftColor: colors.danger },
+  lossEventHeader: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing.sm },
+  lossEventTitle: { ...type.label, color: colors.success },
+  lostEventTitle: { color: colors.danger },
+  lossEventTime: { fontFamily: fonts.mono, fontSize: 10.5, color: colors.inkFaint },
+  lossEventMeta: { fontFamily: fonts.mono, fontSize: 11, color: colors.inkSoft },
+  lossEventReason: { fontFamily: fonts.sans, fontSize: 13, color: colors.ink },
   backLink: {
     fontFamily: fonts.mono,
     fontSize: 12,
@@ -334,6 +358,8 @@ const styles = StyleSheet.create({
   },
   badgeRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   row: {
