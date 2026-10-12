@@ -11,16 +11,28 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
 
-@SpringBootTest
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
+
+@SpringBootTest(classes = ParcelLossMigrationIntegrationTest.DatabaseConfiguration.class,
+        webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("test")
 class ParcelLossMigrationIntegrationTest {
-    @Autowired JdbcTemplate server;
+
+    @Configuration(proxyBeanMethods = false)
+    @EnableConfigurationProperties(DataSourceProperties.class)
+    static class DatabaseConfiguration {}
+
     @Autowired DataSourceProperties properties;
+    private JdbcTemplate server;
     private String schema;
     private DriverManagerDataSource dataSource;
 
     @BeforeEach void createSchema() {
         schema = "tnl_loss_migration_test_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        DriverManagerDataSource adminDataSource = properties.initializeDataSourceBuilder()
+                .type(DriverManagerDataSource.class).build();
+        server = new JdbcTemplate(adminDataSource);
         server.execute("CREATE DATABASE `" + schema + "`");
         String baseUrl = properties.getUrl();
         int optionsIndex = baseUrl.indexOf('?');

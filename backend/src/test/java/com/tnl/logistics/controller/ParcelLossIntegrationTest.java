@@ -38,6 +38,7 @@ class ParcelLossIntegrationTest {
     @BeforeEach void setPricing() {
         jdbc.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
         settings.refreshCachedSettings();
+        jdbc.update("UPDATE client SET active = TRUE WHERE client_id = 'CL-001'");
     }
 
     @AfterEach void cleanup() {
