@@ -250,6 +250,7 @@ class FourRoleAuthorizationIntegrationTest {
         readMatrix.put("/api/v1/shipments", java.util.Set.of("ADMIN", "RECEIVING_STAFF"));
         readMatrix.put("/api/v1/shipments/calculation-settings", java.util.Set.of("ADMIN", "RECEIVING_STAFF"));
         readMatrix.put("/api/v1/vehicles", java.util.Set.of("ADMIN", "RECEIVING_STAFF", "COURIER_STAFF", "DISPATCH_STAFF"));
+        readMatrix.put("/api/v1/vehicles/options", java.util.Set.of("ADMIN", "RECEIVING_STAFF", "COURIER_STAFF", "DISPATCH_STAFF"));
         readMatrix.put("/api/v1/vehicles/VH-001", java.util.Set.of("ADMIN", "RECEIVING_STAFF", "COURIER_STAFF", "DISPATCH_STAFF"));
         readMatrix.put("/api/v1/settings/branding", java.util.Set.of("ADMIN", "RECEIVING_STAFF", "COURIER_STAFF", "DISPATCH_STAFF"));
         readMatrix.put("/api/v1/soa/collectors", java.util.Set.of("ADMIN", "COURIER_STAFF", "DISPATCH_STAFF"));

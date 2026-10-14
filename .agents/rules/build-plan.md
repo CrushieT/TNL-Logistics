@@ -505,7 +505,8 @@ Post-client-demo implementation plan closeout [COMPLETED] on 2026-10-12 at the u
 - Mobile Returned Waybill Rail: added Hauler Staff `GET /api/v1/waybills/options` with 20-item horizontal `FlatList` rail and 250ms debounced waybill search recommendations. Shipment and waybill rails accept selections while the keyboard is visible.
 - Preserved mandatory printed-waybill QR scan confirmation gate; recommendation selection enables inspection without bypassing the return confirmation scan requirement.
 - Coordinated cancellable request coordinator aborts stale requests on input changes, mode changes, sign-out, or unmount.
-- Verification: 11 affected backend tests passed; the latest full mobile suite passed 176 tests after selector, keyboard, gesture, and final manifest-review changes.
+- Mobile Courier Vehicle Selection Pagination: added staff-accessible paginated vehicle endpoint `GET /api/v1/vehicles/options` (default 20, active filtering, plate/ID/description search), pure request coordinator `vehicleOptionsFlow.mjs`, reusable `VehiclePicker` component with 250ms debounced search recommendations and horizontal paginated `FlatList` rail with retry and END markers, integrated into `SingleScanReview` and `BatchScanPanel` with lifecycle cancellation in `scan.js`.
+- Verification: 22 affected backend tests passed (`VehicleOptionsIntegrationTest`, `FourRoleAuthorizationIntegrationTest`, `TrackingAndVehicleIntegrationTest`); full mobile suite passed 238 tests (`vehicleOptions.test.mjs`, scanner, and discovery rails).
 
 **7.6 — High-Volume Load Testing, Synthetic Seeder & Dev Fixtures** — **[COMPLETED]**
 - Dedicated Spring Boot `loadtest` profile (`application-loadtest.properties`) with HikariCP tuning and Hibernate strict `ddl-auto=validate`.

@@ -9,6 +9,9 @@ import com.tnl.logistics.repository.TrackingEventRepository;
 import com.tnl.logistics.repository.VehicleRepository;
 import com.tnl.logistics.service.VehicleService;
 import com.tnl.logistics.service.IdentifierCounterService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -66,6 +69,20 @@ public class VehicleServiceImpl implements VehicleService {
         return vehicleRepository.findByActiveTrueOrderByVehicleIdAsc().stream()
                 .map(v -> mapToResponse(v, countMap.getOrDefault(v.getVehicleId(), 0L)))
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<VehicleResponse> getActiveVehicleOptions(String search, Pageable pageable) {
+        String normalizedSearch = (search == null || search.isBlank()) ? null : search.trim();
+        Page<Vehicle> vehiclePage = normalizedSearch == null
+                ? vehicleRepository.findByActiveTrue(pageable)
+                : vehicleRepository.findActiveVehicleOptions(normalizedSearch, pageable);
+        Map<String, Long> countMap = loadOnTruckCountMap();
+        List<VehicleResponse> responses = vehiclePage.getContent().stream()
+                .map(v -> mapToResponse(v, countMap.getOrDefault(v.getVehicleId(), 0L)))
+                .collect(Collectors.toList());
+        return new PageImpl<>(responses, pageable, vehiclePage.getTotalElements());
     }
 
     @Override

@@ -1,5 +1,17 @@
 # Project Structure
 
+### Courier vehicle selection pagination
+
+- `backend/src/main/java/com/tnl/logistics/repository/VehicleRepository.java`: added `findByActiveTrue` page query and case-insensitive `findActiveVehicleOptions` filtering active vehicles matching plate, vehicle ID, or description.
+- `backend/src/main/java/com/tnl/logistics/service/VehicleService.java` & `impl/VehicleServiceImpl.java`: paginated `getActiveVehicleOptions` with `loadOnTruckCountMap()` active cargo enrichment.
+- `backend/src/main/java/com/tnl/logistics/controller/VehicleController.java`: added `GET /api/v1/vehicles/options` returning `PageResponse<VehicleResponse>` with role gating.
+- `backend/src/test/java/com/tnl/logistics/controller/VehicleOptionsIntegrationTest.java`: integration test verifying unauthenticated rejection, role authorization across all 4 staff roles, bounded page defaults, active filtering, and search matching.
+- `frontend-mobile/src/features/scanner/vehicleOptionsFlow.mjs`: pure coordination module managing 20-item paging, deduplication, search normalization, boundary checks, and request coordination.
+- `frontend-mobile/tests/vehicleOptions.test.mjs`: automated unit test suite for vehicle pagination and request coordination.
+- `frontend-mobile/src/features/scanner/components/VehiclePicker.js`: reusable vehicle selector aligned with dispatch staff discovery design (outer `sectionCard`, `inputActionRow`, `recommendationPanel`, horizontal `FlatList` rail with `shipmentChip` styling, and collapsible `activeShipmentCard` with `CHANGE` button).
+- `frontend-mobile/src/features/scanner/components/SingleScanReview.js` & `BatchScanPanel.js`: integrated with `VehiclePicker` with pagination and search props.
+- `frontend-mobile/src/app/(main)/scan.js`: coordinator lifecycle management, debounced search effect, infinite scroll pagination, and role-change teardown.
+
 ### UI status color alignment
 
 - `frontend-web/src/theme/index.js`: unified 5-tier semantic tokens across physical tracking, payments, weekly collections, waybills, and labels.
@@ -172,7 +184,7 @@ tnl-logistics/
 │   │   │   ├── settings/             # Account/security flow helpers and reusable settings components
 │   │   │   ├── shipments/            # Shipment registration with ParcelUnitsEditor and parcelPagination helpers, explorer, detail screens, and barcode scanner modal
 │   │   │   ├── printer/              # Driver isolation, audit outbox, ESC/POS formatter, and serialized PrinterContext
-│   │   │   ├── scanner/              # Field camera scanner (ScanViewfinder, SingleScanReview, BatchScanPanel, ScanResultPanel, scannerFlow.mjs, trackingScanApi.js, haptics.js, hapticsCore.mjs)
+│   │   │   ├── scanner/              # Field camera scanner (ScanViewfinder, SingleScanReview, BatchScanPanel, ScanResultPanel, VehiclePicker, scannerFlow.mjs, vehicleOptionsFlow.mjs, trackingScanApi.js, haptics.js, hapticsCore.mjs)
 │   │   │   ├── waybills/             # Split waybill client (waybillApi.js) and 2-copy portrait A4 print generator (printWaybill.mjs)
 │   │   │   ├── tracking-history/     # Field personal scan feed, metrics, parcel summary, personal timeline, pure flow logic (trackingHistoryFlow.mjs), request coordinator (trackingHistoryRequestCoordinator.mjs), and API client (trackingHistoryApi.js)
 │   │   ├── services/
