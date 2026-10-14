@@ -1,5 +1,13 @@
 # Project Structure
 
+### UI status color alignment
+
+- `frontend-web/src/theme/index.js`: unified 5-tier semantic tokens across physical tracking, payments, weekly collections, waybills, and labels.
+- `frontend-web/src/components/common/StatusBadge.js`: case-insensitive status and collection style resolution.
+- `frontend-web/tests/statusThemeTokens.test.mjs`: regression contract suite for semantic token mappings.
+- `frontend-mobile/src/theme/index.js`: added `info` / `infoSoft` and shared `getParcelStatusColor` helper.
+- `frontend-mobile/tests/statusThemeTokens.test.mjs`: mobile status color contract tests.
+
 ### Lost parcel workflow
 
 - `.review/lost-parcel-evidence.md`: scoped test results, audit, remediation log, and manual acceptance guide.

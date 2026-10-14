@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView } from 'react-native';
-import { colors, fonts } from '../../../theme';
+import { colors, fonts, paymentStyles } from '../../../theme';
 import { exportClientRevenueToCsv } from '../utils/exportReportsCsv';
 import TablePaginationFooter from './TablePaginationFooter';
 
@@ -36,14 +36,9 @@ export default function FinancialRevenueTab({ clientRevenue = [], paymentMethods
   const totalShipments = filteredClients.reduce((sum, c) => sum + (c.totalShipments || 0), 0);
 
   const getStatusBadgeStyle = (status) => {
-    switch (status) {
-      case 'PAID':
-        return { bg: '#E8F5E9', text: '#2E7D46', border: '#C8E6C9' };
-      case 'PARTIAL':
-        return { bg: '#FFF8E1', text: '#B78103', border: '#FFE082' };
-      default:
-        return { bg: '#FFEBEE', text: '#C0392B', border: '#FFCDD2' };
-    }
+    const key = status ? String(status).toUpperCase() : 'UNPAID';
+    const cfg = paymentStyles[key] || paymentStyles.UNPAID;
+    return { bg: cfg.bg, text: cfg.fg, border: cfg.border };
   };
 
   return (
