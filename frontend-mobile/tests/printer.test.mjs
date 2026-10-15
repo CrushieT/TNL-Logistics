@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import jsQR from 'jsqr';
 
 import { generateQRMatrix, generateQRSvgPath, generateQRBitmapDataUri } from '../src/utils/qr.js';
@@ -22,6 +24,159 @@ import {
   createPrintAuditOutbox,
   syncPrintAuditEntry,
 } from '../src/features/printer/services/printAuditOutbox.js';
+
+function loadPrinterService(isDevelopment, savedValues = {}, scheduleTimeout = setTimeout) {
+  const source = readFileSync(new URL('../src/features/printer/services/bluetoothPrinterService.js', import.meta.url), 'utf8')
+    .replace(/^import .*;\r?\n/gm, '').replace(/^export /gm, '');
+  const storage = new Map(Object.entries(savedValues));
+  return runInNewContext(`${source}\n({ service: bluetoothPrinterService, VirtualPrinterDriver, VIRTUAL_PRINTERS, IS_VIRTUAL_PRINTER_ENABLED });`, {
+    __DEV__: isDevelopment, Platform: { OS: 'web' }, PermissionsAndroid: {}, Uint8Array, setTimeout: scheduleTimeout,
+    secureStore: {
+      getItem: async (key) => storage.get(key) ?? null,
+      setItem: async (key, value) => storage.set(key, value),
+    },
+  });
+}
+
+test('production ignores saved simulation mode and virtual printer selections', async () => {
+  for (const savedMode of [null, 'false', 'true']) {
+    const { service, VIRTUAL_PRINTERS, IS_VIRTUAL_PRINTER_ENABLED } = loadPrinterService(false, {
+      tnl_virtual_printer_mode: savedMode,
+      tnl_paired_printer: JSON.stringify({ type: 'VIRTUAL', address: 'VIRTUAL:SAVED' }),
+    });
+    assert.equal(IS_VIRTUAL_PRINTER_ENABLED, false);
+    assert.equal(await service.initialize(), null);
+    assert.equal(service.isVirtualMode, false);
+    assert.equal(service.getRememberedDevice(), null);
+    let hasScannedPhysicalDevices = false;
+    service.bluetoothDriver.scanDevices = async () => { hasScannedPhysicalDevices = true; return []; };
+    await service.scanDevices();
+    assert.equal(hasScannedPhysicalDevices, true);
+    await assert.rejects(service.connect(VIRTUAL_PRINTERS[0]), { code: 'SIMULATION_DISABLED' });
+  }
+});
+
+test('production rejects simulation activation without disrupting physical printing', async () => {
+  const physicalPrinter = { type: 'BLUETOOTH', address: 'AA:BB:CC:DD:EE:FF', name: 'XP470B' };
+  const { service } = loadPrinterService(false, {
+    tnl_virtual_printer_mode: 'true', tnl_paired_printer: JSON.stringify(physicalPrinter),
+  });
+  await service.initialize();
+  assert.equal(service.getRememberedDevice().address, physicalPrinter.address);
+  let hasDisconnected = false;
+  let hasPrinted = false;
+  service.bluetoothDriver.nativeModule = {
+    BluetoothManager: { connect: async () => {}, disconnect: async () => { hasDisconnected = true; } },
+    BluetoothTscPrinter: { printLabel: async () => { hasPrinted = true; } },
+  };
+  await service.connect(physicalPrinter);
+  await assert.rejects(service.setVirtualMode(true), { code: 'SIMULATION_DISABLED' });
+  assert.equal(hasDisconnected, false);
+  assert.equal(service.isVirtualMode, false);
+  assert.equal(service.getConnectedDevice().address, physicalPrinter.address);
+  const result = await service.printRaw({ width: 100, height: 150 });
+  assert.equal(hasPrinted, true);
+  assert.equal(result.virtual, false);
+});
+
+test('production virtual driver rejects direct scanning, connection, and printing', async () => {
+  const { VirtualPrinterDriver } = loadPrinterService(false);
+  const driver = new VirtualPrinterDriver();
+  await assert.rejects(driver.scanDevices(), { code: 'SIMULATION_DISABLED' });
+  await assert.rejects(driver.connect(), { code: 'SIMULATION_DISABLED' });
+  await assert.rejects(driver.printLabel(new Uint8Array()), { code: 'SIMULATION_DISABLED' });
+});
+
+test('development retains simulation restoration and toggling', async () => {
+  const { service, IS_VIRTUAL_PRINTER_ENABLED } = loadPrinterService(true, { tnl_virtual_printer_mode: 'true' });
+  assert.equal(IS_VIRTUAL_PRINTER_ENABLED, true);
+  assert.equal((await service.initialize()).type, 'VIRTUAL');
+  assert.equal((await service.scanDevices())[0].type, 'VIRTUAL');
+  const result = await service.printRaw(new Uint8Array([1, 2]));
+  assert.equal(result.virtual, true);
+  await service.setVirtualMode(false);
+  assert.equal(service.isVirtualMode, false);
+  assert.equal(service.getConnectedDevice(), null);
+  await service.setVirtualMode(true);
+  assert.equal(service.getConnectedDevice().type, 'VIRTUAL');
+});
+
+test('Bluetooth connection retries a transient native failure once after a cleanup pause', async () => {
+  const delays = [];
+  const { service } = loadPrinterService(false, {}, (callback, delay) => { delays.push(delay); queueMicrotask(callback); });
+  let attempts = 0;
+  service.bluetoothDriver.nativeModule = { BluetoothManager: { connect: async () => {
+    attempts += 1;
+    if (attempts === 1) throw Object.assign(new Error('Unable to connect device'), { code: 'Unable to connect device' });
+  } } };
+  const connected = await service.connect({ type: 'BLUETOOTH', address: 'PRINTER-1' });
+  assert.equal(connected.address, 'PRINTER-1');
+  assert.equal(attempts, 2);
+  assert.deepEqual(delays, [500]);
+  assert.equal(service.getRememberedDevice().address, 'PRINTER-1');
+});
+
+test('Bluetooth connection reports the second failure and releases the connection guard', async () => {
+  const { service } = loadPrinterService(false, {}, (callback) => queueMicrotask(callback));
+  let attempts = 0;
+  const failure = Object.assign(new Error('Unable to connect device'), { code: 'Unable to connect device' });
+  service.bluetoothDriver.nativeModule = { BluetoothManager: { connect: async () => { attempts += 1; throw failure; } } };
+  const device = { type: 'BLUETOOTH', address: 'PRINTER-1' };
+  await assert.rejects(service.connect(device), (error) => error === failure);
+  assert.equal(attempts, 2);
+  assert.equal(service.isConnected(), false);
+  assert.equal(service.getRememberedDevice(), null);
+  service.bluetoothDriver.nativeModule.BluetoothManager.connect = async () => { attempts += 1; };
+  await service.connect(device);
+  assert.equal(attempts, 3);
+  assert.equal(service.isConnected(), true);
+});
+
+test('Bluetooth connection does not retry permission or other native failures', async () => {
+  for (const code of ['PERMISSION_DENIED', 'BT NOT ENABLED', 'UNKNOWN_ERROR']) {
+    const { service } = loadPrinterService(false, {}, () => assert.fail('Unexpected retry delay'));
+    let attempts = 0;
+    service.bluetoothDriver.nativeModule = { BluetoothManager: { connect: async () => {
+      attempts += 1;
+      throw Object.assign(new Error(code), { code });
+    } } };
+    await assert.rejects(service.connect({ type: 'BLUETOOTH', address: 'PRINTER-1' }), { code });
+    assert.equal(attempts, 1);
+  }
+});
+
+test('overlapping Bluetooth connects share the same device attempt and reject switching targets', async () => {
+  const { service } = loadPrinterService(false);
+  let finishConnection;
+  let attempts = 0;
+  const pending = new Promise((resolve) => { finishConnection = resolve; });
+  service.bluetoothDriver.nativeModule = { BluetoothManager: { connect: async () => { attempts += 1; await pending; } } };
+  const device = { type: 'BLUETOOTH', address: 'PRINTER-1' };
+  const first = service.connect(device);
+  const second = service.connect(device);
+  const switchingRejection = assert.rejects(service.connect({ type: 'BLUETOOTH', address: 'PRINTER-2' }), { code: 'CONNECTION_IN_PROGRESS' });
+  finishConnection();
+  await switchingRejection;
+  const [firstResult, secondResult] = await Promise.all([first, second]);
+  assert.equal(attempts, 1);
+  assert.equal(firstResult, secondResult);
+});
+
+test('Bluetooth printing is never retried after a native failure', async () => {
+  const { service } = loadPrinterService(false, {}, () => assert.fail('Unexpected print retry delay'));
+  let printAttempts = 0;
+  service.bluetoothDriver.nativeModule = {
+    BluetoothManager: { connect: async () => {} },
+    BluetoothTscPrinter: { printLabel: async () => {
+      printAttempts += 1;
+      throw Object.assign(new Error('Unable to connect device'), { code: 'Unable to connect device' });
+    } },
+  };
+  await service.connect({ type: 'BLUETOOTH', address: 'PRINTER-1' });
+  await assert.rejects(service.printRaw({ width: 100, height: 150 }), { code: 'Unable to connect device' });
+  assert.equal(printAttempts, 1);
+  assert.equal(service.getPrintHistory().length, 0);
+});
 
 function createMemoryStorage(initialValue = null) {
   let storedValue = initialValue;

@@ -393,10 +393,12 @@ Post-client-demo implementation plan closeout [COMPLETED] on 2026-10-12 at the u
 - Wrapped Bluetooth delivery addresses at word boundaries using the available width before the right border, preserving the complete address and keeping `Manila` together.
 - Replaced the arrow-prefixed destination hub below the address with the entered shipment route across Bluetooth, HTML printing, and web/mobile previews. Long Bluetooth routes wrap to fit; missing routes are omitted instead of derived from origin/destination.
 - Removed the duplicate route below the shipment number from print output and previews; the route now appears only below the address.
+- Restricted virtual printing to development builds using `__DEV__`; its setup card is hidden in all builds by a separate flag set to `false`, retained for future development use. Production ignores saved simulation mode and virtual selections, rejects simulation activation/connections/direct driver calls, and preserves physical printer operation.
+- Added one 500 ms retry for the native `Unable to connect device` connection error. Concurrent connects to the same device share one attempt; switching targets is rejected while connecting. Printer setup disables conflicting controls until completion. Permission/other errors and print jobs are not retried.
 - Limited new shipment delivery addresses to 80 characters and descriptions to 120 characters in web/mobile registration and API validation; registration forms show character counters. New-client billing addresses used for delivery follow the same 80-character limit. Existing stored data is preserved.
 - Scaled up typography across all thermal label fields (large font 4 bold for brand title, tracking ID, destination hub, and total amount; font 3 for recipient name, telephone, address, contents, shipment ID, client, and route) for high visibility in logistics environments.
 - Expanded brand title slicing limit to 36 characters to prevent truncation of full business names (e.g. *TC & CT Integrated Logistics*).
-- Verified via unit test suites: `printer.test.mjs` (33/33 passing), `registration.test.mjs` (29/29 passing), `registrationRetry.test.mjs` (5/5 passing), and `labelPrint.test.mjs` (11/11 passing).
+- Verified via unit test suites: `printer.test.mjs` (42/42 passing), `registration.test.mjs` (29/29 passing), `registrationRetry.test.mjs` (5/5 passing), and `labelPrint.test.mjs` (11/11 passing).
 - Verified shipment API registration limits with `mvn -Dtest=ShipmentIntegrationTest test` (34/34 passing), including exact-limit persistence and one-character-over-limit rejection without writes.
 
 **6.4 — Field Staff: Camera QR Scanner & Status Flow Engine (Screens 45–48)** — **[COMPLETED]**
