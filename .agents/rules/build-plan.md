@@ -506,6 +506,8 @@ Post-client-demo implementation plan closeout [COMPLETED] on 2026-10-12 at the u
 - Preserved mandatory printed-waybill QR scan confirmation gate; recommendation selection enables inspection without bypassing the return confirmation scan requirement.
 - Coordinated cancellable request coordinator aborts stale requests on input changes, mode changes, sign-out, or unmount.
 - Mobile Courier Vehicle Selection Pagination: added staff-accessible paginated vehicle endpoint `GET /api/v1/vehicles/options` (default 20, active filtering, plate/ID/description search), pure request coordinator `vehicleOptionsFlow.mjs`, reusable `VehiclePicker` component with 250ms debounced search recommendations and horizontal paginated `FlatList` rail with retry and END markers, integrated into `SingleScanReview` and `BatchScanPanel` with lifecycle cancellation in `scan.js`.
+- Courier empty-fleet loading fix [COMPLETED]: track successful initial vehicle loads independently from list length so single-scan review does not continuously refetch an empty fleet; preserve explicit reloads and reset the loaded flag when courier permissions are removed. Screen-effect regression coverage includes empty responses, explicit reloads, failed-load recovery, and offline skips.
+- Empty-fleet fix verification: all 242 mobile tests passed and the Android production export succeeded; scoped audit found no issues. Native UI acceptance checks remain manual.
 - Verification: 22 affected backend tests passed (`VehicleOptionsIntegrationTest`, `FourRoleAuthorizationIntegrationTest`, `TrackingAndVehicleIntegrationTest`); full mobile suite passed 238 tests (`vehicleOptions.test.mjs`, scanner, and discovery rails).
 
 **7.6 — High-Volume Load Testing, Synthetic Seeder & Dev Fixtures** — **[COMPLETED]**

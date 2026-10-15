@@ -8,6 +8,7 @@
 - `backend/src/test/java/com/tnl/logistics/controller/VehicleOptionsIntegrationTest.java`: integration test verifying unauthenticated rejection, role authorization across all 4 staff roles, bounded page defaults, active filtering, and search matching.
 - `frontend-mobile/src/features/scanner/vehicleOptionsFlow.mjs`: pure coordination module managing 20-item paging, deduplication, search normalization, boundary checks, and request coordination.
 - `frontend-mobile/tests/vehicleOptions.test.mjs`: automated unit test suite for vehicle pagination and request coordination.
+- `frontend-mobile/tests/vehicleOptions.test.mjs` also exercises the production single-review effect and loader to prevent repeated requests after a successful empty response and preserve reload/error/offline behavior.
 - `frontend-mobile/src/features/scanner/components/VehiclePicker.js`: reusable vehicle selector aligned with dispatch staff discovery design (outer `sectionCard`, `inputActionRow`, `recommendationPanel`, horizontal `FlatList` rail with `shipmentChip` styling, and collapsible `activeShipmentCard` with `CHANGE` button).
 - `frontend-mobile/src/features/scanner/components/SingleScanReview.js` & `BatchScanPanel.js`: integrated with `VehiclePicker` with pagination and search props.
 - `frontend-mobile/src/app/(main)/scan.js`: coordinator lifecycle management, debounced search effect, infinite scroll pagination, and role-change teardown.

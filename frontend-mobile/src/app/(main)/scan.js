@@ -82,6 +82,7 @@ export default function ScanScreen() {
   // Vehicles state & pagination
   const [vehicles, setVehicles] = useState([]);
   const [loadingVehicles, setLoadingVehicles] = useState(false);
+  const [hasLoadedVehicleOptions, setHasLoadedVehicleOptions] = useState(false);
   const [vehiclePage, setVehiclePage] = useState(0);
   const [hasMoreVehicles, setHasMoreVehicles] = useState(false);
   const [isLoadingMoreVehicles, setIsLoadingMoreVehicles] = useState(false);
@@ -271,6 +272,7 @@ export default function ScanScreen() {
     if (!isRoleTransitionAllowed(role, 'LOADED_ON_TRUCK')) {
       vehicleOptionCoordinatorRef.current.cancelAll();
       setVehicles([]);
+      setHasLoadedVehicleOptions(false);
       setVehiclePage(0);
       setHasMoreVehicles(false);
       setVehicleSearchInput('');
@@ -305,6 +307,7 @@ export default function ScanScreen() {
       setVehicles(appendUniqueVehicleOptions([], incoming));
       setVehiclePage(Number.isInteger(page?.number) ? page.number : 0);
       setHasMoreVehicles(hasNextVehicleOptionPage(page));
+      setHasLoadedVehicleOptions(true);
     } catch {
       if (!coordinator.isCurrent(requestToken)) return;
       setVehicleLoadError('Unable to load active vehicles.');
@@ -440,6 +443,7 @@ export default function ScanScreen() {
       && state.currentContext?.requiresVehicle
       && isRoleTransitionAllowed(user?.role, state.currentContext?.nextStatusCode)
       && vehicles.length === 0
+      && !hasLoadedVehicleOptions
       && !loadingVehicles
       && !vehicleLoadError) {
       loadRecentVehicleOptions();
@@ -450,6 +454,7 @@ export default function ScanScreen() {
     state.currentContext?.requiresVehicle,
     state.currentContext?.nextStatusCode,
     vehicles.length,
+    hasLoadedVehicleOptions,
     loadingVehicles,
     vehicleLoadError,
     loadRecentVehicleOptions,
