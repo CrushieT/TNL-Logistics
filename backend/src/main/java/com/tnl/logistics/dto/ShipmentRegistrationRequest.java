@@ -26,7 +26,7 @@ public class ShipmentRegistrationRequest {
     private String recipientName;
 
     @NotBlank(message = "Recipient address is required")
-    @Size(max = 255, message = "Recipient address cannot exceed 255 characters")
+    @Size(max = 80, message = "Recipient address cannot exceed 80 characters")
     private String recipientAddress;
 
     @NotBlank(message = "Recipient contact is required")
@@ -34,7 +34,7 @@ public class ShipmentRegistrationRequest {
     @Pattern(regexp = "^[0-9]+$", message = "Recipient contact must contain digits only")
     private String recipientContact;
 
-    @Size(max = 255, message = "Description cannot exceed 255 characters")
+    @Size(max = 120, message = "Description cannot exceed 120 characters")
     private String description;
 
     @NotNull(message = "Quantity is required")

@@ -1,6 +1,8 @@
 import { calculateFixedMetrics, calculateParcelTotals, parsePositiveDecimal } from './fixedPointPricing.mjs';
 
 export const MAX_PARCELS = 1000;
+export const MAX_ADDRESS_LENGTH = 80;
+export const MAX_DESCRIPTION_LENGTH = 120;
 
 export function createRegistrationForm() {
   return {
@@ -58,7 +60,7 @@ export function validateRegistration(form) {
   if (form.clientMode === 'NEW') {
     const lengths = {
       newClientName: [2, 150, 'Client name'],
-      newClientAddress: [2, 255, 'Billing address'],
+      newClientAddress: [2, MAX_ADDRESS_LENGTH, 'Billing address'],
       newClientContact: [7, 11, 'Contact number'],
     };
     for (const [field, [minimum, maximum, label]] of Object.entries(lengths)) {
@@ -82,8 +84,8 @@ export function validateRegistration(form) {
     // 2. Recipient details
     if (!form.recipientAddress || !form.recipientAddress.trim()) {
       errors.recipientAddress = 'Complete address is required.';
-    } else if (form.recipientAddress.trim().length > 255) {
-      errors.recipientAddress = 'Complete address cannot exceed 255 characters.';
+    } else if (form.recipientAddress.trim().length > MAX_ADDRESS_LENGTH) {
+      errors.recipientAddress = `Complete address cannot exceed ${MAX_ADDRESS_LENGTH} characters.`;
     }
 
     if (!form.recipientContact || !form.recipientContact.trim()) {
@@ -98,8 +100,8 @@ export function validateRegistration(form) {
   }
 
   // 3. Shipment metadata
-  if (form.description && form.description.trim().length > 255) {
-    errors.description = 'Description cannot exceed 255 characters.';
+  if (form.description && form.description.trim().length > MAX_DESCRIPTION_LENGTH) {
+    errors.description = `Description cannot exceed ${MAX_DESCRIPTION_LENGTH} characters.`;
   }
   if (form.route && form.route.trim().length > 150) {
     errors.route = 'Route cannot exceed 150 characters.';

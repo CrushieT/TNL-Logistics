@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { PermissionsAndroid, Platform } from 'react-native';
 import * as secureStore from '../../../services/storage/secureStore';
 
 const STORAGE_KEY_PAIRED_PRINTER = 'tnl_paired_printer';
@@ -29,6 +29,38 @@ function loadNativeModule() {
   }
 }
 
+async function requestBluetoothPermissions() {
+  if (Platform.OS !== 'android') return true;
+
+  try {
+    const apiLevel = Platform.Version;
+    if (apiLevel >= 31) {
+      const permissions = [
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+      ];
+      const results = await PermissionsAndroid.requestMultiple(permissions);
+      const allGranted = permissions.every(
+        (perm) => results[perm] === PermissionsAndroid.RESULTS.GRANTED
+      );
+      return allGranted;
+    }
+
+    // Android 11 and lower requires location permission for Bluetooth discovery
+    const granted = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      {
+        title: 'Bluetooth Printer Permission',
+        message: 'Allow TC & CT Staff App to discover and connect to your thermal label printer.',
+        buttonPositive: 'Allow',
+      }
+    );
+    return granted === PermissionsAndroid.RESULTS.GRANTED;
+  } catch {
+    return false;
+  }
+}
+
 export class VirtualPrinterDriver {
   async connect(device = VIRTUAL_PRINTERS[0]) {
     return { ...device, status: 'SIMULATION', connectedAt: new Date().toISOString() };
@@ -42,7 +74,7 @@ export class VirtualPrinterDriver {
 
   async printLabel(bytes, metadata) {
     await new Promise((resolve) => setTimeout(resolve, 100));
-    return { success: true, virtual: true, byteCount: bytes.length, metadata };
+    return { success: true, virtual: true, byteCount: bytes?.length || 0, metadata };
   }
 
   getStatus() {
@@ -66,6 +98,14 @@ export class EscposBluetoothDriver {
 
   async scanDevices() {
     this.assertAvailable();
+    const hasPermission = await requestBluetoothPermissions();
+    if (!hasPermission) {
+      throw new PrinterTransportError(
+        'PERMISSION_DENIED',
+        'Nearby devices permission is required to scan and connect to Bluetooth printers.'
+      );
+    }
+
     const rawResult = await this.nativeModule.BluetoothManager.scanDevices();
     const result = typeof rawResult === 'string' ? JSON.parse(rawResult) : rawResult;
     const paired = Array.isArray(result?.paired) ? result.paired : [];
@@ -75,6 +115,14 @@ export class EscposBluetoothDriver {
 
   async connect(device) {
     this.assertAvailable();
+    const hasPermission = await requestBluetoothPermissions();
+    if (!hasPermission) {
+      throw new PrinterTransportError(
+        'PERMISSION_DENIED',
+        'Nearby devices permission is required to connect to Bluetooth printers.'
+      );
+    }
+
     await this.nativeModule.BluetoothManager.connect(device.address);
     return { ...device, type: 'BLUETOOTH', status: 'CONNECTED', connectedAt: new Date().toISOString() };
   }
@@ -85,15 +133,31 @@ export class EscposBluetoothDriver {
     }
   }
 
-  async printLabel() {
+  async printLabel(payload, metadata) {
+    this.assertAvailable();
+    const { BluetoothTscPrinter, BluetoothEscposPrinter } = this.nativeModule;
+
+    // Check if the payload is TSPL options (for XP-470B / XP-420B label printers)
+    if (payload && typeof payload === 'object' && !(payload instanceof Uint8Array) && BluetoothTscPrinter?.printLabel) {
+      await BluetoothTscPrinter.printLabel(payload);
+      return { success: true, virtual: false, metadata };
+    }
+
+    // Fallback: ESC/POS raw bytes transmission (for Brother RJ-2035B)
+    if (BluetoothEscposPrinter?.printRawData) {
+      const base64 = typeof payload === 'string' ? payload : Buffer.from(payload).toString('base64');
+      await BluetoothEscposPrinter.printRawData(base64);
+      return { success: true, virtual: false, metadata };
+    }
+
     throw new PrinterTransportError(
-      'TRANSPORT_UNAVAILABLE',
-      'Physical Brother RJ-2035B transmission is deferred until Phase 6.3b hardware validation.'
+      'PRINT_FAILED',
+      'The native printer module is unavailable for direct transmission.'
     );
   }
 
   getStatus() {
-    return this.nativeModule?.BluetoothManager ? 'AVAILABLE_UNVALIDATED' : 'TRANSPORT_UNAVAILABLE';
+    return this.nativeModule?.BluetoothManager ? 'AVAILABLE' : 'TRANSPORT_UNAVAILABLE';
   }
 }
 

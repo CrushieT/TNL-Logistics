@@ -4,6 +4,7 @@ import * as Crypto from 'expo-crypto';
 import { bluetoothPrinterService, VIRTUAL_PRINTERS } from '../services/bluetoothPrinterService';
 import { normalizeLabelData, resolveCurrentLabelBranding } from '../services/thermalLabelData';
 import { buildEscPosCommands } from '../services/escposFormatter';
+import { buildTsplOptions } from '../services/tsplFormatter';
 import { shipmentApi } from '../../shipments/services/shipmentApi';
 import { useAuth } from '../../auth/context/AuthContext';
 import { apiClient } from '../../../services/api/client';
@@ -186,7 +187,11 @@ export function PrinterProvider({ children }) {
           const unit = units[index];
           try {
             const labelData = normalizeLabelData(shipment, unit, index, units.length);
-            await bluetoothPrinterService.printRaw(buildEscPosCommands(labelData, resolvedBranding), {
+            const printPayload = isVirtual
+              ? buildEscPosCommands(labelData, resolvedBranding)
+              : buildTsplOptions(labelData, resolvedBranding);
+
+            await bluetoothPrinterService.printRaw(printPayload, {
               jobId,
               trackingId: labelData.trackingId,
               shipmentId: labelData.shipmentId,

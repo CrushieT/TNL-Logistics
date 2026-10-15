@@ -184,7 +184,7 @@ tnl-logistics/
 │   │   │   ├── auth/services/        # Auth API, secure storage transitions, and pure cold-launch/PIN lifecycle helpers
 │   │   │   ├── settings/             # Account/security flow helpers and reusable settings components
 │   │   │   ├── shipments/            # Shipment registration with ParcelUnitsEditor and parcelPagination helpers, explorer, detail screens, and barcode scanner modal
-│   │   │   ├── printer/              # Driver isolation, audit outbox, ESC/POS formatter, and serialized PrinterContext
+│   │   │   ├── printer/              # Driver isolation, audit outbox, ESC/POS & TSPL formatters (tsplFormatter.js for XP-470B/XP-420B), and serialized PrinterContext
 │   │   │   ├── scanner/              # Field camera scanner (ScanViewfinder, SingleScanReview, BatchScanPanel, ScanResultPanel, VehiclePicker, scannerFlow.mjs, vehicleOptionsFlow.mjs, trackingScanApi.js, haptics.js, hapticsCore.mjs)
 │   │   │   ├── waybills/             # Split waybill client (waybillApi.js) and 2-copy portrait A4 print generator (printWaybill.mjs)
 │   │   │   ├── tracking-history/     # Field personal scan feed, metrics, parcel summary, personal timeline, pure flow logic (trackingHistoryFlow.mjs), request coordinator (trackingHistoryRequestCoordinator.mjs), and API client (trackingHistoryApi.js)

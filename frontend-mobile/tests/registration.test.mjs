@@ -111,9 +111,9 @@ test('new client validation covers lengths, optional email, and whitespace', () 
 
 test('recipient, description, and route validation enforce maximum character lengths', () => {
   const invalid = validateRegistration(validForm({
-    recipientAddress: 'B'.repeat(256),
+    recipientAddress: 'B'.repeat(81),
     recipientContact: '0'.repeat(12),
-    description: 'D'.repeat(256),
+    description: 'D'.repeat(121),
     route: 'R'.repeat(151),
   }));
   assert.ok(invalid.recipientAddress);
@@ -127,15 +127,24 @@ test('recipient, description, and route validation enforce maximum character len
   assert.ok(nonDigitContact.recipientContact);
 
   const valid = validateRegistration(validForm({
-    recipientAddress: 'B'.repeat(255),
+    recipientAddress: 'B'.repeat(80),
     recipientContact: '0'.repeat(11),
-    description: 'D'.repeat(255),
+    description: 'D'.repeat(120),
     route: 'R'.repeat(150),
   }));
   assert.equal(valid.recipientAddress, undefined);
   assert.equal(valid.recipientContact, undefined);
   assert.equal(valid.description, undefined);
   assert.equal(valid.route, undefined);
+});
+
+test('new-client registration applies the delivery address limit before creating a client', async () => {
+  assert.equal(validateRegistration({ ...newClientForm(), newClientAddress: 'A'.repeat(80) }).newClientAddress, undefined);
+  assert.ok(validateRegistration({ ...newClientForm(), newClientAddress: 'A'.repeat(81) }).newClientAddress);
+  let hasCreatedClient = false;
+  const submit = createShipmentSubmitter({ createClient: async () => { hasCreatedClient = true; } });
+  await assert.rejects(submit({ ...newClientForm(), newClientAddress: 'A'.repeat(81) }), /invalid/);
+  assert.equal(hasCreatedClient, false);
 });
 
 test('ui-shaped mobile registration form passes validation and builds request with zero legacy errors', () => {
