@@ -64,7 +64,7 @@ test('normalizeLabelData extracts full shipment and parcel unit metadata', () =>
   assert.equal(labelData.destinationHub, 'TNL Baguio Hub');
   assert.equal(labelData.contents, 'Assorted office supplies');
   assert.equal(labelData.clientName, 'Northbridge Trading');
-  assert.equal(labelData.route, 'Manila → TNL Baguio Hub');
+  assert.equal(labelData.route, null, 'Missing routes must not be invented from origin and destination');
   assert.equal(labelData.totalAmount, 500);
   assert.equal(labelData.weightKg, 2.5);
 });
@@ -122,7 +122,7 @@ test('buildLabelHtml generates isolated printable HTML matching prototype layout
 
   assert.ok(html.includes('<!DOCTYPE html>'), 'Must start with DOCTYPE');
   assert.ok(html.includes('@page {'), 'Must declare @page CSS rule');
-  assert.ok(html.includes('size: A6 portrait;'), 'Must specify A6 portrait thermal paper size');
+  assert.ok(html.includes('size: 150mm 100mm landscape;'), 'Must specify landscape thermal paper size');
   assert.ok(html.includes('TNL LOGISTICS'), 'Must include brand name');
   assert.ok(html.includes('PKG 1 / 3'), 'Must include package pill');
   assert.ok(html.includes('SCAN TO TRACK'), 'Must include scan prompt');
@@ -130,7 +130,7 @@ test('buildLabelHtml generates isolated printable HTML matching prototype layout
   assert.ok(html.includes('Juan Dela Cruz'), 'Must include recipient name');
   assert.ok(html.includes('0917-555-0148'), 'Must include contact number');
   assert.ok(html.includes('148 Rizal Ave, Caloocan City'), 'Must include recipient address');
-  assert.ok(html.includes('to TNL Baguio Hub'), 'Must include destination hub with to prefix');
+  assert.ok(html.includes('<div class="hub">Manila → TNL Baguio</div>'), 'Must show the entered route below the address');
   assert.ok(html.includes('Assorted office supplies'), 'Must include contents');
   assert.ok(html.includes('SHP-2026-001'), 'Must include shipment ID');
   assert.ok(html.includes('Northbridge Trading'), 'Must include client name');
@@ -189,7 +189,7 @@ test('buildLabelHtml escapes untrusted input to prevent XSS in print document', 
   assert.ok(html.includes('&quot;quoted&quot; &amp; &lt;special&gt;'), 'Must contain escaped attributes');
 });
 
-test('buildLabelHtml applies dynamic company branding and badge letter', () => {
+test('buildLabelHtml applies dynamic company branding without badge letter', () => {
   const labelData = {
     trackingId: 'TRK-2026-000101',
     packageIndex: 1,
@@ -202,11 +202,10 @@ test('buildLabelHtml applies dynamic company branding and badge letter', () => {
   const html = buildLabelHtml(labelData, { companyName: 'TC & CT Integrated Logistics' });
 
   assert.ok(html.includes('TC &amp; CT INTEGRATED LOGISTICS'), 'Must include custom uppercase business name with HTML entities escaped');
-  assert.ok(html.includes('<div class="brand-badge">T</div>'), 'Badge letter must be first letter T');
   assert.ok(html.includes('TRK-2026-000101 - TC &amp; CT Integrated Logistics Shipping Label'), 'Title must reflect company name');
 });
 
-test('buildLabelHtml derives badge initial from custom company name string', () => {
+test('buildLabelHtml derives brand title from custom company name string', () => {
   const labelData = {
     trackingId: 'TRK-2026-000202',
     packageIndex: 1,
@@ -219,6 +218,20 @@ test('buildLabelHtml derives badge initial from custom company name string', () 
   const html = buildLabelHtml(labelData, 'Acme Cargo');
 
   assert.ok(html.includes('ACME CARGO'), 'Must include custom string brand title');
-  assert.ok(html.includes('<div class="brand-badge">A</div>'), 'Badge letter must derive initial A');
   assert.ok(html.includes('TRK-2026-000202 - Acme Cargo Shipping Label'), 'Title must reflect custom brand string');
+});
+
+test('HTML labels use the escaped entered route without substituting a destination hub', () => {
+  const label = { trackingId: 'TRK-2026-000058', packageIndex: 1, packageCount: 1,
+    destinationHub: 'UNRELATED HUB', route: 'Quezon <City> to Cebu',
+    clientName: 'Example Client', contents: 'D'.repeat(120), shipmentId: 'SHP-2026-014', totalAmount: 500 };
+  const html = buildLabelHtml(label);
+  assert.ok(html.includes('<div class="hub">Quezon &lt;City&gt; to Cebu</div>'));
+  assert.equal(html.split('Quezon &lt;City&gt; to Cebu').length - 1, 1, 'Route must appear only once');
+  assert.equal(html.includes('UNRELATED HUB'), false);
+  assert.ok(html.indexOf('class="contents-field"') < html.indexOf('class="client-field"'));
+  assert.ok(html.indexOf('class="client-field"') < html.indexOf('class="shipment-field"'), 'Shipment must follow full-width contents on the client row');
+  assert.ok(html.indexOf('class="shipment-field"') < html.indexOf('class="total-row"'));
+  assert.ok(html.includes('D'.repeat(120)), 'Complete contents must be retained');
+  assert.equal(buildLabelHtml({ ...label, route: null }).includes('<div class="hub">'), false);
 });

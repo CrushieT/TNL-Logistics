@@ -1,9 +1,10 @@
-import React, { createContext, useCallback, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import * as Crypto from 'expo-crypto';
 import { bluetoothPrinterService, VIRTUAL_PRINTERS } from '../services/bluetoothPrinterService';
 import { normalizeLabelData, resolveCurrentLabelBranding } from '../services/thermalLabelData';
 import { buildEscPosCommands } from '../services/escposFormatter';
+import { buildTsplOptions } from '../services/tsplFormatter';
 import { shipmentApi } from '../../shipments/services/shipmentApi';
 import { useAuth } from '../../auth/context/AuthContext';
 import { apiClient } from '../../../services/api/client';
@@ -37,9 +38,11 @@ export function PrinterProvider({ children }) {
   const [branding, setBranding] = useState(null);
   const [brandingLoading, setBrandingLoading] = useState(false);
   const [brandingError, setBrandingError] = useState(null);
-  const [isVirtualMode, setIsVirtualMode] = useState(true);
+  const [isVirtualMode, setIsVirtualMode] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
-  const [availableDevices, setAvailableDevices] = useState(VIRTUAL_PRINTERS);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const isConnectingRef = useRef(false);
+  const [availableDevices, setAvailableDevices] = useState([]);
   const [isPrinting, setIsPrinting] = useState(false);
   const [pendingAuditCount, setPendingAuditCount] = useState(0);
 
@@ -124,9 +127,17 @@ export function PrinterProvider({ children }) {
   }, []);
 
   const connectPrinter = useCallback(async (device) => {
-    const connected = await bluetoothPrinterService.connect(device);
-    setConnectedDevice(connected);
-    return connected;
+    if (isConnectingRef.current) return bluetoothPrinterService.connect(device);
+    isConnectingRef.current = true;
+    setIsConnecting(true);
+    try {
+      const connected = await bluetoothPrinterService.connect(device);
+      setConnectedDevice(connected);
+      return connected;
+    } finally {
+      isConnectingRef.current = false;
+      setIsConnecting(false);
+    }
   }, []);
 
   const disconnectPrinter = useCallback(async () => {
@@ -186,7 +197,11 @@ export function PrinterProvider({ children }) {
           const unit = units[index];
           try {
             const labelData = normalizeLabelData(shipment, unit, index, units.length);
-            await bluetoothPrinterService.printRaw(buildEscPosCommands(labelData, resolvedBranding), {
+            const printPayload = isVirtual
+              ? buildEscPosCommands(labelData, resolvedBranding)
+              : buildTsplOptions(labelData, resolvedBranding);
+
+            await bluetoothPrinterService.printRaw(printPayload, {
               jobId,
               trackingId: labelData.trackingId,
               shipmentId: labelData.shipmentId,
@@ -233,7 +248,7 @@ export function PrinterProvider({ children }) {
 
   return (
     <PrinterContext.Provider value={{
-      isConnected: Boolean(connectedDevice), connectedDevice, isVirtualMode, isScanning,
+      isConnected: Boolean(connectedDevice), connectedDevice, isVirtualMode, isScanning, isConnecting,
       availableDevices, isPrinting, pendingAuditCount, scanDevices, connectPrinter,
       disconnectPrinter, toggleVirtualMode, printParcelLabels, confirmSystemPrint,
       retryPendingAudits, assertCanRecordPrintAudit, branding, brandingLoading,

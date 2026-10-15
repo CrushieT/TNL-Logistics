@@ -379,10 +379,27 @@ Post-client-demo implementation plan closeout [COMPLETED] on 2026-10-12 at the u
 - Runtime security & profile hardening: Removed default `dev` profile and hardcoded fallback `jwt.secret` from `application.properties`, verified via `ProductionDataSourcePropertiesTest`.
 - Bounded shipment pagination: Query parameters `page` (clamped >= 0) and `size` (bounded [1..100]) enforced in `ShipmentController.java` to prevent memory exhaustion and invalid page errors.
 
-**6.3b — Physical Bluetooth Integration & Brother RJ-2035B On-Device Validation** — **[UPCOMING]**
-- Validate the Expo development build and native Bluetooth bridge on the on-site Brother RJ-2035B.
-- Select and verify the printer command language supported by the deployed hardware, including QR/raster output, paper width, feed, tear position, reconnect behavior, and partial transmission reporting.
-- Add device-backed acceptance evidence before enabling production Bluetooth label transmission.
+**6.3b — Physical Bluetooth Integration & Xprinter XP-470B On-Device Validation** — **[IN PROGRESS]**
+- Validated on-site Xprinter XP-470B / XP-420B thermal label printer hardware (203 DPI, A6/A7 format).
+- Added `tsplFormatter.js` generating TSPL label options matching `prototype qr print.png` layout in 90-degree rotated landscape orientation.
+- Added Android 12+ runtime Bluetooth permission requests (`BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`) in `bluetoothPrinterService.js` and updated native `AndroidManifest.xml` and `app.json`.
+- Unlocked physical Bluetooth label transmission via native `BluetoothTscPrinter` module.
+- Removed `[ T ]` brand badge completely from both mobile and web shipping label layouts (`tsplFormatter.js`, `ThermalLabelPreviewModal.js`, `escposFormatter.js`, `LabelPreview.js`, `PrintLabelsModal.js`, `labelPrintServiceCore.mjs`).
+- Implemented crisp solid outer border (4 edges) and solid header divider lines using TSPL `reverse` rectangles, plus dashed divider lines separating body from footer and framing the total amount.
+- Positioned both dashed dividers with TSPL rectangles so their final dash touches the inside edge of the right border without overflowing; covered divider endpoints, dash gaps, and omitted totals in printer regression tests.
+- Moved shipment numbers to the right side of the client row above the total across Bluetooth, HTML printing, and web/mobile previews. Contents now span the full inner width and wrap before the right border; client names wrap within the left column without shifting the shipment number.
+- Wrapped complete Bluetooth footer contents and client names and fit footer typography to the available space. Reject oversized footers instead of truncating text.
+- Anchored Bluetooth totals to a fixed right edge using TSPL font widths so larger amounts expand leftward inside the border.
+- Wrapped Bluetooth delivery addresses at word boundaries using the available width before the right border, preserving the complete address and keeping `Manila` together.
+- Replaced the arrow-prefixed destination hub below the address with the entered shipment route across Bluetooth, HTML printing, and web/mobile previews. Long Bluetooth routes wrap to fit; missing routes are omitted instead of derived from origin/destination.
+- Removed the duplicate route below the shipment number from print output and previews; the route now appears only below the address.
+- Restricted virtual printing to development builds using `__DEV__`; its setup card is hidden in all builds by a separate flag set to `false`, retained for future development use. Production ignores saved simulation mode and virtual selections, rejects simulation activation/connections/direct driver calls, and preserves physical printer operation.
+- Added one 500 ms retry for the native `Unable to connect device` connection error. Concurrent connects to the same device share one attempt; switching targets is rejected while connecting. Printer setup disables conflicting controls until completion. Permission/other errors and print jobs are not retried.
+- Limited new shipment delivery addresses to 80 characters and descriptions to 120 characters in web/mobile registration and API validation; registration forms show character counters. New-client billing addresses used for delivery follow the same 80-character limit. Existing stored data is preserved.
+- Scaled up typography across all thermal label fields (large font 4 bold for brand title, tracking ID, destination hub, and total amount; font 3 for recipient name, telephone, address, contents, shipment ID, client, and route) for high visibility in logistics environments.
+- Expanded brand title slicing limit to 36 characters to prevent truncation of full business names (e.g. *TC & CT Integrated Logistics*).
+- Verified via unit test suites: `printer.test.mjs` (42/42 passing), `registration.test.mjs` (29/29 passing), `registrationRetry.test.mjs` (5/5 passing), and `labelPrint.test.mjs` (11/11 passing).
+- Verified shipment API registration limits with `mvn -Dtest=ShipmentIntegrationTest test` (34/34 passing), including exact-limit persistence and one-character-over-limit rejection without writes.
 
 **6.4 — Field Staff: Camera QR Scanner & Status Flow Engine (Screens 45–48)** — **[COMPLETED]**
 - Real-time camera viewfinder QR and Code-128 scanner (`expo-camera`) with torch toggle, four-corner orange reticle, horizontal scan line, safe platform-guarded haptics (`expo-haptics`), and manual `TRK-YYYY-NNNNNN` entry fallback with a compact `GO` button.

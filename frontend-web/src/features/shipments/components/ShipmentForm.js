@@ -16,6 +16,8 @@ const CHARGE_MODELS = [
   { value: 'FLAT', label: 'Flat (shipment-level)' },
   { value: 'PER_UNIT', label: 'Per unit' },
 ];
+const MAX_ADDRESS_LENGTH = 80;
+const MAX_DESCRIPTION_LENGTH = 120;
 
 export default function ShipmentForm({
   clients = [],
@@ -296,8 +298,8 @@ export default function ShipmentForm({
 
       if (!address.trim()) {
         newErrors.address = 'Complete delivery address is required.';
-      } else if (address.trim().length > 255) {
-        newErrors.address = 'Complete delivery address cannot exceed 255 characters.';
+      } else if (address.trim().length > MAX_ADDRESS_LENGTH) {
+        newErrors.address = `Complete delivery address cannot exceed ${MAX_ADDRESS_LENGTH} characters.`;
       }
 
       if (!contactNumber.trim() || contactNumber.trim().length < 7) {
@@ -316,8 +318,8 @@ export default function ShipmentForm({
 
       if (!newClientAddress.trim()) {
         newErrors.newClientAddress = 'Billing address is required.';
-      } else if (newClientAddress.trim().length > 255) {
-        newErrors.newClientAddress = 'Billing address cannot exceed 255 characters.';
+      } else if (newClientAddress.trim().length > MAX_ADDRESS_LENGTH) {
+        newErrors.newClientAddress = `Billing address cannot exceed ${MAX_ADDRESS_LENGTH} characters.`;
       }
 
       if (!newClientContact.trim() || newClientContact.trim().length < 7) {
@@ -333,8 +335,8 @@ export default function ShipmentForm({
       }
     }
 
-    if (description.trim().length > 255) {
-      newErrors.description = 'Description cannot exceed 255 characters.';
+    if (description.trim().length > MAX_DESCRIPTION_LENGTH) {
+      newErrors.description = `Description cannot exceed ${MAX_DESCRIPTION_LENGTH} characters.`;
     }
 
     if (route.trim().length > 150) {
@@ -564,7 +566,9 @@ export default function ShipmentForm({
                   if (errors.newClientAddress) setErrors((prev) => ({ ...prev, newClientAddress: null }));
                 }}
                 placeholder="Complete street, city, province"
-                maxLength={255}
+                multiline
+                maxLength={MAX_ADDRESS_LENGTH}
+                helper={`${newClientAddress.length}/${MAX_ADDRESS_LENGTH} characters`}
                 error={errors.newClientAddress}
               />
               <FormField
@@ -618,7 +622,9 @@ export default function ShipmentForm({
                 if (errors.address) setErrors((prev) => ({ ...prev, address: null }));
               }}
               placeholder="Unit, Street, Barangay, City, Province"
-              maxLength={255}
+              multiline
+              maxLength={MAX_ADDRESS_LENGTH}
+              helper={`${address.length}/${MAX_ADDRESS_LENGTH} characters`}
               error={errors.address}
             />
             <FormField
@@ -650,7 +656,9 @@ export default function ShipmentForm({
               value={description}
               onChangeText={setDescription}
               placeholder="Office supplies, electronics, etc."
-              maxLength={255}
+              maxLength={MAX_DESCRIPTION_LENGTH}
+              helper={`${description.length}/${MAX_DESCRIPTION_LENGTH} characters`}
+              error={errors.description}
             />
           </View>
 

@@ -167,3 +167,28 @@ test('pending submission makes the form inert for keyboard and pointer editing',
   assert.equal(flow.getTree().props.inert, undefined);
   assert.equal(flow.getTree().props.pointerEvents, 'auto');
 });
+
+test('web registration shows label text limits and rejects oversized values before writing', async () => {
+  for (const [label, maximum, requestField] of [
+    ['Billing Address', 80, 'recipientAddress'], ['Description', 120, 'description'],
+  ]) {
+    const flow = await setup({ rejections: 0 });
+    const getField = () => elements(flow.getTree(), 'FormField').find((item) => item.props.label === label);
+    assert.equal(getField().props.maxLength, maximum);
+    getField().props.onChangeText('A'.repeat(maximum + 1));
+    await flow.render();
+    assert.equal(getField().props.helper, `${maximum + 1}/${maximum} characters`);
+    elements(flow.getTree(), 'Button')[0].props.onPress();
+    await flow.render();
+    assert.ok(getField().props.error);
+    assert.equal(flow.getClientWrites(), 0);
+    assert.equal(flow.requests.length, 0);
+
+    getField().props.onChangeText('A'.repeat(maximum));
+    await flow.render();
+    elements(flow.getTree(), 'Button')[0].props.onPress();
+    await flow.render();
+    assert.equal(flow.requests.length, 1);
+    assert.equal(flow.requests[0][requestField], 'A'.repeat(maximum));
+  }
+});

@@ -16,6 +16,9 @@ import { StatusModal } from '../../components/common/StatusModal';
 import { usePrinter } from '../../features/printer/context/PrinterContext';
 import { ThermalLabelPreviewModal } from '../../components/common/ThermalLabelPreviewModal';
 import { normalizeLabelData } from '../../features/printer/services/thermalLabelData';
+import { IS_VIRTUAL_PRINTER_ENABLED } from '../../features/printer/services/bluetoothPrinterService';
+
+const SHOW_VIRTUAL_PRINTER_TOGGLE = false;
 
 export default function PrinterSetupScreen() {
   const {
@@ -23,6 +26,7 @@ export default function PrinterSetupScreen() {
     connectedDevice,
     isVirtualMode,
     isScanning,
+    isConnecting,
     availableDevices,
     isPrinting,
     scanDevices,
@@ -171,30 +175,34 @@ export default function PrinterSetupScreen() {
               style={styles.disconnectBtnWrapper}
               contentStyle={styles.disconnectBtn}
               onPress={handleDisconnect}
+              disabled={isConnecting}
             >
               <Text style={styles.disconnectBtnText}>Disconnect</Text>
             </PressableScale>
           ) : null}
         </View>
 
-        {/* Virtual Mode Switch Card */}
-        <View style={styles.card}>
-          <View style={styles.toggleRow}>
-            <View style={styles.toggleTextCol}>
-              <Text style={styles.toggleTitle}>Virtual Thermal Driver</Text>
-              <Text style={styles.simulationBadge}>SIMULATION / VIRTUAL</Text>
-              <Text style={styles.toggleSubtitle}>
-                Simulate Brother RJ-2035B for hardware-free development and offline testing
-              </Text>
+        {/* Development-only simulation controls */}
+        {SHOW_VIRTUAL_PRINTER_TOGGLE && IS_VIRTUAL_PRINTER_ENABLED ? (
+          <View style={styles.card}>
+            <View style={styles.toggleRow}>
+              <View style={styles.toggleTextCol}>
+                <Text style={styles.toggleTitle}>Virtual Thermal Driver</Text>
+                <Text style={styles.simulationBadge}>SIMULATION / VIRTUAL</Text>
+                <Text style={styles.toggleSubtitle}>
+                  Simulate thermal printing for hardware-free development and offline testing
+                </Text>
+              </View>
+              <Switch
+                value={isVirtualMode}
+                onValueChange={toggleVirtualMode}
+                disabled={isConnecting}
+                trackColor={{ false: colors.border, true: colors.ink }}
+                thumbColor="#FFFFFF"
+              />
             </View>
-            <Switch
-              value={isVirtualMode}
-              onValueChange={toggleVirtualMode}
-              trackColor={{ false: colors.border, true: colors.ink }}
-              thumbColor="#FFFFFF"
-            />
           </View>
-        </View>
+        ) : null}
 
         {/* Test Print Action Card */}
         <View style={styles.card}>
@@ -206,6 +214,7 @@ export default function PrinterSetupScreen() {
             style={styles.testPrintBtnWrapper}
             contentStyle={styles.testPrintBtn}
             onPress={handleTestPrint}
+            disabled={isConnecting || isPrinting}
           >
             {isPrinting ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
@@ -230,6 +239,7 @@ export default function PrinterSetupScreen() {
               style={styles.scanBtnWrapper}
               contentStyle={styles.scanBtn}
               onPress={handleScan}
+              disabled={isScanning || isConnecting}
             >
               {isScanning ? (
                 <ActivityIndicator color={colors.ink} size="small" />
@@ -263,8 +273,9 @@ export default function PrinterSetupScreen() {
                   <PressableScale
                     contentStyle={styles.connectBtn}
                     onPress={() => handleConnect(device)}
+                    disabled={isConnecting || isScanning}
                   >
-                    <Text style={styles.connectBtnText}>Connect</Text>
+                    <Text style={styles.connectBtnText}>{isConnecting ? 'Connecting...' : 'Connect'}</Text>
                   </PressableScale>
                 )}
               </View>

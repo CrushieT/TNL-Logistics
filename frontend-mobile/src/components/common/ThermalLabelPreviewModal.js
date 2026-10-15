@@ -78,7 +78,6 @@ export function ThermalLabelPreviewModal({
     : brandingLoading
     ? 'LOADING BRANDING...'
     : 'BRANDING UNAVAILABLE';
-  const brandBadge = isBrandingReady ? brandTitle.trim().charAt(0) || 'T' : '?';
 
   const labelsList = labels && labels.length > 0 ? labels : labelData ? [labelData] : [];
   const currentLabel = labelsList[currentIndex] || labelsList[0] || null;
@@ -130,8 +129,13 @@ export function ThermalLabelPreviewModal({
           window.print();
         }
       } else {
-        // Native iOS & Android: invoke OS print spooler & Save as PDF
-        await Print.printAsync({ html });
+        // Native iOS & Android: invoke OS print spooler & Save as PDF in Landscape
+        await Print.printAsync({
+          html,
+          orientation: 'landscape',
+          width: 567, // 150mm at 96 DPI
+          height: 378, // 100mm at 96 DPI
+        });
       }
       if (activeSystemPrintRef.current !== printAttempt) return;
       setPendingConfirmation({
@@ -254,9 +258,6 @@ export function ThermalLabelPreviewModal({
               {/* Header */}
               <View style={styles.labelHeader}>
                 <View style={styles.brandGroup}>
-                  <View style={styles.brandBadge}>
-                    <Text style={styles.brandBadgeText}>{brandBadge}</Text>
-                  </View>
                   <Text style={styles.brandTitle} numberOfLines={1} ellipsizeMode="tail">
                     {brandTitle}
                   </Text>
@@ -295,9 +296,7 @@ export function ThermalLabelPreviewModal({
                       {currentLabel.address}
                     </Text>
                   ) : null}
-                  <Text style={styles.destinationHubText} numberOfLines={1}>
-                    to {currentLabel.destinationHub}
-                  </Text>
+                  {currentLabel.route ? <Text style={styles.destinationHubText}>{currentLabel.route}</Text> : null}
                 </View>
               </View>
 
@@ -306,24 +305,20 @@ export function ThermalLabelPreviewModal({
 
               {/* Footer: Metadata & Total */}
               <View style={styles.labelFooter}>
-                <View style={styles.footerRow}>
-                  <Text style={styles.footerItem}>
+                <View style={[styles.footerRow, styles.contentsRow]}>
+                  <Text style={[styles.footerItem, styles.contentsField]}>
                     <Text style={styles.footerLabel}>Contents: </Text>
                     {currentLabel.contents}
                   </Text>
-                  <Text style={styles.footerItem}>
-                    <Text style={styles.footerLabel}>Shipment: </Text>
-                    {currentLabel.shipmentId}
-                  </Text>
                 </View>
-                <View style={styles.footerRow}>
-                  <Text style={styles.footerItem} numberOfLines={1}>
+                <View style={[styles.footerRow, styles.contentsRow]}>
+                  <Text style={[styles.footerItem, styles.contentsField]}>
                     <Text style={styles.footerLabel}>Client: </Text>
                     {currentLabel.clientName}
                   </Text>
-                  <Text style={styles.footerItem} numberOfLines={1}>
-                    <Text style={styles.footerLabel}>Route: </Text>
-                    {currentLabel.route}
+                  <Text style={[styles.footerItem, styles.shipmentField]}>
+                    <Text style={styles.footerLabel}>Shipment: </Text>
+                    {currentLabel.shipmentId}
                   </Text>
                 </View>
                 <View style={styles.totalRow}>
@@ -555,21 +550,6 @@ const styles = StyleSheet.create({
     marginRight: 10,
     minWidth: 0,
   },
-  brandBadge: {
-    width: 22,
-    height: 22,
-    backgroundColor: '#000000',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 2,
-    flexShrink: 0,
-  },
-  brandBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '900',
-    fontFamily: 'monospace',
-  },
   brandTitle: {
     flex: 1,
     fontSize: 12,
@@ -666,6 +646,19 @@ const styles = StyleSheet.create({
   footerItem: {
     fontSize: 10,
     color: '#111111',
+  },
+  contentsRow: {
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+  contentsField: {
+    flex: 1,
+    minWidth: 0,
+    ...(Platform.OS === 'web' ? { overflowWrap: 'anywhere' } : {}),
+  },
+  shipmentField: {
+    flexShrink: 0,
+    ...(Platform.OS === 'web' ? { whiteSpace: 'nowrap' } : {}),
   },
   footerLabel: {
     color: '#6B7280',

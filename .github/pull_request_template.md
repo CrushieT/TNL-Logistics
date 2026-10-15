@@ -5,8 +5,6 @@
 - [ ] Web / Backend
 - [ ] Mobile / Backend
 
-## Build-Plan Phase
-Phase number (e.g. `5.2`) or `N/A`.
 
 ## What does this PR do?
 Brief description.
@@ -49,5 +47,4 @@ State "None found" or detail each finding and its resolution.
 - [ ] Input validation and exception shielding implemented (Robustness)
 - [ ] Database queries indexed and transactions scoped properly (Performance)
 - [ ] Code follows naming conventions and service-layer separation (Code Quality)
-- [ ] Commit messages follow `[scope]` and optional `(phase)` conventions
 - [ ] PR targets `dev` branch per branch merge strategy

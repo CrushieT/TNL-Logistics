@@ -16,9 +16,10 @@ import { clampParcelPage, getParcelPageIndex } from '../parcelPagination.mjs';
 import {
   calculateRegistration, createRegistrationForm, createShipmentSubmitter,
   isUncertainWrite, mapRegistrationErrors, validateRegistration,
+  MAX_ADDRESS_LENGTH, MAX_DESCRIPTION_LENGTH,
 } from '../registration.mjs';
 
-function FormField({ name, label, form, errors, onChange, isSubmitting, inputRefs, fieldRefs, ...props }) {
+function FormField({ name, label, form, errors, onChange, isSubmitting, inputRefs, fieldRefs, showCharacterCount = false, ...props }) {
   return (
     <View ref={(node) => { fieldRefs.current[name] = node; }} collapsable={false} style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -33,6 +34,7 @@ function FormField({ name, label, form, errors, onChange, isSubmitting, inputRef
         style={[styles.input, errors[name] && styles.inputError]}
         {...props}
       />
+      {showCharacterCount ? <Text style={styles.helper}>{(form[name] || '').length}/{props.maxLength} characters</Text> : null}
       {errors[name] ? <Text accessibilityRole="alert" style={styles.error}>{errors[name]}</Text> : null}
     </View>
   );
@@ -458,7 +460,7 @@ export function RegistrationScreen() {
                 <Text style={styles.helper}>Shipments are billed together on the client’s statement of account.</Text>
               </View> : <>
                 {field('newClientName', 'CLIENT / COMPANY NAME *', { placeholder: 'Company or client name', maxLength: 150 })}
-                {field('newClientAddress', 'BILLING ADDRESS *', { placeholder: 'Street, city, province', multiline: true, maxLength: 255 })}
+                {field('newClientAddress', 'BILLING ADDRESS *', { placeholder: 'Street, city, province', multiline: true, maxLength: MAX_ADDRESS_LENGTH, showCharacterCount: true })}
                 {field('newClientContact', 'CONTACT NUMBER *', { keyboardType: 'phone-pad', inputMode: 'numeric', maxLength: 11, placeholder: '09XXXXXXXXX' })}
                 {field('newClientEmail', 'EMAIL ADDRESS', { keyboardType: 'email-address', autoCapitalize: 'none', autoCorrect: false, maxLength: 150 })}
               </>}
@@ -475,7 +477,7 @@ export function RegistrationScreen() {
                     <Text style={styles.helper}>Automatically derived from billing client.</Text>
                   </View>
                 </View>
-                {field('recipientAddress', 'COMPLETE ADDRESS *', { placeholder: 'Unit, street, barangay, city, province', multiline: true, maxLength: 255 })}
+                {field('recipientAddress', 'COMPLETE ADDRESS *', { placeholder: 'Unit, street, barangay, city, province', multiline: true, maxLength: MAX_ADDRESS_LENGTH, showCharacterCount: true })}
                 {field('recipientContact', 'CONTACT NUMBER *', { keyboardType: 'phone-pad', inputMode: 'numeric', maxLength: 11, placeholder: '09XXXXXXXXX' })}
               </View>
             ) : null}
@@ -483,7 +485,7 @@ export function RegistrationScreen() {
             {/* 3. Parcel Details & Per-Unit Editor */}
             <View style={styles.section}>
               <Text accessibilityRole="header" style={styles.sectionTitle}>Parcel Details</Text>
-              {field('description', 'DESCRIPTION', { placeholder: 'General Goods', maxLength: 255 })}
+              {field('description', 'DESCRIPTION', { placeholder: 'General Goods', multiline: true, maxLength: MAX_DESCRIPTION_LENGTH, showCharacterCount: true })}
               {field('route', 'ROUTE', { placeholder: 'Manila to TNL Labo C.N.', maxLength: 150 })}
 
               <View style={styles.quantityRow}>

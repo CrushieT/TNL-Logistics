@@ -331,6 +331,41 @@ public class ShipmentIntegrationTest {
     }
 
     @Test
+    public void testRegistrationAcceptsLabelTextAtCharacterLimits() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setRecipientAddress("A".repeat(80));
+        request.setDescription("D".repeat(120));
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments").header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated()).andReturn();
+        String shipmentId = objectMapper.readTree(result.getResponse().getContentAsString()).get("shipmentId").asText();
+        Shipment shipment = shipmentRepository.findById(shipmentId).orElseThrow();
+        assertEquals(request.getRecipientAddress(), shipment.getRecipientAddress());
+        assertEquals(request.getDescription(), shipment.getDescription());
+    }
+
+    @Test
+    public void testRegistrationRejectsLabelTextOneCharacterOverLimitWithoutWrites() throws Exception {
+        for (String field : List.of("recipientAddress", "description")) {
+            ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+            if (field.equals("recipientAddress")) {
+                request.setRecipientAddress("A".repeat(81));
+            } else {
+                request.setDescription("D".repeat(121));
+            }
+            MvcResult result = mockMvc.perform(post("/api/v1/shipments").header("Authorization", officeToken)
+                            .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest()).andReturn();
+            JsonNode errors = objectMapper.readTree(result.getResponse().getContentAsString()).get("fieldErrors");
+            assertTrue(errors.has(field));
+            assertEquals(0, shipmentRepository.count());
+            assertEquals(0, parcelUnitRepository.count());
+            assertEquals(0, paymentRepository.count());
+        }
+    }
+
+    @Test
     public void testShipmentPaginationBoundsInvalidPageAndSizeValues() throws Exception {
         MvcResult oversizedResult = mockMvc.perform(get("/api/v1/shipments")
                         .header("Authorization", officeToken)
