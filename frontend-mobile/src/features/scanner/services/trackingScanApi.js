@@ -1,4 +1,5 @@
 import { apiClient } from '../../../services/api/client';
+import { buildVehicleOptionParams } from '../vehicleOptionsFlow.mjs';
 
 export const trackingScanApi = {
   /**
@@ -18,6 +19,15 @@ export const trackingScanApi = {
    */
   async getActiveVehicles(signal) {
     const { data } = await apiClient.get('/vehicles', { signal });
+    return data;
+  },
+
+  /**
+   * Retrieves paginated active vehicle options for truck assignment.
+   */
+  async listVehicleOptions({ page = 0, size = 20, search = '', signal } = {}) {
+    const params = buildVehicleOptionParams({ page, size, search });
+    const { data } = await apiClient.get('/vehicles/options', { params, signal });
     return data;
   },
 

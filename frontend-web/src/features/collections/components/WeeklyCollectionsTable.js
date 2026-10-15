@@ -1,31 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
-import { colors, fonts, spacing, radius } from '../../../theme';
+import { colors, fonts, spacing, radius, collectionStyles } from '../../../theme';
 import { formatCurrency } from '../utils/collectionsUtils';
-
-const COLLECTION_STATUS_STYLES = {
-  READY_FOR_SOA: {
-    fg: '#B45309',
-    bg: '#FFFBEB',
-    border: '#FDE68A',
-    dot: '#D97706',
-    label: 'Ready for SOA',
-  },
-  SOA_GENERATED: {
-    fg: '#1D4ED8',
-    bg: '#EFF6FF',
-    border: '#BFDBFE',
-    dot: '#2563EB',
-    label: 'SOA Generated',
-  },
-  SETTLED: {
-    fg: '#15803D',
-    bg: '#F0FDF4',
-    border: '#86EFAC',
-    dot: '#16A34A',
-    label: 'Settled',
-  },
-};
 
 export default function WeeklyCollectionsTable({
   items = [],
@@ -104,7 +80,7 @@ export default function WeeklyCollectionsTable({
       {/* Table Rows */}
       {items.map((item, idx) => {
         const statusKey = item.status || (item.unbilledShipmentsCount > 0 ? 'READY_FOR_SOA' : 'SETTLED');
-        const statusConfig = COLLECTION_STATUS_STYLES[statusKey] || COLLECTION_STATUS_STYLES.READY_FOR_SOA;
+        const statusConfig = collectionStyles[statusKey] || collectionStyles.READY_FOR_SOA;
         const currentCharges = Number(item.currentCharges || item.totalCharges || 0);
         const paidAmount = Number(item.paid ?? item.totalPaid ?? item.amountPaid ?? 0);
         const balance = Number(item.balance ?? item.netAmountDue ?? 0);

@@ -1,8 +1,8 @@
-import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { colors, typography, spacing, radius } from '../../../theme';
 import { canSubmitSingle, getSingleScanPermission } from '../scannerFlow.mjs';
+import VehiclePicker from './VehiclePicker';
 
 export default function SingleScanReview({
   context,
@@ -11,6 +11,17 @@ export default function SingleScanReview({
   onSelectVehicle,
   loadingVehicles,
   onRetryVehicles,
+  isLoadingMoreVehicles = false,
+  hasMoreVehicles = false,
+  vehicleLoadError = '',
+  vehiclePageError = '',
+  onLoadNextVehicles,
+  vehicleSearchValue = '',
+  onVehicleSearchChange,
+  vehicleRecommendations = [],
+  isLoadingVehicleRecommendations = false,
+  vehicleRecommendationError = '',
+  onRetryVehicleRecommendation,
   onConfirm,
   onCancel,
   isSubmitting,
@@ -102,52 +113,26 @@ export default function SingleScanReview({
 
         {/* Vehicle Selection for LOADED_ON_TRUCK */}
         {permission.isAllowed && isVehicleRequired && (
-          <View style={styles.vehicleSection}>
-            <View style={styles.vehicleHeaderRow}>
-              <Text style={styles.sectionTitle}>ASSIGN VEHICLE *</Text>
-              {loadingVehicles && <ActivityIndicator size="small" color={colors.accent} />}
-            </View>
-
-            {loadingVehicles && vehicles.length === 0 ? (
-              <View style={styles.loadingBox}>
-                <ActivityIndicator size="small" color={colors.accent} />
-                <Text style={styles.loadingText}>Loading active vehicles...</Text>
-              </View>
-            ) : vehicles.length === 0 ? (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>No active vehicles available.</Text>
-                <TouchableOpacity style={styles.retryButton} onPress={onRetryVehicles} disabled={!isOnline}>
-                  <Text style={styles.retryButtonText}>Retry Loading Vehicles</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.vehicleList}>
-                {vehicles.map((v) => {
-                  const isSelected = selectedVehicleId === v.vehicleId;
-                  return (
-                    <TouchableOpacity
-                      key={v.vehicleId}
-                      style={[styles.vehicleCard, isSelected && styles.vehicleCardSelected]}
-                      onPress={() => onSelectVehicle(v.vehicleId)}
-                      disabled={isSubmitting || !isOnline}
-                    >
-                      <View style={styles.vehicleCardHeader}>
-                        <Text style={[styles.vehiclePlate, isSelected && styles.vehiclePlateSelected]}>
-                          {v.plateNumber}
-                        </Text>
-                        <Text style={styles.vehicleId}>{v.vehicleId}</Text>
-                      </View>
-                      {v.description && (
-                        <Text style={styles.vehicleDescription} numberOfLines={1}>
-                          {v.description}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-          </View>
+          <VehiclePicker
+            vehicles={vehicles}
+            selectedVehicleId={selectedVehicleId}
+            onSelectVehicle={onSelectVehicle}
+            isLoadingVehicles={loadingVehicles}
+            isLoadingMoreVehicles={isLoadingMoreVehicles}
+            hasMoreVehicles={hasMoreVehicles}
+            vehicleLoadError={vehicleLoadError}
+            vehiclePageError={vehiclePageError}
+            onLoadRecentVehicles={onRetryVehicles}
+            onLoadNextVehicles={onLoadNextVehicles}
+            searchValue={vehicleSearchValue}
+            onSearchChange={onVehicleSearchChange}
+            recommendations={vehicleRecommendations}
+            isLoadingRecommendations={isLoadingVehicleRecommendations}
+            recommendationError={vehicleRecommendationError}
+            onRetryRecommendation={onRetryVehicleRecommendation}
+            isOnline={isOnline}
+            disabled={isSubmitting}
+          />
         )}
       </ScrollView>
 
@@ -359,86 +344,6 @@ const styles = StyleSheet.create({
     color: colors.inkSoft,
     textAlign: 'center',
     lineHeight: 16
-  },
-  vehicleSection: {
-    marginBottom: spacing.md
-  },
-  vehicleHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs
-  },
-  loadingBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.md,
-    backgroundColor: colors.canvas,
-    borderRadius: radius.md
-  },
-  loadingText: {
-    fontSize: 13,
-    color: colors.inkSoft,
-    marginLeft: spacing.sm
-  },
-  errorBox: {
-    padding: spacing.md,
-    backgroundColor: colors.dangerSoft,
-    borderRadius: radius.md,
-    alignItems: 'center'
-  },
-  errorText: {
-    fontSize: 13,
-    color: colors.danger,
-    marginBottom: spacing.xs
-  },
-  retryButton: {
-    backgroundColor: colors.danger,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: radius.sm
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700'
-  },
-  vehicleList: {
-    gap: spacing.xs
-  },
-  vehicleCard: {
-    backgroundColor: colors.canvas,
-    borderRadius: radius.md,
-    padding: spacing.sm,
-    borderWidth: 1.5,
-    borderColor: colors.border
-  },
-  vehicleCardSelected: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentSoft
-  },
-  vehicleCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  vehiclePlate: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.ink
-  },
-  vehiclePlateSelected: {
-    color: colors.accent
-  },
-  vehicleId: {
-    fontSize: 11,
-    fontFamily: 'monospace',
-    color: colors.inkFaint
-  },
-  vehicleDescription: {
-    fontSize: 12,
-    color: colors.inkSoft,
-    marginTop: 2
   },
   footer: {
     padding: spacing.md,

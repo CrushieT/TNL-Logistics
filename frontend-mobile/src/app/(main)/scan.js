@@ -34,6 +34,16 @@ import {
   isRoleTransitionAllowed,
   validateBatchCandidate
 } from '../../features/scanner/scannerFlow.mjs';
+import {
+  createVehicleOptionRequestCoordinator,
+  appendUniqueVehicleOptions,
+  hasNextVehicleOptionPage,
+  normalizeVehicleSearch,
+  VEHICLE_OPTION_PAGE_SIZE,
+  VEHICLE_RECOMMENDATION_SIZE,
+  VEHICLE_SEARCH_DEBOUNCE_MS,
+  VEHICLE_SEARCH_MIN_LENGTH
+} from '../../features/scanner/vehicleOptionsFlow.mjs';
 import { trackingScanApi } from '../../features/scanner/services/trackingScanApi';
 import { safeHaptics } from '../../features/scanner/utils/haptics';
 import ScanViewfinder from '../../features/scanner/components/ScanViewfinder';
@@ -69,9 +79,21 @@ export default function ScanScreen() {
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [cameraHeightIndex, setCameraHeightIndex] = useState(DEFAULT_CAMERA_HEIGHT_INDEX);
 
-  // Vehicles state
+  // Vehicles state & pagination
   const [vehicles, setVehicles] = useState([]);
   const [loadingVehicles, setLoadingVehicles] = useState(false);
+  const [hasLoadedVehicleOptions, setHasLoadedVehicleOptions] = useState(false);
+  const [vehiclePage, setVehiclePage] = useState(0);
+  const [hasMoreVehicles, setHasMoreVehicles] = useState(false);
+  const [isLoadingMoreVehicles, setIsLoadingMoreVehicles] = useState(false);
+  const [vehicleLoadError, setVehicleLoadError] = useState('');
+  const [vehiclePageError, setVehiclePageError] = useState('');
+  const [vehicleSearchInput, setVehicleSearchInput] = useState('');
+  const [vehicleRecommendations, setVehicleRecommendations] = useState([]);
+  const [isLoadingVehicleRecommendations, setIsLoadingVehicleRecommendations] = useState(false);
+  const [vehicleRecommendationError, setVehicleRecommendationError] = useState('');
+  const [recommendationRetryVersion, setRecommendationRetryVersion] = useState(0);
+  const vehicleOptionCoordinatorRef = useRef(createVehicleOptionRequestCoordinator());
 
   // Synchronous guards to prevent rapid double-tap race conditions
   const scanLockRef = useRef(false);
@@ -248,11 +270,17 @@ export default function ScanScreen() {
     const role = user?.role;
     dispatch({ type: 'RECONCILE_ROLE_PERMISSIONS', payload: role });
     if (!isRoleTransitionAllowed(role, 'LOADED_ON_TRUCK')) {
+      vehicleOptionCoordinatorRef.current.cancelAll();
       setVehicles([]);
+      setHasLoadedVehicleOptions(false);
+      setVehiclePage(0);
+      setHasMoreVehicles(false);
+      setVehicleSearchInput('');
+      setVehicleRecommendations([]);
     }
   }, [user?.role]);
 
-  const loadVehicles = useCallback(async () => {
+  const loadRecentVehicleOptions = useCallback(async () => {
     if (!connectivity.isOnline) {
       setVehicles([]);
       setLoadingVehicles(false);
@@ -263,17 +291,140 @@ export default function ScanScreen() {
       setLoadingVehicles(false);
       return;
     }
+    const coordinator = vehicleOptionCoordinatorRef.current;
+    const requestToken = coordinator.beginFirstPage();
     setLoadingVehicles(true);
+    setVehicleLoadError('');
+    setVehiclePageError('');
     try {
-      const data = await trackingScanApi.getActiveVehicles();
-      setVehicles(Array.isArray(data) ? data : []);
+      const page = await trackingScanApi.listVehicleOptions({
+        page: 0,
+        size: VEHICLE_OPTION_PAGE_SIZE,
+        signal: requestToken.signal
+      });
+      if (!coordinator.isCurrent(requestToken)) return;
+      const incoming = Array.isArray(page?.content) ? page.content : [];
+      setVehicles(appendUniqueVehicleOptions([], incoming));
+      setVehiclePage(Number.isInteger(page?.number) ? page.number : 0);
+      setHasMoreVehicles(hasNextVehicleOptionPage(page));
+      setHasLoadedVehicleOptions(true);
     } catch {
-      setVehicles([]);
-      dispatch({ type: 'SET_ERROR', payload: 'Unable to load active vehicles. Check your connection and retry.' });
+      if (!coordinator.isCurrent(requestToken)) return;
+      setVehicleLoadError('Unable to load active vehicles.');
     } finally {
-      setLoadingVehicles(false);
+      if (coordinator.finish(requestToken)) {
+        setLoadingVehicles(false);
+      }
     }
   }, [connectivity.isOnline, user?.role]);
+
+  const loadNextVehicleOptions = useCallback(async () => {
+    if (!connectivity.isOnline || !hasMoreVehicles) return;
+    const coordinator = vehicleOptionCoordinatorRef.current;
+    const requestToken = coordinator.beginNextPage();
+    if (!requestToken) return;
+    const nextPage = vehiclePage + 1;
+    setIsLoadingMoreVehicles(true);
+    setVehiclePageError('');
+    try {
+      const page = await trackingScanApi.listVehicleOptions({
+        page: nextPage,
+        size: VEHICLE_OPTION_PAGE_SIZE,
+        signal: requestToken.signal
+      });
+      if (!coordinator.isCurrent(requestToken)) return;
+      const incoming = Array.isArray(page?.content) ? page.content : [];
+      setVehicles((current) => appendUniqueVehicleOptions(current, incoming));
+      setVehiclePage(Number.isInteger(page?.number) ? page.number : nextPage);
+      setHasMoreVehicles(hasNextVehicleOptionPage(page));
+    } catch {
+      if (!coordinator.isCurrent(requestToken)) return;
+      setVehiclePageError('Could not load more vehicles.');
+    } finally {
+      if (coordinator.finish(requestToken)) {
+        setIsLoadingMoreVehicles(false);
+      }
+    }
+  }, [connectivity.isOnline, hasMoreVehicles, vehiclePage]);
+
+  const handleVehicleSearchChange = useCallback((text) => {
+    setVehicleSearchInput(text);
+  }, []);
+
+  const handleRetryVehicleRecommendation = useCallback(() => {
+    setRecommendationRetryVersion((v) => v + 1);
+  }, []);
+
+  const handleSelectVehicle = useCallback((vehicleId) => {
+    dispatch({ type: 'SET_VEHICLE', payload: vehicleId });
+    if (vehicleId) {
+      const foundInRecs = vehicleRecommendations.find((v) => v.vehicleId === vehicleId);
+      if (foundInRecs) {
+        setVehicles((current) => appendUniqueVehicleOptions(current, [foundInRecs]));
+      }
+    }
+  }, [vehicleRecommendations]);
+
+  const normalizedVehicleSearch = normalizeVehicleSearch(vehicleSearchInput);
+  const isVehicleRecommendationActive = normalizedVehicleSearch.length >= VEHICLE_SEARCH_MIN_LENGTH;
+
+  useEffect(() => {
+    const coordinator = vehicleOptionCoordinatorRef.current;
+    if (!connectivity.isOnline || !isVehicleRecommendationActive) {
+      coordinator.cancelRecommendations();
+      setVehicleRecommendations([]);
+      setVehicleRecommendationError('');
+      setIsLoadingVehicleRecommendations(false);
+      return undefined;
+    }
+
+    const debounceTimer = setTimeout(async () => {
+      const requestToken = coordinator.beginRecommendation(normalizedVehicleSearch);
+      setVehicleRecommendations([]);
+      setVehicleRecommendationError('');
+      setIsLoadingVehicleRecommendations(true);
+      try {
+        const page = await trackingScanApi.listVehicleOptions({
+          page: 0,
+          size: VEHICLE_RECOMMENDATION_SIZE,
+          search: normalizedVehicleSearch,
+          signal: requestToken.signal
+        });
+        if (!coordinator.isCurrent(requestToken)) return;
+        const content = Array.isArray(page?.content) ? page.content : [];
+        setVehicleRecommendations(content.slice(0, VEHICLE_RECOMMENDATION_SIZE));
+      } catch {
+        if (!coordinator.isCurrent(requestToken)) return;
+        setVehicleRecommendationError('Unable to search vehicles.');
+      } finally {
+        if (coordinator.finish(requestToken)) {
+          setIsLoadingVehicleRecommendations(false);
+        }
+      }
+    }, VEHICLE_SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(debounceTimer);
+      coordinator.cancelRecommendations();
+    };
+  }, [
+    connectivity.isOnline,
+    isVehicleRecommendationActive,
+    normalizedVehicleSearch,
+    recommendationRetryVersion
+  ]);
+
+  useEffect(() => {
+    if (connectivity.isOnline) return;
+    vehicleOptionCoordinatorRef.current.cancelAll();
+    setLoadingVehicles(false);
+    setIsLoadingMoreVehicles(false);
+    setIsLoadingVehicleRecommendations(false);
+  }, [connectivity.isOnline]);
+
+  useEffect(() => () => {
+    vehicleOptionCoordinatorRef.current.cancelAll();
+  }, []);
 
   // When switching to BATCH with LOADED_ON_TRUCK, load vehicles
   useEffect(() => {
@@ -281,9 +432,34 @@ export default function ScanScreen() {
       && state.batchOperation === 'LOADED_ON_TRUCK'
       && isRoleTransitionAllowed(user?.role, state.batchOperation)
       && vehicles.length === 0) {
-      loadVehicles();
+      loadRecentVehicleOptions();
     }
-  }, [state.mode, state.batchOperation, vehicles.length, loadVehicles, user?.role]);
+  }, [state.mode, state.batchOperation, vehicles.length, loadRecentVehicleOptions, user?.role]);
+
+  // When in SINGLE review requiring vehicle, ensure vehicles are loaded
+  useEffect(() => {
+    if (state.mode === SCANNER_MODES.SINGLE
+      && state.phase === SCANNER_PHASES.SINGLE_REVIEW
+      && state.currentContext?.requiresVehicle
+      && isRoleTransitionAllowed(user?.role, state.currentContext?.nextStatusCode)
+      && vehicles.length === 0
+      && !hasLoadedVehicleOptions
+      && !loadingVehicles
+      && !vehicleLoadError) {
+      loadRecentVehicleOptions();
+    }
+  }, [
+    state.mode,
+    state.phase,
+    state.currentContext?.requiresVehicle,
+    state.currentContext?.nextStatusCode,
+    vehicles.length,
+    hasLoadedVehicleOptions,
+    loadingVehicles,
+    vehicleLoadError,
+    loadRecentVehicleOptions,
+    user?.role
+  ]);
 
   const handleToggleTorch = () => {
     setTorchEnabled((prev) => !prev);
@@ -327,7 +503,7 @@ export default function ScanScreen() {
         if (context.requiresVehicle
           && isRoleTransitionAllowed(user?.role, context.nextStatusCode)
           && vehicles.length === 0) {
-          loadVehicles();
+          loadRecentVehicleOptions();
         }
       } catch (err) {
         if (err.name === 'CanceledError' || err.name === 'AbortError') return;
@@ -751,9 +927,20 @@ export default function ScanScreen() {
               context={state.currentContext}
               vehicles={vehicles}
               selectedVehicleId={state.selectedVehicleId}
-              onSelectVehicle={(vId) => dispatch({ type: 'SET_VEHICLE', payload: vId })}
+              onSelectVehicle={handleSelectVehicle}
               loadingVehicles={loadingVehicles}
-              onRetryVehicles={loadVehicles}
+              onRetryVehicles={loadRecentVehicleOptions}
+              isLoadingMoreVehicles={isLoadingMoreVehicles}
+              hasMoreVehicles={hasMoreVehicles}
+              vehicleLoadError={vehicleLoadError}
+              vehiclePageError={vehiclePageError}
+              onLoadNextVehicles={loadNextVehicleOptions}
+              vehicleSearchValue={vehicleSearchInput}
+              onVehicleSearchChange={handleVehicleSearchChange}
+              vehicleRecommendations={vehicleRecommendations}
+              isLoadingVehicleRecommendations={isLoadingVehicleRecommendations}
+              vehicleRecommendationError={vehicleRecommendationError}
+              onRetryVehicleRecommendation={handleRetryVehicleRecommendation}
               onConfirm={handleSingleConfirm}
               onCancel={handleScanNext}
               isSubmitting={state.isSubmitting}
@@ -770,9 +957,20 @@ export default function ScanScreen() {
                 onSelectOperation={(op) => dispatch({ type: 'SET_BATCH_OPERATION', payload: op })}
                 vehicles={vehicles}
                 selectedVehicleId={state.batchVehicleId}
-                onSelectVehicle={(vId) => dispatch({ type: 'SET_VEHICLE', payload: vId })}
+                onSelectVehicle={handleSelectVehicle}
                 loadingVehicles={loadingVehicles}
-                onRetryVehicles={loadVehicles}
+                onRetryVehicles={loadRecentVehicleOptions}
+                isLoadingMoreVehicles={isLoadingMoreVehicles}
+                hasMoreVehicles={hasMoreVehicles}
+                vehicleLoadError={vehicleLoadError}
+                vehiclePageError={vehiclePageError}
+                onLoadNextVehicles={loadNextVehicleOptions}
+                vehicleSearchValue={vehicleSearchInput}
+                onVehicleSearchChange={handleVehicleSearchChange}
+                vehicleRecommendations={vehicleRecommendations}
+                isLoadingVehicleRecommendations={isLoadingVehicleRecommendations}
+                vehicleRecommendationError={vehicleRecommendationError}
+                onRetryVehicleRecommendation={handleRetryVehicleRecommendation}
                 queue={state.batchQueue}
                 onRemoveItem={(id) => dispatch({ type: 'REMOVE_FROM_BATCH', payload: id })}
                 onClearBatch={() => dispatch({ type: 'CLEAR_BATCH' })}

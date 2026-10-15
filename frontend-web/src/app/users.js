@@ -426,11 +426,14 @@ export default function UsersScreen() {
         </View>
 
         <View style={[styles.capabilityCard, { flex: 1 }]}>
-          <Text style={styles.capabilityTitle}>OFFICE STAFF</Text>
+          <Text style={styles.capabilityTitle}>RECEIVING STAFF</Text>
           {[
-            'Login, Change Password, Logout',
-            'Register clients, shipments & parcels (mobile app)',
-            'Generate QR + manage QR / label printing (Bluetooth thermal printer)',
+            'Moves cargo: Registered -> QR Generated',
+            'Client, shipment & heterogeneous parcel intake',
+            'Volumetric (cm³) & weight shipping calculations',
+            'Initial payment recording (Paid, Partial, Unpaid)',
+            'Bluetooth thermal label printing & reprint management',
+            'Past shipments directory & parcel unit lookup',
           ].map((item) => (
             <View key={item} style={styles.capabilityItem}>
               <Text style={styles.capabilityText}>{item}</Text>
@@ -438,18 +441,18 @@ export default function UsersScreen() {
           ))}
           <View style={styles.capabilityDivider} />
           <Text style={styles.capabilityNote}>
-            Mobile app only (authorized shipment registration & label printing). Blocked from billing, reports, and administration.
+            Mobile app only (intake, pricing & label printing). Blocked from driver transit scans, hauler waybills, SOA, reports, and administration.
           </Text>
         </View>
 
         <View style={[styles.capabilityCard, { flex: 1 }]}>
-          <Text style={styles.capabilityTitle}>FIELD STAFF (SCAN-ONLY)</Text>
+          <Text style={styles.capabilityTitle}>COURIER STAFF</Text>
           {[
-            'Login, Change Password, Logout',
-            'Scan QR to view parcel / shipment details',
-            'See current status & valid next action',
-            'Select registered truck when loading',
-            'Confirm status, view tracking history',
+            'Moves cargo: QR Generated -> Loaded on Truck -> Arrived at TNL',
+            'Dedicated Scan QR transit camera & Rapid Batch',
+            'Active vehicle selection with debounced fleet search',
+            'Hub arrival check-in for incoming pickup cargo',
+            'Personal shift scan history & real-time metrics',
           ].map((item) => (
             <View key={item} style={styles.capabilityItem}>
               <Text style={styles.capabilityText}>{item}</Text>
@@ -457,7 +460,26 @@ export default function UsersScreen() {
           ))}
           <View style={styles.capabilityDivider} />
           <Text style={styles.capabilityRestriction}>
-            No registration, QR generation, printing, payments, SOA, deductions, collections, user or vehicle administration. The role model blocks these actions (not just their buttons).
+            Mobile app only (truck pickup & hub check-in). Blocked from waybill manifests, shipment registration, billing, and administration.
+          </Text>
+        </View>
+
+        <View style={[styles.capabilityCard, { flex: 1 }]}>
+          <Text style={styles.capabilityTitle}>DISPATCH STAFF</Text>
+          {[
+            'Moves cargo: Arrived at TNL -> Loaded to Hauler -> Sent to Hauler -> Completed',
+            'Dedicated Waybills management console & hub queueing',
+            'Split waybill generation with shipment discovery rails',
+            '2-copy A4 manifest printing with carrier signature blocks',
+            'Driver return scan verification to mark cargo Completed',
+          ].map((item) => (
+            <View key={item} style={styles.capabilityItem}>
+              <Text style={styles.capabilityText}>{item}</Text>
+            </View>
+          ))}
+          <View style={styles.capabilityDivider} />
+          <Text style={styles.capabilityRestriction}>
+            Mobile app only (hauler dispatch & manifest handover). Blocked from parcel intake registration, billing, and administration.
           </Text>
         </View>
       </View>
@@ -773,7 +795,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     padding: spacing.xl,
     gap: spacing.sm,
-    minWidth: 280,
+    minWidth: 240,
   },
   capabilityTitle: {
     fontFamily: fonts.sans,
