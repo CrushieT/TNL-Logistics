@@ -1,5 +1,11 @@
 # Project Structure
 
+### Statements dropdown SOA search
+
+- `frontend-web/src/features/collections/components/SearchableClientDropdown.js`: optional SOA number display and substring search; default client-only mode remains unchanged.
+- `frontend-web/src/app/statements.js`: generated statements for the selected cycle retain SOA number, client code, and contact number in dropdown options.
+- `frontend-web/tests/searchableClientDropdown.test.mjs`: production component and screen regressions for SOA display/search, client identity searches, selection, default mode, and cycle switching.
+
 ### Courier vehicle selection pagination
 
 - `backend/src/main/java/com/tnl/logistics/repository/VehicleRepository.java`: added `findByActiveTrue` page query and case-insensitive `findActiveVehicleOptions` filtering active vehicles matching plate, vehicle ID, or description.

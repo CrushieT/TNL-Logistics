@@ -1,5 +1,12 @@
 # TNL Logistics — Master Build Plan
 
+## Statements Dropdown SOA Search [COMPLETED]
+
+- Generated statements in the selected collection cycle show their SOA number in bold beneath the client name and support full/partial, trimmed, case-insensitive number searches.
+- Client name, code, contact, and email searches remain supported; Weekly Collections keeps the default dropdown behavior. No backend or database changes.
+- Automated verification [COMPLETED]: 11 focused component/screen tests and all 117 web tests passed (`node --test tests/*.test.mjs src/features/waybills/services/waybillPrint.test.mjs`, from `frontend-web`); production web export passed (`node node_modules/expo/bin/cli export --platform web --output-dir ../.review/soa-dropdown-web-export`).
+- Browser acceptance [UPCOMING]: check dropdown readability, SOA searches, selection, and cycle switching against generated statements.
+
 **System Architecture:** Unified Modular Monolith (Spring Boot 3.4 + MySQL 8.0 + React Native / Expo Web & Mobile). Single shared database where every transaction encoded on PC or mobile is immediately available across all platforms in real time.
 
 **4 Independent Status Concepts (Rule 19):**

@@ -114,7 +114,9 @@ export default function StatementsScreen() {
             clientId: item.clientId || item.clientCode,
             id: item.clientId || item.clientCode,
             name: item.clientName || item.name,
-            soaNo: item.statementId,
+            soaNumber: item.statementId,
+            clientCode: item.clientCode,
+            contactNumber: item.contactNumber,
             outstanding: item.netAmountDue ?? item.balance ?? 0,
           }));
 
@@ -353,12 +355,13 @@ export default function StatementsScreen() {
             <Text style={styles.selectorLabel}>CLIENT</Text>
             <SearchableClientDropdown
               clients={clients}
+              showSoaNumber
               selectedClientId={selectedClientId}
               onSelectClient={(client) => {
                 const id = client.clientId || client.id;
                 setSelectedClientId(id);
               }}
-              placeholder={clients.length === 0 ? "No generated SOAs for this cycle" : "Select client with generated SOA..."}
+              placeholder={clients.length === 0 ? "No generated SOAs for this cycle" : "Search by SOA number, client name, code, or contact..."}
             />
           </View>
 
