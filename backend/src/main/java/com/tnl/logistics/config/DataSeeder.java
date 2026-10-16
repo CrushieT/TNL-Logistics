@@ -92,6 +92,7 @@ public class DataSeeder implements CommandLineRunner {
         if (shouldSeedWorkflow && environment.acceptsProfiles(Profiles.of("prod"))) {
             throw new IllegalStateException("app.seed.workflow-fixtures must not be enabled in production");
         }
+        if (environment.acceptsProfiles(Profiles.of("workflow"))) return;
         if (!shouldSeedWorkflow) {
             seedTestProfileFoundation();
             return;

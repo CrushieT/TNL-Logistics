@@ -16,6 +16,7 @@ export default function SearchableClientDropdown({
   onSelectClient,
   placeholder = 'Search by client name, client code, or contact...',
   maxWidth = 420,
+  showSoaNumber = false,
 }) {
   const [query, setQuery] = useState(value);
   const [isOpen, setIsOpen] = useState(false);
@@ -63,10 +64,11 @@ export default function SearchableClientDropdown({
       const matchCode = (c.code || c.clientCode || '').toLowerCase().includes(cleanQuery);
       const matchContact = (c.contactNumber || c.contact || '').toLowerCase().includes(cleanQuery);
       const matchEmail = (c.email || '').toLowerCase().includes(cleanQuery);
+      const matchSoaNumber = showSoaNumber && (c.soaNumber || '').toLowerCase().includes(cleanQuery);
 
-      return matchName || matchCode || matchContact || matchEmail;
+      return matchName || matchCode || matchContact || matchEmail || matchSoaNumber;
     });
-  }, [clients, query, isOpen]);
+  }, [clients, query, isOpen, showSoaNumber]);
 
   const handleFocus = () => {
     if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
@@ -156,7 +158,9 @@ export default function SearchableClientDropdown({
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>No matching clients found</Text>
               <Text style={styles.emptySubText}>
-                Try searching with a different name, code, or contact number.
+                {showSoaNumber
+                  ? 'Try searching with a different SOA number, name, code, or contact number.'
+                  : 'Try searching with a different name, code, or contact number.'}
               </Text>
             </View>
           ) : (
@@ -205,6 +209,11 @@ export default function SearchableClientDropdown({
 
                     {/* Bottom Row: Contact & Unbilled count */}
                     <View style={styles.itemBottomRow}>
+                      {showSoaNumber && client.soaNumber ? (
+                        <Text style={styles.itemSubText}>
+                          SOA: <Text style={styles.soaNumberText}>{client.soaNumber}</Text>
+                        </Text>
+                      ) : null}
                       <Text style={styles.itemSubText} numberOfLines={1}>
                         {client.contactNumber ? `Contact: ${client.contactNumber}` : client.address || '-'}
                         {unbilledCount !== null ? (
@@ -382,6 +391,9 @@ const styles = StyleSheet.create({
   itemSubStrong: {
     fontWeight: '600',
     color: colors.ink,
+  },
+  soaNumberText: {
+    fontWeight: '700',
   },
   itemOutstandingText: {
     fontFamily: fonts.mono,

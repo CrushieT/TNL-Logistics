@@ -14,6 +14,7 @@ const STATUS_OPTIONS = [
   { value: 'Loaded on Truck', label: 'Loaded on Truck' },
   { value: 'Arrived at TNL', label: 'Arrived at TNL' },
   { value: 'Loaded to Hauler', label: 'Loaded to Hauler' },
+  { value: 'Completed', label: 'Completed' },
 ];
 
 const PAYMENT_OPTIONS = [

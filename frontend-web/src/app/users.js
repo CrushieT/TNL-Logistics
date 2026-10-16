@@ -102,7 +102,7 @@ export default function UsersScreen() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('Active');
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
 
@@ -246,7 +246,7 @@ export default function UsersScreen() {
                     onPress={() => setStatusFilter(s)}
                   >
                     <Text style={[styles.filterPillText, statusFilter === s && styles.filterPillTextActive]}>
-                      {s}
+                      {s === 'ALL' ? 'All' : s}
                     </Text>
                   </Pressable>
                 ))}
