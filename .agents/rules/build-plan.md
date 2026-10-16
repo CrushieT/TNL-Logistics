@@ -106,7 +106,7 @@ Post-client-demo implementation plan closeout [COMPLETED] on 2026-10-12 at the u
 - Implemented `PrintLabelsModal` with printable vector QR cards for all units.
 
 **1.3 — Web: Shipments Table & Package Tracking View (Desktop Screens 06–12)** — **[COMPLETED]**
-- Paginated master shipments table (`GET /api/v1/shipments`) with search and status filters.
+- Paginated master shipments table (`GET /api/v1/shipments`) with search and status filters, including Completed in the web status dropdown.
 - Live Shipment Details view (`GET /api/v1/shipments/{shipmentId}`).
 - Single Parcel Inspection screen (`GET /api/v1/parcel-units/{trackingId}`) with dimensions, volume ($m^3$), completed-only orange tracking history, single grey next pending status, and label reprint tracking.
 
@@ -535,6 +535,7 @@ Post-client-demo implementation plan closeout [COMPLETED] on 2026-10-12 at the u
 - Database safety guards (`LoadTestEnvironmentGuard.java`) enforcing database name validation (`tnl_loadtest`) and strict count checks.
 - k6 performance testing suite in `load-tests/` (`smoke.js`, `baseline.js`, `realistic-simulation.js`) achieving 100% success rate across 1,451 live hybrid operations under resource limits.
 - Development Data Seeder & Workflow Fixtures: synchronized `application-dev.properties` to opt into `app.seed.workflow-fixtures=true` with rich scenarios 7–12 (unprinted labels, hauler queue, generated waybill, returned waybill, partial split completion).
+- Current workflow-profile fixtures [COMPLETED]: dedicated `WorkflowDataSeeder` using current registration, tracking, printing, payment, waybill, parcel-exception, and statement services. Covers 100 shipments, 36 waybills including an 18-parcel manifest, pagination, three billing cycles, loss/recovery/reconciliation, and account onboarding. Uses fictional staff names (Elena Navarro, Carlos Mendoza), businesses (Bicol Home Essentials, Sierra Vista Wholesale), haulers (Camino Real Transport, Sierra Norte Freight Services), vehicle plates, and cargo descriptions; scenario codes remain searchable. Startup preserves manual changes after the initial transactional seed. New workflow integration tests passed 9/9 on a fresh isolated test database; full backend verification plus targeted rerun reports 441 passed and 5 existing skipped tests. Manual UI/device checks remain pending.
 - Verification: unit/integration coverage across `LoadTestEnvironmentGuardTest`, `LoadTestDataSeederTest`, `LoadTestSchemaValidationIntegrationTest`, and `DataSeederWorkflowIntegrationTest` passed.
 
 **7.7 — Four-Role Authorization Model & Staff-Type Retirement** — **[COMPLETED]**

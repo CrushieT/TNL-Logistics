@@ -242,6 +242,8 @@ tnl-logistics/
 
 - Flyway migration inventory spans V1 through V35; V34 adds split-waybill membership and legacy backfill, and V35 records returned QR scans.
 - `backend/src/main/resources/application-workflow.properties` selects the isolated `tnl_workflow` database and enables the production-shaped workflow fixtures.
+- `backend/src/main/java/com/tnl/logistics/config/WorkflowDataSeeder.java` seeds the current workflow profile through application services; `DataSeeder.java` retains the existing development/test foundation and fixtures.
+- `backend/src/test/java/com/tnl/logistics/config/WorkflowDataSeederIntegrationTest.java` verifies fixture contracts, lifecycle histories, financial rollups, restart preservation, profile safety, and role-gated API access in an isolated database.
 - `docker-compose.workflow.yml` overrides the default Compose stack for the same isolated workflow profile.
 - `backend/src/main/resources/application-loadtest.properties` selects the isolated `tnl_loadtest` database with configurable HikariCP concurrency tuning (default pool size 10), strict Hibernate `ddl-auto=validate`, and opt-in deterministic seeder (`LoadTestDataSeeder.java`).
 - `docker-compose.loadtest.yml` spins up `mysql-loadtest` (port 3307, 512M RAM / 0.5 vCPU) and `backend-loadtest` (port 8082, 512M RAM / 0.5 vCPU with Serial GC) using `.env.loadtest`.
