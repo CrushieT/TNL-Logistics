@@ -177,7 +177,7 @@ export function buildLabelHtml(labelOrLabels, branding = null) {
   <title>${primaryTitle}</title>
   <style>
     @page {
-      size: 150mm 100mm landscape;
+      size: 150mm 100mm;
       margin: 0;
     }
     * {

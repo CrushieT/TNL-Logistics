@@ -388,6 +388,7 @@ Post-client-demo implementation plan closeout [COMPLETED] on 2026-10-12 at the u
 - Implemented crisp solid outer border (4 edges) and solid header divider lines using TSPL `reverse` rectangles, plus dashed divider lines separating body from footer and framing the total amount.
 - Positioned both dashed dividers with TSPL rectangles so their final dash touches the inside edge of the right border without overflowing; covered divider endpoints, dash gaps, and omitted totals in printer regression tests.
 - Moved shipment numbers to the right side of the client row above the total across Bluetooth, HTML printing, and web/mobile previews. Contents now span the full inner width and wrap before the right border; client names wrap within the left column without shifting the shipment number.
+- Corrected HTML label page-size syntax to `150mm 100mm` and Expo system-print dimensions to `425` by `283` at 72 PPI for the same stock; physical system-print layout verification remains pending.
 - Wrapped complete Bluetooth footer contents and client names and fit footer typography to the available space. Reject oversized footers instead of truncating text.
 - Anchored Bluetooth totals to a fixed right edge using TSPL font widths so larger amounts expand leftward inside the border.
 - Wrapped Bluetooth delivery addresses at word boundaries using the available width before the right border, preserving the complete address and keeping `Manila` together.

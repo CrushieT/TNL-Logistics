@@ -133,8 +133,8 @@ export function ThermalLabelPreviewModal({
         await Print.printAsync({
           html,
           orientation: 'landscape',
-          width: 567, // 150mm at 96 DPI
-          height: 378, // 100mm at 96 DPI
+          width: 425, // 150mm at 72 PPI
+          height: 283, // 100mm at 72 PPI
         });
       }
       if (activeSystemPrintRef.current !== printAttempt) return;

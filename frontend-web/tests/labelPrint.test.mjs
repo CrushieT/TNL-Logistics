@@ -122,7 +122,7 @@ test('buildLabelHtml generates isolated printable HTML matching prototype layout
 
   assert.ok(html.includes('<!DOCTYPE html>'), 'Must start with DOCTYPE');
   assert.ok(html.includes('@page {'), 'Must declare @page CSS rule');
-  assert.ok(html.includes('size: 150mm 100mm landscape;'), 'Must specify landscape thermal paper size');
+  assert.ok(html.includes('size: 150mm 100mm;'), 'Must specify 150mm by 100mm landscape thermal paper size');
   assert.ok(html.includes('TNL LOGISTICS'), 'Must include brand name');
   assert.ok(html.includes('PKG 1 / 3'), 'Must include package pill');
   assert.ok(html.includes('SCAN TO TRACK'), 'Must include scan prompt');
