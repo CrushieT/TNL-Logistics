@@ -259,6 +259,9 @@ tnl-logistics/
 - `backend/src/test/java/com/tnl/logistics/config/WorkflowDataSeederIntegrationTest.java` verifies fixture contracts, lifecycle histories, financial rollups, restart preservation, profile safety, and role-gated API access in an isolated database.
 - `docker-compose.workflow.yml` overrides the default Compose stack for the same isolated workflow profile.
 - `backend/src/main/resources/application-loadtest.properties` selects the isolated `tnl_loadtest` database with configurable HikariCP concurrency tuning (default pool size 10), strict Hibernate `ddl-auto=validate`, and opt-in deterministic seeder (`LoadTestDataSeeder.java`).
+- `backend/src/main/java/com/tnl/logistics/config/LoadTestFixtureWriter.java` expands 72 service-generated load-test templates with bounded multi-row inserts, remapped audit references, recalculated client pricing, and reserved application identifiers.
+- `backend/src/test/java/com/tnl/logistics/config/LoadTestDataSeederIntegrationTest.java` verifies both service-generated and bulk-expanded fixtures across 24 operational scenarios, three billing cycles, pricing snapshots, audit records, print retry fingerprints, and restart preservation in an isolated MySQL test schema.
+- `docker-compose.sim-seed.yml` temporarily raises simulation CPU, memory, JVM heap, and MySQL buffer-pool capacity during initial seeding; omit it and recreate the containers before benchmarking.
 - `docker-compose.loadtest.yml` spins up `mysql-loadtest` (port 3307, 512M RAM / 0.5 vCPU) and `backend-loadtest` (port 8082, 512M RAM / 0.5 vCPU with Serial GC) using `.env.loadtest`.
 - `load-tests/` provides k6 smoke, 25-user baseline, and 20-courier + 1-admin realistic hybrid simulation scripts targeting `http://localhost:8082` with JWT credential sanitization.
 

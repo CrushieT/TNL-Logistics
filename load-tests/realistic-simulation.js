@@ -41,6 +41,7 @@ export function setup() {
   }), { headers: { 'Content-Type': 'application/json' } });
 
   check(adminLogin, { 'admin login succeeded': (r) => r.status === 200 && r.json('token') });
+  if (adminLogin.status !== 200 || !adminLogin.json('token')) throw new Error('Admin login failed');
 
   // 2. Authenticate Field Staff via Mobile Login (Phase 6.9 role separation)
   const fieldLogin = http.post(`${baseUrl}/api/v1/auth/mobile-login`, JSON.stringify({
@@ -54,10 +55,21 @@ export function setup() {
   });
 
   check(fieldLogin, { 'field login succeeded': (r) => r.status === 200 && r.json('token') });
+  if (fieldLogin.status !== 200 || !fieldLogin.json('token')) throw new Error('Courier login failed');
+
+  const logs = http.get(`${baseUrl}/api/v1/tracking-events?page=0&size=100`, {
+    headers: { Authorization: `Bearer ${adminLogin.json('token')}` },
+  });
+  if (logs.status !== 200) throw new Error('Tracking fixture lookup failed');
+  const trackingIds = [...new Set(logs.json('content').map((entry) => entry.trackingId))];
+  if (!trackingIds.length) throw new Error('Seeded tracking records are required');
 
   return {
     adminToken: adminLogin.json('token'),
     fieldToken: fieldLogin.json('token'),
+    deviceId: fieldLogin.json('deviceId'),
+    deviceToken: fieldLogin.json('deviceToken'),
+    trackingIds,
   };
 }
 
@@ -75,12 +87,17 @@ export function adminWorkflow(data) {
 }
 
 export function courierWorkflow(data) {
-  const headers = { Authorization: `Bearer ${data.fieldToken}` };
+  const headers = {
+    Authorization: `Bearer ${data.fieldToken}`,
+    'X-Device-Id': data.deviceId,
+    'X-Device-Token': data.deviceToken,
+  };
+  const trackingId = data.trackingIds[Math.floor(Math.random() * data.trackingIds.length)];
 
   const responses = http.batch([
     ['GET', `${baseUrl}/api/v1/tracking-events/mine/metrics`, null, { headers }],
     ['GET', `${baseUrl}/api/v1/tracking-events/mine?page=0&size=20`, null, { headers }],
-    ['GET', `${baseUrl}/api/v1/tracking-events/scan-context/TRK-LT-00000001-01`, null, { headers }],
+    ['GET', `${baseUrl}/api/v1/tracking-events/scan-context/${trackingId}`, null, { headers }],
   ]);
 
   responses.forEach((res) => check(res, { 'courier request succeeded': (r) => r.status === 200 }));
