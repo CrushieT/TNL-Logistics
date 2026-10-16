@@ -25,6 +25,10 @@ import com.tnl.logistics.service.LoginRateLimiterService;
 import com.tnl.logistics.service.AuthSecurityService;
 import com.tnl.logistics.service.AuthSecurityService.AuthSecurityException;
 import com.tnl.logistics.service.SseService;
+import com.tnl.logistics.service.SystemSettingService;
+import com.tnl.logistics.dto.CompanyBrandingDto;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -55,6 +59,7 @@ public class AuthController {
     private final LoginRateLimiterService rateLimiterService;
     private final SystemSettingRepository systemSettingRepository;
     private final SseService sseService;
+    private final SystemSettingService systemSettingService;
     private final MobileDeviceBindingRepository mobileDeviceBindingRepository;
     private final AuthSecurityService authSecurityService;
     private final MobileSessionService mobileSessionService;
@@ -65,6 +70,7 @@ public class AuthController {
             LoginRateLimiterService rateLimiterService,
             SystemSettingRepository systemSettingRepository,
             SseService sseService,
+            SystemSettingService systemSettingService,
             MobileDeviceBindingRepository mobileDeviceBindingRepository,
             AuthSecurityService authSecurityService,
             MobileSessionService mobileSessionService) {
@@ -73,6 +79,7 @@ public class AuthController {
         this.rateLimiterService = rateLimiterService;
         this.systemSettingRepository = systemSettingRepository;
         this.sseService = sseService;
+        this.systemSettingService = systemSettingService;
         this.mobileDeviceBindingRepository = mobileDeviceBindingRepository;
         this.authSecurityService = authSecurityService;
         this.mobileSessionService = mobileSessionService;
@@ -674,14 +681,28 @@ public class AuthController {
         if (request.getBillingEmail() != null && !request.getBillingEmail().isBlank()) {
             setting.setBillingEmail(request.getBillingEmail().trim());
         }
+        setting.setSoaBankName(request.getSoaBankName());
+        setting.setSoaAccountName(request.getSoaAccountName());
+        setting.setSoaAccountNumber(request.getSoaAccountNumber());
+        setting.setRatePerKilo(request.getRatePerKilo());
         setting.setUpdatedBy("USR-ADMIN");
         systemSettingRepository.save(setting);
 
-        try {
-            sseService.broadcastEvent("SETTINGS_UPDATED", setting);
-        } catch (Exception e) {
-            // Non-blocking SSE broadcast exception shielding
-        }
+        CompanyBrandingDto branding = new CompanyBrandingDto(
+                setting.getCompanyName(), setting.getCompanyAddress(), setting.getCompanyContact(),
+                setting.getBillingEmail(), setting.getCollectionDay(), setting.getVolumetricDivisor(),
+                setting.getRatePerKilo());
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                systemSettingService.refreshCachedSettings();
+                try {
+                    sseService.broadcastEvent("SETTINGS_UPDATED", branding);
+                } catch (Exception exception) {
+                    // Delivery failure must not fail committed setup.
+                }
+            }
+        });
 
         String token = JwtTokenProvider.generateToken(adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion());
 

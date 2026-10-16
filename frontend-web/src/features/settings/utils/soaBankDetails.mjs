@@ -1,4 +1,4 @@
-const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001F\u007F-\u009F]/;
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/;
 const ACCOUNT_NUMBER_PATTERN = /^[0-9]{6,20}$/;
 
 export function normalizeSoaBankDetails(values = {}) {

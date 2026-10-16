@@ -71,6 +71,13 @@
 - `frontend-mobile/tests/accountSwitch.test.mjs`: stale-response and storage-failure regressions.
 - `.review/mobile-account-switch-evidence.md`: threat model and verification evidence.
 
+### First-boot financial setup
+
+- `frontend-web/src/app/setup.js`: two-step administrator and company/SOA/pricing setup.
+- `frontend-web/src/features/settings/utils/soaBankDetails.mjs`: shared single-line bank validation and string account normalization.
+- `frontend-web/tests/firstBootSetup.test.mjs`: rendered setup handlers, validation, navigation retention, registration mapping, and submission recovery regressions.
+- `backend/src/test/java/com/tnl/logistics/controller/FirstBootIntegrationTest.java`: committed first-boot lifecycle and rollback checks in the isolated `tnl_first_boot_test` schema, with sample seeding disabled.
+
 **TNL Logistics uses a monorepo layout with three independent codebases sharing a common backend API.**
 
 ### Complete Directory Structure

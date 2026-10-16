@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
 import { useRouter, useRootNavigationState } from 'expo-router';
 import { colors, fonts, spacing, radius } from '../theme';
 import { registerFirstBootAdmin, checkFirstBootStatus, isAuthenticated } from '../services/api/client';
+import { getSoaBankDetailsErrors, normalizeSoaBankDetails } from '../features/settings/utils/soaBankDetails.mjs';
 
 function EyeIcon({ visible, size = 18, color = colors.inkSoft }) {
   if (visible) {
@@ -57,6 +58,11 @@ export default function SetupScreen() {
   const [companyAddress, setCompanyAddress] = useState('Labo, Camarines Norte');
   const [companyContact, setCompanyContact] = useState('0917-555-0000');
   const [billingEmail, setBillingEmail] = useState('billing@tnllogistics.ph');
+  const [soaBankName, setSoaBankName] = useState('');
+  const [soaAccountName, setSoaAccountName] = useState('');
+  const [soaAccountNumber, setSoaAccountNumber] = useState('');
+  const [ratePerKilo, setRatePerKilo] = useState('');
+  const isSaving = useRef(false);
 
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -76,6 +82,7 @@ export default function SetupScreen() {
   }, [navigationState?.key, router]);
 
   const handleNextStep = () => {
+    if (isSaving.current) return;
     const trimmedName = fullName.trim();
     const trimmedUsername = username.trim();
 
@@ -99,11 +106,13 @@ export default function SetupScreen() {
   };
 
   const handlePreviousStep = () => {
+    if (isSaving.current) return;
     setErrorMessage('');
     setActiveStep(1);
   };
 
   const handleSubmit = async () => {
+    if (isSaving.current) return;
     const trimmedCompanyName = companyName.trim();
     const trimmedAddress = companyAddress.trim();
     const trimmedContact = companyContact.trim();
@@ -120,7 +129,28 @@ export default function SetupScreen() {
       return;
     }
 
+    const bankDetails = { soaBankName, soaAccountName, soaAccountNumber };
+    const bankErrors = getSoaBankDetailsErrors(bankDetails);
+    if (Object.keys(bankErrors).length) {
+      setErrorMessage(Object.values(bankErrors)[0]);
+      return;
+    }
+    const trimmedRate = ratePerKilo.trim();
+    if (!trimmedRate) {
+      setErrorMessage('Rate per kilo is required.');
+      return;
+    }
+    if (!/^\d{1,10}(\.\d{1,2})?$/.test(trimmedRate)) {
+      setErrorMessage('Rate per kilo must have up to 10 integer digits and 2 decimal places.');
+      return;
+    }
+    if (Number(trimmedRate) < 0.01) {
+      setErrorMessage('Rate per kilo must be at least 0.01 PHP.');
+      return;
+    }
+
     setErrorMessage('');
+    isSaving.current = true;
     setIsSubmitting(true);
 
     try {
@@ -133,6 +163,8 @@ export default function SetupScreen() {
         companyAddress: trimmedAddress,
         companyContact: trimmedContact,
         billingEmail: trimmedEmail,
+        ...normalizeSoaBankDetails(bankDetails),
+        ratePerKilo: Number(trimmedRate),
       });
       router.replace('/');
     } catch (error) {
@@ -142,6 +174,7 @@ export default function SetupScreen() {
         'Failed to initialize system administrator. Please try again.';
       setErrorMessage(serverMessage);
     } finally {
+      isSaving.current = false;
       setIsSubmitting(false);
     }
   };
@@ -184,6 +217,7 @@ export default function SetupScreen() {
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={() => activeStep === 2 && handlePreviousStep()}
+              disabled={isSubmitting}
               style={[
                 styles.stepTab,
                 activeStep === 1 && styles.stepTabActive,
@@ -202,19 +236,19 @@ export default function SetupScreen() {
               ]}
             >
               <Text style={[styles.stepTabNumber, activeStep === 2 && styles.stepTabNumberActive]}>02</Text>
-              <Text style={[styles.stepTabLabel, activeStep === 2 && styles.stepTabLabelActive]}>COMPANY BRANDING</Text>
+              <Text style={[styles.stepTabLabel, activeStep === 2 && styles.stepTabLabelActive]}>COMPANY SETUP</Text>
             </View>
           </View>
 
           {/* Context Notice Callout */}
           <View style={styles.noticeBox}>
             <Text style={styles.noticeTitle}>
-              {activeStep === 1 ? 'PRIMARY ADMINISTRATOR PROVISIONING' : 'INITIAL COMPANY & SOA BRANDING'}
+              {activeStep === 1 ? 'PRIMARY ADMINISTRATOR PROVISIONING' : 'INITIAL COMPANY, SOA & PRICING SETTINGS'}
             </Text>
             <Text style={styles.noticeMessage}>
               {activeStep === 1
                 ? 'No administrator account exists. Configure the primary system owner credentials below.'
-                : 'Configure legal company details printed on Statements of Account (SOA) and Waybill manifests.'}
+                : 'Configure company details, SOA bank details, and the default shipment rate per kilo.'}
             </Text>
           </View>
 
@@ -320,9 +354,10 @@ export default function SetupScreen() {
                 activeOpacity={0.85}
                 style={styles.primaryButton}
                 onPress={handleNextStep}
+                disabled={isSubmitting}
               >
                 <Text style={styles.primaryButtonText}>
-                  CONTINUE TO COMPANY BRANDING
+                  CONTINUE TO COMPANY SETUP
                 </Text>
               </TouchableOpacity>
             </View>
@@ -331,6 +366,7 @@ export default function SetupScreen() {
           {/* STEP 2: Company & SOA Branding */}
           {activeStep === 2 && (
             <View style={[styles.form, isCompactHeight && styles.formCompact]}>
+              <Text style={styles.label}>Company Details</Text>
               <View style={styles.fieldGroup}>
                 <Text style={styles.label}>BUSINESS NAME *</Text>
                 <TextInput
@@ -398,6 +434,60 @@ export default function SetupScreen() {
                   placeholderTextColor={colors.inkFaint}
                   autoCapitalize="none"
                   keyboardType="email-address"
+                  autoCorrect={false}
+                  editable={!isSubmitting}
+                  returnKeyType="next"
+                />
+              </View>
+
+              <Text style={styles.label}>SOA Bank Details</Text>
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>SOA BANK NAME *</Text>
+                <TextInput
+                  style={styles.input}
+                  accessibilityLabel="SOA BANK NAME *"
+                  value={soaBankName}
+                  onChangeText={setSoaBankName}
+                  autoCorrect={false}
+                  editable={!isSubmitting}
+                  returnKeyType="next"
+                />
+              </View>
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>SOA ACCOUNT NAME *</Text>
+                <TextInput
+                  style={styles.input}
+                  accessibilityLabel="SOA ACCOUNT NAME *"
+                  value={soaAccountName}
+                  onChangeText={setSoaAccountName}
+                  autoCorrect={false}
+                  editable={!isSubmitting}
+                  returnKeyType="next"
+                />
+              </View>
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>SOA ACCOUNT NUMBER *</Text>
+                <TextInput
+                  style={styles.input}
+                  accessibilityLabel="SOA ACCOUNT NUMBER *"
+                  value={soaAccountNumber}
+                  onChangeText={setSoaAccountNumber}
+                  keyboardType="number-pad"
+                  autoCorrect={false}
+                  editable={!isSubmitting}
+                  returnKeyType="next"
+                />
+              </View>
+
+              <Text style={styles.label}>Pricing</Text>
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>RATE PER KILO (PHP) *</Text>
+                <TextInput
+                  style={styles.input}
+                  accessibilityLabel="RATE PER KILO (PHP) *"
+                  value={ratePerKilo}
+                  onChangeText={setRatePerKilo}
+                  keyboardType="decimal-pad"
                   autoCorrect={false}
                   editable={!isSubmitting}
                   returnKeyType="go"
