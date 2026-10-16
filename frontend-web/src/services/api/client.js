@@ -271,6 +271,10 @@ export async function registerFirstBootAdmin({
   companyAddress,
   companyContact,
   billingEmail,
+  soaBankName,
+  soaAccountName,
+  soaAccountNumber,
+  ratePerKilo,
 }) {
   const response = await axios.post(`${BASE_URL}/auth/first-boot-admin`, {
     fullName,
@@ -281,6 +285,10 @@ export async function registerFirstBootAdmin({
     companyAddress,
     companyContact,
     billingEmail,
+    soaBankName,
+    soaAccountName,
+    soaAccountNumber,
+    ratePerKilo,
   });
 
   const { token, userId, role, mustChangePassword } = response.data;
