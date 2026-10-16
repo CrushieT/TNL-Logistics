@@ -3,14 +3,10 @@ package com.tnl.logistics.service.impl;
 import com.tnl.logistics.dto.WeeklyClientCollectionItem;
 import com.tnl.logistics.dto.WeeklyCollectionsResponse;
 import com.tnl.logistics.model.Client;
-import com.tnl.logistics.model.Payment;
-import com.tnl.logistics.model.Shipment;
 import com.tnl.logistics.model.Soa;
-import com.tnl.logistics.repository.ClientRepository;
-import com.tnl.logistics.repository.PaymentRepository;
 import com.tnl.logistics.repository.ShipmentRepository;
+import com.tnl.logistics.repository.ClientCollectionTotals;
 import com.tnl.logistics.repository.SoaRepository;
-import com.tnl.logistics.repository.WeeklyCollectionRepository;
 import com.tnl.logistics.service.CollectionsService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,20 +24,14 @@ import java.util.stream.Collectors;
 @Service
 public class CollectionsServiceImpl implements CollectionsService {
 
-    private final ClientRepository clientRepository;
     private final ShipmentRepository shipmentRepository;
-    private final PaymentRepository paymentRepository;
     private final SoaRepository soaRepository;
     private final com.tnl.logistics.service.SystemSettingService systemSettingService;
 
-    public CollectionsServiceImpl(ClientRepository clientRepository,
-                                  ShipmentRepository shipmentRepository,
-                                  PaymentRepository paymentRepository,
+    public CollectionsServiceImpl(ShipmentRepository shipmentRepository,
                                   SoaRepository soaRepository,
                                   com.tnl.logistics.service.SystemSettingService systemSettingService) {
-        this.clientRepository = clientRepository;
         this.shipmentRepository = shipmentRepository;
-        this.paymentRepository = paymentRepository;
         this.soaRepository = soaRepository;
         this.systemSettingService = systemSettingService;
     }
@@ -55,60 +45,21 @@ public class CollectionsServiceImpl implements CollectionsService {
         LocalDateTime cycleStart = cycleStartLocalDate.atStartOfDay();
         LocalDateTime cycleEnd = targetThursday.atTime(23, 59, 59, 999999999);
 
-        List<Shipment> rawShipments = shipmentRepository.findByDateRegisteredBetweenOrderByDateRegisteredDesc(cycleStart, cycleEnd);
-
-        // Pre-fetch all cycle SOAs for this target Thursday
+        List<ClientCollectionTotals> clientTotals = shipmentRepository.aggregateCollectionsByClient(
+                cycleStart, cycleEnd, targetThursday);
         List<Soa> cycleSoas = soaRepository.findByStatementDate(targetThursday);
         Map<String, Soa> soaByClientId = cycleSoas.stream()
-                .filter(s -> s.getClient() != null)
-                .collect(Collectors.toMap(s -> s.getClient().getClientId(), s -> s, (s1, s2) -> s1));
-
-        Set<String> cycleSoaNos = cycleSoas.stream()
-                .map(Soa::getSoaNo)
-                .collect(Collectors.toSet());
-
-        List<Shipment> cycleShipments = rawShipments.stream()
-                .filter(s -> {
-                    if (s.getClient() == null) {
-                        return false;
-                    }
-                    if (s.getStatementId() != null && !s.getStatementId().trim().isEmpty()) {
-                        return cycleSoaNos.contains(s.getStatementId());
-                    }
-                    return true;
-                })
-                .collect(Collectors.toList());
-
-        // Derive candidate clients strictly from cycle shipments and cycle SOAs
-        Map<String, Client> candidateClients = new LinkedHashMap<>();
-        for (Shipment s : cycleShipments) {
-            if (s.getClient() != null) {
-                candidateClients.putIfAbsent(s.getClient().getClientId(), s.getClient());
-            }
-        }
+                .filter(soa -> soa.getClient() != null)
+                .collect(Collectors.toMap(soa -> soa.getClient().getClientId(), soa -> soa, (first, second) -> first));
+        Map<String, ClientCollectionTotals> totalsByClientId = clientTotals.stream()
+                .collect(Collectors.toMap(ClientCollectionTotals::getClientId, totals -> totals));
+        Set<String> candidateClientIds = clientTotals.stream()
+                .map(ClientCollectionTotals::getClientId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
         for (Soa soa : cycleSoas) {
             if (soa.getClient() != null) {
-                candidateClients.putIfAbsent(soa.getClient().getClientId(), soa.getClient());
+                candidateClientIds.add(soa.getClient().getClientId());
             }
-        }
-
-        Map<String, List<Shipment>> shipmentsByClient = cycleShipments.stream()
-                .collect(Collectors.groupingBy(s -> s.getClient().getClientId()));
-
-        // Batch pre-fetch all payments for shipments in this cycle
-        List<String> allCycleShipmentIds = cycleShipments.stream()
-                .map(Shipment::getShipmentId)
-                .collect(Collectors.toList());
-
-        Map<String, BigDecimal> paymentsByShipment = Collections.emptyMap();
-        if (!allCycleShipmentIds.isEmpty()) {
-            List<Payment> cyclePayments = paymentRepository.findByShipment_ShipmentIdIn(allCycleShipmentIds);
-            paymentsByShipment = cyclePayments.stream()
-                    .filter(p -> p.getShipment() != null && p.getAmountPaid() != null)
-                    .collect(Collectors.groupingBy(
-                            p -> p.getShipment().getShipmentId(),
-                            Collectors.reducing(BigDecimal.ZERO, Payment::getAmountPaid, BigDecimal::add)
-                    ));
         }
 
         List<WeeklyClientCollectionItem> items = new ArrayList<>();
@@ -116,24 +67,15 @@ public class CollectionsServiceImpl implements CollectionsService {
         BigDecimal totalCollected = BigDecimal.ZERO;
         BigDecimal outstandingBalance = BigDecimal.ZERO;
 
-        for (Client client : candidateClients.values()) {
-            String clientId = client.getClientId();
-            List<Shipment> clientShipments = shipmentsByClient.getOrDefault(clientId, Collections.emptyList());
-
-            int shipmentsCount = clientShipments.size();
-            int unbilledCount = (int) clientShipments.stream()
-                    .filter(s -> s.getStatementId() == null || s.getStatementId().trim().isEmpty())
-                    .count();
-
-            BigDecimal currentCharges = clientShipments.stream()
-                    .map(Shipment::getTotalAmount)
-                    .filter(Objects::nonNull)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            BigDecimal paid = BigDecimal.ZERO;
-            for (Shipment s : clientShipments) {
-                paid = paid.add(paymentsByShipment.getOrDefault(s.getShipmentId(), BigDecimal.ZERO));
-            }
+        for (String clientId : candidateClientIds) {
+            ClientCollectionTotals totals = totalsByClientId.get(clientId);
+            Client soaClient = soaByClientId.containsKey(clientId) ? soaByClientId.get(clientId).getClient() : null;
+            String clientName = totals != null ? totals.getClientName() : soaClient.getName();
+            String contactNumber = totals != null ? totals.getContactNumber() : soaClient.getContactNumber();
+            int shipmentsCount = totals != null ? totals.getShipmentsCount() : 0;
+            int unbilledCount = totals != null ? totals.getUnbilledCount() : 0;
+            BigDecimal currentCharges = totals != null ? totals.getCurrentCharges() : BigDecimal.ZERO;
+            BigDecimal paid = totals != null ? totals.getPaid() : BigDecimal.ZERO;
 
             Optional<Soa> soaOpt = Optional.ofNullable(soaByClientId.get(clientId));
             String statementId = soaOpt.map(Soa::getSoaNo).orElse(null);
@@ -159,9 +101,9 @@ public class CollectionsServiceImpl implements CollectionsService {
 
                 items.add(new WeeklyClientCollectionItem(
                         clientId,
-                        client.getName(),
+                        clientName,
                         clientId,
-                        client.getContactNumber(),
+                        contactNumber,
                         shipmentsCount,
                         unbilledCount,
                         currentCharges,

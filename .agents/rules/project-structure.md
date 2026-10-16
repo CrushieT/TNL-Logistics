@@ -292,3 +292,17 @@ tnl-logistics/
 - `frontend-mobile/tests/waybillOptions.test.mjs`: unit tests for returned waybill pagination, recommendation capping, and cancellation.
 
 Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. The final account entity and DTOs expose role-only identities. `.review/four-role-ship-3-evidence.md` retains the baseline capability trace, company-column removal evidence, migration controls, and final verification reports.
+
+### 50,000-shipment read optimization
+- `backend/src/main/java/com/tnl/logistics/repository/PersonalTrackingEventRepository.java`: staff-scoped history fragment.
+- `backend/src/main/java/com/tnl/logistics/repository/PersonalTrackingEventRepositoryImpl.java`: ID pagination, exact count, bounded relationship fetch.
+- `backend/src/main/java/com/tnl/logistics/repository/ClientCollectionTotals.java`: per-client financial projection.
+- `backend/src/main/resources/db/migration/V40__cover_personal_history_and_metrics.sql`: additive courier covering indexes.
+- `backend/src/test/java/com/tnl/logistics/controller/CollectionsAggregationIntegrationTest.java`: financial and boundary regressions.
+- `load-tests/endpoint-diagnostics.js`: sequential sampling with discarded warm-up and sanitized summaries.
+- `load-tests/run-measurement.ps1`: environment-backed diagnostic and unchanged simulation runner.
+- `load-tests/capture-financial-results.ps1`: synthetic financial response snapshots without credentials.
+- `load-tests/query-diagnostics.sql`: repeatable query plans and index sizes.
+- `load-tests/scan-write-diagnostics.sql`: rolled-back scan insert timing.
+- `load-tests/monitor-resources.ps1`: per-run CPU/memory samples and connection-pool timeout counts.
+- `load-tests/optimization-results.md`: slice verification, performance evidence, and unsuccessful-attempt ledger.

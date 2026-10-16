@@ -157,3 +157,41 @@ docker run --rm -e BASE_URL=http://host.docker.internal:8080 -e LOADTEST_PASSWOR
 ```powershell
 docker run --rm -e BASE_URL=http://host.docker.internal:8082 -e LOADTEST_PASSWORD=seedpassword -v "${PWD}/load-tests:/scripts" grafana/k6 run /scripts/heavy-simulation.js
 ```
+
+## 50,000-Shipment Endpoint Diagnostics
+
+Keep `realistic-simulation.js` unchanged for regression acceptance. `endpoint-diagnostics.js` authenticates the same accounts and performs sequential reads tagged by endpoint, with one discarded warm-up pass and configurable samples. Summaries allow-list metrics and execution state, excluding credentials and setup tokens. The runner reads the existing seed password from `.env.loadtest` and passes it through the process environment. Do not use k6 HTTP debugging or export setup data.
+
+```powershell
+./load-tests/run-measurement.ps1 -Label before -Samples 3
+./load-tests/run-measurement.ps1 -Label courier -Samples 3
+./load-tests/run-measurement.ps1 -Label after -Samples 3
+# Optional: isolate one endpoint with -Endpoint history or -Endpoint metrics.
+./load-tests/capture-financial-results.ps1 -Label before
+./load-tests/capture-financial-results.ps1 -Label after
+./load-tests/run-measurement.ps1 -Mode simulation -Label simulation-1
+./load-tests/run-measurement.ps1 -Mode simulation -Label simulation-2
+./load-tests/run-measurement.ps1 -Mode simulation -Label simulation-3
+```
+
+Run `monitor-resources.ps1 -Label simulation-1` concurrently in a second terminal, repeating the label for each run. It saves CPU/memory samples and counts connection acquisition timeouts. Retain k6 console logs for completed/interrupted iteration counts. Endpoint diagnostic thresholds are diagnostic flags; acceptance remains the unchanged workload thresholds: failure rate below 1%, admin p95 below 1.5 seconds, courier p95 below 500 milliseconds. Run one diagnostic warm-up before each measured simulation. Never run benchmark requests concurrently with tests or SQL timing probes against the simulation database. Maven integration tests use the separate `tnl_test` schema.
+
+`query-diagnostics.sql` records live MySQL plans, row counts, and index sizes. Execute twice on an idle simulation and compare the second run. `scan-write-diagnostics.sql` inserts 100 copies of event rows within a rolled-back transaction. It preserves event counts but leaves auto-increment gaps; use only in the dedicated simulation. Compare repeated samples separately from load runs. This measures synthetic database inserts, not complete scanner workflows or concurrent write capacity.
+
+After rebuilding only the backend with the existing Compose configuration, wait for application startup and the completed-seed skip message before making requests. Do not delete volumes or use the seeding resource override. Verify 50,000 shipments, 645,790 tracking events, five Hikari connections, 0.5 CPU / 512 MB per container, and the existing 64 MB MySQL buffer pool.
+
+### What to Test
+
+- Automated: from `backend/`, run `mvn -o test "-Dtest=PersonalTrackingHistoryIntegrationTest,TrackingLogIntegrationTest,DashboardIntegrationTest,CollectionsIntegrationTest,CollectionsAggregationIntegrationTest,ShipmentIntegrationTest,ClientIntegrationTest,FourRoleAuthorizationIntegrationTest,AdminConsoleAuthorizationIntegrationTest,TrackingConcurrencyIntegrationTest"`. The new financial fixture covers multiple/late payments, partial/full settlement, deductions, client-level balance clamping, historical statement exclusion, SOA-only clients, and empty cycles. Existing expectations are unchanged.
+- Courier API: mobile-login as the configured courier with its device headers; request `/api/v1/tracking-events/mine?page=0&size=20`, adjacent pages, `status=LOADED_ON_TRUCK`, `status=REGISTERED`, and a lowercase substring of a discovered tracking or shipment ID with and without a status. Expect HTTP 200, exact totals, timestamp/ID descending order, and only the caller's events. A page beyond the end must retain the exact total with empty content.
+- Authorization: repeat personal reads without credentials (401) and as admin/receiving staff (403); request `/mine/metrics` with a valid live mobile device session and verify only today's caller events contribute.
+- Financial API: as admin, compare all responses from `/collections/cycles`, `/collections/weekly?targetDate=DATE`, and `/dashboard/summary?cycle=DATE` before/after, sorting collection items by client ID. Expect identical monetary values, counts, eligibility, status, and response fields. Dashboard calculations with separate eligibility remain unchanged.
+- Database: shipment/event/payment/statement counts must remain unchanged after deployment and timing probes. Inserts in the write probe roll back; no financial or lifecycle data is reset.
+
+### Optimization Verification Results (2026-10-16)
+
+See [optimization-results.md](optimization-results.md) for complete before/after measurements and the unsuccessful-attempt ledger. All 98 affected backend tests passed; the final search revision separately passed all 20 history tests. Three seeded-cycle collections/dashboard snapshots matched exactly.
+
+All three unchanged simulations recorded 357 requests, 0% failures, 118 completed iterations, zero interrupted iterations, and no connection-pool timeouts. Admin p95 was 25.87/22.54/24.41 seconds and courier p95 was 18.72/18.50/18.02 seconds, failing the original 1.5-second/500-ms targets. MySQL saturated its 0.5 CPU allocation; sampled memory stayed below 418 MiB. The dataset and limits remain unchanged. No further optimization or tests followed the final verification request.
+
+Saved simulation summaries are sanitized after k6 exits because its built-in export includes setup data. The runner retains only metrics and aggregate check groups. All three delivered local summaries exclude setup tokens and credentials.

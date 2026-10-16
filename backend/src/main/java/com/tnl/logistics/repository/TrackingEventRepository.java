@@ -17,7 +17,7 @@ import java.util.List;
  * Spring Data Repository for TrackingEvent entity.
  */
 @Repository
-public interface TrackingEventRepository extends JpaRepository<TrackingEvent, Long> {
+public interface TrackingEventRepository extends JpaRepository<TrackingEvent, Long>, PersonalTrackingEventRepository {
 
     List<TrackingEvent> findByParcelUnit_TrackingIdOrderByEventTimestampAsc(String trackingId);
 
@@ -82,26 +82,6 @@ public interface TrackingEventRepository extends JpaRepository<TrackingEvent, Lo
     long countStatusBetween(@Param("status") ParcelStatus status,
                             @Param("startDateTime") LocalDateTime startDateTime,
                             @Param("endDateTime") LocalDateTime endDateTime);
-
-    @Query(value = "SELECT e FROM TrackingEvent e " +
-           "JOIN FETCH e.parcelUnit pu " +
-           "JOIN FETCH pu.shipment s " +
-           "LEFT JOIN FETCH e.vehicle v " +
-           "WHERE e.staff.userId = :staffId " +
-           "AND (:search IS NULL OR LOWER(pu.trackingId) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "   OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-           "AND (:status IS NULL OR e.status = :status)",
-           countQuery = "SELECT COUNT(e) FROM TrackingEvent e " +
-           "JOIN e.parcelUnit pu " +
-           "JOIN pu.shipment s " +
-           "WHERE e.staff.userId = :staffId " +
-           "AND (:search IS NULL OR LOWER(pu.trackingId) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "   OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-           "AND (:status IS NULL OR e.status = :status)")
-    Page<TrackingEvent> findPersonalEvents(@Param("staffId") String staffId,
-                                          @Param("search") String search,
-                                          @Param("status") ParcelStatus status,
-                                          Pageable pageable);
 
     @Query("SELECT e.status, COUNT(e) FROM TrackingEvent e " +
            "WHERE e.staff.userId = :staffId " +

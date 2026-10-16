@@ -21,6 +21,37 @@ import java.util.Optional;
 @Repository
 public interface ShipmentRepository extends JpaRepository<Shipment, String> {
 
+    // Match Java's trim and exact statement-ID membership rules in the aggregate.
+    @Query(value = """
+            SELECT c.client_id AS clientId, c.name AS clientName, c.contact_number AS contactNumber,
+                   COUNT(*) AS shipmentsCount,
+                   SUM(CASE WHEN s.statement_id IS NULL
+                       OR REGEXP_LIKE(s.statement_id, CONCAT('^[', CHAR(0 USING utf8mb4), '-', CHAR(32 USING utf8mb4), ']*$')) THEN 1 ELSE 0 END) AS unbilledCount,
+                   COALESCE(SUM(s.total_amount), 0) AS currentCharges,
+                   COALESCE(SUM(payments.paid), 0) AS paid
+            FROM shipment s
+            JOIN client c ON c.client_id = s.client_id
+            LEFT JOIN (
+                SELECT p.shipment_id, SUM(p.amount_paid) AS paid
+                FROM payment p
+                JOIN shipment paid_shipment ON paid_shipment.shipment_id = p.shipment_id
+                WHERE paid_shipment.date_registered BETWEEN :cycleStart AND :cycleEnd
+                GROUP BY p.shipment_id
+            ) payments ON payments.shipment_id = s.shipment_id
+            WHERE s.date_registered BETWEEN :cycleStart AND :cycleEnd
+              AND (s.statement_id IS NULL OR REGEXP_LIKE(s.statement_id, CONCAT('^[', CHAR(0 USING utf8mb4), '-', CHAR(32 USING utf8mb4), ']*$'))
+                   OR EXISTS (SELECT 1 FROM soa cycle_soa
+                              WHERE cycle_soa.soa_no = s.statement_id
+                                AND BINARY cycle_soa.soa_no = BINARY s.statement_id
+                                AND cycle_soa.statement_date = :statementDate))
+            GROUP BY c.client_id, c.name, c.contact_number
+            ORDER BY MAX(s.date_registered) DESC
+            """, nativeQuery = true)
+    List<ClientCollectionTotals> aggregateCollectionsByClient(
+            @Param("cycleStart") java.time.LocalDateTime cycleStart,
+            @Param("cycleEnd") java.time.LocalDateTime cycleEnd,
+            @Param("statementDate") LocalDate statementDate);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM Shipment s WHERE s.shipmentId = :id")
     Optional<Shipment> findByIdForUpdate(@Param("id") String id);
