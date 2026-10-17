@@ -10,6 +10,7 @@ export default function WeeklyCollectionsTable({
   onGenerateClientSoa,
   isCurrentCycle = false,
   cycleLabel = '',
+  actionsDisabled = false,
 }) {
   if (loading) {
     return (
@@ -188,23 +189,27 @@ export default function WeeklyCollectionsTable({
             <View style={styles.actionGroup}>
               {item.statementId || statusKey === 'SOA_GENERATED' ? (
                 <Pressable
-                  onPress={() => onReviewClient?.(item, 'VIEW_SOA')}
+                  disabled={actionsDisabled}
+                  onPress={() => !actionsDisabled && onReviewClient?.(item, 'VIEW_SOA')}
                   style={({ hovered }) => [
                     styles.viewSoaBtn,
-                    hovered && styles.viewSoaBtnHovered,
+                    actionsDisabled && styles.btnDisabled,
+                    hovered && !actionsDisabled && styles.viewSoaBtnHovered,
                   ]}
                 >
-                  <Text style={styles.viewSoaBtnText}>View SOA</Text>
+                  <Text style={[styles.viewSoaBtnText, actionsDisabled && styles.btnTextDisabled]}>View SOA</Text>
                 </Pressable>
               ) : (
                 <Pressable
-                  onPress={() => onReviewClient?.(item, 'GENERATE_SOA')}
+                  disabled={actionsDisabled}
+                  onPress={() => !actionsDisabled && onReviewClient?.(item, 'GENERATE_SOA')}
                   style={({ hovered }) => [
                     styles.reviewBtn,
-                    hovered && styles.reviewBtnHovered,
+                    actionsDisabled && styles.btnDisabled,
+                    hovered && !actionsDisabled && styles.reviewBtnHovered,
                   ]}
                 >
-                  <Text style={styles.reviewBtnText}>Generate SOA</Text>
+                  <Text style={[styles.reviewBtnText, actionsDisabled && styles.btnTextDisabled]}>Generate SOA</Text>
                 </Pressable>
               )}
             </View>
@@ -409,5 +414,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#1D4ED8',
+  },
+  btnDisabled: {
+    opacity: 0.45,
+    borderColor: colors.border,
+    backgroundColor: '#F3F4F6',
+  },
+  btnTextDisabled: {
+    color: colors.inkFaint,
   },
 });

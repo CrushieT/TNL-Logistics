@@ -20,6 +20,15 @@ public interface CollectionsService {
     WeeklyCollectionsResponse getWeeklyCollections(LocalDate targetDate);
 
     /**
+     * Retrieve internal totals-only collection metrics for the given cycle date without constructing itemized client items.
+     * Shares identical financial aggregation rules with {@link #getWeeklyCollections(LocalDate)}.
+     *
+     * @param targetDate target cycle closing date (optional)
+     * @return CollectionTotals containing company totals and active client count
+     */
+    com.tnl.logistics.dto.CollectionTotals getCollectionTotals(LocalDate targetDate);
+
+    /**
      * Retrieve a distinct, sorted list of active cycle closing dates that actually contain shipments or finalized SOAs.
      *
      * @return list of cycle closing dates (newest first)

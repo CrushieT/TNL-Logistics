@@ -4,7 +4,7 @@
 
 - Implementation plan: `.review/admin-pages-optimization-plan.md`. Eliminates entity hydration and OOM risks across Reports, Dashboard, Admin Tracking Logs, and Weekly Collections under 50,000-shipment load.
 - Slice A: Reports memory and query work [COMPLETED] — Replaced period shipment, parcel, payment, and lifetime unpaid entity loading with bounded database aggregates and projections. Passed 17 ReportIntegrationTest regression, completion-rate semantics, MockMvc HTTP 503 error contract, and date-dimension memory checks. Live 50k container benchmark pending Docker availability; final performance acceptance pending full workflow runs.
-- Slice B: Weekly Collections and Dashboard [UPCOMING]
+- Slice B: Weekly Collections and Dashboard [COMPLETED] — Replaced itemized response hydration in Dashboard with shared internal CollectionTotals read and consolidated CycleShipmentSummary projection. Preserved all financial invariants (per-client balance clamping, pre-aggregated payments, deductions, previous balances, late payments, blank ID handling, SOA-only clients). Replaced exception swallowing with structured HTTP 503 (COLLECTIONS_UNAVAILABLE, CYCLES_UNAVAILABLE, DASHBOARD_UNAVAILABLE). Completely eliminated frontend fallback client/shipment pagination aggregator in collectionsApi.js, disabled dependent SOA actions when data is unavailable, and added stale-data warning with timestamp. Verified via 16 backend integration tests (CollectionsIntegrationTest, CollectionsAggregationIntegrationTest, DashboardIntegrationTest), 156 frontend web tests (including collectionsFallbackRemoval.test.mjs), and production Expo web export.
 - Slice C: Admin Tracking Logs [UPCOMING]
 - Slice D: Request lifecycle and outage handling [UPCOMING]
 

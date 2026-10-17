@@ -1,13 +1,9 @@
 import apiClient from '../../../services/api/client';
 
 export async function getDashboardSummary(cycle) {
-  try {
-    const params = cycle ? { cycle } : {};
-    const { data } = await apiClient.get('/dashboard/summary', { params });
-    return data;
-  } catch (err) {
-    return null;
-  }
+  const params = cycle ? { cycle } : {};
+  const { data } = await apiClient.get('/dashboard/summary', { params });
+  return data;
 }
 
 export async function listShipments(params = {}) {

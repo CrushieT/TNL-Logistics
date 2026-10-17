@@ -294,6 +294,8 @@ tnl-logistics/
 Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. The final account entity and DTOs expose role-only identities. `.review/four-role-ship-3-evidence.md` retains the baseline capability trace, company-column removal evidence, migration controls, and final verification reports.
 
 ### 50,000-shipment read optimization
+- `backend/src/main/java/com/tnl/logistics/dto/CollectionTotals.java`: internal shared collection totals DTO (total due, total collected, outstanding balance, active clients count) for Dashboard and Weekly Collections.
+- `backend/src/main/java/com/tnl/logistics/repository/CycleShipmentSummary.java`: SQL-aggregated cycle shipment count, parcel count, and total charges projection for Dashboard.
 - `backend/src/main/java/com/tnl/logistics/repository/PersonalTrackingEventRepository.java`: staff-scoped history fragment.
 - `backend/src/main/java/com/tnl/logistics/repository/PersonalTrackingEventRepositoryImpl.java`: ID pagination, exact count, bounded relationship fetch.
 - `backend/src/main/java/com/tnl/logistics/repository/ClientCollectionTotals.java`: per-client financial projection.
@@ -307,6 +309,7 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 - `backend/src/main/java/com/tnl/logistics/repository/DailyParcelTotals.java`: SQL-aggregated daily parcel count, weight, volume, and completed delivery projection.
 - `backend/src/main/resources/db/migration/V40__cover_personal_history_and_metrics.sql`: additive courier covering indexes.
 - `backend/src/test/java/com/tnl/logistics/controller/CollectionsAggregationIntegrationTest.java`: financial and boundary regressions.
+- `frontend-web/tests/collectionsFallbackRemoval.test.mjs`: regression suite asserting complete removal of frontend fallback aggregator, prevention of zero balance fabrication, and propagation of structured 503 errors.
 - `load-tests/endpoint-diagnostics.js`: sequential sampling with discarded warm-up and sanitized summaries.
 - `load-tests/run-measurement.ps1`: environment-backed diagnostic and unchanged simulation runner.
 - `load-tests/capture-financial-results.ps1`: synthetic financial response snapshots without credentials.

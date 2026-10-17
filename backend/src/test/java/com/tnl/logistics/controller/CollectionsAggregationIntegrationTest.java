@@ -74,13 +74,72 @@ class CollectionsAggregationIntegrationTest {
         assertTrue(collectionsService.getWeeklyCollections(cycle.plusDays(100)).getItems().isEmpty());
     }
 
+    @Autowired private com.tnl.logistics.service.DashboardService dashboardService;
+
+    @Test
+    void testCollectionsAndDashboardParityWithPerClientClampingAndDeductions() {
+        LocalDate cycle = LocalDate.of(2036, 2, 14);
+
+        // Client 1: Overpaid (charges 200, paid 250 -> balance clamped to 0)
+        Client overpaidClient = createClient("AGG-CLAMP-OVERPAID");
+        Shipment shipOver = createShipment("SHP-CLAMP-1", overpaidClient, cycle.minusDays(2), null, new BigDecimal("200.00"));
+        paymentRepository.saveAndFlush(new Payment(shipOver, new BigDecimal("250.00"), PaymentMethod.CASH, cycle.minusDays(1)));
+
+        // Client 2: Partial with deduction (charges 300, paid 100, deduction 50 -> netDue 150)
+        Client partialClient = createClient("AGG-CLAMP-PARTIAL");
+        Shipment shipPart = createShipment("SHP-CLAMP-2", partialClient, cycle.minusDays(3), null, new BigDecimal("300.00"));
+        paymentRepository.saveAndFlush(new Payment(shipPart, new BigDecimal("100.00"), PaymentMethod.CASH, cycle.minusDays(2)));
+        createSoa("SOA-CLAMP-2", partialClient, cycle, "50.00");
+
+        // Client 3: SOA-only client (no shipments this cycle, previousBalance 100, deduction 20 -> netDue 80)
+        Client soaOnlyClient = createClient("AGG-CLAMP-SOAONLY");
+        WeeklyCollection wc3 = weeklyCollectionRepository.save(new WeeklyCollection("WC-CLAMP-3", soaOnlyClient,
+                cycle.minusDays(6), cycle, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, "PENDING"));
+        soaRepository.saveAndFlush(new Soa("SOA-CLAMP-3", null, wc3, soaOnlyClient, new BigDecimal("100.00"),
+                BigDecimal.ZERO, new BigDecimal("20.00"), null, BigDecimal.ZERO,
+                new BigDecimal("80.00"), null, cycle, null));
+
+        // 1. Full Weekly Collections response
+        var weeklyResponse = collectionsService.getWeeklyCollections(cycle);
+
+        // 2. Internal Totals-only read
+        var collectionTotals = collectionsService.getCollectionTotals(cycle);
+
+        // 3. Dashboard summary
+        var dashboardSummary = dashboardService.getDashboardSummary(cycle);
+
+        // Assert exact financial equality across all representations
+        assertEquals(weeklyResponse.getOutstandingBalance(), collectionTotals.outstandingBalance(),
+                "Outstanding balance must match between weeklyCollections and collectionTotals");
+        assertEquals(weeklyResponse.getActiveClientsCount(), collectionTotals.activeClientsCount(),
+                "Active clients count must match between weeklyCollections and collectionTotals");
+
+        assertEquals(0, collectionTotals.outstandingBalance().compareTo(dashboardSummary.getForCollection().getAmount()),
+                "Dashboard forCollection amount must match collectionTotals outstandingBalance");
+        assertEquals(collectionTotals.activeClientsCount(), dashboardSummary.getForCollection().getClientCount(),
+                "Dashboard forCollection clientCount must match collectionTotals activeClientsCount");
+
+        // Expected outstanding balance:
+        // Client 1: max(0, 200 - 250) = 0
+        // Client 2: max(0, 300 - 100 - 50) = 150
+        // Client 3 (SOA-only, 0 shipments): max(0, 0 - 0 - 20) = 0
+        // Total Outstanding = 0 + 150 + 0 = 150.00
+        assertAmount("150.00", collectionTotals.outstandingBalance());
+        assertEquals(2, collectionTotals.activeClientsCount(), "Only clients with unbilled shipments or net balance > 0 qualify as active");
+    }
+
     private Client createClient(String id) {
         return clientRepository.save(new Client(id, id, "Test address", "09170000000", "test@example.com", ChargeModel.FLAT, true));
     }
 
     private Shipment createShipment(String id, Client client, LocalDate date, String statementId) {
+        return createShipment(id, client, date, statementId, new BigDecimal("100"));
+    }
+
+    private Shipment createShipment(String id, Client client, LocalDate date, String statementId, BigDecimal amount) {
+        BigDecimal fee = amount != null ? amount : new BigDecimal("100");
         Shipment shipment = new Shipment(id, client, "Recipient", "Address", "09170000000", 1,
-                ChargeModel.FLAT, new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("100"), false, RegisteredVia.DESKTOP_OFFICE);
+                ChargeModel.FLAT, fee, BigDecimal.ZERO, fee, false, RegisteredVia.DESKTOP_OFFICE);
         shipment.setDateRegistered(date.atTime(12, 0));
         shipment.setStatementId(statementId);
         return shipmentRepository.saveAndFlush(shipment);

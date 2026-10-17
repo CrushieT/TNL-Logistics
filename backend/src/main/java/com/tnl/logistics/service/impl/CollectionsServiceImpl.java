@@ -8,8 +8,12 @@ import com.tnl.logistics.repository.ShipmentRepository;
 import com.tnl.logistics.repository.ClientCollectionTotals;
 import com.tnl.logistics.repository.SoaRepository;
 import com.tnl.logistics.service.CollectionsService;
+import com.tnl.logistics.dto.CollectionTotals;
+import org.springframework.dao.DataAccessException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
@@ -39,6 +43,34 @@ public class CollectionsServiceImpl implements CollectionsService {
     @Override
     @Transactional(readOnly = true)
     public WeeklyCollectionsResponse getWeeklyCollections(LocalDate targetDate) {
+        try {
+            return (WeeklyCollectionsResponse) computeWeeklyCollections(targetDate, true);
+        } catch (ResponseStatusException ex) {
+            throw ex;
+        } catch (DataAccessException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "COLLECTIONS_UNAVAILABLE: Weekly collections calculation is temporarily unavailable",
+                    ex);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CollectionTotals getCollectionTotals(LocalDate targetDate) {
+        try {
+            return (CollectionTotals) computeWeeklyCollections(targetDate, false);
+        } catch (ResponseStatusException ex) {
+            throw ex;
+        } catch (DataAccessException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "COLLECTIONS_UNAVAILABLE: Weekly collections calculation is temporarily unavailable",
+                    ex);
+        }
+    }
+
+    private Object computeWeeklyCollections(LocalDate targetDate, boolean includeItems) {
         LocalDate targetThursday = (targetDate != null) ? targetDate : calculateActiveCycleDate(LocalDate.now());
 
         LocalDate cycleStartLocalDate = calculateCycleStartDate(targetThursday);
@@ -62,23 +94,20 @@ public class CollectionsServiceImpl implements CollectionsService {
             }
         }
 
-        List<WeeklyClientCollectionItem> items = new ArrayList<>();
+        List<WeeklyClientCollectionItem> items = includeItems ? new ArrayList<>() : null;
         BigDecimal totalDue = BigDecimal.ZERO;
         BigDecimal totalCollected = BigDecimal.ZERO;
         BigDecimal outstandingBalance = BigDecimal.ZERO;
+        int activeClientsCount = 0;
 
         for (String clientId : candidateClientIds) {
             ClientCollectionTotals totals = totalsByClientId.get(clientId);
-            Client soaClient = soaByClientId.containsKey(clientId) ? soaByClientId.get(clientId).getClient() : null;
-            String clientName = totals != null ? totals.getClientName() : soaClient.getName();
-            String contactNumber = totals != null ? totals.getContactNumber() : soaClient.getContactNumber();
             int shipmentsCount = totals != null ? totals.getShipmentsCount() : 0;
             int unbilledCount = totals != null ? totals.getUnbilledCount() : 0;
             BigDecimal currentCharges = totals != null ? totals.getCurrentCharges() : BigDecimal.ZERO;
             BigDecimal paid = totals != null ? totals.getPaid() : BigDecimal.ZERO;
 
             Optional<Soa> soaOpt = Optional.ofNullable(soaByClientId.get(clientId));
-            String statementId = soaOpt.map(Soa::getSoaNo).orElse(null);
             BigDecimal previousBalance = BigDecimal.ZERO;
             BigDecimal deductions = soaOpt.map(Soa::getDeductions).filter(Objects::nonNull).orElse(BigDecimal.ZERO);
             BigDecimal netAmountDue = currentCharges.add(previousBalance).subtract(paid).subtract(deductions);
@@ -86,50 +115,66 @@ public class CollectionsServiceImpl implements CollectionsService {
                 netAmountDue = BigDecimal.ZERO;
             }
 
-            String status;
-            if (soaOpt.isPresent()) {
-                status = (netAmountDue.compareTo(BigDecimal.ZERO) == 0 && shipmentsCount > 0) ? "SETTLED" : "SOA_GENERATED";
-            } else {
-                status = (shipmentsCount > 0) ? "READY_FOR_SOA" : "NO_SHIPMENTS";
-            }
+            boolean isEligible = shipmentsCount > 0 || netAmountDue.compareTo(BigDecimal.ZERO) > 0 || soaOpt.isPresent();
 
-            // Only include clients with shipments or outstanding balances in this cycle
-            if (shipmentsCount > 0 || netAmountDue.compareTo(BigDecimal.ZERO) > 0 || soaOpt.isPresent()) {
+            if (isEligible) {
                 totalDue = totalDue.add(currentCharges).add(previousBalance);
                 totalCollected = totalCollected.add(paid);
                 outstandingBalance = outstandingBalance.add(netAmountDue);
 
-                items.add(new WeeklyClientCollectionItem(
-                        clientId,
-                        clientName,
-                        clientId,
-                        contactNumber,
-                        shipmentsCount,
-                        unbilledCount,
-                        currentCharges,
-                        previousBalance,
-                        paid,
-                        deductions,
-                        netAmountDue,
-                        netAmountDue,
-                        status,
-                        statementId
-                ));
+                if (unbilledCount > 0 || netAmountDue.compareTo(BigDecimal.ZERO) > 0) {
+                    activeClientsCount++;
+                }
+
+                if (includeItems) {
+                    Client soaClient = soaByClientId.containsKey(clientId) ? soaByClientId.get(clientId).getClient() : null;
+                    String clientName = totals != null ? totals.getClientName() : (soaClient != null ? soaClient.getName() : clientId);
+                    String contactNumber = totals != null ? totals.getContactNumber() : (soaClient != null ? soaClient.getContactNumber() : "");
+                    String statementId = soaOpt.map(Soa::getSoaNo).orElse(null);
+                    String status;
+                    if (soaOpt.isPresent()) {
+                        status = (netAmountDue.compareTo(BigDecimal.ZERO) == 0 && shipmentsCount > 0) ? "SETTLED" : "SOA_GENERATED";
+                    } else {
+                        status = (shipmentsCount > 0) ? "READY_FOR_SOA" : "NO_SHIPMENTS";
+                    }
+
+                    items.add(new WeeklyClientCollectionItem(
+                            clientId,
+                            clientName,
+                            clientId,
+                            contactNumber,
+                            shipmentsCount,
+                            unbilledCount,
+                            currentCharges,
+                            previousBalance,
+                            paid,
+                            deductions,
+                            netAmountDue,
+                            netAmountDue,
+                            status,
+                            statementId
+                    ));
+                }
             }
         }
 
-        int activeClientsCount = (int) items.stream()
-                .filter(i -> i.getUnbilledShipmentsCount() > 0 || i.getNetAmountDue().compareTo(BigDecimal.ZERO) > 0)
-                .count();
-
-        return new WeeklyCollectionsResponse(
-                targetThursday,
-                totalDue,
-                totalCollected,
-                outstandingBalance,
-                activeClientsCount,
-                items
-        );
+        if (includeItems) {
+            return new WeeklyCollectionsResponse(
+                    targetThursday,
+                    totalDue,
+                    totalCollected,
+                    outstandingBalance,
+                    activeClientsCount,
+                    items
+            );
+        } else {
+            return new CollectionTotals(
+                    totalDue,
+                    totalCollected,
+                    outstandingBalance,
+                    activeClientsCount
+            );
+        }
     }
 
     private LocalDate resolveCycleStartDate(LocalDate cycleEndDate, Collection<LocalDate> knownCycles) {
@@ -162,34 +207,43 @@ public class CollectionsServiceImpl implements CollectionsService {
     @Override
     @Transactional(readOnly = true)
     public List<LocalDate> getActiveCycleDates() {
-        LocalDate currentCycleEnd = calculateActiveCycleDate(LocalDate.now());
+        try {
+            LocalDate currentCycleEnd = calculateActiveCycleDate(LocalDate.now());
 
-        Set<LocalDate> activeCycles = new TreeSet<>(Comparator.reverseOrder());
+            Set<LocalDate> activeCycles = new TreeSet<>(Comparator.reverseOrder());
 
-        // 1. Always include the current ongoing cycle closing day
-        activeCycles.add(currentCycleEnd);
+            // 1. Always include the current ongoing cycle closing day
+            activeCycles.add(currentCycleEnd);
 
-        // 2. Add all immutable historical statement dates from generated SOAs
-        List<LocalDate> soaDates = soaRepository.findDistinctStatementDates();
-        if (soaDates != null) {
-            for (LocalDate d : soaDates) {
-                if (d != null) {
-                    activeCycles.add(d);
+            // 2. Add all immutable historical statement dates from generated SOAs
+            List<LocalDate> soaDates = soaRepository.findDistinctStatementDates();
+            if (soaDates != null) {
+                for (LocalDate d : soaDates) {
+                    if (d != null) {
+                        activeCycles.add(d);
+                    }
                 }
             }
-        }
 
-        // 3. Add distinct unbilled registration dates mapped to configured collection day
-        List<LocalDate> unbilledDates = shipmentRepository.findDistinctUnbilledRegistrationDates();
-        if (unbilledDates != null) {
-            for (LocalDate regDate : unbilledDates) {
-                if (regDate != null) {
-                    activeCycles.add(calculateActiveCycleDate(regDate));
+            // 3. Add distinct unbilled registration dates mapped to configured collection day
+            List<LocalDate> unbilledDates = shipmentRepository.findDistinctUnbilledRegistrationDates();
+            if (unbilledDates != null) {
+                for (LocalDate regDate : unbilledDates) {
+                    if (regDate != null) {
+                        activeCycles.add(calculateActiveCycleDate(regDate));
+                    }
                 }
             }
-        }
 
-        return new ArrayList<>(activeCycles);
+            return new ArrayList<>(activeCycles);
+        } catch (ResponseStatusException ex) {
+            throw ex;
+        } catch (DataAccessException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "CYCLES_UNAVAILABLE: Collection cycle dates are temporarily unavailable",
+                    ex);
+        }
     }
 
     @Override

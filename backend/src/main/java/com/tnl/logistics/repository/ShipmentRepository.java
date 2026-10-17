@@ -265,5 +265,16 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
     List<DailyShipmentTotals> aggregateDailyShipments(
             @Param("start") java.time.LocalDateTime start,
             @Param("end") java.time.LocalDateTime end);
+
+    @Query(value = """
+            SELECT COUNT(*) AS shipmentCount,
+                   COALESCE(SUM(quantity), 0) AS parcelCount,
+                   COALESCE(SUM(total_amount), 0) AS totalCharges
+            FROM shipment
+            WHERE date_registered BETWEEN :cycleStart AND :cycleEnd
+            """, nativeQuery = true)
+    CycleShipmentSummary getCycleShipmentSummary(
+            @Param("cycleStart") java.time.LocalDateTime cycleStart,
+            @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
 }
 

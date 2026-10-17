@@ -26,6 +26,9 @@ public class DashboardIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @org.springframework.boot.test.mock.mockito.SpyBean
+    private com.tnl.logistics.repository.ShipmentRepository shipmentRepository;
+
     @Test
     @WithMockUser(username = "admin", roles = {"ADMIN"})
     void testGetDashboardSummaryAsAdminReturns200AndExpectedStructure() throws Exception {
@@ -81,5 +84,23 @@ public class DashboardIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.shipmentCount").isNumber())
                 .andExpect(jsonPath("$.weeklyShipmentVolume.length()").value(7));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testDashboardFailureReturnsHttp503AndStructuredErrorViaMockMvc() throws Exception {
+        org.mockito.Mockito.doThrow(new org.springframework.dao.DataAccessResourceFailureException("Simulated DB connection failure"))
+                .when(shipmentRepository).getCycleShipmentSummary(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+
+        try {
+            mockMvc.perform(get("/api/v1/dashboard/summary")
+                    .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.status").value(503))
+                    .andExpect(jsonPath("$.code").value("DASHBOARD_UNAVAILABLE"))
+                    .andExpect(jsonPath("$.message").value("Dashboard data is temporarily unavailable due to a database error"));
+        } finally {
+            org.mockito.Mockito.reset(shipmentRepository);
+        }
     }
 }
