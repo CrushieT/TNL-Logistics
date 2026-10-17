@@ -24,6 +24,7 @@ import {
   BatchSoaModal,
 } from '../features/collections';
 import { subscribeRealtimeEvents } from '../features/shipments';
+import { useRequestCoordinator } from '../services/api/useRequestCoordinator';
 import { colors, fonts, spacing, radius, type } from '../theme';
 
 const STATUS_FILTERS = [
@@ -80,59 +81,59 @@ export default function WeeklyCollectionsScreen() {
     };
   }, []);
 
-  // Load weekly collections data
-  const loadData = useCallback(async (showSpinner = true) => {
-    if (!selectedCycle) return;
-    try {
-      if (showSpinner) setLoading(true);
-      setErrorBanner(null);
-      const data = await getWeeklyCollections(selectedCycle);
+  const { coordinator, setResumeFetcher } = useRequestCoordinator({
+    scope: 'weekly-collections',
+    onSuccess: (data) => {
       setDashboardData(data);
       setIsStale(false);
       setInitialLoadFailed(false);
+      setErrorBanner(null);
       setLastUpdated(new Date().toLocaleTimeString());
-    } catch (err) {
+      setLoading(false);
+    },
+    onError: (err, meta) => {
       console.warn('Failed to load weekly collections:', err);
       const errorMsg = err?.response?.data?.message || err?.message || 'Failed to load weekly collection data. Please check network connectivity.';
       setErrorBanner(errorMsg);
-      setDashboardData((currentData) => {
-        if (currentData) {
-          setIsStale(true);
-          return currentData;
-        } else {
-          setInitialLoadFailed(true);
-          return null;
-        }
-      });
-    } finally {
-      if (showSpinner) setLoading(false);
+      if (meta.hasExistingData) {
+        setIsStale(true);
+      } else {
+        setInitialLoadFailed(true);
+        setDashboardData(null);
+      }
+      setLoading(false);
+    },
+    debounceMs: 300,
+  });
+
+  // Load weekly collections data
+  const loadData = useCallback((showSpinner = true, debounce = false) => {
+    if (!selectedCycle) return;
+    if (showSpinner) {
+      setLoading(true);
+      setErrorBanner(null);
     }
-  }, [selectedCycle]);
+    const key = coordinator.deriveKey({ cycle: selectedCycle });
+    const fetcher = (signal) => getWeeklyCollections(selectedCycle, { signal });
+    setResumeFetcher(() => fetcher);
+    return coordinator.request(key, fetcher, { isSilent: !showSpinner, debounce });
+  }, [selectedCycle, coordinator, setResumeFetcher]);
 
   useEffect(() => {
     if (selectedCycle) {
-      loadData(true);
+      loadData(true, false);
     }
   }, [selectedCycle, loadData]);
 
-  // Real-time SSE refresh
+  // Real-time SSE refresh with 300ms debounce
   useEffect(() => {
-    const handleSilentRefresh = () => {
-      loadData(false);
-    };
-
     const unsubscribe = subscribeRealtimeEvents(() => {
-      handleSilentRefresh();
+      loadData(false, true);
     });
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', handleSilentRefresh);
-    }
-
     return () => {
-      unsubscribe();
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('focus', handleSilentRefresh);
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
       }
     };
   }, [loadData]);

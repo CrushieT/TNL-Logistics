@@ -1,5 +1,14 @@
 # Project Structure
 
+### Request lifecycle, coordinator, and SSE outage handling
+
+- `frontend-web/src/services/api/requestCoordinator.mjs`: shared request coordinator managing deterministic key derivation, in-flight overlap prevention, AbortController cancellation on key change/unmount, generational response guarding, at most one queued follow-up refresh, 300ms event burst debouncing, hidden tab/inactive route suspension, and cancellation error suppression.
+- `frontend-web/src/services/api/useRequestCoordinator.js`: React hook integrating `createRequestCoordinator` with component lifecycle, window focus, and document visibility changes.
+- `frontend-web/src/services/api/sseClientCore.mjs`: added `calculateBackoffDelay` (1s, 2s, 4s, 8s, 16s, 30s ceiling with bounded jitter) and `isAuthFailureStatus` (401/403).
+- `frontend-web/src/services/api/sseClient.js`: single shared SSE connection with exponential backoff, immediate halt on 401/403 or session invalidation, parallel timer/connection prevention, and subscriber cleanup.
+- `frontend-web/tests/requestCoordinator.test.mjs`: unit test suite verifying deterministic keys, cancellation, stale response suppression, follow-up coalescing, 300ms debouncing, unmount, React remounts, and tab suspension/resume.
+- `frontend-web/tests/sseClient.test.mjs`: extended test suite covering backoff calculation, auth failure detection, and connection lifecycle.
+
 ### Admin tracking logs optimization
 
 - `backend/src/main/java/com/tnl/logistics/repository/TodayTrackingMetricsSummary.java`: single-query projection interface for today's operational tracking metrics (`todayTotalScans`, `activeCouriersCount`, `loadedOnTruckToday`, `handedToHaulerToday`).

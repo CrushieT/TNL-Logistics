@@ -5,12 +5,16 @@ import { formatCycleDateRangeFromDates } from '../utils/collectionsUtils';
  * Fetch active Thursday weekly collections consolidation dashboard data.
  * @param {string} [targetDate] - Optional Thursday date (YYYY-MM-DD)
  */
-export async function getWeeklyCollections(targetDate) {
+export async function getWeeklyCollections(targetDate, options = {}) {
   const params = {};
   if (targetDate) {
     params.targetDate = targetDate;
   }
-  const { data } = await apiClient.get('/collections/weekly', { params });
+  const signal = options?.signal;
+  const { data } = await apiClient.get('/collections/weekly', {
+    params,
+    ...(signal ? { signal } : {}),
+  });
   return data;
 }
 

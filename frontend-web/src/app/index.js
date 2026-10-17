@@ -14,6 +14,7 @@ import CycleDropdown from '../features/collections/components/CycleDropdown';
 import { getActiveCollectionCycles } from '../features/collections/services/collectionsApi';
 import { getRecentThursdays } from '../features/collections/utils/collectionsUtils';
 import { getDashboardSummary, subscribeRealtimeEvents } from '../features/shipments';
+import { useRequestCoordinator } from '../services/api/useRequestCoordinator';
 import { colors, fonts, spacing, radius } from '../theme';
 
 export default function DashboardScreen() {
@@ -55,38 +56,46 @@ export default function DashboardScreen() {
     };
   }, []);
 
-  const load = useCallback(async (cycleDate) => {
-    try {
-      setLoading(true);
+  const { coordinator, setResumeFetcher } = useRequestCoordinator({
+    scope: 'dashboard',
+    onSuccess: (data) => {
+      setSummary(data);
+      setIsStale(false);
+      setInitialLoadFailed(false);
       setErrorMessage(null);
-      const data = await getDashboardSummary(cycleDate);
-      if (data) {
-        setSummary(data);
-        setIsStale(false);
-        setInitialLoadFailed(false);
-        setLastUpdated(new Date().toLocaleTimeString());
-      }
-    } catch (err) {
+      setLastUpdated(new Date().toLocaleTimeString());
+      setLoading(false);
+    },
+    onError: (err, meta) => {
       console.warn('Dashboard summary fetch failed:', err?.message);
       const msg = err?.response?.data?.message || err?.message || 'Dashboard metrics are temporarily unavailable';
       setErrorMessage(msg);
-      setSummary((current) => {
-        if (current) {
-          setIsStale(true);
-          return current;
-        } else {
-          setInitialLoadFailed(true);
-          return null;
-        }
-      });
-    } finally {
+      if (meta.hasExistingData) {
+        setIsStale(true);
+      } else {
+        setInitialLoadFailed(true);
+        setSummary(null);
+      }
       setLoading(false);
+    },
+    debounceMs: 300,
+  });
+
+  const load = useCallback((cycleDate, showSpinner = true, debounce = false) => {
+    if (!cycleDate) return;
+    if (showSpinner) {
+      setLoading(true);
+      setErrorMessage(null);
     }
-  }, []);
+    const key = coordinator.deriveKey({ cycle: cycleDate });
+    const fetcher = (signal) => getDashboardSummary(cycleDate, { signal });
+    setResumeFetcher(() => fetcher);
+    return coordinator.request(key, fetcher, { isSilent: !showSpinner, debounce });
+  }, [coordinator, setResumeFetcher]);
 
   useEffect(() => {
     if (selectedCycle) {
-      load(selectedCycle);
+      load(selectedCycle, true, false);
     }
   }, [selectedCycle, load]);
 
@@ -94,7 +103,7 @@ export default function DashboardScreen() {
     const unsubscribe = subscribeRealtimeEvents((event) => {
       if (['PARCEL_EXCEPTION', 'WAYBILL_UPDATE', 'STATUS_UPDATE', 'SHIPMENT_CREATED', 'PAYMENT_RECORDED', 'SOA_GENERATED'].includes(event.type)) {
         if (selectedCycle) {
-          load(selectedCycle);
+          load(selectedCycle, false, true);
         }
       }
     });

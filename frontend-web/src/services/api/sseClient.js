@@ -1,16 +1,20 @@
 import { getToken, hasVerifiedAdminSession, onSessionInvalidated } from './client';
 import { Platform } from 'react-native';
-import { createSseStreamParser } from './sseClientCore.mjs';
+import { createSseStreamParser, calculateBackoffDelay, isAuthFailureStatus } from './sseClientCore.mjs';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
 let activeAbortController = null;
 let isConnecting = false;
 let reconnectTimer = null;
+let reconnectAttempt = 0;
+let isAuthBlocked = false;
 const listeners = new Set();
 
 if (typeof onSessionInvalidated === 'function') {
   onSessionInvalidated(() => {
+    isAuthBlocked = false;
+    reconnectAttempt = 0;
     closeRealtimeConnection();
   });
 }
@@ -30,7 +34,7 @@ export async function initRealtimeConnection() {
     return null;
   }
 
-  if (!hasVerifiedAdminSession()) {
+  if (isAuthBlocked || listeners.size === 0 || !hasVerifiedAdminSession()) {
     return null;
   }
 
@@ -59,8 +63,15 @@ export async function initRealtimeConnection() {
     isConnecting = false;
 
     if (!response.ok || !response.body) {
+      if (isAuthFailureStatus(response.status)) {
+        isAuthBlocked = true;
+      }
       throw new Error(`SSE connection failed with HTTP status ${response.status}`);
     }
+
+    // Reset backoff schedule immediately upon successful connection
+    reconnectAttempt = 0;
+    isAuthBlocked = false;
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
@@ -87,14 +98,16 @@ export async function initRealtimeConnection() {
       activeAbortController = null;
     }
 
-    if (listeners.size > 0 && hasVerifiedAdminSession() && !abortController.signal.aborted) {
+    if (!isAuthBlocked && listeners.size > 0 && hasVerifiedAdminSession() && !abortController.signal.aborted) {
       if (!reconnectTimer) {
+        const delay = calculateBackoffDelay(reconnectAttempt);
+        reconnectAttempt += 1;
         reconnectTimer = setTimeout(() => {
           reconnectTimer = null;
-          if (listeners.size > 0 && hasVerifiedAdminSession()) {
+          if (!isAuthBlocked && listeners.size > 0 && hasVerifiedAdminSession()) {
             initRealtimeConnection();
           }
-        }, 5000);
+        }, delay);
       }
     }
   }
@@ -119,6 +132,10 @@ export function closeRealtimeConnection() {
  */
 export function subscribeRealtimeEvents(callback) {
   listeners.add(callback);
+  if (listeners.size === 1) {
+    isAuthBlocked = false;
+    reconnectAttempt = 0;
+  }
   initRealtimeConnection();
 
   return () => {

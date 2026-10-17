@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSseStreamParser } from '../src/services/api/sseClientCore.mjs';
+import { createSseStreamParser, calculateBackoffDelay, isAuthFailureStatus } from '../src/services/api/sseClientCore.mjs';
 
 test('createSseStreamParser ignores :keepalive and comment lines without triggering events', () => {
   const events = [];
@@ -132,3 +132,32 @@ test('createSseStreamParser reset clears incomplete buffer', () => {
 
   assert.equal(events.length, 0, 'No event should dispatch from a reset buffer');
 });
+
+test('calculateBackoffDelay follows exponential schedule (1s, 2s, 4s, 8s, 16s, 30s ceiling) with bounded jitter', () => {
+  // Test with randomFactor = 0 (exact base)
+  assert.equal(calculateBackoffDelay(0, 0), 1000);
+  assert.equal(calculateBackoffDelay(1, 0), 2000);
+  assert.equal(calculateBackoffDelay(2, 0), 4000);
+  assert.equal(calculateBackoffDelay(3, 0), 8000);
+  assert.equal(calculateBackoffDelay(4, 0), 16000);
+  assert.equal(calculateBackoffDelay(5, 0), 30000);
+  assert.equal(calculateBackoffDelay(10, 0), 30000);
+
+  // Test with randomFactor = 1.0 (max jitter of 250ms, ceiling of 30s)
+  assert.equal(calculateBackoffDelay(0, 1.0), 1250);
+  assert.equal(calculateBackoffDelay(1, 1.0), 2250);
+  assert.equal(calculateBackoffDelay(2, 1.0), 4250);
+  assert.equal(calculateBackoffDelay(3, 1.0), 8250);
+  assert.equal(calculateBackoffDelay(4, 1.0), 16250);
+  assert.equal(calculateBackoffDelay(5, 1.0), 30000, 'Must never exceed 30s ceiling even with max jitter');
+});
+
+test('isAuthFailureStatus identifies 401 Unauthorized and 403 Forbidden as unrecoverable auth failures', () => {
+  assert.equal(isAuthFailureStatus(401), true);
+  assert.equal(isAuthFailureStatus(403), true);
+  assert.equal(isAuthFailureStatus(500), false);
+  assert.equal(isAuthFailureStatus(503), false);
+  assert.equal(isAuthFailureStatus(404), false);
+  assert.equal(isAuthFailureStatus(200), false);
+});
+

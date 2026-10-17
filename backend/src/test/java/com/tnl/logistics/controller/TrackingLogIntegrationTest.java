@@ -437,7 +437,7 @@ public class TrackingLogIntegrationTest {
                 .andExpect(jsonPath("$.content[0].trackingId").value(trackingId))
                 .andExpect(jsonPath("$.content[0].status").value("LOADED_ON_TRUCK"));
 
-        // Auto-inversion when startDate > endDate
+        // Reversed date range (startDate > endDate) naturally produces empty results
         mockMvc.perform(get("/api/v1/tracking-events")
                 .param("search", trackingId)
                 .param("status", "LOADED_ON_TRUCK")
@@ -445,8 +445,8 @@ public class TrackingLogIntegrationTest {
                 .param("endDate", today.minusDays(1).toString())
                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content", hasSize(1)))
-                .andExpect(jsonPath("$.content[0].trackingId").value(trackingId));
+                .andExpect(jsonPath("$.content", hasSize(0)))
+                .andExpect(jsonPath("$.page.totalElements").value(0));
     }
 
     @Test

@@ -14,6 +14,7 @@ import {
   PrintableReportModal,
 } from '../features/reports';
 import { subscribeRealtimeEvents } from '../features/shipments';
+import { useRequestCoordinator } from '../services/api/useRequestCoordinator';
 import { colors, fonts } from '../theme';
 
 export default function ReportsScreen() {
@@ -66,62 +67,56 @@ export default function ReportsScreen() {
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  const debounceTimer = useRef(null);
-
-  const fetchReportData = useCallback(async (start, end, showSpinner = true) => {
-    try {
-      if (showSpinner) {
-        setLoading(true);
-      } else {
-        setIsLiveUpdating(true);
-      }
-      setErrorMessage(null);
-
-      const data = await getReportSummary({ startDate: start, endDate: end });
+  const { coordinator, setResumeFetcher } = useRequestCoordinator({
+    scope: 'reports',
+    onSuccess: (data, meta) => {
       setReportData(data);
-    } catch (err) {
-      console.error('Failed to load report summary:', err);
-      setErrorMessage(err?.response?.data?.message || err?.message || 'Failed to load report data');
-    } finally {
-      if (showSpinner) setLoading(false);
+      setErrorMessage(null);
+      if (!meta.isSilent) setLoading(false);
       setIsLiveUpdating(false);
+    },
+    onError: (err, meta) => {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to load report data';
+      setErrorMessage(msg);
+      if (!meta.isSilent) setLoading(false);
+      setIsLiveUpdating(false);
+    },
+    debounceMs: 300,
+  });
+
+  const loadReport = useCallback((start, end, showSpinner = true, debounce = false) => {
+    if (showSpinner) {
+      setLoading(true);
+    } else {
+      setIsLiveUpdating(true);
     }
-  }, []);
+    const key = coordinator.deriveKey({ startDate: start, endDate: end });
+    const fetcher = (signal) => getReportSummary({ startDate: start, endDate: end }, { signal });
+    setResumeFetcher(() => fetcher);
+    return coordinator.request(key, fetcher, { isSilent: !showSpinner, debounce });
+  }, [coordinator, setResumeFetcher]);
 
-  // Initial load and filter change
+  // Initial load and filter change (cancels previous query if dates change)
   useEffect(() => {
-    fetchReportData(startDate, endDate, true);
-  }, [startDate, endDate, fetchReportData]);
+    loadReport(startDate, endDate, true, false);
+  }, [startDate, endDate, loadReport]);
 
-  // Real-Time SSE Auto-Sync with 300ms Debounce and Window Focus Sync
+  // Real-Time SSE Auto-Sync with 300ms burst debounce and queued coalescing
   useEffect(() => {
-    const handleSilentSync = () => {
-      fetchReportData(startDate, endDate, false);
-    };
-
     const unsubscribe = subscribeRealtimeEvents((event) => {
       if (
         ['PARCEL_EXCEPTION', 'WAYBILL_UPDATE', 'STATUS_UPDATE', 'SHIPMENT_CREATED', 'PAYMENT_RECORDED', 'SOA_GENERATED', 'SOA_UPDATED'].includes(event.type)
       ) {
-        if (debounceTimer.current) clearTimeout(debounceTimer.current);
-        debounceTimer.current = setTimeout(() => {
-          handleSilentSync();
-        }, 300);
+        loadReport(startDate, endDate, false, true);
       }
     });
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', handleSilentSync);
-    }
-
     return () => {
-      unsubscribe();
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('focus', handleSilentSync);
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
       }
     };
-  }, [startDate, endDate, fetchReportData]);
+  }, [startDate, endDate, loadReport]);
 
   const handleSelectPreset = (presetId) => {
     setActivePreset(presetId);

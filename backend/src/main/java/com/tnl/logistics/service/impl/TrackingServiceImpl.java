@@ -520,12 +520,6 @@ public class TrackingServiceImpl implements TrackingService {
                                                           Pageable pageable) {
         String cleanSearch = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
 
-        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
-            LocalDate temp = startDate;
-            startDate = endDate;
-            endDate = temp;
-        }
-
         LocalDateTime startDateTime = (startDate != null) ? startDate.atStartOfDay() : null;
         LocalDateTime endDateTime = (endDate != null) ? endDate.atTime(23, 59, 59, 999999999) : null;
 

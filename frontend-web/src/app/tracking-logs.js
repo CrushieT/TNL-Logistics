@@ -12,6 +12,7 @@ import {
   exportTrackingLogsToCsv,
 } from '../features/tracking-logs';
 import { subscribeRealtimeEvents } from '../features/shipments';
+import { useRequestCoordinator } from '../services/api/useRequestCoordinator';
 import { colors, fonts } from '../theme';
 
 export default function TrackingLogsScreen() {
@@ -33,102 +34,131 @@ export default function TrackingLogsScreen() {
   const [unreadLiveScans, setUnreadLiveScans] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
 
-  const searchDebounceTimer = useRef(null);
   const highlightTimers = useRef(new Map());
 
-  // Fetch paginated logs with optional diff highlighting
-  const fetchLogs = useCallback(
-    async (targetPage, targetSize, targetSearch, targetStatus, showSpinner = true, highlightDiff = false) => {
-      try {
-        if (showSpinner) setLoading(true);
-        const data = await listTrackingLogs({
-          page: targetPage,
-          size: targetSize,
-          search: targetSearch,
-          status: targetStatus,
-        });
+  const { coordinator: logsCoordinator, setResumeFetcher: setLogsResumeFetcher } = useRequestCoordinator({
+    scope: 'tracking-logs',
+    onSuccess: (data, meta) => {
+      if (data) {
+        const newContent = data.content || [];
 
-        if (data) {
-          const newContent = data.content || [];
+        if (meta.highlightDiff) {
+          setLogs((prevLogs) => {
+            const existingIds = new Set(prevLogs.map((item) => item.eventId));
+            const newlyAddedIds = newContent
+              .filter((item) => !existingIds.has(item.eventId))
+              .map((item) => item.eventId);
 
-          if (highlightDiff) {
-            setLogs((prevLogs) => {
-              const existingIds = new Set(prevLogs.map((item) => item.eventId));
-              const newlyAddedIds = newContent
-                .filter((item) => !existingIds.has(item.eventId))
-                .map((item) => item.eventId);
+            if (newlyAddedIds.length > 0) {
+              setHighlightedIds((prev) => {
+                const next = new Set(prev);
+                newlyAddedIds.forEach((id) => next.add(id));
+                return next;
+              });
 
-              if (newlyAddedIds.length > 0) {
-                setHighlightedIds((prev) => {
-                  const next = new Set(prev);
-                  newlyAddedIds.forEach((id) => next.add(id));
-                  return next;
-                });
-
-                newlyAddedIds.forEach((id) => {
-                  const timer = setTimeout(() => {
-                    setHighlightedIds((prev) => {
-                      const next = new Set(prev);
-                      next.delete(id);
-                      return next;
-                    });
-                    highlightTimers.current.delete(id);
-                  }, 3500);
-                  highlightTimers.current.set(id, timer);
-                });
-              }
-              return newContent;
-            });
-          } else {
-            setLogs(newContent);
-          }
-
-          const pageMeta = data.page || {};
-          setTotalElements(pageMeta.totalElements ?? data.totalElements ?? 0);
-          setTotalPages(pageMeta.totalPages ?? data.totalPages ?? 0);
+              newlyAddedIds.forEach((id) => {
+                const timer = setTimeout(() => {
+                  setHighlightedIds((prev) => {
+                    const next = new Set(prev);
+                    next.delete(id);
+                    return next;
+                  });
+                  highlightTimers.current.delete(id);
+                }, 3500);
+                highlightTimers.current.set(id, timer);
+              });
+            }
+            return newContent;
+          });
+        } else {
+          setLogs(newContent);
         }
-      } catch (err) {
-        console.warn('Failed to fetch tracking logs:', err?.message);
-      } finally {
-        if (showSpinner) setLoading(false);
-      }
-    },
-    []
-  );
 
-  // Fetch today's summary metrics
-  const fetchMetrics = useCallback(async () => {
-    try {
-      const data = await getTrackingMetrics();
+        const pageMeta = data.page || {};
+        setTotalElements(pageMeta.totalElements ?? data.totalElements ?? 0);
+        setTotalPages(pageMeta.totalPages ?? data.totalPages ?? 0);
+      }
+      setLoading(false);
+    },
+    onError: (err) => {
+      console.warn('Failed to fetch tracking logs:', err?.message);
+      setLoading(false);
+    },
+    debounceMs: 300,
+  });
+
+  const { coordinator: metricsCoordinator, setResumeFetcher: setMetricsResumeFetcher } = useRequestCoordinator({
+    scope: 'tracking-metrics',
+    onSuccess: (data) => {
       if (data) {
         setMetrics(data);
       }
-    } catch (err) {
-      console.warn('Failed to fetch tracking metrics:', err?.message);
-    } finally {
       setMetricsLoading(false);
-    }
-  }, []);
+    },
+    onError: (err) => {
+      console.warn('Failed to fetch tracking metrics:', err?.message);
+      setMetricsLoading(false);
+    },
+    debounceMs: 300,
+  });
+
+  // Fetch paginated logs with optional diff highlighting
+  const fetchLogs = useCallback(
+    (targetPage, targetSize, targetSearch, targetStatus, showSpinner = true, highlightDiff = false, debounce = false) => {
+      if (showSpinner) setLoading(true);
+      const key = logsCoordinator.deriveKey({
+        page: targetPage,
+        size: targetSize,
+        search: targetSearch,
+        status: targetStatus,
+      });
+      const fetcher = (signal) =>
+        listTrackingLogs(
+          {
+            page: targetPage,
+            size: targetSize,
+            search: targetSearch,
+            status: targetStatus,
+          },
+          { signal }
+        );
+      setLogsResumeFetcher(() => fetcher);
+      return logsCoordinator.request(key, fetcher, {
+        isSilent: !showSpinner,
+        debounce,
+        highlightDiff,
+      });
+    },
+    [logsCoordinator, setLogsResumeFetcher]
+  );
+
+  // Fetch today's summary metrics
+  const fetchMetrics = useCallback(
+    (debounce = false) => {
+      const key = metricsCoordinator.deriveKey({ metric: 'today' });
+      const fetcher = (signal) => getTrackingMetrics({ signal });
+      setMetricsResumeFetcher(() => fetcher);
+      return metricsCoordinator.request(key, fetcher, { isSilent: true, debounce });
+    },
+    [metricsCoordinator, setMetricsResumeFetcher]
+  );
 
   // Initial load & whenever page / pageSize / statusFilter changes
   useEffect(() => {
-    fetchLogs(page, pageSize, search, statusFilter, true);
+    fetchLogs(page, pageSize, search, statusFilter, true, false, false);
   }, [page, pageSize, statusFilter]);
 
   // Initial metrics load
   useEffect(() => {
-    fetchMetrics();
+    fetchMetrics(false);
   }, [fetchMetrics]);
 
   // Handle debounced search changes
   const handleSearchChange = (text) => {
     setSearch(text);
-    if (searchDebounceTimer.current) clearTimeout(searchDebounceTimer.current);
-    searchDebounceTimer.current = setTimeout(() => {
-      setPage(0);
-      setUnreadLiveScans(0);
-      fetchLogs(0, pageSize, text, statusFilter, false);
-    }, 300);
+    setPage(0);
+    setUnreadLiveScans(0);
+    fetchLogs(0, pageSize, text, statusFilter, false, false, true);
   };
 
   // Handle status filter pills
@@ -150,22 +180,15 @@ export default function TrackingLogsScreen() {
     setUnreadLiveScans(0);
   };
 
-  // Real-time SSE synchronization + Window focus fallback
+  // Real-time SSE synchronization with 300ms debounce
   useEffect(() => {
-    const handleSilentSync = () => {
-      fetchMetrics();
-      if (page === 0 && (!search || search.trim() === '')) {
-        fetchLogs(0, pageSize, '', statusFilter, false, true);
-      }
-    };
-
     const unsubscribe = subscribeRealtimeEvents((event) => {
       if (event.type === 'STATUS_UPDATE' || event.type === 'SHIPMENT_CREATED') {
-        fetchMetrics();
+        fetchMetrics(true);
 
         // If on Page 0 and no complex search is active, silently update in-place with highlight diff
         if (page === 0 && (!search || search.trim() === '')) {
-          fetchLogs(0, pageSize, '', statusFilter, false, true);
+          fetchLogs(0, pageSize, '', statusFilter, false, true, true);
         } else {
           // If viewing historical page or searching, notify user via floating pill
           const increment = (event.type === 'SHIPMENT_CREATED' && event.data?.quantity)
@@ -176,14 +199,9 @@ export default function TrackingLogsScreen() {
       }
     });
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', handleSilentSync);
-    }
-
     return () => {
-      unsubscribe();
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('focus', handleSilentSync);
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
       }
       highlightTimers.current.forEach((t) => clearTimeout(t));
       highlightTimers.current.clear();
