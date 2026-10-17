@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
 
 /**
  * Service implementation for live operations dashboard aggregations.
- * Executes database-level SQL/JPQL aggregate queries for sub-15ms performance.
+ * Executes database-level SQL/JPQL aggregates for live totals.
  */
 @Service
 @Transactional(readOnly = true)
@@ -86,7 +86,8 @@ public class DashboardServiceImpl implements DashboardService {
             String todayDateFormatted = today.format(DATE_FORMATTER);
 
             // 3. Cycle-scoped unpaid transactions count
-            long unpaidTransactionCount = shipmentRepository.countUnpaidShipmentsBetween(cycleStart, cycleEnd);
+            long unpaidTransactionCount = (cycleSummary != null && cycleSummary.getUnpaidShipmentCount() != null)
+                    ? cycleSummary.getUnpaidShipmentCount() : 0L;
 
             // 4. Weekly collection metrics aligned to active billing cycle using internal totals read
             DayOfWeek collectionDay = collectionsService.getCollectionDayOfWeek();
@@ -102,11 +103,15 @@ public class DashboardServiceImpl implements DashboardService {
                     new DashboardSummaryResponse.ForCollectionDto(amount, clientCount, collectionDayShort);
 
             // 5. Parcel units status breakdown for this cycle
-            List<Object[]> statusRows = parcelUnitRepository.countParcelsGroupedByStatusBetween(cycleStart, cycleEnd);
+            List<Object[]> statusRows = parcelUnitRepository.countParcelsGroupedByLossAndStatusBetween(cycleStart, cycleEnd);
             Map<ParcelStatus, Long> statusCounts = new EnumMap<>(ParcelStatus.class);
+            long lostCount = 0L;
             for (Object[] row : statusRows) {
-                if (row[0] instanceof ParcelStatus) {
-                    statusCounts.put((ParcelStatus) row[0], ((Number) row[1]).longValue());
+                long count = ((Number) row[2]).longValue();
+                if (Boolean.TRUE.equals(row[0])) {
+                    lostCount += count;
+                } else if (row[1] instanceof ParcelStatus parcelStatus) {
+                    statusCounts.put(parcelStatus, count);
                 }
             }
             List<DashboardSummaryResponse.StatusSegmentDto> parcelUnitsByStatus = new ArrayList<>();
@@ -124,7 +129,6 @@ public class DashboardServiceImpl implements DashboardService {
                 parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto(
                         "Completed", statusCounts.get(ParcelStatus.COMPLETED), "#059669"));
             }
-            long lostCount = parcelUnitRepository.countLostParcelsBetween(cycleStart, cycleEnd);
             if (lostCount > 0) {
                 parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto("Lost", lostCount, "#B91C1C"));
             }
@@ -156,7 +160,8 @@ public class DashboardServiceImpl implements DashboardService {
             }
 
             // 7. Financial comparison (Outstanding vs Collected) for this cycle
-            BigDecimal totalCollected = shipmentRepository.sumTotalPaymentsBetween(cycleStart, cycleEnd);
+            BigDecimal totalCollected = (cycleSummary != null && cycleSummary.getCollectedPayments() != null)
+                    ? cycleSummary.getCollectedPayments() : BigDecimal.ZERO;
             BigDecimal outstanding = totalCharges.subtract(totalCollected);
             if (outstanding.compareTo(BigDecimal.ZERO) < 0) {
                 outstanding = BigDecimal.ZERO;

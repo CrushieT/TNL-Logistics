@@ -35,6 +35,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * Integration test verifying GET /api/v1/tracking-events audit log feed,
@@ -601,6 +605,196 @@ public class TrackingLogIntegrationTest {
         assertNotNull(first.get("timestamp").asText());
         assertNotNull(first.get("formattedTimestamp").asText());
     }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testExactSearchIdsAcrossFieldsCaseWildcardsAndBackslashes() throws Exception {
+        SearchFixture fixture = createSearchFixture(6);
+        for (String search : List.of("SRCH-TRACK_1", "srch-track_1", "SRCH-SHIP", "sRcH pAtH",
+                fixture.staff().getUsername(), "SRCH-VEH", fixture.vehicle().getPlateNumber().toLowerCase(Locale.ROOT),
+                "SRCH", "  sRcH  ", "%", "_", "SRCH%", "\\%", "\\_", "\\", "\\\\",
+                "Path\\\\Staff", "srch\\_\\%\\_user", "NO-SRCH-MATCH", "", "   ")) {
+            assertExactSearchPage(search, null, null, null, 0, 25);
+        }
+        JsonNode response = assertExactSearchPage("SRCH", null, null, null, 0, 25);
+        assertEquals(6, response.at("/page/totalElements").asInt());
+        assertTrue(response.get("content").findValues("vehicleId").stream().anyMatch(JsonNode::isNull));
+    }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testExactSearchIdsWithStatusDateBoundsAndReversedDates() throws Exception {
+        SearchFixture fixture = createSearchFixture(6);
+        LocalDate day = LocalDate.of(2036, 1, 10);
+        setEventTimestamp(fixture.events().get(0).getEventId(), day.atStartOfDay());
+        setEventTimestamp(fixture.events().get(1).getEventId(), day.atTime(23, 59, 59));
+        setEventTimestamp(fixture.events().get(2).getEventId(), day.plusDays(1).atStartOfDay());
+        entityManager.clear();
+        assertExactSearchPage("SRCH", ParcelStatus.LOADED_ON_TRUCK, day, day, 0, 25);
+        assertExactSearchPage("SRCH", null, day, null, 0, 25);
+        assertExactSearchPage("SRCH", null, null, day, 0, 25);
+        JsonNode reversed = assertExactSearchPage("SRCH", null, day.plusDays(1), day.minusDays(1), 0, 25);
+        assertEquals(0, reversed.at("/page/totalElements").asInt());
+        assertTrue(reversed.get("content").isEmpty());
+    }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testSearchDeduplicationTiedOrderingAdjacentAndBeyondLastPages() throws Exception {
+        SearchFixture fixture = createSearchFixture(6);
+        List<Long> expectedIds = fixture.events().stream().map(TrackingEvent::getEventId)
+                .sorted(java.util.Comparator.reverseOrder()).toList();
+        List<Long> actualIds = new ArrayList<>();
+        for (int page = 0; page < 3; page++) {
+            JsonNode result = assertExactSearchPage("SRCH", null, null, null, page, 2);
+            result.get("content").forEach(row -> actualIds.add(row.get("eventId").asLong()));
+        }
+        assertEquals(expectedIds, actualIds);
+        assertEquals(6, new HashSet<>(actualIds).size());
+        JsonNode beyond = assertExactSearchPage("SRCH", null, null, null, 9999, 2);
+        assertEquals(6, beyond.at("/page/totalElements").asInt());
+        assertTrue(beyond.get("content").isEmpty());
+    }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testSearchCsvReturnsExactlyFiveHundredOrderedUniqueRows() throws Exception {
+        createSearchFixture(502);
+        JsonNode first = assertExactSearchPage("SRCH", null, null, null, 0, 500);
+        JsonNode second = assertExactSearchPage("SRCH", null, null, null, 1, 500);
+        JsonNode beyond = assertExactSearchPage("SRCH", null, null, null, 2, 500);
+        assertEquals(500, first.get("content").size());
+        assertEquals(2, second.get("content").size());
+        assertEquals(502, beyond.at("/page/totalElements").asInt());
+        assertTrue(beyond.get("content").isEmpty());
+    }
+
+    @Test
+    void testGeneratedSearchSqlPreservesNullRelationshipsInReadOnlyFixture() {
+        String fixture = """
+                WITH parcel_unit AS (
+                    SELECT 'MATCH-P' tracking_id, 'MATCH-S' shipment_id
+                    UNION ALL SELECT 'OTHER-P', 'OTHER-S'),
+                app_user AS (SELECT 'u1' user_id, 'match_user' username, 'Match Staff' full_name),
+                vehicle AS (SELECT 'MATCH-V' vehicle_id, 'MATCH-PLATE' plate_number),
+                tracking_event AS (
+                    SELECT 1 event_id, 'MATCH-P' tracking_id, 'REGISTERED' status,
+                           CAST(NULL AS CHAR(20)) staff_id, CAST(NULL AS CHAR(20)) vehicle_id,
+                           TIMESTAMP('2036-01-10 12:00:00') event_timestamp
+                    UNION ALL SELECT 2, 'MATCH-P', 'LOADED_ON_TRUCK', 'u1', NULL, TIMESTAMP('2036-01-10 12:00:00')
+                    UNION ALL SELECT 3, 'OTHER-P', 'LOADED_ON_TRUCK', NULL, 'MATCH-V', TIMESTAMP('2036-01-10 12:00:00')
+                    UNION ALL SELECT 4, 'OTHER-P', 'REGISTERED', NULL, NULL, TIMESTAMP('2036-01-10 12:00:00'))
+                """;
+        EntityManager queryFactory = org.mockito.Mockito.mock(EntityManager.class);
+        jakarta.persistence.Query countQuery = org.mockito.Mockito.mock(jakarta.persistence.Query.class);
+        org.mockito.Mockito.when(queryFactory.createNativeQuery(org.mockito.ArgumentMatchers.anyString())).thenReturn(countQuery);
+        org.mockito.Mockito.when(countQuery.getSingleResult()).thenReturn(0L);
+        AdminTrackingEventRepositoryImpl repository = new AdminTrackingEventRepositoryImpl();
+        org.springframework.test.util.ReflectionTestUtils.setField(repository, "entityManager", queryFactory);
+        repository.findAdminTrackingEvents("match", null, null, null, org.springframework.data.domain.PageRequest.of(0, 25));
+        org.mockito.ArgumentCaptor<String> sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(queryFactory).createNativeQuery(sql.capture());
+        String generatedSql = sql.getValue().replace("SELECT COUNT(*)", "SELECT e.event_id");
+        List<Long> actual = readEventIds(fixture + generatedSql + " ORDER BY e.event_id", Map.of("search", "match"));
+        List<Long> expected = readEventIds(fixture + "SELECT e.event_id" + existingSearchFromClause()
+                + " ORDER BY e.event_id", Map.of("search", "match"));
+        assertEquals(List.of(1L, 2L, 3L), actual);
+        assertEquals(expected, actual);
+    }
+
+    private JsonNode assertExactSearchPage(String search, ParcelStatus statusFilter, LocalDate startDate,
+                                          LocalDate endDate, int page, int size) throws Exception {
+        entityManager.flush();
+        Map<String, Object> parameters = new HashMap<>();
+        String cleanSearch = search != null && !search.trim().isEmpty() ? search.trim() : null;
+        String fromClause = cleanSearch == null ? " FROM tracking_event e WHERE 1=1" : existingSearchFromClause();
+        if (cleanSearch != null) {
+            parameters.put("search", cleanSearch);
+        }
+        if (statusFilter != null) {
+            fromClause += " AND e.status = :status";
+            parameters.put("status", statusFilter.name());
+        }
+        if (startDate != null) {
+            fromClause += " AND e.event_timestamp >= :startDate";
+            parameters.put("startDate", startDate.atStartOfDay());
+        }
+        if (endDate != null) {
+            fromClause += " AND e.event_timestamp <= :endDate";
+            parameters.put("endDate", endDate.atTime(23, 59, 59, 999999999));
+        }
+        List<Long> expectedIds = readEventIds("SELECT e.event_id" + fromClause
+                + " ORDER BY e.event_timestamp DESC, e.event_id DESC", parameters);
+        var request = get("/api/v1/tracking-events").param("page", Integer.toString(page)).param("size", Integer.toString(size));
+        if (search != null) request.param("search", search);
+        if (statusFilter != null) request.param("status", statusFilter.name());
+        if (startDate != null) request.param("startDate", startDate.toString());
+        if (endDate != null) request.param("endDate", endDate.toString());
+        JsonNode result = objectMapper.readTree(mockMvc.perform(request).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString());
+        List<Long> actualIds = new ArrayList<>();
+        result.get("content").forEach(row -> actualIds.add(row.get("eventId").asLong()));
+        int offset = (int) Math.min((long) page * size, expectedIds.size());
+        assertEquals(expectedIds.size(), result.at("/page/totalElements").asLong(), "Exact total for " + search);
+        assertEquals(expectedIds.subList(offset, Math.min(offset + size, expectedIds.size())), actualIds,
+                "Exact ordered IDs for " + search);
+        assertEquals(actualIds.size(), new HashSet<>(actualIds).size());
+        return result;
+    }
+
+    private String existingSearchFromClause() {
+        return """
+                 FROM tracking_event e
+                 JOIN parcel_unit pu ON pu.tracking_id=e.tracking_id
+                 LEFT JOIN app_user u ON u.user_id=e.staff_id
+                 LEFT JOIN vehicle v ON v.vehicle_id=e.vehicle_id
+                 WHERE (LOWER(pu.tracking_id) LIKE LOWER(CONCAT('%', :search, '%'))
+                    OR LOWER(pu.shipment_id) LIKE LOWER(CONCAT('%', :search, '%'))
+                    OR (u.full_name IS NOT NULL AND LOWER(u.full_name) LIKE LOWER(CONCAT('%', :search, '%')))
+                    OR (u.username IS NOT NULL AND LOWER(u.username) LIKE LOWER(CONCAT('%', :search, '%')))
+                    OR (v.vehicle_id IS NOT NULL AND LOWER(v.vehicle_id) LIKE LOWER(CONCAT('%', :search, '%')))
+                    OR (v.plate_number IS NOT NULL AND LOWER(v.plate_number) LIKE LOWER(CONCAT('%', :search, '%'))))
+                """;
+    }
+
+    private List<Long> readEventIds(String sql, Map<String, Object> parameters) {
+        jakarta.persistence.Query query = entityManager.createNativeQuery(sql);
+        parameters.forEach(query::setParameter);
+        return ((List<?>) query.getResultList()).stream().map(value -> ((Number) value).longValue()).toList();
+    }
+
+    private SearchFixture createSearchFixture(int eventCount) {
+        Client client = clientRepository.findById("CL-001").orElseThrow();
+        Shipment shipment = new Shipment("SRCH-SHIP", client, "Search recipient", "Search address", "09170000000",
+                1, ChargeModel.FLAT, new BigDecimal("100"), BigDecimal.ZERO, new BigDecimal("100"),
+                false, RegisteredVia.DESKTOP_OFFICE);
+        shipment.setDateRegistered(LocalDateTime.of(2036, 1, 10, 12, 0));
+        entityManager.persist(shipment);
+        ParcelUnit parcel = new ParcelUnit("SRCH-TRACK_1", shipment, 1, BigDecimal.ONE, BigDecimal.ONE,
+                BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE);
+        parcelUnitRepository.saveAndFlush(parcel);
+        AppUser staff = appUserRepository.saveAndFlush(new AppUser("SRCH-USER", "srch_%_user",
+                appUserRepository.findById("USR-FIELD").orElseThrow().getPasswordHash(), "Srch Path\\Staff", UserRole.COURIER_STAFF));
+        Vehicle vehicle = vehicleRepository.saveAndFlush(new Vehicle("SRCH-VEH", "SRCH%_\\PLATE", "Search vehicle"));
+        List<TrackingEvent> events = new ArrayList<>();
+        for (int eventIndex = 0; eventIndex < eventCount; eventIndex++) {
+            ParcelStatus status = eventIndex % 2 == 0 ? ParcelStatus.LOADED_ON_TRUCK : ParcelStatus.ARRIVED_AT_TNL;
+            events.add(new TrackingEvent(parcel, status, eventIndex % 2 == 0 ? vehicle : null, staff, "Search fixture"));
+        }
+        trackingEventRepository.saveAllAndFlush(events);
+        entityManager.createNativeQuery("UPDATE tracking_event SET event_timestamp = :timestamp WHERE event_id IN :ids")
+                .setParameter("timestamp", LocalDateTime.of(2036, 1, 10, 12, 0))
+                .setParameter("ids", events.stream().map(TrackingEvent::getEventId).toList()).executeUpdate();
+        entityManager.clear();
+        return new SearchFixture(staff, vehicle, events);
+    }
+
+    private void setEventTimestamp(Long eventId, LocalDateTime timestamp) {
+        entityManager.createNativeQuery("UPDATE tracking_event SET event_timestamp = :timestamp WHERE event_id = :eventId")
+                .setParameter("timestamp", timestamp).setParameter("eventId", eventId).executeUpdate();
+    }
+
+    private record SearchFixture(AppUser staff, Vehicle vehicle, List<TrackingEvent> events) {}
 
     @Test
     @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})

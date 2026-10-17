@@ -7,5 +7,6 @@ public interface DailyParcelTotals {
     long getParcelsCount();
     BigDecimal getTotalWeightKg();
     BigDecimal getTotalVolumeCbm();
-    long getCompletedDeliveries();
+    Number getLostFlag();
+    String getCurrentStatus();
 }

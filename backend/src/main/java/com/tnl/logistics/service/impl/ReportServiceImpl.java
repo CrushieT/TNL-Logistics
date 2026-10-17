@@ -95,21 +95,28 @@ public class ReportServiceImpl implements ReportService {
         }
 
         // 3. Operational Parcel Distribution and Delivery Metrics
-        List<Object[]> parcelStatusRows =
-                parcelUnitRepository.countParcelsGroupedByStatusBetween(startDateTime, endDateTime);
-        long lostParcelsCount = parcelUnitRepository.countLostParcelsBetween(startDateTime, endDateTime);
-
-        long completedParcelsCount =
-                parcelUnitRepository.countCompletedParcelsBetween(startDateTime, endDateTime);
-
+        List<DailyParcelTotals> parcelRows = parcelUnitRepository.aggregateDailyParcels(startDateTime, endDateTime);
         Map<String, Long> statusCounts = new HashMap<>();
-        long totalParcelsCount = lostParcelsCount;
+        Map<LocalDate, List<DailyParcelTotals>> parcelsByDate = new HashMap<>();
+        long lostParcelsCount = 0L;
+        long completedParcelsCount = 0L;
+        long totalParcelsCount = 0L;
 
-        for (Object[] row : parcelStatusRows) {
-            ParcelStatus status = (ParcelStatus) row[0];
-            long count = ((Number) row[1]).longValue();
-            statusCounts.put(status.name(), count);
+        for (DailyParcelTotals parcelRow : parcelRows) {
+            long count = parcelRow.getParcelsCount();
             totalParcelsCount += count;
+            if (parcelRow.getLostFlag().intValue() != 0) {
+                lostParcelsCount += count;
+            } else {
+                statusCounts.merge(parcelRow.getCurrentStatus(), count, Long::sum);
+            }
+            if (ParcelStatus.COMPLETED.name().equals(parcelRow.getCurrentStatus())) {
+                completedParcelsCount += count;
+            }
+            LocalDate regDate = extractLocalDate(parcelRow.getRegDate());
+            if (regDate != null) {
+                parcelsByDate.computeIfAbsent(regDate, ignored -> new ArrayList<>()).add(parcelRow);
+            }
         }
 
         double deliveryCompletionRate = totalParcelsCount > 0
@@ -274,30 +281,28 @@ public class ReportServiceImpl implements ReportService {
             }
         }
 
-        List<DailyParcelTotals> dailyParcels =
-                parcelUnitRepository.aggregateDailyParcels(startDateTime, endDateTime);
-        Map<LocalDate, DailyParcelTotals> parcelsByDate = new HashMap<>();
-        for (DailyParcelTotals dpt : dailyParcels) {
-            LocalDate regDate = extractLocalDate(dpt.getRegDate());
-            if (regDate != null) {
-                parcelsByDate.put(regDate, dpt);
-            }
-        }
-
         List<DailyVolumeReportRow> dailyVolumeRows = new ArrayList<>();
         LocalDate walker = resolvedStart;
         while (!walker.isAfter(resolvedEnd)) {
             long dayShipmentsCount = shipmentsByDate.getOrDefault(walker, 0L);
-            DailyParcelTotals parcelTotals = parcelsByDate.get(walker);
-
-            long dayParcelsCount = parcelTotals != null ? parcelTotals.getParcelsCount() : 0L;
-            BigDecimal dayWeight = (parcelTotals != null && parcelTotals.getTotalWeightKg() != null)
-                    ? parcelTotals.getTotalWeightKg()
-                    : BigDecimal.ZERO;
-            BigDecimal dayVolume = (parcelTotals != null && parcelTotals.getTotalVolumeCbm() != null)
-                    ? parcelTotals.getTotalVolumeCbm()
-                    : BigDecimal.ZERO;
-            long dayCompleted = parcelTotals != null ? parcelTotals.getCompletedDeliveries() : 0L;
+            List<DailyParcelTotals> dayRows = parcelsByDate.getOrDefault(walker, List.of());
+            long dayParcelsCount = 0L;
+            BigDecimal dayWeight = BigDecimal.ZERO;
+            BigDecimal dayVolume = BigDecimal.ZERO;
+            long dayCompleted = 0L;
+            for (DailyParcelTotals parcelRow : dayRows) {
+                long count = parcelRow.getParcelsCount();
+                dayParcelsCount += count;
+                if (parcelRow.getTotalWeightKg() != null) {
+                    dayWeight = dayWeight.add(parcelRow.getTotalWeightKg());
+                }
+                if (parcelRow.getTotalVolumeCbm() != null) {
+                    dayVolume = dayVolume.add(parcelRow.getTotalVolumeCbm());
+                }
+                if (ParcelStatus.COMPLETED.name().equals(parcelRow.getCurrentStatus())) {
+                    dayCompleted += count;
+                }
+            }
 
             dailyVolumeRows.add(new DailyVolumeReportRow(
                     walker,

@@ -48,18 +48,27 @@ public class AdminTrackingEventRepositoryImpl implements AdminTrackingEventRepos
         if (cleanSearch == null) {
             fromBuilder.append(" FROM tracking_event e");
         } else {
-            fromBuilder.append(" FROM tracking_event e")
-                    .append(" JOIN parcel_unit pu ON pu.tracking_id = e.tracking_id")
-                    .append(" LEFT JOIN app_user u ON u.user_id = e.staff_id")
-                    .append(" LEFT JOIN vehicle v ON v.vehicle_id = e.vehicle_id");
+            fromBuilder.append(" FROM tracking_event e");
 
             predicates.add("""
-                (LOWER(pu.tracking_id) LIKE LOWER(CONCAT('%', :search, '%'))
-                 OR LOWER(pu.shipment_id) LIKE LOWER(CONCAT('%', :search, '%'))
-                 OR (u.full_name IS NOT NULL AND LOWER(u.full_name) LIKE LOWER(CONCAT('%', :search, '%')))
-                 OR (u.username IS NOT NULL AND LOWER(u.username) LIKE LOWER(CONCAT('%', :search, '%')))
-                 OR (v.vehicle_id IS NOT NULL AND LOWER(v.vehicle_id) LIKE LOWER(CONCAT('%', :search, '%')))
-                 OR (v.plate_number IS NOT NULL AND LOWER(v.plate_number) LIKE LOWER(CONCAT('%', :search, '%'))))
+                (e.staff_id IN (
+                    SELECT matched_staff.user_id FROM (
+                        SELECT DISTINCT u.user_id FROM app_user u
+                        WHERE (u.full_name IS NOT NULL AND LOWER(u.full_name) LIKE LOWER(CONCAT('%', :search, '%')))
+                           OR (u.username IS NOT NULL AND LOWER(u.username) LIKE LOWER(CONCAT('%', :search, '%')))
+                    ) matched_staff)
+                 OR e.vehicle_id IN (
+                    SELECT matched_vehicle.vehicle_id FROM (
+                        SELECT DISTINCT v.vehicle_id FROM vehicle v
+                        WHERE (v.vehicle_id IS NOT NULL AND LOWER(v.vehicle_id) LIKE LOWER(CONCAT('%', :search, '%')))
+                           OR (v.plate_number IS NOT NULL AND LOWER(v.plate_number) LIKE LOWER(CONCAT('%', :search, '%')))
+                    ) matched_vehicle)
+                 OR e.tracking_id IN (
+                    SELECT matched_parcel.tracking_id FROM (
+                        SELECT DISTINCT pu.tracking_id FROM parcel_unit pu
+                        WHERE LOWER(pu.tracking_id) LIKE LOWER(CONCAT('%', :search, '%'))
+                           OR LOWER(pu.shipment_id) LIKE LOWER(CONCAT('%', :search, '%'))
+                    ) matched_parcel))
             """);
             parameters.put("search", cleanSearch);
         }

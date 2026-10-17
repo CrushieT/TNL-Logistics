@@ -17,17 +17,31 @@ export const options = {
       executor: 'ramping-vus',
       startVUs: 1,
       stages: [
-        { duration: '30s', target: 10 },
-        { duration: '1m', target: 20 },
+        { duration: '30s', target: 8 },
+        { duration: '1m', target: 18 },
         { duration: '30s', target: 0 },
       ],
       exec: 'courierWorkflow',
+    },
+    mobile_receiving: {
+      executor: 'constant-vus',
+      vus: 1,
+      duration: '2m',
+      exec: 'receivingWorkflow',
+    },
+    mobile_dispatch: {
+      executor: 'constant-vus',
+      vus: 1,
+      duration: '2m',
+      exec: 'dispatchWorkflow',
     },
   },
   thresholds: {
     http_req_failed: ['rate<0.01'],
     'http_req_duration{scenario:admin_web}': ['p(95)<1500'],
     'http_req_duration{scenario:mobile_couriers}': ['p(95)<500'],
+    'http_req_duration{scenario:mobile_receiving}': ['p(95)<500'],
+    'http_req_duration{scenario:mobile_dispatch}': ['p(95)<500'],
   },
 };
 
@@ -43,19 +57,12 @@ export function setup() {
   check(adminLogin, { 'admin login succeeded': (r) => r.status === 200 && r.json('token') });
   if (adminLogin.status !== 200 || !adminLogin.json('token')) throw new Error('Admin login failed');
 
-  // 2. Authenticate Field Staff via Mobile Login (Phase 6.9 role separation)
-  const fieldLogin = http.post(`${baseUrl}/api/v1/auth/mobile-login`, JSON.stringify({
-    username: 'loadtest-field',
-    password: password,
-  }), {
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Device-Id': '11111111-1111-1111-1111-111111111111',
-    },
-  });
-
-  check(fieldLogin, { 'field login succeeded': (r) => r.status === 200 && r.json('token') });
-  if (fieldLogin.status !== 200 || !fieldLogin.json('token')) throw new Error('Courier login failed');
+  const courierSession = authenticateMobileStaff('loadtest-field',
+    '11111111-1111-1111-1111-111111111111', 'courier');
+  const receivingSession = authenticateMobileStaff('loadtest-office',
+    '22222222-2222-2222-2222-222222222222', 'receiving');
+  const dispatchSession = authenticateMobileStaff('loadtest-dispatch',
+    '33333333-3333-3333-3333-333333333333', 'dispatch');
 
   const logs = http.get(`${baseUrl}/api/v1/tracking-events?page=0&size=100`, {
     headers: { Authorization: `Bearer ${adminLogin.json('token')}` },
@@ -66,10 +73,34 @@ export function setup() {
 
   return {
     adminToken: adminLogin.json('token'),
-    fieldToken: fieldLogin.json('token'),
-    deviceId: fieldLogin.json('deviceId'),
-    deviceToken: fieldLogin.json('deviceToken'),
+    fieldToken: courierSession.token,
+    deviceId: courierSession.deviceId,
+    deviceToken: courierSession.deviceToken,
+    receivingSession,
+    dispatchSession,
     trackingIds,
+  };
+}
+
+function authenticateMobileStaff(username, deviceId, role) {
+  const response = http.post(`${baseUrl}/api/v1/auth/mobile-login`, JSON.stringify({
+    username,
+    password,
+  }), { headers: { 'Content-Type': 'application/json', 'X-Device-Id': deviceId } });
+  check(response, { [`${role} login succeeded`]: (result) => result.status === 200 && result.json('token') });
+  if (response.status !== 200) throw new Error(`${role} login failed (${response.status})`);
+  const session = response.json();
+  if (!session.token || !session.deviceId || !session.deviceToken) {
+    throw new Error(`${role} login returned an incomplete device session`);
+  }
+  return { token: session.token, deviceId: session.deviceId, deviceToken: session.deviceToken };
+}
+
+function mobileHeaders(session) {
+  return {
+    Authorization: `Bearer ${session.token}`,
+    'X-Device-Id': session.deviceId,
+    'X-Device-Token': session.deviceToken,
   };
 }
 
@@ -87,12 +118,27 @@ export function adminWorkflow(data) {
 }
 
 export function courierWorkflow(data) {
-  const headers = {
-    Authorization: `Bearer ${data.fieldToken}`,
-    'X-Device-Id': data.deviceId,
-    'X-Device-Token': data.deviceToken,
-  };
-  const trackingId = data.trackingIds[Math.floor(Math.random() * data.trackingIds.length)];
+  runTrackingWorkflow({ token: data.fieldToken, deviceId: data.deviceId, deviceToken: data.deviceToken },
+    data.trackingIds, 'courier');
+}
+
+export function dispatchWorkflow(data) {
+  runTrackingWorkflow(data.dispatchSession, data.trackingIds, 'dispatch');
+}
+
+export function receivingWorkflow(data) {
+  const headers = mobileHeaders(data.receivingSession);
+  const responses = http.batch([
+    ['GET', `${baseUrl}/api/v1/shipments?page=0&size=20`, null, { headers }],
+    ['GET', `${baseUrl}/api/v1/vehicles`, null, { headers }],
+  ]);
+  responses.forEach((response) => check(response, { 'receiving request succeeded': (result) => result.status === 200 }));
+  sleep(1);
+}
+
+function runTrackingWorkflow(session, trackingIds, role) {
+  const headers = mobileHeaders(session);
+  const trackingId = trackingIds[Math.floor(Math.random() * trackingIds.length)];
 
   const responses = http.batch([
     ['GET', `${baseUrl}/api/v1/tracking-events/mine/metrics`, null, { headers }],
@@ -100,7 +146,7 @@ export function courierWorkflow(data) {
     ['GET', `${baseUrl}/api/v1/tracking-events/scan-context/${trackingId}`, null, { headers }],
   ]);
 
-  responses.forEach((res) => check(res, { 'courier request succeeded': (r) => r.status === 200 }));
+  responses.forEach((res) => check(res, { [`${role} request succeeded`]: (r) => r.status === 200 }));
   sleep(1);
 }
 

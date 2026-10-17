@@ -126,7 +126,13 @@ docker run --rm -e BASE_URL=http://host.docker.internal:8082 -e LOADTEST_PASSWOR
 ---
 
 ### 2. `realistic-simulation.js` — Realistic Day-in-the-Life Hybrid Simulation
-*Models 1 Web Admin browsing the dashboard/shipments alongside up to 20 Mobile Couriers concurrently requesting shift metrics, scan history, and parcel scan contexts (~1,450 operations in 2 minutes).*
+Models 1 admin, 1 receiving staff member, 1 dispatch staff member, and up to 18 courier virtual users over two minutes (21 users at peak). Couriers ramp from 1 to 8 over 30 seconds, then to 18 over one minute, then to zero over 30 seconds. Admin, receiving, and dispatch each remain at one user throughout.
+
+Admin reads Dashboard, Shipments, and Clients. Receiving reads Shipments and Vehicles. Dispatch and couriers read their own metrics/history and parcel scan context. No registration, payment, or scan mutations are performed. Each role uses its seeded account; courier virtual users still share `loadtest-field` and its device session. This is not the separate ten-minute acceptance workload and does not exercise Reports or Weekly Collections.
+
+The admin p95 target remains 1,500 ms; each mobile role has a 500 ms p95 target, and failed requests must remain below 1%. Previous all-courier results represent a different workload.
+
+Verification: `Get-Content -Raw load-tests/realistic-simulation.js | node --input-type=module --check`. For a live run, use the command below (set `BASE_URL` to port 8080 for the simulation stack). Expect four successful role logins, separate scenario summaries, HTTP 200 reads, and unchanged business-record counts. Login can create or refresh synthetic device bindings; incompatible existing bindings must be resolved through normal session handling. Syntax validation alone does not establish latency acceptance.
 
 **Against Stack B (Port 8082 — Recommended):**
 ```powershell
@@ -160,7 +166,7 @@ docker run --rm -e BASE_URL=http://host.docker.internal:8082 -e LOADTEST_PASSWOR
 
 ## 50,000-Shipment Endpoint Diagnostics
 
-Keep `realistic-simulation.js` unchanged for regression acceptance. `endpoint-diagnostics.js` authenticates the same accounts and performs sequential reads tagged by endpoint, with one discarded warm-up pass and configurable samples. Summaries allow-list metrics and execution state, excluding credentials and setup tokens. The runner reads the existing seed password from `.env.loadtest` and passes it through the process environment. Do not use k6 HTTP debugging or export setup data.
+The user-requested role redistribution changes `realistic-simulation.js` from twenty courier VUs to eighteen courier VUs plus receiving and dispatch; do not compare it as an identical workload to earlier evidence. `endpoint-diagnostics.js` reuses its setup, authenticating all four role accounts, and performs sequential reads tagged by endpoint, with one discarded warm-up pass and configurable samples. Summaries allow-list metrics and execution state, excluding credentials and setup tokens. The runner reads the existing seed password from `.env.loadtest` and passes it through the process environment. Do not use k6 HTTP debugging or export setup data.
 
 ```powershell
 ./load-tests/run-measurement.ps1 -Label before -Samples 3
@@ -195,3 +201,57 @@ See [optimization-results.md](optimization-results.md) for complete before/after
 All three unchanged simulations recorded 357 requests, 0% failures, 118 completed iterations, zero interrupted iterations, and no connection-pool timeouts. Admin p95 was 25.87/22.54/24.41 seconds and courier p95 was 18.72/18.50/18.02 seconds, failing the original 1.5-second/500-ms targets. MySQL saturated its 0.5 CPU allocation; sampled memory stayed below 418 MiB. The dataset and limits remain unchanged. No further optimization or tests followed the final verification request.
 
 Saved simulation summaries are sanitized after k6 exits because its built-in export includes setup data. The runner retains only metrics and aggregate check groups. All three delivered local summaries exclude setup tokens and credentials.
+
+### Dashboard aggregate slice (2026-10-17)
+
+This slice replaces Dashboard's separate status/lost reads with a loss/status aggregate, and its three cycle financial reads with one shipment-level payment aggregate. Reports retains its existing parcel calculations. Collections retains its indexed scalar payment lookup, statement eligibility, deductions, SOA-only rows, and per-client clamping. Public response fields and authorization remain unchanged.
+
+The current simulation uses 1 CPU / 1 GiB per container, five Hikari connections, and the existing 256 MiB MySQL buffer pool. The 0.5 CPU / 512 MB and 64 MiB instructions above describe the historical verification environment. Do not change limits, timezone, timeouts, indexes, or seeded data for this slice. Do not run k6 or browse the application during isolated measurements.
+
+From `backend/`, run:
+
+```powershell
+mvn -o test "-Dtest=DashboardIntegrationTest,CollectionsIntegrationTest,CollectionsAggregationIntegrationTest,ReportIntegrationTest,FourRoleAuthorizationIntegrationTest,AdminConsoleAuthorizationIntegrationTest"
+```
+
+The Dashboard regressions compare every response field with the existing repository calculations, then assert financial states, multiple/late payments, lost/completed handling, optional segments, ordering/colors, deductions, SOA-only clients, global versus per-client clamping, empty cycles, and boundary compatibility. Existing assertions remain intact. Connector/J can round the nanosecond end-of-day parameter to the next midnight; this slice preserves that behavior.
+
+Manual What to Test:
+
+1. Sign in as the seeded admin using normal authentication. Request `/api/v1/dashboard/summary?cycle=2026-10-08`, then `2026-10-15` and `2026-10-22`. Compare every field with the saved baseline, including aliases, collection cards, financial comparisons, daily volume, recent activity, and status segment order/colors.
+2. Check a lost completed parcel: it contributes to Lost, not Completed. Recovering it moves it to Completed. Lost and Completed disappear when their counts are zero; the five ordinary status segments remain with zero values where applicable. Use transactional test fixtures for mutations, not the preserved 50,000-shipment dataset.
+3. Verify unpaid, partial, fully paid, zero-charge, multiple-payment, late-payment, and overpaid shipments. Count each shipment and its parcel quantity once. Include all payments belonging to cycle-registered shipments. Clamp the Dashboard financial comparison after summing cycle charges/payments.
+4. Compare `/api/v1/collections/weekly?targetDate=DATE` with the Dashboard collection card. Check deductions, historical statement exclusion, SOA-only clients, and per-client clamping independently from the Dashboard financial comparison.
+5. Request an empty cycle, such as `2036-03-07`. Expect zero cycle counts/financial comparisons, seven zero volume points, five zero status segments, and omitted Lost/Completed segments. Today's counts and global recent activity remain independent of that cycle.
+6. Check unauthenticated access (401), admin access (200), and receiving/courier/dispatch access (403). Verify cycle-start/end compatibility against the existing queries, including the existing JDBC precision behavior.
+7. After the backend-only rebuild, confirm completed-seed skipping and unchanged counts: 50,000 shipments, 145,827 parcels, 645,790 tracking events, 36,807 payments, and 1,437 statements. Expect no business-record writes from diagnostic requests or SQL probes.
+
+Use one discarded Dashboard warm-up and three sequential requests with a 15-second deadline. Record bytes, status, resource samples, query plans, and heap/pool errors. The local ignored `results/dashboard-slice-*` artifacts contain SQL equivalence, complete response snapshots, source manifests, and diagnostic evidence without authentication tokens. The original image's exact source identity and Mem Reduct's automatic-cleaning setting are unresolved; previous API timings remain provisional. Isolated measurements do not establish p95 capacity or concurrent performance acceptance.
+
+Completed verification: all 51 requested tests passed, the backend-only build succeeded, and the deployed Dashboard responses matched all three seeded cycles and an empty cycle. All business counts above remained unchanged. After one discarded warm-up, active Dashboard samples were 653.85 / 677.58 / 653.18 ms, HTTP 200 and 2,031 bytes each. No heap/pool errors were recorded after successful startup. An external MySQL stop interrupted the first startup; the user approved restarting the same container, so cache warmth differs between captures. This is implementation and isolated verification completion; performance acceptance remains pending. See [optimization-results.md](optimization-results.md#dashboard-aggregate-slice-2026-10-17) for the full evidence and remediation log.
+
+### Admin Tracking Logs search proposal (2026-10-17)
+
+The approved IN-based admin search implementation and isolated verification are complete. [optimization-results.md](optimization-results.md#admin-tracking-logs-substring-investigation-2026-10-17) records exact-set/order/500-row evidence, rejected UNION candidates, query timings, regression/deployment/API results, and the remaining selective-search latency limit.
+
+The universal UNION candidate regressed broad searches because of large event-ID materialization. The proposed smaller `IN` predicate over materialized entity IDs improved the measured selective, broad, no-match, combined-filter, and wildcard cases without changing search/escape semantics. It still scans many events for selective searches, so the 1.5-second p95 target remains unmet by the available evidence. No application/test source, running image, configuration, or dataset changed during this investigation. Mem Reduct was absent but its automatic-cleaning preference could not be confirmed. No k6 workload ran.
+
+Executed regression command from `backend/`:
+
+```powershell
+mvn -o test "-Dtest=TrackingLogIntegrationTest,PersonalTrackingHistoryIntegrationTest,FourRoleAuthorizationIntegrationTest,AdminConsoleAuthorizationIntegrationTest"
+```
+
+All 59 tests passed with zero failures/errors/skips. Five new focused regressions compare exact IDs with the original predicate and cover escapes, overlap, nullable relationships, filters, tied ordering, adjacent/beyond-last pages, and 500-row CSV. The first compile attempt used an incorrect fixture password getter; correcting that call required no assertion or production change.
+
+Only the backend was rebuilt/recreated. Startup skipped seeding; MySQL's container/start time and all business counts stayed unchanged. One discarded warm-up and three sequential after samples per case all returned HTTP 200 and matched baseline IDs, totals, pagination metadata, and byte sizes. Selective tracking search remains unmet at 1947.58 / 1936.28 / 2008.11 ms versus the 1.5-second target. Broad staff search took 290-297 ms, no-match 408-416 ms, combined filters 267-300 ms, and 500-row CSV 287-297 ms. No heap/pool errors appeared during the API window. Both deployments are identified by image/JAR/source hashes; the original older unresolved-image timings remain provisional. Mem Reduct's automatic-cleaning preference remains unconfirmed.
+
+Implementation, regression verification, backend-only deployment, and isolated API verification are complete. Final performance acceptance remains pending; three samples do not establish p95 capacity or reliability. Work stopped after this search slice. No further optimization or k6 run followed.
+
+### Reports parcel aggregation proposal (2026-10-17)
+
+The investigation, approved implementation, regression tests, backend-only deployment, and isolated API verification are complete. [optimization-results.md](optimization-results.md#reports-parcel-aggregation-investigation-2026-10-17) records per-day/status parity, SQL timings, regression results, before/after API responses, and limitations. The grouped query matched the 17-day default month, 11-day seeded range, and focused empty/lost-COMPLETED/cycle/rounded-boundary fixtures. SQL root times were 530-547 ms versus 914-953 ms for the prior four statements.
+
+Both identified before and after deployments returned HTTP 200 in all recorded Reports calls. The default month changed from 2.02-2.24 s to 1.70-1.78 s; the seeded range from 2.00-2.11 s to 1.69-1.77 s. Every response field except `generatedAt` matched the baseline, and serialized byte sizes were identical. Business counts and runtime limits remain unchanged. Mem Reduct saved configuration has `AutoreductEnable=true` and `AutoreductIntervalEnable=false`, while its process was absent during measurements. The saved automatic-reduction flag must not be described as disabled.
+
+Targeted command from `backend/`: `mvn -o test "-Dtest=ReportIntegrationTest,DashboardIntegrationTest"`. Result: 29 passed, zero failures/errors/skips, including a new multi-day lost-COMPLETED/decimal/date-reversal regression. Backend-only startup skipped seeding; the MySQL container was not restarted. After one discarded warm-up and three measured calls per period, no isolated Reports request exceeded five seconds. Formal p95/concurrency/failure-rate acceptance remains separate. Work stopped after isolated verification without k6 or further optimization.

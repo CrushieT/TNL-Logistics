@@ -57,6 +57,9 @@ public class ReportIntegrationTest {
     private com.tnl.logistics.service.CollectionsService collectionsService;
 
     @Autowired
+    private com.tnl.logistics.service.ReportService reportService;
+
+    @Autowired
     private WeeklyCollectionRepository weeklyCollectionRepository;
 
     private ParcelUnit createParcel(String trackingId, Shipment shipment, int seq, ParcelStatus status, boolean lost, BigDecimal weight, BigDecimal volume) {
@@ -536,6 +539,85 @@ public class ReportIntegrationTest {
                 // Daily volume for registration day: completedDeliveries counts all completed parcels = 2
                 .andExpect(jsonPath("$.dailyVolume[?(@.date == '" + regDate.toLocalDate().toString() + "')].completedDeliveries").value(2))
                 .andExpect(jsonPath("$.dailyVolume[?(@.date == '" + regDate.toLocalDate().toString() + "')].parcelsCount").value(2));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testParcelTotalsAcrossDaysAndReversedRangePreserveLossRules() throws Exception {
+        Client client = createOrGetClient("CL-RPT-GROUP", "Grouped Parcel Client");
+        LocalDate start = LocalDate.of(2036, 10, 8);
+        LocalDate end = LocalDate.of(2036, 10, 16);
+
+        Shipment first = createShipment("SHP-RPT-G1", client, new BigDecimal("100.00"), start.atTime(12, 0));
+        createParcel("TRK-RPT-G1", first, 1, ParcelStatus.COMPLETED, true,
+                new BigDecimal("2.25"), new BigDecimal("0.1250"));
+
+        Shipment second = createShipment("SHP-RPT-G2", client, new BigDecimal("200.00"), start.plusDays(1).atTime(12, 0));
+        createParcel("TRK-RPT-G2A", second, 1, ParcelStatus.COMPLETED, false,
+                new BigDecimal("1.10"), new BigDecimal("0.2200"));
+        ParcelUnit lostWithoutMeasurements = createParcel("TRK-RPT-G2B", second, 2,
+                ParcelStatus.REGISTERED, true, BigDecimal.ONE, BigDecimal.ONE);
+        lostWithoutMeasurements.setWeightKg(null);
+        lostWithoutMeasurements.setVolumeCbm(null);
+        parcelUnitRepository.saveAndFlush(lostWithoutMeasurements);
+
+        Shipment last = createShipment("SHP-RPT-G3", client, new BigDecimal("300.00"), end.atTime(12, 0));
+        createParcel("TRK-RPT-G3A", last, 1, ParcelStatus.REGISTERED, false,
+                new BigDecimal("0.50"), new BigDecimal("0.0001"));
+        createParcel("TRK-RPT-G3B", last, 2, ParcelStatus.COMPLETED, false,
+                new BigDecimal("0.75"), new BigDecimal("0.1111"));
+
+        com.tnl.logistics.dto.ReportSummaryResponse report = reportService.getReportSummary(start, end);
+        assertEquals(3, report.getKpis().getTotalShipments());
+        assertEquals(0, new BigDecimal("600.00").compareTo(report.getKpis().getTotalBilledRevenue()));
+        assertEquals(5, report.getKpis().getTotalParcels());
+        assertEquals(60.0, report.getKpis().getDeliveryCompletionRate());
+        assertEquals(2, report.getStatusDistribution().stream()
+                .filter(row -> "COMPLETED".equals(row.getStatus())).findFirst().orElseThrow().getCount());
+        assertEquals(2, report.getStatusDistribution().stream()
+                .filter(row -> "LOST".equals(row.getStatus())).findFirst().orElseThrow().getCount());
+        assertEquals(1, report.getStatusDistribution().stream()
+                .filter(row -> "REGISTERED".equals(row.getStatus())).findFirst().orElseThrow().getCount());
+
+        var firstDay = report.getDailyVolume().stream()
+                .filter(row -> start.equals(row.getDate())).findFirst().orElseThrow();
+        assertEquals(1, firstDay.getParcelsCount());
+        assertEquals(new BigDecimal("2.25"), firstDay.getTotalWeightKg());
+        assertEquals(new BigDecimal("0.1250"), firstDay.getTotalVolumeCbm());
+        assertEquals(1, firstDay.getCompletedDeliveries());
+
+        var secondDay = report.getDailyVolume().stream()
+                .filter(row -> start.plusDays(1).equals(row.getDate())).findFirst().orElseThrow();
+        assertEquals(2, secondDay.getParcelsCount());
+        assertEquals(new BigDecimal("1.10"), secondDay.getTotalWeightKg());
+        assertEquals(new BigDecimal("0.2200"), secondDay.getTotalVolumeCbm());
+        assertEquals(1, secondDay.getCompletedDeliveries());
+
+        var emptyDay = report.getDailyVolume().stream()
+                .filter(row -> start.plusDays(2).equals(row.getDate())).findFirst().orElseThrow();
+        assertEquals(0, emptyDay.getParcelsCount());
+        assertEquals(BigDecimal.ZERO, emptyDay.getTotalWeightKg());
+        assertEquals(BigDecimal.ZERO, emptyDay.getTotalVolumeCbm());
+        assertEquals(0, emptyDay.getCompletedDeliveries());
+
+        var lastDay = report.getDailyVolume().stream()
+                .filter(row -> end.equals(row.getDate())).findFirst().orElseThrow();
+        assertEquals(2, lastDay.getParcelsCount());
+        assertEquals(new BigDecimal("1.25"), lastDay.getTotalWeightKg());
+        assertEquals(new BigDecimal("0.1112"), lastDay.getTotalVolumeCbm());
+        assertEquals(1, lastDay.getCompletedDeliveries());
+
+        var chronological = (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(
+                mockMvc.perform(get("/api/v1/reports/summary")
+                        .param("startDate", start.toString()).param("endDate", end.toString()))
+                        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        var reversed = (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(
+                mockMvc.perform(get("/api/v1/reports/summary")
+                        .param("startDate", end.toString()).param("endDate", start.toString()))
+                        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        chronological.remove("generatedAt");
+        reversed.remove("generatedAt");
+        assertEquals(chronological, reversed);
     }
 
     @Test
