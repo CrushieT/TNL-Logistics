@@ -57,4 +57,25 @@ public interface ParcelUnitRepository extends JpaRepository<ParcelUnit, String> 
            "AND p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered <= :cycleEnd")
     long countLostParcelsBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart,
                                  @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
+
+    @Query("SELECT COUNT(p) FROM ParcelUnit p WHERE p.currentStatus = com.tnl.logistics.model.ParcelStatus.COMPLETED " +
+           "AND p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered <= :cycleEnd")
+    long countCompletedParcelsBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart,
+                                      @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
+
+
+    @Query(value = """
+            SELECT DATE(s.date_registered) AS regDate,
+                   COUNT(pu.tracking_id) AS parcelsCount,
+                   COALESCE(SUM(pu.weight_kg), 0) AS totalWeightKg,
+                   COALESCE(SUM(pu.volume_cbm), 0) AS totalVolumeCbm,
+                   COALESCE(SUM(CASE WHEN pu.current_status = 'COMPLETED' THEN 1 ELSE 0 END), 0) AS completedDeliveries
+            FROM parcel_unit pu
+            JOIN shipment s ON s.shipment_id = pu.shipment_id
+            WHERE s.date_registered BETWEEN :start AND :end
+            GROUP BY DATE(s.date_registered)
+            """, nativeQuery = true)
+    List<DailyParcelTotals> aggregateDailyParcels(
+            @Param("start") java.time.LocalDateTime start,
+            @Param("end") java.time.LocalDateTime end);
 }

@@ -297,6 +297,14 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 - `backend/src/main/java/com/tnl/logistics/repository/PersonalTrackingEventRepository.java`: staff-scoped history fragment.
 - `backend/src/main/java/com/tnl/logistics/repository/PersonalTrackingEventRepositoryImpl.java`: ID pagination, exact count, bounded relationship fetch.
 - `backend/src/main/java/com/tnl/logistics/repository/ClientCollectionTotals.java`: per-client financial projection.
+- `backend/src/main/java/com/tnl/logistics/repository/ClientAgingProjection.java`: SQL-aggregated client aging and live receivables projection.
+- `backend/src/main/java/com/tnl/logistics/repository/PeriodShipmentTotals.java`: SQL-aggregated period shipment count and billed revenue projection.
+- `backend/src/main/java/com/tnl/logistics/repository/ClientPeriodShipmentTotals.java`: SQL-aggregated client-level period shipment count and billed revenue projection.
+- `backend/src/main/java/com/tnl/logistics/repository/ClientPeriodPaymentTotals.java`: SQL-aggregated client-level period collected revenue projection.
+- `backend/src/main/java/com/tnl/logistics/repository/PaymentMethodTotals.java`: SQL-aggregated payment method distribution projection.
+- `backend/src/main/java/com/tnl/logistics/repository/DeductionCategoryTotals.java`: SQL-aggregated SOA deduction categories projection.
+- `backend/src/main/java/com/tnl/logistics/repository/DailyShipmentTotals.java`: SQL-aggregated daily registered shipment count projection.
+- `backend/src/main/java/com/tnl/logistics/repository/DailyParcelTotals.java`: SQL-aggregated daily parcel count, weight, volume, and completed delivery projection.
 - `backend/src/main/resources/db/migration/V40__cover_personal_history_and_metrics.sql`: additive courier covering indexes.
 - `backend/src/test/java/com/tnl/logistics/controller/CollectionsAggregationIntegrationTest.java`: financial and boundary regressions.
 - `load-tests/endpoint-diagnostics.js`: sequential sampling with discarded warm-up and sanitized summaries.

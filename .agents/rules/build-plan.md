@@ -1,5 +1,13 @@
 # TNL Logistics — Master Build Plan
 
+## Admin Pages Optimization [IN PROGRESS]
+
+- Implementation plan: `.review/admin-pages-optimization-plan.md`. Eliminates entity hydration and OOM risks across Reports, Dashboard, Admin Tracking Logs, and Weekly Collections under 50,000-shipment load.
+- Slice A: Reports memory and query work [COMPLETED] — Replaced period shipment, parcel, payment, and lifetime unpaid entity loading with bounded database aggregates and projections. Passed 17 ReportIntegrationTest regression, completion-rate semantics, MockMvc HTTP 503 error contract, and date-dimension memory checks. Live 50k container benchmark pending Docker availability; final performance acceptance pending full workflow runs.
+- Slice B: Weekly Collections and Dashboard [UPCOMING]
+- Slice C: Admin Tracking Logs [UPCOMING]
+- Slice D: Request lifecycle and outage handling [UPCOMING]
+
 ## Statements Dropdown SOA Search [COMPLETED]
 
 - Generated statements in the selected collection cycle show their SOA number in bold beneath the client name and support full/partial, trimmed, case-insensitive number searches.
