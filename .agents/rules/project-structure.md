@@ -1,5 +1,12 @@
 # Project Structure
 
+### Admin tracking logs optimization
+
+- `backend/src/main/java/com/tnl/logistics/repository/TodayTrackingMetricsSummary.java`: single-query projection interface for today's operational tracking metrics (`todayTotalScans`, `activeCouriersCount`, `loadedOnTruckToday`, `handedToHaulerToday`).
+- `backend/src/main/java/com/tnl/logistics/repository/AdminTrackingEventRepository.java`: custom fragment interface declaring `findAdminTrackingEvents(search, status, startDateTime, endDateTime, pageable)`.
+- `backend/src/main/java/com/tnl/logistics/repository/AdminTrackingEventRepositoryImpl.java`: ID-first admin pagination selecting matching event IDs, zero-join count/IDs query for unfiltered/date/status searches, 6-field search joining only required tables, page/size clamping (1-500), and bounded relationship fetch with order preservation.
+- `backend/src/test/java/com/tnl/logistics/controller/TrackingLogIntegrationTest.java`: 21 integration tests covering pagination clamping, 500-item CSV request, exact totals beyond last page, 6-field substring/lowercase search, combined search+status+date, wildcard/escape inputs, empty results, timestamp tie breaking by `eventId DESC`, adjacent page non-overlap, DTO mapping safety, 401/403 role matrix, and populated current-day metrics tracking.
+
 ### Statements dropdown SOA search
 
 - `frontend-web/src/features/collections/components/SearchableClientDropdown.js`: optional SOA number display and substring search; default client-only mode remains unchanged.

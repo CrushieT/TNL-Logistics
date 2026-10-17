@@ -520,11 +520,23 @@ public class TrackingServiceImpl implements TrackingService {
                                                           Pageable pageable) {
         String cleanSearch = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
 
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            LocalDate temp = startDate;
+            startDate = endDate;
+            endDate = temp;
+        }
+
         LocalDateTime startDateTime = (startDate != null) ? startDate.atStartOfDay() : null;
         LocalDateTime endDateTime = (endDate != null) ? endDate.atTime(23, 59, 59, 999999999) : null;
 
-        Page<TrackingEvent> eventsPage = trackingEventRepository.searchTrackingEvents(
-                cleanSearch, status, startDateTime, endDateTime, pageable);
+        int pageNumber = (pageable != null) ? Math.max(0, pageable.getPageNumber()) : 0;
+        int pageSize = (pageable != null) ? Math.min(500, Math.max(1, pageable.getPageSize())) : 25;
+        org.springframework.data.domain.Pageable clampedPageable = org.springframework.data.domain.PageRequest.of(
+                pageNumber, pageSize,
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.desc("eventTimestamp"), org.springframework.data.domain.Sort.Order.desc("eventId")));
+
+        Page<TrackingEvent> eventsPage = trackingEventRepository.findAdminTrackingEvents(
+                cleanSearch, status, startDateTime, endDateTime, clampedPageable);
 
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a", Locale.ENGLISH);
 
@@ -570,10 +582,16 @@ public class TrackingServiceImpl implements TrackingService {
         LocalDateTime startOfDay = today.atStartOfDay();
         LocalDateTime endOfDay = today.atTime(23, 59, 59, 999999999);
 
-        long totalScans = trackingEventRepository.countOperationalScansBetween(startOfDay, endOfDay);
-        long activeCouriers = trackingEventRepository.countDistinctOperationalStaffBetween(startOfDay, endOfDay);
-        long loadedOnTruck = trackingEventRepository.countStatusBetween(ParcelStatus.LOADED_ON_TRUCK, startOfDay, endOfDay);
-        long handedToHauler = trackingEventRepository.countStatusBetween(ParcelStatus.LOADED_TO_HAULER, startOfDay, endOfDay);
+        com.tnl.logistics.repository.TodayTrackingMetricsSummary summary =
+                trackingEventRepository.getTodayTrackingMetricsSummary(startOfDay, endOfDay);
+        if (summary == null) {
+            return new TrackingMetricsResponse(0L, 0L, 0L, 0L);
+        }
+
+        long totalScans = summary.getTodayTotalScans() != null ? summary.getTodayTotalScans() : 0L;
+        long activeCouriers = summary.getActiveCouriersCount() != null ? summary.getActiveCouriersCount() : 0L;
+        long loadedOnTruck = summary.getLoadedOnTruckToday() != null ? summary.getLoadedOnTruckToday() : 0L;
+        long handedToHauler = summary.getHandedToHaulerToday() != null ? summary.getHandedToHaulerToday() : 0L;
 
         return new TrackingMetricsResponse(totalScans, activeCouriers, loadedOnTruck, handedToHauler);
     }
