@@ -1,5 +1,12 @@
 # Project Structure
 
+### Frontend progressive loading and bounded memory cache
+
+- `frontend-web/src/services/api/responseCache.mjs`: pure in-memory response cache module with 6 slots (`dashboard_summary`, `reports_summary`, `weekly_collections`, `tracking_logs_page`, `tracking_logs_metrics`, `collection_cycles`), exact user ID, session generation, and canonical query parameter matching, 5-minute TTL, 1 MiB per-entry cap, 4 MiB total cache cap, oldest-entry eviction, and zero storage persistence.
+- `frontend-web/src/components/common/Skeleton.js`: accessible, static placeholder blocks and skeletons (`MetricCardSkeleton`, `ChartSkeleton`, `TableRowSkeleton`, `ActivityRowSkeleton`, `ReportsKpiSkeleton`, `CollectionSummarySkeleton`) for immediate page layout rendering without full-page spinners or financial flashes.
+- `frontend-web/tests/responseCache.test.mjs`: unit test suite verifying cache hits, expiration, identity & query bounds, slot replacement, payload size limits, and total eviction.
+- `frontend-web/tests/responseCacheSession.test.mjs`: cache/session-core unit checks for invalidation, sliding renewal, response acceptance, and account isolation; production client integration is covered in progressiveLoadingFlows.test.mjs.
+
 ### Request lifecycle, coordinator, and SSE outage handling
 
 - `frontend-web/src/services/api/requestCoordinator.mjs`: shared request coordinator managing deterministic key derivation, in-flight overlap prevention, AbortController cancellation on key change/unmount, generational response guarding, at most one queued follow-up refresh, 300ms event burst debouncing, hidden tab/inactive route suspension, and cancellation error suppression.
@@ -161,18 +168,18 @@ tnl-logistics/
 │   │   │   │   └── print.js         # Dedicated isolated printable report document
 │   │   │   ├── users.js             # Screen 27 User & Staff Management
 │   │   │   └── settings.js          # Screen 28 System Settings
-│   │   ├── components/              # Shared design system (common/ atoms, layout/ AppShell)
+│   │   ├── components/              # Shared design system (common/ atoms & Skeleton, layout/ AppShell, Sidebar, SignOutModal, navScrollPosition.mjs)
 │   │   ├── features/                # Domain modules
 │   │   │   ├── shipments/           # ClientSelectDropdown, ParcelUnitsEditor, ShipmentPricingSummary, parcelPagination.mjs, registrationCalculations.mjs, PrintLabelsModal, LabelPreview, durable outbox & isolated thermal print service
 │   │   │   ├── reports/             # Operational & financial report cards, PrintableReportDocument, reportPrintModel.mjs
 │   │   │   ├── collections/         # SOA components, API services, pagination, and hardened two-copy statementPrintModel.mjs
 │   │   │   ├── waybills/            # Waybill table, manifest, directory helpers, API client, and two-copy print service
 │   │   │   └── settings/            # Settings components plus shared SOA bank-detail normalization and validation
-│   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sessionCore.mjs, sseClient.js, sseClientCore.mjs)
+│   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sessionCore.mjs, responseCache.mjs, sseClient.js, sseClientCore.mjs)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
 │   │   ├── utils/                   # Shared QR facade
 │   │   └── vendor/qrcodegen/        # Vendored Project Nayuki QR generator
-│   ├── tests/                       # Web unit suites, including waybill directory, route, and two-copy print coverage
+│   ├── tests/                       # Web unit suites, including response cache, nav scroll position, signout modal, waybill directory, route, and two-copy print coverage
 │   ├── assets/                      # favicon.png, tracking-logo.png
 │   ├── app.json                     # Expo web configuration
 │   ├── package.json
@@ -333,3 +340,14 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 - `load-tests/scan-write-diagnostics.sql`: rolled-back scan insert timing.
 - `load-tests/monitor-resources.ps1`: per-run CPU/memory samples and connection-pool timeout counts.
 - `load-tests/optimization-results.md`: slice verification, performance evidence, and unsuccessful-attempt ledger.
+
+### Frontend progressive loading & navigation additions
+- `frontend-web/src/components/common/Skeleton.js`: generic and domain-specific skeleton placeholders for immediate layout rendering.
+- `frontend-web/src/services/api/responseCache.mjs`: bounded browser-memory preview cache with slot budgeting, 5-minute TTL, and `isResponseAcceptable` production session/query acceptance validation.
+- `frontend-web/src/components/layout/navScrollPosition.mjs`: navigation scroll-offset state preservation across page transitions.
+- `frontend-web/tests/responseCache.test.mjs`: unit tests for pure cache slot allocation, eviction, TTL, and canonical query parameter matching.
+- `frontend-web/tests/responseCacheSession.test.mjs`: cache/session-core unit checks for invalidation, sliding renewal, response acceptance, and account isolation.
+- `frontend-web/tests/progressiveLoadingFlows.test.mjs`: production screen/hook regression tests for first render, preview Print gating, tab resume metadata, late responses, empty-result stale handling, cycle cancellation, and actual client session/password boundaries; child UI rendering is stubbed.
+- `frontend-web/tests/navScrollPosition.test.mjs`: regression tests for navigation scroll position retention.
+- `frontend-web/src/components/layout/SignOutModal.js`: web confirmation modal for admin console signout with icon anchor, section dividers, and backdrop dismissal.
+- `frontend-web/tests/signOutModal.test.mjs`: unit and interaction tests for signout popup presentation, callbacks, and Sidebar integration.

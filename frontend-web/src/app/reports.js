@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, StyleSheet, Text, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Text, Pressable } from 'react-native';
 import AppShell from '../components/layout/AppShell';
+import Card from '../components/common/Card';
 import {
   getReportSummary,
   ReportsHeader,
@@ -13,9 +14,26 @@ import {
   ReceivablesAgingTab,
   PrintableReportModal,
 } from '../features/reports';
+import {
+  ReportsKpiSkeleton,
+  ChartSkeleton,
+  CollectionSummarySkeleton,
+  TableRowSkeleton,
+} from '../components/common/Skeleton';
+import {
+  CACHE_SLOTS,
+  getCacheEntry,
+  setCacheEntry,
+  isResponseAcceptable,
+} from '../services/api/responseCache.mjs';
+import { isCancellationError } from '../services/api/requestCoordinator.mjs';
+import {
+  getSessionAuthContext,
+  onSessionInvalidated,
+} from '../services/api/client';
 import { subscribeRealtimeEvents } from '../features/shipments';
 import { useRequestCoordinator } from '../services/api/useRequestCoordinator';
-import { colors, fonts } from '../theme';
+import { colors, fonts, radius, spacing } from '../theme';
 
 export default function ReportsScreen() {
   const formatDateString = (d) => {
@@ -63,26 +81,97 @@ export default function ReportsScreen() {
 
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isPreview, setIsPreview] = useState(false);
+  const [isStale, setIsStale] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const [isLiveUpdating, setIsLiveUpdating] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  const { coordinator, setResumeFetcher } = useRequestCoordinator({
+  const activeDatesRef = useRef({ startDate, endDate });
+  activeDatesRef.current = { startDate, endDate };
+
+  const reportDataRef = useRef(reportData);
+  reportDataRef.current = reportData;
+
+
+
+  const { coordinator } = useRequestCoordinator({
     scope: 'reports',
     onSuccess: (data, meta) => {
+      const currentAuth = getSessionAuthContext();
+      const currentQuery = activeDatesRef.current;
+      if (!isResponseAcceptable({
+        requestAuth: meta?.requestAuth,
+        requestQuery: meta?.requestQuery,
+        currentAuth,
+        activeQuery: currentQuery,
+      })) {
+        return;
+      }
+
+      setCacheEntry(CACHE_SLOTS.REPORTS, {
+        userId: currentAuth.userId,
+        sessionGeneration: currentAuth.sessionGeneration,
+        queryParams: { startDate: currentQuery.startDate, endDate: currentQuery.endDate },
+        data,
+      });
+
       setReportData(data);
+      setIsPreview(false);
+      setIsStale(false);
+      setInitialLoadFailed(false);
       setErrorMessage(null);
-      if (!meta.isSilent) setLoading(false);
+      setLastUpdated(new Date().toLocaleTimeString());
+      setLoading(false);
       setIsLiveUpdating(false);
     },
     onError: (err, meta) => {
+      if (isCancellationError(err)) return;
+      const currentAuth = getSessionAuthContext();
+      const currentQuery = activeDatesRef.current;
+      if (!isResponseAcceptable({
+        requestAuth: meta?.requestAuth,
+        requestQuery: meta?.requestQuery,
+        currentAuth,
+        activeQuery: currentQuery,
+      })) {
+        return;
+      }
+
       const msg = err?.response?.data?.message || err?.message || 'Failed to load report data';
       setErrorMessage(msg);
-      if (!meta.isSilent) setLoading(false);
+      setIsPreview(false);
+      if (reportDataRef.current) {
+        setIsStale(true);
+      } else {
+        setInitialLoadFailed(true);
+        setReportData(null);
+      }
+      setLoading(false);
       setIsLiveUpdating(false);
     },
     debounceMs: 300,
   });
+
+  // Session reset listener
+  useEffect(() => {
+    const unsubscribe = onSessionInvalidated(() => {
+      coordinator.cancel();
+      setReportData(null);
+      setIsStale(false);
+      setIsPreview(false);
+      setLastUpdated(null);
+      setErrorMessage(null);
+      setInitialLoadFailed(false);
+      setLoading(false);
+      setIsLiveUpdating(false);
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [coordinator]);
 
   const loadReport = useCallback((start, end, showSpinner = true, debounce = false) => {
     if (showSpinner) {
@@ -92,13 +181,44 @@ export default function ReportsScreen() {
     }
     const key = coordinator.deriveKey({ startDate: start, endDate: end });
     const fetcher = (signal) => getReportSummary({ startDate: start, endDate: end }, { signal });
-    setResumeFetcher(() => fetcher);
-    return coordinator.request(key, fetcher, { isSilent: !showSpinner, debounce });
-  }, [coordinator, setResumeFetcher]);
+    const requestAuth = getSessionAuthContext();
+    const requestQuery = { startDate: start, endDate: end };
+    return coordinator.request(key, fetcher, {
+      isSilent: !showSpinner,
+      debounce,
+      requestAuth,
+      requestQuery,
+    });
+  }, [coordinator]);
 
-  // Initial load and filter change (cancels previous query if dates change)
+  // Initial load and filter change with preview cache lookup
   useEffect(() => {
-    loadReport(startDate, endDate, true, false);
+    const auth = getSessionAuthContext();
+    const cached = getCacheEntry(CACHE_SLOTS.REPORTS, {
+      userId: auth.userId,
+      sessionGeneration: auth.sessionGeneration,
+      queryParams: { startDate, endDate },
+    });
+
+    if (cached?.data) {
+      setReportData(cached.data);
+      setIsPreview(true);
+      setIsStale(false);
+      setInitialLoadFailed(false);
+      setErrorMessage(null);
+      setLastUpdated(new Date(cached.timestamp).toLocaleTimeString());
+      setLoading(true);
+      loadReport(startDate, endDate, false, false);
+    } else {
+      // Clear previous date range's values immediately to avoid stale data under newly selected range
+      setReportData(null);
+      setIsPreview(false);
+      setIsStale(false);
+      setInitialLoadFailed(false);
+      setErrorMessage(null);
+      setLoading(true);
+      loadReport(startDate, endDate, true, false);
+    }
   }, [startDate, endDate, loadReport]);
 
   // Real-Time SSE Auto-Sync with 300ms burst debounce and queued coalescing
@@ -141,6 +261,9 @@ export default function ReportsScreen() {
 
   const dateRangeStr = `${startDate}_to_${endDate}`;
 
+  // Actions requiring fresh report data are disabled during loading, preview, stale, or empty/failed states
+  const actionsDisabled = loading || isPreview || isStale || !reportData || initialLoadFailed;
+
   return (
     <AppShell activeNav="Reports">
       <View style={styles.container}>
@@ -152,35 +275,78 @@ export default function ReportsScreen() {
           endDate={endDate}
           onStartDateChange={handleCustomStartDateChange}
           onEndDateChange={handleCustomEndDateChange}
-          onPrintPress={() => setIsPrintModalOpen(true)}
+          onPrintPress={() => {
+            if (!actionsDisabled) setIsPrintModalOpen(true);
+          }}
           isLiveUpdating={isLiveUpdating}
+          printDisabled={actionsDisabled}
         />
 
-        {/* Error Notification Banner */}
-        {errorMessage && (
-          <View style={styles.errorBanner}>
-            <Text style={styles.errorText}>Error: {errorMessage}</Text>
+        {/* Updating Preview Banner */}
+        {loading && isPreview && (
+          <View style={styles.updatingBanner}>
+            <Text style={styles.updatingBannerText}>
+              Updating; last updated {lastUpdated || 'recently'}
+            </Text>
           </View>
         )}
 
-        {/* Top 5 KPI Summary Ribbon */}
-        <ReportsKpiBar kpis={reportData?.kpis} loading={loading} />
+        {/* Stale Warning Banner */}
+        {isStale && (
+          <View style={styles.staleBanner}>
+            <Text style={styles.staleBannerText}>
+              Report metrics may be stale (last updated: {lastUpdated || 'earlier'}).
+            </Text>
+            <Pressable onPress={() => loadReport(startDate, endDate, true, false)} style={styles.retryLink}>
+              <Text style={styles.retryLinkText}>Retry</Text>
+            </Pressable>
+          </View>
+        )}
 
-        {/* Prototype Hero Row: Charges vs Collected Chart & Thursday Collections Summary Card */}
-        <View style={styles.heroRow}>
-          <ChargesVsCollectedChart clientRevenue={reportData?.clientRevenue} />
-          <CollectionCycleSummaryCard collectionSummary={reportData?.collectionSummary} />
-        </View>
+        {/* Error Notification Banner when no data available */}
+        {initialLoadFailed && !reportData && (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>
+              Unable to generate report aggregates: {errorMessage || 'Network or server error.'}
+            </Text>
+            <Pressable onPress={() => loadReport(startDate, endDate, true, false)} style={styles.errorRetryBtn}>
+              <Text style={styles.errorRetryBtnText}>Retry</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Top 5 KPI Summary Ribbon or Skeleton */}
+        {loading && !reportData ? (
+          <ReportsKpiSkeleton />
+        ) : (
+          <ReportsKpiBar kpis={reportData?.kpis} loading={loading} />
+        )}
+
+        {/* Hero Row: Charges vs Collected Chart & Thursday Collections Summary Card */}
+        {loading && !reportData ? (
+          <View style={styles.heroRow}>
+            <Card title="CHARGES VS COLLECTED (CLIENTS)" style={styles.heroCard}>
+              <ChartSkeleton height={240} />
+            </Card>
+            <Card title="THIS THURSDAY'S COLLECTION SUMMARY" style={styles.heroCard}>
+              <CollectionSummarySkeleton />
+            </Card>
+          </View>
+        ) : (
+          <View style={styles.heroRow}>
+            <ChargesVsCollectedChart clientRevenue={reportData?.clientRevenue} />
+            <CollectionCycleSummaryCard collectionSummary={reportData?.collectionSummary} />
+          </View>
+        )}
 
         {/* Detailed Domain Tab Navigation */}
         <ReportsTabNav activeTab={activeTab} onSelectTab={setActiveTab} />
 
         {/* Tab Content Display */}
         {loading && !reportData ? (
-          <View style={styles.loaderArea}>
-            <ActivityIndicator size="large" color={colors.ink} />
-            <Text style={styles.loaderText}>Generating report aggregates...</Text>
-          </View>
+          <Card style={styles.tabSkeletonCard}>
+            <TableRowSkeleton rows={6} columns={5} height={46} />
+          </Card>
         ) : (
           <>
             {activeTab === 'FINANCIAL' && (
@@ -226,11 +392,70 @@ const styles = StyleSheet.create({
   container: {
     paddingBottom: 64,
   },
+  updatingBanner: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: radius.xs,
+    marginBottom: spacing.md,
+  },
+  updatingBannerText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: colors.inkSoft,
+    fontWeight: '500',
+  },
+  staleBanner: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: radius.xs,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  staleBannerText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: '#92400E',
+    fontWeight: '500',
+    flex: 1,
+  },
+  retryLink: {
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.xs,
+  },
+  retryLinkText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   heroRow: {
     flexDirection: 'row',
     gap: 20,
     marginBottom: 28,
     flexWrap: 'wrap',
+  },
+  heroCard: {
+    flex: 1,
+    minWidth: 320,
+  },
+  tabSkeletonCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
   },
   errorBanner: {
     backgroundColor: '#FDE8E8',
@@ -239,22 +464,29 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 6,
     marginBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   errorText: {
     fontFamily: fonts.sans,
     fontSize: 13,
     color: '#9B1C1C',
     fontWeight: '600',
+    flex: 1,
   },
-  loaderArea: {
-    paddingVertical: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
+  errorRetryBtn: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.xs,
   },
-  loaderText: {
+  errorRetryBtnText: {
     fontFamily: fonts.sans,
-    fontSize: 13,
-    color: colors.inkFaint,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

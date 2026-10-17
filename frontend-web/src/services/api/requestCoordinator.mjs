@@ -50,6 +50,7 @@ export function createRequestCoordinator({
   let isVisible = true;
   let hasMissedRefresh = false;
   let lastSuccessfulData = null;
+  let resumeRequest = null;
 
   function cancelInFlight() {
     if (activeController) {
@@ -78,6 +79,7 @@ export function createRequestCoordinator({
       clearDebounce();
       queuedFollowUp = null;
       currentKey = key;
+      lastSuccessfulData = null;
       generation += 1;
     }
 
@@ -110,6 +112,8 @@ export function createRequestCoordinator({
       lastSuccessfulData = data;
       if (typeof onSuccess === 'function') {
         onSuccess(data, {
+          requestAuth: options.requestAuth,
+          requestQuery: options.requestQuery,
           key,
           generation: reqGen,
           isSilent: Boolean(options.isSilent),
@@ -123,6 +127,8 @@ export function createRequestCoordinator({
 
       if (typeof onError === 'function') {
         onError(err, {
+          requestAuth: options.requestAuth,
+          requestQuery: options.requestQuery,
           key,
           generation: reqGen,
           isSilent: Boolean(options.isSilent),
@@ -153,6 +159,14 @@ export function createRequestCoordinator({
       return Promise.resolve({ status: 'unmounted' });
     }
 
+    options = {
+      ...options,
+      requestAuth: options.requestAuth ? { ...options.requestAuth } : undefined,
+      requestQuery: options.requestQuery && typeof options.requestQuery === 'object'
+        ? { ...options.requestQuery } : options.requestQuery,
+    };
+    resumeRequest = { key, fetcher, options };
+
     if (options.debounce) {
       clearDebounce();
       return new Promise((resolve) => {
@@ -167,29 +181,40 @@ export function createRequestCoordinator({
     return executeRequest(key, fetcher, options);
   }
 
-  function setVisibility(visible, resumeFetcher) {
+  function setVisibility(visible) {
     const wasVisible = isVisible;
     isVisible = visible;
 
     if (!wasVisible && visible && hasMissedRefresh && isMounted && currentKey) {
       hasMissedRefresh = false;
-      if (typeof resumeFetcher === 'function') {
-        request(currentKey, resumeFetcher, { isSilent: true });
+      if (resumeRequest) {
+        const next = resumeRequest;
+        return request(next.key, next.fetcher, { ...next.options, isSilent: true, debounce: false });
       }
     }
   }
 
-  function unmount() {
-    isMounted = false;
+  function cancel() {
     clearDebounce();
     queuedFollowUp = null;
+    hasMissedRefresh = false;
+    resumeRequest = null;
+    lastSuccessfulData = null;
     cancelInFlight();
     generation += 1;
+    inFlight = false;
+    activeController = null;
+  }
+
+  function unmount() {
+    isMounted = false;
+    cancel();
   }
 
   return {
     deriveKey: (params) => deriveKey(scope, params),
     request,
+    cancel,
     setVisibility,
     unmount,
     getInFlight: () => inFlight,

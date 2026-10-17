@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect } from 'react';
 import { createRequestCoordinator } from './requestCoordinator.mjs';
 
 /**
@@ -13,7 +13,6 @@ export function useRequestCoordinator({
 }) {
   const successRef = useRef(onSuccess);
   const errorRef = useRef(onError);
-  const resumeFetcherRef = useRef(null);
 
   useEffect(() => {
     successRef.current = onSuccess;
@@ -33,22 +32,17 @@ export function useRequestCoordinator({
     });
   }
 
-  // Register resume fetcher for catch-up on visibility resume
-  const setResumeFetcher = useCallback((fetcher) => {
-    resumeFetcherRef.current = fetcher;
-  }, []);
-
   // Window focus and document visibility handling
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
     const handleVisibility = () => {
       const isVisible = document.visibilityState !== 'hidden';
-      coordinatorRef.current?.setVisibility(isVisible, resumeFetcherRef.current);
+      coordinatorRef.current?.setVisibility(isVisible);
     };
 
     const handleFocus = () => {
-      coordinatorRef.current?.setVisibility(true, resumeFetcherRef.current);
+      coordinatorRef.current?.setVisibility(document.visibilityState !== 'hidden');
     };
 
     document.addEventListener('visibilitychange', handleVisibility);
@@ -69,6 +63,5 @@ export function useRequestCoordinator({
 
   return {
     coordinator: coordinatorRef.current,
-    setResumeFetcher,
   };
 }

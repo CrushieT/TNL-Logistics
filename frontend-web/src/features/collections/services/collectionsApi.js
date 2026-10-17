@@ -93,9 +93,11 @@ export async function getAuthorizedCollectors() {
  * Fetch list of active Thursday cycle dates that actually contain shipments.
  * @returns {Promise<Array<{ isoDate: string, label: string }>>}
  */
-export async function getActiveCollectionCycles() {
+export async function getActiveCollectionCycles(options = {}) {
   try {
-    const { data } = await apiClient.get('/collections/cycles');
+    const { data } = await apiClient.get('/collections/cycles', {
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
     if (Array.isArray(data) && data.length > 0) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -128,6 +130,7 @@ export async function getActiveCollectionCycles() {
       });
     }
   } catch (err) {
+    if (options.signal?.aborted) throw err;
     console.warn('Failed to load active cycles from backend:', err?.message);
   }
   return [];

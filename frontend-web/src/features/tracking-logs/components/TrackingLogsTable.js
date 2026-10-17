@@ -10,6 +10,7 @@ import {
 import { useRouter } from 'expo-router';
 import Card from '../../../components/common/Card';
 import Button from '../../../components/common/Button';
+import { TableRowSkeleton } from '../../../components/common/Skeleton';
 import { colors, fonts, spacing, radius } from '../../../theme';
 
 export default function TrackingLogsTable({
@@ -44,12 +45,9 @@ export default function TrackingLogsTable({
         <Text style={[styles.headerCell, styles.colStaff]}>STAFF</Text>
       </View>
 
-      {/* Loading State */}
+      {/* Loading Skeleton State */}
       {loading && logs.length === 0 ? (
-        <View style={styles.stateContainer}>
-          <ActivityIndicator size="large" color={colors.ink} />
-          <Text style={styles.stateText}>Loading audit trail...</Text>
-        </View>
+        <TableRowSkeleton rows={8} columns={5} height={52} />
       ) : logs.length === 0 ? (
         <View style={styles.stateContainer}>
           <Text style={styles.emptyTitle}>No tracking events found</Text>

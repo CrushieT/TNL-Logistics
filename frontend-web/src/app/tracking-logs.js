@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
 import AppShell from '../components/layout/AppShell';
 import PageHeader from '../components/layout/PageHeader';
 import {
@@ -11,15 +11,44 @@ import {
   FloatingUpdatePill,
   exportTrackingLogsToCsv,
 } from '../features/tracking-logs';
+import Card from '../components/common/Card';
+import {
+  CACHE_SLOTS,
+  getCacheEntry,
+  setCacheEntry,
+  isResponseAcceptable,
+} from '../services/api/responseCache.mjs';
+import { isCancellationError } from '../services/api/requestCoordinator.mjs';
+import {
+  getSessionAuthContext,
+  onSessionInvalidated,
+} from '../services/api/client';
 import { subscribeRealtimeEvents } from '../features/shipments';
 import { useRequestCoordinator } from '../services/api/useRequestCoordinator';
-import { colors, fonts } from '../theme';
+import { colors, fonts, radius, spacing } from '../theme';
 
 export default function TrackingLogsScreen() {
   const [logs, setLogs] = useState([]);
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isPagePreview, setIsPagePreview] = useState(false);
+  const [lastLogsUpdated, setLastLogsUpdated] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
+  const [isMetricsPreview, setIsMetricsPreview] = useState(false);
+
+  // Stale & error state
+  const [isLogsStale, setIsLogsStale] = useState(false);
+  const [logsErrorMessage, setLogsErrorMessage] = useState(null);
+  const [initialLogsFailed, setInitialLogsFailed] = useState(false);
+
+  const [isMetricsStale, setIsMetricsStale] = useState(false);
+  const [metricsErrorMessage, setMetricsErrorMessage] = useState(null);
+  const [initialMetricsFailed, setInitialMetricsFailed] = useState(false);
+
+  // Success tracking for active query
+  const hasActiveLogsSuccessRef = useRef(false);
+  const hasActiveMetricsSuccessRef = useRef(false);
+  const todayUtcRef = useRef(new Date().toISOString().slice(0, 10));
 
   // Pagination & filter state
   const [page, setPage] = useState(0);
@@ -36,13 +65,41 @@ export default function TrackingLogsScreen() {
 
   const highlightTimers = useRef(new Map());
 
-  const { coordinator: logsCoordinator, setResumeFetcher: setLogsResumeFetcher } = useRequestCoordinator({
+  const activeFilterRef = useRef({ page, pageSize, search, statusFilter });
+  activeFilterRef.current = { page, pageSize, search, statusFilter };
+
+  const { coordinator: logsCoordinator } = useRequestCoordinator({
     scope: 'tracking-logs',
     onSuccess: (data, meta) => {
+      const currentAuth = getSessionAuthContext();
+      const currentQuery = {
+        page: activeFilterRef.current.page,
+        size: activeFilterRef.current.pageSize,
+        search: activeFilterRef.current.search.trim(),
+        status: activeFilterRef.current.statusFilter,
+      };
+
+      if (!isResponseAcceptable({
+        requestAuth: meta?.requestAuth,
+        requestQuery: meta?.requestQuery,
+        currentAuth,
+        activeQuery: currentQuery,
+      })) {
+        return;
+      }
+
+      hasActiveLogsSuccessRef.current = true;
+      setCacheEntry(CACHE_SLOTS.TRACKING_LOGS_PAGE, {
+        userId: currentAuth.userId,
+        sessionGeneration: currentAuth.sessionGeneration,
+        queryParams: currentQuery,
+        data,
+      });
+
       if (data) {
         const newContent = data.content || [];
 
-        if (meta.highlightDiff) {
+        if (meta?.highlightDiff) {
           setLogs((prevLogs) => {
             const existingIds = new Set(prevLogs.map((item) => item.eventId));
             const newlyAddedIds = newContent
@@ -78,40 +135,151 @@ export default function TrackingLogsScreen() {
         setTotalElements(pageMeta.totalElements ?? data.totalElements ?? 0);
         setTotalPages(pageMeta.totalPages ?? data.totalPages ?? 0);
       }
+      setIsPagePreview(false);
+      setIsLogsStale(false);
+      setInitialLogsFailed(false);
+      setLogsErrorMessage(null);
+      setLastLogsUpdated(new Date().toLocaleTimeString());
       setLoading(false);
     },
-    onError: (err) => {
-      console.warn('Failed to fetch tracking logs:', err?.message);
+    onError: (err, meta) => {
+      if (isCancellationError(err)) return;
+      const currentAuth = getSessionAuthContext();
+      const currentQuery = {
+        page: activeFilterRef.current.page,
+        size: activeFilterRef.current.pageSize,
+        search: activeFilterRef.current.search.trim(),
+        status: activeFilterRef.current.statusFilter,
+      };
+
+      if (!isResponseAcceptable({
+        requestAuth: meta?.requestAuth,
+        requestQuery: meta?.requestQuery,
+        currentAuth,
+        activeQuery: currentQuery,
+      })) {
+        return;
+      }
+
+      const errorMsg = err?.response?.data?.message || err?.message || 'Failed to fetch tracking logs. Please check network connectivity.';
+      setLogsErrorMessage(errorMsg);
+      setIsPagePreview(false);
+      if (hasActiveLogsSuccessRef.current) {
+        setIsLogsStale(true);
+      } else {
+        setInitialLogsFailed(true);
+        setLogs([]);
+      }
       setLoading(false);
     },
     debounceMs: 300,
   });
 
-  const { coordinator: metricsCoordinator, setResumeFetcher: setMetricsResumeFetcher } = useRequestCoordinator({
+  const { coordinator: metricsCoordinator } = useRequestCoordinator({
     scope: 'tracking-metrics',
-    onSuccess: (data) => {
+    onSuccess: (data, meta) => {
+      const currentAuth = getSessionAuthContext();
+      const currentQuery = { metric: 'today', utcDate: todayUtcRef.current };
+
+      if (!isResponseAcceptable({
+        requestAuth: meta?.requestAuth,
+        requestQuery: meta?.requestQuery,
+        currentAuth,
+        activeQuery: currentQuery,
+      })) {
+        return;
+      }
+
+      hasActiveMetricsSuccessRef.current = true;
+      setCacheEntry(CACHE_SLOTS.TRACKING_LOGS_METRICS, {
+        userId: currentAuth.userId,
+        sessionGeneration: currentAuth.sessionGeneration,
+        queryParams: currentQuery,
+        data,
+      });
+
       if (data) {
         setMetrics(data);
       }
+      setIsMetricsPreview(false);
+      setIsMetricsStale(false);
+      setInitialMetricsFailed(false);
+      setMetricsErrorMessage(null);
       setMetricsLoading(false);
     },
-    onError: (err) => {
-      console.warn('Failed to fetch tracking metrics:', err?.message);
+    onError: (err, meta) => {
+      if (isCancellationError(err)) return;
+      const currentAuth = getSessionAuthContext();
+      const currentQuery = { metric: 'today', utcDate: todayUtcRef.current };
+
+      if (!isResponseAcceptable({
+        requestAuth: meta?.requestAuth,
+        requestQuery: meta?.requestQuery,
+        currentAuth,
+        activeQuery: currentQuery,
+      })) {
+        return;
+      }
+
+      const errorMsg = err?.response?.data?.message || err?.message || 'Failed to fetch tracking metrics';
+      setMetricsErrorMessage(errorMsg);
+      setIsMetricsPreview(false);
+      if (hasActiveMetricsSuccessRef.current) {
+        setIsMetricsStale(true);
+      } else {
+        setInitialMetricsFailed(true);
+      }
       setMetricsLoading(false);
     },
     debounceMs: 300,
   });
+
+  // Session reset listener
+  useEffect(() => {
+    const unsubscribe = onSessionInvalidated(() => {
+      logsCoordinator.cancel();
+      metricsCoordinator.cancel();
+      setLogs([]);
+      setMetrics(null);
+      setTotalElements(0);
+      setTotalPages(0);
+      setIsPagePreview(false);
+      setIsMetricsPreview(false);
+      setIsLogsStale(false);
+      setInitialLogsFailed(false);
+      setLogsErrorMessage(null);
+      setIsMetricsStale(false);
+      setInitialMetricsFailed(false);
+      setMetricsErrorMessage(null);
+      setLastLogsUpdated(null);
+      setHighlightedIds(new Set());
+      setUnreadLiveScans(0);
+      hasActiveLogsSuccessRef.current = false;
+      hasActiveMetricsSuccessRef.current = false;
+      setLoading(false);
+      setMetricsLoading(false);
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [logsCoordinator, metricsCoordinator]);
 
   // Fetch paginated logs with optional diff highlighting
   const fetchLogs = useCallback(
     (targetPage, targetSize, targetSearch, targetStatus, showSpinner = true, highlightDiff = false, debounce = false) => {
-      if (showSpinner) setLoading(true);
-      const key = logsCoordinator.deriveKey({
+      if (showSpinner) {
+        setLoading(true);
+        setLogsErrorMessage(null);
+        setInitialLogsFailed(false);
+      }
+      const requestAuth = getSessionAuthContext();
+      const requestQuery = {
         page: targetPage,
         size: targetSize,
-        search: targetSearch,
+        search: targetSearch.trim(),
         status: targetStatus,
-      });
+      };
+      const key = logsCoordinator.deriveKey(requestQuery);
       const fetcher = (signal) =>
         listTrackingLogs(
           {
@@ -122,47 +290,149 @@ export default function TrackingLogsScreen() {
           },
           { signal }
         );
-      setLogsResumeFetcher(() => fetcher);
       return logsCoordinator.request(key, fetcher, {
         isSilent: !showSpinner,
         debounce,
         highlightDiff,
+        requestAuth,
+        requestQuery,
       });
     },
-    [logsCoordinator, setLogsResumeFetcher]
+    [logsCoordinator]
   );
 
   // Fetch today's summary metrics
   const fetchMetrics = useCallback(
     (debounce = false) => {
-      const key = metricsCoordinator.deriveKey({ metric: 'today' });
+      const todayUtc = new Date().toISOString().slice(0, 10);
+      todayUtcRef.current = todayUtc;
+      setInitialMetricsFailed(false);
+      setMetricsErrorMessage(null);
+      const requestAuth = getSessionAuthContext();
+      const requestQuery = { metric: 'today', utcDate: todayUtc };
+      const key = metricsCoordinator.deriveKey(requestQuery);
       const fetcher = (signal) => getTrackingMetrics({ signal });
-      setMetricsResumeFetcher(() => fetcher);
-      return metricsCoordinator.request(key, fetcher, { isSilent: true, debounce });
+      return metricsCoordinator.request(key, fetcher, {
+        isSilent: true,
+        debounce,
+        requestAuth,
+        requestQuery,
+      });
     },
-    [metricsCoordinator, setMetricsResumeFetcher]
+    [metricsCoordinator]
   );
 
   // Initial load & whenever page / pageSize / statusFilter changes
   useEffect(() => {
-    fetchLogs(page, pageSize, search, statusFilter, true, false, false);
+    hasActiveLogsSuccessRef.current = false;
+    setIsLogsStale(false);
+    setLogsErrorMessage(null);
+    setInitialLogsFailed(false);
+
+    const auth = getSessionAuthContext();
+    const queryParams = {
+      page,
+      size: pageSize,
+      search: search.trim(),
+      status: statusFilter,
+    };
+    const cached = getCacheEntry(CACHE_SLOTS.TRACKING_LOGS_PAGE, {
+      userId: auth.userId,
+      sessionGeneration: auth.sessionGeneration,
+      queryParams,
+    });
+
+    if (cached?.data) {
+      hasActiveLogsSuccessRef.current = true;
+      setLogs(cached.data.content || []);
+      const pageMeta = cached.data.page || {};
+      setTotalElements(pageMeta.totalElements ?? cached.data.totalElements ?? 0);
+      setTotalPages(pageMeta.totalPages ?? cached.data.totalPages ?? 0);
+      setIsPagePreview(true);
+      setLastLogsUpdated(new Date(cached.timestamp).toLocaleTimeString());
+      setLoading(true);
+      fetchLogs(page, pageSize, search, statusFilter, false, false, false);
+    } else {
+      setLogs([]);
+      setIsPagePreview(false);
+      setLoading(true);
+      fetchLogs(page, pageSize, search, statusFilter, true, false, false);
+    }
   }, [page, pageSize, statusFilter]);
 
-  // Initial metrics load
+  // Initial metrics load with preview cache
   useEffect(() => {
-    fetchMetrics(false);
+    const auth = getSessionAuthContext();
+    const todayUtc = new Date().toISOString().slice(0, 10);
+    todayUtcRef.current = todayUtc;
+    const cached = getCacheEntry(CACHE_SLOTS.TRACKING_LOGS_METRICS, {
+      userId: auth.userId,
+      sessionGeneration: auth.sessionGeneration,
+      queryParams: { metric: 'today', utcDate: todayUtc },
+    });
+
+    if (cached?.data) {
+      hasActiveMetricsSuccessRef.current = true;
+      setMetrics(cached.data);
+      setIsMetricsPreview(true);
+      setMetricsLoading(true);
+      fetchMetrics(false);
+    } else {
+      hasActiveMetricsSuccessRef.current = false;
+      setMetrics(null);
+      setIsMetricsPreview(false);
+      setMetricsLoading(true);
+      fetchMetrics(false);
+    }
   }, [fetchMetrics]);
 
-  // Handle debounced search changes
+  // Handle debounced search changes with cache lookup
   const handleSearchChange = (text) => {
     setSearch(text);
     setPage(0);
     setUnreadLiveScans(0);
-    fetchLogs(0, pageSize, text, statusFilter, false, false, true);
+
+    hasActiveLogsSuccessRef.current = false;
+    setIsLogsStale(false);
+    setLogsErrorMessage(null);
+    setInitialLogsFailed(false);
+
+    const auth = getSessionAuthContext();
+    const queryParams = {
+      page: 0,
+      size: pageSize,
+      search: text.trim(),
+      status: statusFilter,
+    };
+    const cached = getCacheEntry(CACHE_SLOTS.TRACKING_LOGS_PAGE, {
+      userId: auth.userId,
+      sessionGeneration: auth.sessionGeneration,
+      queryParams,
+    });
+
+    if (cached?.data) {
+      hasActiveLogsSuccessRef.current = true;
+      setLogs(cached.data.content || []);
+      const pageMeta = cached.data.page || {};
+      setTotalElements(pageMeta.totalElements ?? cached.data.totalElements ?? 0);
+      setTotalPages(pageMeta.totalPages ?? cached.data.totalPages ?? 0);
+      setIsPagePreview(true);
+      setLastLogsUpdated(new Date(cached.timestamp).toLocaleTimeString());
+      fetchLogs(0, pageSize, text, statusFilter, false, false, true);
+    } else {
+      setLogs([]);
+      setIsPagePreview(false);
+      fetchLogs(0, pageSize, text, statusFilter, false, false, true);
+    }
   };
 
   // Handle status filter pills
   const handleStatusFilterChange = (newStatus) => {
+    if (newStatus === statusFilter) return;
+    hasActiveLogsSuccessRef.current = false;
+    setIsLogsStale(false);
+    setLogsErrorMessage(null);
+    setInitialLogsFailed(false);
     setStatusFilter(newStatus);
     setPage(0);
     setUnreadLiveScans(0);
@@ -217,7 +487,7 @@ export default function TrackingLogsScreen() {
     fetchLogs(0, pageSize, '', 'ALL', true);
   };
 
-  // Export filtered logs to CSV
+  // Export filtered logs to CSV (live request preserved)
   const handleExportCsv = async () => {
     try {
       setIsExporting(true);
@@ -256,6 +526,52 @@ export default function TrackingLogsScreen() {
         {/* 4-Card Operational Metrics Bar */}
         <TrackingLogsMetrics metrics={metrics} loading={metricsLoading} />
 
+        {/* Metrics Stale / Error Banner if metrics failed independently */}
+        {initialMetricsFailed && !metrics && (
+          <View style={styles.metricsBanner}>
+            <Text style={styles.metricsErrorText}>
+              Unable to load operational metrics: {metricsErrorMessage || 'Network error.'}
+            </Text>
+            <Pressable onPress={() => fetchMetrics(false)} style={styles.retryLink}>
+              <Text style={styles.retryLinkText}>Retry</Text>
+            </Pressable>
+          </View>
+        )}
+        {isMetricsStale && (
+          <View style={styles.metricsBanner}>
+            <Text style={styles.staleBannerText}>
+              Operational metrics may be stale.
+            </Text>
+            <Pressable onPress={() => fetchMetrics(false)} style={styles.retryLink}>
+              <Text style={styles.retryLinkText}>Retry</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Updating Preview Banner for audit trail */}
+        {loading && isPagePreview && (
+          <View style={styles.updatingBanner}>
+            <Text style={styles.updatingBannerText}>
+              Updating audit trail; last updated {lastLogsUpdated || 'recently'}
+            </Text>
+          </View>
+        )}
+
+        {/* Stale Warning Banner for audit trail */}
+        {isLogsStale && (
+          <View style={styles.staleBanner}>
+            <Text style={styles.staleBannerText}>
+              Tracking logs may be stale (last updated: {lastLogsUpdated || 'earlier'}).
+            </Text>
+            <Pressable
+              onPress={() => fetchLogs(page, pageSize, search, statusFilter, true, false, false)}
+              style={styles.retryLink}
+            >
+              <Text style={styles.retryLinkText}>Retry</Text>
+            </Pressable>
+          </View>
+        )}
+
         {/* Floating Notification for new scans when viewing historical pages */}
         <FloatingUpdatePill
           count={unreadLiveScans}
@@ -272,18 +588,33 @@ export default function TrackingLogsScreen() {
           isExporting={isExporting}
         />
 
-        {/* Paginated Audit Trail Table */}
-        <TrackingLogsTable
-          logs={logs}
-          loading={loading}
-          page={page}
-          pageSize={pageSize}
-          totalElements={totalElements}
-          totalPages={totalPages}
-          onPageChange={handlePageChange}
-          onPageSizeChange={handlePageSizeChange}
-          highlightedEventIds={highlightedIds}
-        />
+        {/* Paginated Audit Trail Table or Initial Error State */}
+        {initialLogsFailed ? (
+          <Card style={styles.initialErrorCard}>
+            <Text style={styles.initialErrorTitle}>Unable to load tracking logs</Text>
+            <Text style={styles.initialErrorMessage}>
+              {logsErrorMessage || 'Network or server error. Please check your connection.'}
+            </Text>
+            <Pressable
+              onPress={() => fetchLogs(page, pageSize, search, statusFilter, true, false, false)}
+              style={styles.retryBtn}
+            >
+              <Text style={styles.retryBtnText}>Retry</Text>
+            </Pressable>
+          </Card>
+        ) : (
+          <TrackingLogsTable
+            logs={logs}
+            loading={loading}
+            page={page}
+            pageSize={pageSize}
+            totalElements={totalElements}
+            totalPages={totalPages}
+            onPageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange}
+            highlightedEventIds={highlightedIds}
+          />
+        )}
       </View>
     </AppShell>
   );
@@ -363,5 +694,111 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.inkSoft,
     letterSpacing: 0.6,
+  },
+  updatingBanner: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: radius.xs,
+    marginBottom: spacing.md,
+  },
+  updatingBannerText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: colors.inkSoft,
+    fontWeight: '500',
+  },
+  staleBanner: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: radius.xs,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  staleBannerText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: '#92400E',
+    fontWeight: '500',
+    flex: 1,
+  },
+  retryLink: {
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.xs,
+  },
+  retryLinkText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  metricsBanner: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: radius.xs,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  metricsErrorText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: '#B91C1C',
+    fontWeight: '500',
+    flex: 1,
+  },
+  initialErrorCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: spacing.md,
+  },
+  initialErrorTitle: {
+    fontFamily: fonts.sans,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.ink,
+    marginBottom: 6,
+  },
+  initialErrorMessage: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    color: colors.inkSoft,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+    maxWidth: 480,
+  },
+  retryBtn: {
+    backgroundColor: colors.accent,
+    paddingVertical: 8,
+    paddingHorizontal: 18,
+    borderRadius: radius.xs,
+  },
+  retryBtnText: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

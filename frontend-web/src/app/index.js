@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import AppShell from '../components/layout/AppShell';
 import PageHeader from '../components/layout/PageHeader';
@@ -11,6 +11,22 @@ import BarChart from '../components/common/BarChart';
 import ComparisonBars from '../components/common/ComparisonBars';
 import ActivityRow from '../components/common/ActivityRow';
 import CycleDropdown from '../features/collections/components/CycleDropdown';
+import {
+  MetricCardSkeleton,
+  ChartSkeleton,
+  ActivityRowSkeleton,
+} from '../components/common/Skeleton';
+import {
+  CACHE_SLOTS,
+  getCacheEntry,
+  setCacheEntry,
+  isResponseAcceptable,
+} from '../services/api/responseCache.mjs';
+import { isCancellationError } from '../services/api/requestCoordinator.mjs';
+import {
+  getSessionAuthContext,
+  onSessionInvalidated,
+} from '../services/api/client';
 import { getActiveCollectionCycles } from '../features/collections/services/collectionsApi';
 import { getRecentThursdays } from '../features/collections/utils/collectionsUtils';
 import { getDashboardSummary, subscribeRealtimeEvents } from '../features/shipments';
@@ -21,6 +37,7 @@ export default function DashboardScreen() {
   const router = useRouter();
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isPreview, setIsPreview] = useState(false);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const [isStale, setIsStale] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -28,38 +45,106 @@ export default function DashboardScreen() {
   const [cycles, setCycles] = useState([]);
   const [selectedCycle, setSelectedCycle] = useState('');
 
-  // Fetch active cycles containing registered shipments
+  const activeCycleRef = useRef(selectedCycle);
+  activeCycleRef.current = selectedCycle;
+
+  const summaryRef = useRef(summary);
+  summaryRef.current = summary;
+
+  // Fetch active cycles containing registered shipments (with preview cache)
   useEffect(() => {
     let mounted = true;
+    const abortController = new AbortController();
+
+    // Check cached collection cycles
+    const auth = getSessionAuthContext();
+    const cachedCycles = getCacheEntry(CACHE_SLOTS.COLLECTION_CYCLES, {
+      userId: auth.userId,
+      sessionGeneration: auth.sessionGeneration,
+      queryParams: {},
+    });
+    if (cachedCycles?.data && cachedCycles.data.length > 0) {
+      setCycles(cachedCycles.data);
+      setSelectedCycle((prev) => (prev && cachedCycles.data.some((c) => c.isoDate === prev) ? prev : cachedCycles.data[0].isoDate));
+    }
+
     async function loadCycles() {
+      const requestAuth = getSessionAuthContext();
       try {
-        const activeCycles = await getActiveCollectionCycles();
-        if (!mounted) return;
-        if (activeCycles.length > 0) {
-          setCycles(activeCycles);
-          setSelectedCycle((prev) => (prev && activeCycles.some((c) => c.isoDate === prev) ? prev : activeCycles[0].isoDate));
-        } else {
+        const activeCycles = await getActiveCollectionCycles({ signal: abortController.signal });
+        if (!mounted || abortController.signal.aborted) return;
+        const currentAuth = getSessionAuthContext();
+        if (
+          currentAuth.isAuthenticated && currentAuth.isVerified &&
+          currentAuth.userId === requestAuth.userId &&
+          currentAuth.sessionGeneration === requestAuth.sessionGeneration
+        ) {
+          if (activeCycles.length > 0) {
+            setCacheEntry(CACHE_SLOTS.COLLECTION_CYCLES, {
+              userId: currentAuth.userId,
+              sessionGeneration: currentAuth.sessionGeneration,
+              queryParams: {},
+              data: activeCycles,
+            });
+            setCycles(activeCycles);
+            setSelectedCycle((prev) => (prev && activeCycles.some((c) => c.isoDate === prev) ? prev : activeCycles[0].isoDate));
+          } else {
+            const fallback = getRecentThursdays(1);
+            setCycles(fallback);
+            setSelectedCycle(fallback[0]?.isoDate || '');
+          }
+        }
+      } catch (err) {
+        if (!mounted || abortController.signal.aborted || isCancellationError(err)) return;
+        const currentAuth = getSessionAuthContext();
+        if (
+          currentAuth.isAuthenticated && currentAuth.isVerified &&
+          currentAuth.userId === requestAuth.userId &&
+          currentAuth.sessionGeneration === requestAuth.sessionGeneration
+        ) {
           const fallback = getRecentThursdays(1);
           setCycles(fallback);
           setSelectedCycle(fallback[0]?.isoDate || '');
         }
-      } catch (err) {
-        if (!mounted) return;
-        const fallback = getRecentThursdays(1);
-        setCycles(fallback);
-        setSelectedCycle(fallback[0]?.isoDate || '');
       }
     }
     loadCycles();
+
+    const unsubscribe = onSessionInvalidated(() => {
+      abortController.abort();
+    });
+
     return () => {
       mounted = false;
+      abortController.abort();
+      if (typeof unsubscribe === 'function') unsubscribe();
     };
   }, []);
 
-  const { coordinator, setResumeFetcher } = useRequestCoordinator({
+  const { coordinator } = useRequestCoordinator({
     scope: 'dashboard',
-    onSuccess: (data) => {
+    onSuccess: (data, meta) => {
+      const currentAuth = getSessionAuthContext();
+      const targetCycle = activeCycleRef.current;
+
+      if (!isResponseAcceptable({
+        requestAuth: meta?.requestAuth,
+        requestQuery: meta?.requestQuery,
+        currentAuth,
+        activeQuery: { cycle: targetCycle },
+      })) {
+        return;
+      }
+
+      setCacheEntry(CACHE_SLOTS.DASHBOARD, {
+        userId: currentAuth.userId,
+        sessionGeneration: currentAuth.sessionGeneration,
+        queryParams: { cycle: targetCycle },
+        data,
+      });
+
       setSummary(data);
+      setIsPreview(false);
       setIsStale(false);
       setInitialLoadFailed(false);
       setErrorMessage(null);
@@ -67,10 +152,23 @@ export default function DashboardScreen() {
       setLoading(false);
     },
     onError: (err, meta) => {
-      console.warn('Dashboard summary fetch failed:', err?.message);
+      if (isCancellationError(err)) return;
+      const currentAuth = getSessionAuthContext();
+      const targetCycle = activeCycleRef.current;
+
+      if (!isResponseAcceptable({
+        requestAuth: meta?.requestAuth,
+        requestQuery: meta?.requestQuery,
+        currentAuth,
+        activeQuery: { cycle: targetCycle },
+      })) {
+        return;
+      }
+
       const msg = err?.response?.data?.message || err?.message || 'Dashboard metrics are temporarily unavailable';
       setErrorMessage(msg);
-      if (meta.hasExistingData) {
+      setIsPreview(false);
+      if (summaryRef.current) {
         setIsStale(true);
       } else {
         setInitialLoadFailed(true);
@@ -81,6 +179,25 @@ export default function DashboardScreen() {
     debounceMs: 300,
   });
 
+  // Session reset listener
+  useEffect(() => {
+    const unsubscribe = onSessionInvalidated(() => {
+      coordinator.cancel();
+      setSummary(null);
+      setCycles([]);
+      setSelectedCycle('');
+      setIsStale(false);
+      setIsPreview(false);
+      setInitialLoadFailed(false);
+      setLastUpdated(null);
+      setErrorMessage(null);
+      setLoading(false);
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [coordinator]);
+
   const load = useCallback((cycleDate, showSpinner = true, debounce = false) => {
     if (!cycleDate) return;
     if (showSpinner) {
@@ -89,16 +206,49 @@ export default function DashboardScreen() {
     }
     const key = coordinator.deriveKey({ cycle: cycleDate });
     const fetcher = (signal) => getDashboardSummary(cycleDate, { signal });
-    setResumeFetcher(() => fetcher);
-    return coordinator.request(key, fetcher, { isSilent: !showSpinner, debounce });
-  }, [coordinator, setResumeFetcher]);
+    const requestAuth = getSessionAuthContext();
+    const requestQuery = { cycle: cycleDate };
+    return coordinator.request(key, fetcher, {
+      isSilent: !showSpinner,
+      debounce,
+      requestAuth,
+      requestQuery,
+    });
+  }, [coordinator]);
 
+  // Query key change with instant cached preview
   useEffect(() => {
-    if (selectedCycle) {
+    if (!selectedCycle) return;
+
+    const auth = getSessionAuthContext();
+    const cached = getCacheEntry(CACHE_SLOTS.DASHBOARD, {
+      userId: auth.userId,
+      sessionGeneration: auth.sessionGeneration,
+      queryParams: { cycle: selectedCycle },
+    });
+
+    if (cached?.data) {
+      setSummary(cached.data);
+      setIsPreview(true);
+      setIsStale(false);
+      setInitialLoadFailed(false);
+      setErrorMessage(null);
+      setLastUpdated(new Date(cached.timestamp).toLocaleTimeString());
+      setLoading(true);
+      load(selectedCycle, false, false);
+    } else {
+      // Clear previous cycle's data immediately to prevent showing wrong cycle under new filter
+      setSummary(null);
+      setIsPreview(false);
+      setIsStale(false);
+      setInitialLoadFailed(false);
+      setErrorMessage(null);
+      setLoading(true);
       load(selectedCycle, true, false);
     }
   }, [selectedCycle, load]);
 
+  // Real-time SSE updates
   useEffect(() => {
     const unsubscribe = subscribeRealtimeEvents((event) => {
       if (['PARCEL_EXCEPTION', 'WAYBILL_UPDATE', 'STATUS_UPDATE', 'SHIPMENT_CREATED', 'PAYMENT_RECORDED', 'SOA_GENERATED'].includes(event.type)) {
@@ -130,6 +280,9 @@ export default function DashboardScreen() {
   const financialRows = summary?.outstandingVsCollected || [];
   const recentActivities = summary?.recentActivity || [];
 
+  // Actions requiring fresh summary are disabled when loading, previewing, or stale
+  const actionsDisabled = loading || isPreview || isStale || !summary;
+
   return (
     <AppShell>
       <PageHeader
@@ -155,33 +308,73 @@ export default function DashboardScreen() {
         }
       />
 
+      {/* Updating Preview Banner */}
+      {loading && isPreview && (
+        <View style={styles.updatingBanner}>
+          <Text style={styles.updatingBannerText}>
+            Updating; last updated {lastUpdated || 'recently'}
+          </Text>
+        </View>
+      )}
+
+      {/* Stale Warning Banner */}
       {isStale && (
         <View style={styles.staleBanner}>
           <Text style={styles.staleBannerText}>
             Dashboard metrics are temporarily unavailable and may be stale (last updated: {lastUpdated || 'earlier'}).
           </Text>
-          <Pressable onPress={() => load(selectedCycle)} style={styles.retryLink}>
+          <Pressable onPress={() => load(selectedCycle, true, false)} style={styles.retryLink}>
             <Text style={styles.retryLinkText}>Retry</Text>
           </Pressable>
         </View>
       )}
 
+      {/* Main Content Area */}
       {loading && !summary ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.ink} />
-          <Text style={styles.loadingText}>Loading dashboard metrics...</Text>
+        // State 1: Initial Loading with Section Skeletons
+        <View aria-busy="true" accessibilityLabel="Loading dashboard metrics...">
+          <View style={styles.metricsRow}>
+            <MetricCardSkeleton />
+            <MetricCardSkeleton />
+            <MetricCardSkeleton />
+            <MetricCardSkeleton emphasis />
+          </View>
+
+          <View style={styles.chartsRow}>
+            <Card title="Parcel Units by Status" style={styles.chartCard}>
+              <ChartSkeleton height={180} />
+            </Card>
+            <Card title="Weekly Shipment Volume" style={styles.chartCard}>
+              <ChartSkeleton height={180} />
+            </Card>
+            <Card title="Outstanding vs Collected" style={styles.chartCard}>
+              <ChartSkeleton height={180} />
+              <Button
+                label="Prepare weekly collection"
+                variant="secondary"
+                disabled
+                style={styles.collectionBtnDisabled}
+              />
+            </Card>
+          </View>
+
+          <Card title="Recent Activity">
+            <ActivityRowSkeleton count={4} />
+          </Card>
         </View>
       ) : initialLoadFailed && !summary ? (
+        // State 5: Initial Load Error
         <View style={styles.errorContainer}>
           <Text style={styles.errorTitle}>Dashboard Data Unavailable</Text>
           <Text style={styles.errorMessage}>
             {errorMessage || 'Unable to load live dashboard metrics from the server. Please check database or network connectivity.'}
           </Text>
-          <Pressable onPress={() => load(selectedCycle)} style={styles.retryBtn}>
+          <Pressable onPress={() => load(selectedCycle, true, false)} style={styles.retryBtn}>
             <Text style={styles.retryBtnText}>Retry</Text>
           </Pressable>
         </View>
       ) : (
+        // State 2, 3, or 4: Render Data Layout
         <>
           <View style={styles.metricsRow}>
             <MetricCard
@@ -222,8 +415,9 @@ export default function DashboardScreen() {
               <Button
                 label="Prepare weekly collection"
                 variant="secondary"
-                onPress={() => router.push(selectedCycle ? `/weekly-collections?cycle=${encodeURIComponent(selectedCycle)}` : '/weekly-collections')}
-                style={styles.collectionBtn}
+                disabled={actionsDisabled}
+                onPress={() => !actionsDisabled && router.push(selectedCycle ? `/weekly-collections?cycle=${encodeURIComponent(selectedCycle)}` : '/weekly-collections')}
+                style={[styles.collectionBtn, actionsDisabled && styles.collectionBtnDisabled]}
               />
             </Card>
           </View>
@@ -267,6 +461,54 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     zIndex: 1000,
   },
+  updatingBanner: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: radius.xs,
+    marginBottom: spacing.md,
+  },
+  updatingBannerText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: colors.inkSoft,
+    fontWeight: '500',
+  },
+  staleBanner: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: radius.xs,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  staleBannerText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: '#92400E',
+    fontWeight: '500',
+    flex: 1,
+  },
+  retryLink: {
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.xs,
+  },
+  retryLinkText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   metricsRow: {
     flexDirection: 'row',
     gap: spacing.lg,
@@ -279,7 +521,6 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
     marginBottom: spacing.lg,
     flexWrap: 'wrap',
-    zIndex: 1,
   },
   chartCard: {
     flex: 1,
@@ -287,15 +528,17 @@ const styles = StyleSheet.create({
   },
   collectionBtn: {
     marginTop: spacing.md,
-    alignSelf: 'flex-start',
-    borderColor: 'transparent',
-    paddingHorizontal: 0,
+  },
+  collectionBtnDisabled: {
+    marginTop: spacing.md,
+    opacity: 0.5,
   },
   viewAllLink: {
-    fontFamily: fonts.mono,
-    fontSize: 11.5,
-    fontWeight: '700',
+    fontFamily: fonts.sans,
+    fontSize: 12,
     color: colors.accent,
+    fontWeight: '600',
+    cursor: 'pointer',
   },
   emptyActivity: {
     paddingVertical: spacing.xl,
@@ -305,48 +548,6 @@ const styles = StyleSheet.create({
   emptyText: {
     fontFamily: fonts.sans,
     fontSize: 13,
-    color: colors.inkFaint,
-  },
-  staleBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#FEF3C7',
-    borderWidth: 1,
-    borderColor: '#F59E0B',
-    padding: spacing.md,
-    borderRadius: radius.sm,
-    marginBottom: spacing.lg,
-  },
-  staleBannerText: {
-    flex: 1,
-    fontFamily: fonts.sans,
-    fontSize: 13,
-    color: '#92400E',
-    fontWeight: '500',
-  },
-  retryLink: {
-    backgroundColor: '#F59E0B',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.xs,
-    marginLeft: spacing.md,
-  },
-  retryLinkText: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  loadingContainer: {
-    paddingVertical: 64,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    marginTop: spacing.md,
-    fontFamily: fonts.sans,
-    fontSize: 14,
     color: colors.inkSoft,
   },
   errorContainer: {
