@@ -63,7 +63,7 @@
 - `backend/src/main/java/com/tnl/logistics/model/ParcelExceptionCommand.java` and `repository/ParcelExceptionCommandRepository.java`: shared command request-ID registry.
 - `backend/src/main/java/com/tnl/logistics/dto/ParcelLossEventResponse.java` and `WaybillReconciliationResponse.java`: restricted history DTOs.
 - `backend/src/test/java/com/tnl/logistics/controller/ParcelLossIntegrationTest.java`: exception contracts, lifecycle, atomicity, and concurrency regressions.
-- `backend/src/test/java/com/tnl/logistics/migration/ParcelLossMigrationIntegrationTest.java`: isolated fresh and V38-upgrade migration checks.
+- `backend/src/test/java/com/tnl/logistics/migration/ParcelLossMigrationIntegrationTest.java`: isolated fresh and upgraded migration checks through V40.
 - `frontend-web/src/components/common/ExceptionAction.js`: Admin confirmation, reason, retry, and conflict-review interaction.
 - `frontend-web/tests/parcelException.test.mjs`: confirmation behavior and lost-manifest reprints.
 - `frontend-mobile/tests/parcelLoss.test.mjs`: loss-aware scanner, revision gates, and reprints.
@@ -281,7 +281,7 @@ tnl-logistics/
 
 ### Workflow & Load Testing
 
-- Flyway migration inventory spans V1 through V35; V34 adds split-waybill membership and legacy backfill, and V35 records returned QR scans.
+- Flyway migration inventory spans V1 through V40; V34 adds split-waybill membership and legacy backfill, V35 records returned QR scans, and V40 adds covering indexes for personal history and tracking metrics.
 - `backend/src/main/resources/application-workflow.properties` selects the isolated `tnl_workflow` database and enables the production-shaped workflow fixtures.
 - `backend/src/main/java/com/tnl/logistics/config/WorkflowDataSeeder.java` seeds the current workflow profile through application services; `DataSeeder.java` retains the existing development/test foundation and fixtures.
 - `backend/src/test/java/com/tnl/logistics/config/WorkflowDataSeederIntegrationTest.java` verifies fixture contracts, lifecycle histories, financial rollups, restart preservation, profile safety, and role-gated API access in an isolated database.
