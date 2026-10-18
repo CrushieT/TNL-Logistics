@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { colors, fonts, spacing, radius, collectionStyles } from '../../../theme';
 import { formatCurrency } from '../utils/collectionsUtils';
+import { TableRowSkeleton } from '../../../components/common/Skeleton';
 
 export default function WeeklyCollectionsTable({
   items = [],
@@ -10,8 +11,9 @@ export default function WeeklyCollectionsTable({
   onGenerateClientSoa,
   isCurrentCycle = false,
   cycleLabel = '',
+  actionsDisabled = false,
 }) {
-  if (loading) {
+  if (loading && items.length === 0) {
     return (
       <View style={styles.card}>
         <View style={styles.tableHeader}>
@@ -24,10 +26,7 @@ export default function WeeklyCollectionsTable({
           <Text style={[styles.thCell, { flex: 1.3, textAlign: 'center' }]}>STATUS</Text>
           <Text style={[styles.thCell, { width: 170, textAlign: 'right', paddingRight: 10 }]}>ACTION</Text>
         </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color={colors.ink} style={{ marginBottom: 10 }} />
-          <Text style={styles.loadingText}>Loading collection data...</Text>
-        </View>
+        <TableRowSkeleton rows={6} columns={8} height={52} />
       </View>
     );
   }
@@ -188,23 +187,27 @@ export default function WeeklyCollectionsTable({
             <View style={styles.actionGroup}>
               {item.statementId || statusKey === 'SOA_GENERATED' ? (
                 <Pressable
-                  onPress={() => onReviewClient?.(item, 'VIEW_SOA')}
+                  disabled={actionsDisabled}
+                  onPress={() => !actionsDisabled && onReviewClient?.(item, 'VIEW_SOA')}
                   style={({ hovered }) => [
                     styles.viewSoaBtn,
-                    hovered && styles.viewSoaBtnHovered,
+                    actionsDisabled && styles.btnDisabled,
+                    hovered && !actionsDisabled && styles.viewSoaBtnHovered,
                   ]}
                 >
-                  <Text style={styles.viewSoaBtnText}>View SOA</Text>
+                  <Text style={[styles.viewSoaBtnText, actionsDisabled && styles.btnTextDisabled]}>View SOA</Text>
                 </Pressable>
               ) : (
                 <Pressable
-                  onPress={() => onReviewClient?.(item, 'GENERATE_SOA')}
+                  disabled={actionsDisabled}
+                  onPress={() => !actionsDisabled && onReviewClient?.(item, 'GENERATE_SOA')}
                   style={({ hovered }) => [
                     styles.reviewBtn,
-                    hovered && styles.reviewBtnHovered,
+                    actionsDisabled && styles.btnDisabled,
+                    hovered && !actionsDisabled && styles.reviewBtnHovered,
                   ]}
                 >
-                  <Text style={styles.reviewBtnText}>Generate SOA</Text>
+                  <Text style={[styles.reviewBtnText, actionsDisabled && styles.btnTextDisabled]}>Generate SOA</Text>
                 </Pressable>
               )}
             </View>
@@ -409,5 +412,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#1D4ED8',
+  },
+  btnDisabled: {
+    opacity: 0.45,
+    borderColor: colors.border,
+    backgroundColor: '#F3F4F6',
+  },
+  btnTextDisabled: {
+    color: colors.inkFaint,
   },
 });

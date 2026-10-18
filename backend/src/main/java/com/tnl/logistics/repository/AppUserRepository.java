@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.persistence.LockModeType;
 
@@ -29,6 +30,7 @@ public interface AppUserRepository extends JpaRepository<AppUser, String> {
 
     Optional<AppUser> findByUsername(String username);
 
+    @Transactional(readOnly = true)
     @Query("select user.active as active, user.role as role, user.tokenVersion as tokenVersion "
             + "from AppUser user where user.userId = :userId")
     Optional<SseAuthorizationState> findSseAuthorizationState(@Param("userId") String userId);

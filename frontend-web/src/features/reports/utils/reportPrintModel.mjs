@@ -1,10 +1,21 @@
 const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-export const REPORT_PAGE_CONTENT_UNITS = 23;
+export const REPORT_PAGE_CONTENT_UNITS = 20;
 const EXECUTIVE_SUMMARY_UNITS = 5;
 const TABLE_HEADER_UNITS = 2;
 const TABLE_ROW_UNITS = 1;
 const SIGNATURE_UNITS = 4;
+
+export function normalizeReportBranding(branding) {
+  const companyName = typeof branding?.companyName === 'string' ? branding.companyName.trim() : '';
+  if (!companyName) throw new Error('Unable to load the business name. Try again before printing.');
+  return {
+    companyName,
+    companyAddress: String(branding.companyAddress || '').trim(),
+    companyContact: String(branding.companyContact || '').trim(),
+    billingEmail: String(branding.billingEmail || '').trim(),
+  };
+}
 
 function getSingleValue(value) {
   return Array.isArray(value) ? value[0] : value;

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
 import { evaluateSessionValidationOutcome, isEligibleAdminToken } from './sessionCore.mjs';
+import { clearAllCache } from './responseCache.mjs';
 
 const TOKEN_KEY = 'tnl_admin_token';
 const USER_KEY = 'tnl_user_info';
@@ -56,6 +57,9 @@ function clearIneligibleSession() {
   isAdminSessionVerified = false;
   clearToken();
   clearCurrentUser();
+  if (typeof clearAllCache === 'function') {
+    clearAllCache();
+  }
   notifySessionChanged();
 }
 
@@ -175,11 +179,31 @@ export function hasVerifiedAdminSession() {
   return isAdminSessionVerified && isAuthenticated();
 }
 
+export function getSessionAuthContext() {
+  const user = getCurrentUser();
+  const token = getToken();
+  const isVerified = hasVerifiedAdminSession();
+  return {
+    userId: isVerified ? user?.userId ?? null : null,
+    sessionGeneration: getSessionGeneration(),
+    isAuthenticated: Boolean(token && isEligibleAdminToken(token) && user?.userId),
+    isVerified,
+  };
+}
+
 export function invalidateSession() {
   incrementSessionGeneration();
   isAdminSessionVerified = false;
   clearToken();
   clearCurrentUser();
+  if (typeof clearAllCache === 'function') {
+    clearAllCache();
+  }
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.sessionStorage) {
+    try {
+      window.sessionStorage.removeItem('tnl_nav_scroll_y');
+    } catch (_) {}
+  }
   notifySessionInvalidated();
   notifySessionChanged();
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
@@ -240,6 +264,9 @@ export async function login(username, password) {
   }
 
   incrementSessionGeneration();
+  if (typeof clearAllCache === 'function') {
+    clearAllCache();
+  }
   setToken(token);
   setCurrentUser({
     userId,
@@ -298,6 +325,9 @@ export async function registerFirstBootAdmin({
   }
 
   incrementSessionGeneration();
+  if (typeof clearAllCache === 'function') {
+    clearAllCache();
+  }
   setToken(token);
   setCurrentUser({
     userId,
@@ -482,6 +512,9 @@ export async function changePassword(oldPassword, newPassword) {
     incrementSessionGeneration();
     setToken(response.data.token);
     isAdminSessionVerified = true;
+    if (typeof clearAllCache === 'function') {
+      clearAllCache();
+    }
   }
 
   const currentUser = getCurrentUser();

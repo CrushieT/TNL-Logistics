@@ -1,5 +1,33 @@
 # Project Structure
 
+### Frontend progressive loading and bounded memory cache
+
+- `frontend-web/src/services/api/useVerifiedAdminSession.js`: subscribes to session changes before rechecking authentication; exposes a stable verified user/session-generation key and blocks page reads and cache previews while verification is pending.
+- `frontend-web/src/services/api/responseCache.mjs`: pure in-memory response cache module with 6 slots (`dashboard_summary`, `reports_summary`, `weekly_collections`, `tracking_logs_page`, `tracking_logs_metrics`, `collection_cycles`), exact user ID, session generation, and canonical query parameter matching, 5-minute TTL, 1 MiB per-entry cap, 4 MiB total cache cap, oldest-entry eviction, and zero storage persistence.
+- `frontend-web/src/components/common/Skeleton.js`: accessible, static placeholder blocks and skeletons (`MetricCardSkeleton`, `ChartSkeleton`, `TableRowSkeleton`, `ActivityRowSkeleton`, `ReportsKpiSkeleton`, `CollectionSummarySkeleton`) for immediate page layout rendering without full-page spinners or financial flashes.
+- `frontend-web/tests/responseCache.test.mjs`: unit test suite verifying cache hits, expiration, identity & query bounds, slot replacement, payload size limits, and total eviction.
+- `frontend-web/tests/responseCacheSession.test.mjs`: cache/session-core unit checks for invalidation, sliding renewal, response acceptance, and account isolation; production client integration is covered in progressiveLoadingFlows.test.mjs.
+
+### Request lifecycle, coordinator, and SSE outage handling
+
+- `frontend-web/src/services/api/requestCoordinator.mjs`: shared request coordinator managing deterministic key derivation, in-flight overlap prevention, AbortController cancellation on key change/unmount, generational response guarding, at most one queued follow-up refresh, 300ms event burst debouncing, hidden tab/inactive route suspension, and cancellation error suppression.
+- `frontend-web/src/services/api/useRequestCoordinator.js`: React hook integrating `createRequestCoordinator` with component lifecycle, window focus, and document visibility changes.
+- `frontend-web/src/services/api/sseClientCore.mjs`: added `calculateBackoffDelay` (1s, 2s, 4s, 8s, 16s, 30s ceiling with bounded jitter) and `isAuthFailureStatus` (401/403).
+- `frontend-web/src/services/api/sseClient.js`: single shared SSE connection with exponential backoff, immediate halt on 401/403 or session invalidation, parallel timer/connection prevention, and subscriber cleanup.
+- `frontend-web/tests/requestCoordinator.test.mjs`: unit test suite verifying deterministic keys, cancellation, stale response suppression, follow-up coalescing, 300ms debouncing, same-instance lifecycle reactivation, protected success metadata including live highlight flags, and tab suspension/resume.
+- `frontend-web/tests/progressiveLoadingFlows.test.mjs`: executes production screens and hooks for pending verification, mount-time subscription races, repeated notifications, account changes, retained-ref effect replay, live highlight expiry/cleanup, cache-hit Print gating, stale empty results, cancellation, and visibility resume; also executes production client session/cache transitions.
+- `frontend-web/tests/sseClient.test.mjs`: parser/backoff tests and production SSE client regressions using deferred fetch responses for session/token changes, obsolete failures/successes/cleanup, current-session denial, reconnect timers, event acceptance, and subscriber teardown.
+- `load-tests/tests/run-acceptance.Tests.ps1`: standalone PowerShell parsing and mocked runner tests for k6 status propagation, report sanitization/failures, monitoring-job cleanup, and temporary credential cleanup; runs no Docker commands or workloads.
+- `backend/src/test/java/com/tnl/logistics/controller/SseConnectionLeakIntegrationTest.java`: regression test executing a real embedded HTTP server and real database pool verifying that long-lived SSE streaming connections, rapid client disconnects, and bounded heartbeat pruning do not retain HikariCP connections under `spring.jpa.open-in-view=false`.
+- `backend/src/test/java/com/tnl/logistics/controller/SseOpenInViewRetainedConnectionTest.java`: isolated reproduction test demonstrating that under `spring.jpa.open-in-view=true`, concurrent SSE streams retain borrowed HikariCP connections without explicit transaction boundaries, causing pool starvation (`active=5, idle=0`) and HTTP 500 connection acquisition timeouts on ordinary requests.
+
+### Admin tracking logs optimization
+
+- `backend/src/main/java/com/tnl/logistics/repository/TodayTrackingMetricsSummary.java`: single-query projection interface for today's operational tracking metrics (`todayTotalScans`, `activeCouriersCount`, `loadedOnTruckToday`, `handedToHaulerToday`).
+- `backend/src/main/java/com/tnl/logistics/repository/AdminTrackingEventRepository.java`: custom fragment interface declaring `findAdminTrackingEvents(search, status, startDateTime, endDateTime, pageable)`.
+- `backend/src/main/java/com/tnl/logistics/repository/AdminTrackingEventRepositoryImpl.java`: ID-first admin pagination selecting matching event IDs, zero-join count/IDs query for unfiltered/date/status searches, 6-field search joining only required tables, page/size clamping (1-500), and bounded relationship fetch with order preservation.
+- `backend/src/test/java/com/tnl/logistics/controller/TrackingLogIntegrationTest.java`: 21 integration tests covering pagination clamping, 500-item CSV request, exact totals beyond last page, 6-field substring/lowercase search, combined search+status+date, wildcard/escape inputs, empty results, timestamp tie breaking by `eventId DESC`, adjacent page non-overlap, DTO mapping safety, 401/403 role matrix, and populated current-day metrics tracking.
+
 ### Statements dropdown SOA search
 
 - `frontend-web/src/features/collections/components/SearchableClientDropdown.js`: optional SOA number display and substring search; default client-only mode remains unchanged.
@@ -35,7 +63,7 @@
 - `backend/src/main/java/com/tnl/logistics/model/ParcelExceptionCommand.java` and `repository/ParcelExceptionCommandRepository.java`: shared command request-ID registry.
 - `backend/src/main/java/com/tnl/logistics/dto/ParcelLossEventResponse.java` and `WaybillReconciliationResponse.java`: restricted history DTOs.
 - `backend/src/test/java/com/tnl/logistics/controller/ParcelLossIntegrationTest.java`: exception contracts, lifecycle, atomicity, and concurrency regressions.
-- `backend/src/test/java/com/tnl/logistics/migration/ParcelLossMigrationIntegrationTest.java`: isolated fresh and V38-upgrade migration checks.
+- `backend/src/test/java/com/tnl/logistics/migration/ParcelLossMigrationIntegrationTest.java`: isolated fresh and upgraded migration checks through V40.
 - `frontend-web/src/components/common/ExceptionAction.js`: Admin confirmation, reason, retry, and conflict-review interaction.
 - `frontend-web/tests/parcelException.test.mjs`: confirmation behavior and lost-manifest reprints.
 - `frontend-mobile/tests/parcelLoss.test.mjs`: loss-aware scanner, revision gates, and reprints.
@@ -145,18 +173,18 @@ tnl-logistics/
 │   │   │   │   └── print.js         # Dedicated isolated printable report document
 │   │   │   ├── users.js             # Screen 27 User & Staff Management
 │   │   │   └── settings.js          # Screen 28 System Settings
-│   │   ├── components/              # Shared design system (common/ atoms, layout/ AppShell)
+│   │   ├── components/              # Shared design system (common/ atoms & Skeleton, layout/ AppShell, Sidebar, SignOutModal, navScrollPosition.mjs)
 │   │   ├── features/                # Domain modules
 │   │   │   ├── shipments/           # ClientSelectDropdown, ParcelUnitsEditor, ShipmentPricingSummary, parcelPagination.mjs, registrationCalculations.mjs, PrintLabelsModal, LabelPreview, durable outbox & isolated thermal print service
 │   │   │   ├── reports/             # Operational & financial report cards, PrintableReportDocument, reportPrintModel.mjs
 │   │   │   ├── collections/         # SOA components, API services, pagination, and hardened two-copy statementPrintModel.mjs
 │   │   │   ├── waybills/            # Waybill table, manifest, directory helpers, API client, and two-copy print service
 │   │   │   └── settings/            # Settings components plus shared SOA bank-detail normalization and validation
-│   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sessionCore.mjs, sseClient.js, sseClientCore.mjs)
+│   │   ├── services/api/            # Core infrastructure (client.js with JWT auth & role protection, sessionCore.mjs, responseCache.mjs, sseClient.js, sseClientCore.mjs)
 │   │   ├── theme/                   # Design tokens (colors, fonts, typography, spacing)
 │   │   ├── utils/                   # Shared QR facade
 │   │   └── vendor/qrcodegen/        # Vendored Project Nayuki QR generator
-│   ├── tests/                       # Web unit suites, including waybill directory, route, and two-copy print coverage
+│   ├── tests/                       # Web unit suites, including response cache, nav scroll position, signout modal, waybill directory, route, and two-copy print coverage
 │   ├── assets/                      # favicon.png, tracking-logo.png
 │   ├── app.json                     # Expo web configuration
 │   ├── package.json
@@ -253,12 +281,15 @@ tnl-logistics/
 
 ### Workflow & Load Testing
 
-- Flyway migration inventory spans V1 through V35; V34 adds split-waybill membership and legacy backfill, and V35 records returned QR scans.
+- Flyway migration inventory spans V1 through V40; V34 adds split-waybill membership and legacy backfill, V35 records returned QR scans, and V40 adds covering indexes for personal history and tracking metrics.
 - `backend/src/main/resources/application-workflow.properties` selects the isolated `tnl_workflow` database and enables the production-shaped workflow fixtures.
 - `backend/src/main/java/com/tnl/logistics/config/WorkflowDataSeeder.java` seeds the current workflow profile through application services; `DataSeeder.java` retains the existing development/test foundation and fixtures.
 - `backend/src/test/java/com/tnl/logistics/config/WorkflowDataSeederIntegrationTest.java` verifies fixture contracts, lifecycle histories, financial rollups, restart preservation, profile safety, and role-gated API access in an isolated database.
 - `docker-compose.workflow.yml` overrides the default Compose stack for the same isolated workflow profile.
 - `backend/src/main/resources/application-loadtest.properties` selects the isolated `tnl_loadtest` database with configurable HikariCP concurrency tuning (default pool size 10), strict Hibernate `ddl-auto=validate`, and opt-in deterministic seeder (`LoadTestDataSeeder.java`).
+- `backend/src/main/java/com/tnl/logistics/config/LoadTestFixtureWriter.java` expands 72 service-generated load-test templates with bounded multi-row inserts, remapped audit references, recalculated client pricing, and reserved application identifiers.
+- `backend/src/test/java/com/tnl/logistics/config/LoadTestDataSeederIntegrationTest.java` verifies both service-generated and bulk-expanded fixtures across 24 operational scenarios, three billing cycles, pricing snapshots, audit records, print retry fingerprints, and restart preservation in an isolated MySQL test schema.
+- `docker-compose.sim-seed.yml` temporarily raises simulation CPU, memory, JVM heap, and MySQL buffer-pool capacity during initial seeding; omit it and recreate the containers before benchmarking.
 - `docker-compose.loadtest.yml` spins up `mysql-loadtest` (port 3307, 512M RAM / 0.5 vCPU) and `backend-loadtest` (port 8082, 512M RAM / 0.5 vCPU with Serial GC) using `.env.loadtest`.
 - `load-tests/` provides k6 smoke, 25-user baseline, and 20-courier + 1-admin realistic hybrid simulation scripts targeting `http://localhost:8082` with JWT credential sanitization.
 
@@ -289,3 +320,39 @@ tnl-logistics/
 - `frontend-mobile/tests/waybillOptions.test.mjs`: unit tests for returned waybill pagination, recommendation capping, and cancellation.
 
 Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. The final account entity and DTOs expose role-only identities. `.review/four-role-ship-3-evidence.md` retains the baseline capability trace, company-column removal evidence, migration controls, and final verification reports.
+
+### 50,000-shipment read optimization
+- `backend/src/main/java/com/tnl/logistics/dto/CollectionTotals.java`: internal shared collection totals DTO (total due, total collected, outstanding balance, active clients count) for Dashboard and Weekly Collections.
+- `backend/src/main/java/com/tnl/logistics/repository/CycleShipmentSummary.java`: SQL-aggregated cycle shipment count, parcel count, and total charges projection for Dashboard.
+- `backend/src/main/java/com/tnl/logistics/repository/PersonalTrackingEventRepository.java`: staff-scoped history fragment.
+- `backend/src/main/java/com/tnl/logistics/repository/PersonalTrackingEventRepositoryImpl.java`: ID pagination, exact count, bounded relationship fetch.
+- `backend/src/main/java/com/tnl/logistics/repository/ClientCollectionTotals.java`: per-client financial projection.
+- `backend/src/main/java/com/tnl/logistics/repository/ClientAgingProjection.java`: SQL-aggregated client aging and live receivables projection.
+- `backend/src/main/java/com/tnl/logistics/repository/PeriodShipmentTotals.java`: SQL-aggregated period shipment count and billed revenue projection.
+- `backend/src/main/java/com/tnl/logistics/repository/ClientPeriodShipmentTotals.java`: SQL-aggregated client-level period shipment count and billed revenue projection.
+- `backend/src/main/java/com/tnl/logistics/repository/ClientPeriodPaymentTotals.java`: SQL-aggregated client-level period collected revenue projection.
+- `backend/src/main/java/com/tnl/logistics/repository/PaymentMethodTotals.java`: SQL-aggregated payment method distribution projection.
+- `backend/src/main/java/com/tnl/logistics/repository/DeductionCategoryTotals.java`: SQL-aggregated SOA deduction categories projection.
+- `backend/src/main/java/com/tnl/logistics/repository/DailyShipmentTotals.java`: SQL-aggregated daily registered shipment count projection.
+- `backend/src/main/java/com/tnl/logistics/repository/DailyParcelTotals.java`: SQL-aggregated daily parcel count, weight, volume, and completed delivery projection.
+- `backend/src/main/resources/db/migration/V40__cover_personal_history_and_metrics.sql`: additive courier covering indexes.
+- `backend/src/test/java/com/tnl/logistics/controller/CollectionsAggregationIntegrationTest.java`: financial and boundary regressions.
+- `frontend-web/tests/collectionsFallbackRemoval.test.mjs`: regression suite asserting complete removal of frontend fallback aggregator, prevention of zero balance fabrication, and propagation of structured 503 errors.
+- `load-tests/endpoint-diagnostics.js`: sequential sampling with discarded warm-up and sanitized summaries.
+- `load-tests/run-measurement.ps1`: environment-backed diagnostic and unchanged simulation runner.
+- `load-tests/capture-financial-results.ps1`: synthetic financial response snapshots without credentials.
+- `load-tests/query-diagnostics.sql`: repeatable query plans and index sizes.
+- `load-tests/scan-write-diagnostics.sql`: rolled-back scan insert timing.
+- `load-tests/monitor-resources.ps1`: per-run CPU/memory samples and connection-pool timeout counts.
+- `load-tests/optimization-results.md`: slice verification, performance evidence, and unsuccessful-attempt ledger.
+
+### Frontend progressive loading & navigation additions
+- `frontend-web/src/components/common/Skeleton.js`: generic and domain-specific skeleton placeholders for immediate layout rendering.
+- `frontend-web/src/services/api/responseCache.mjs`: bounded browser-memory preview cache with slot budgeting, 5-minute TTL, and `isResponseAcceptable` production session/query acceptance validation.
+- `frontend-web/src/components/layout/navScrollPosition.mjs`: navigation scroll-offset state preservation across page transitions.
+- `frontend-web/tests/responseCache.test.mjs`: unit tests for pure cache slot allocation, eviction, TTL, and canonical query parameter matching.
+- `frontend-web/tests/responseCacheSession.test.mjs`: cache/session-core unit checks for invalidation, sliding renewal, response acceptance, and account isolation.
+- `frontend-web/tests/progressiveLoadingFlows.test.mjs`: production screen/hook regression tests for first render, preview Print gating, tab resume metadata, late responses, empty-result stale handling, cycle cancellation, and actual client session/password boundaries; child UI rendering is stubbed.
+- `frontend-web/tests/navScrollPosition.test.mjs`: regression tests for navigation scroll position retention.
+- `frontend-web/src/components/layout/SignOutModal.js`: web confirmation modal for admin console signout with icon anchor, section dividers, and backdrop dismissal.
+- `frontend-web/tests/signOutModal.test.mjs`: unit and interaction tests for signout popup presentation, callbacks, and Sidebar integration.

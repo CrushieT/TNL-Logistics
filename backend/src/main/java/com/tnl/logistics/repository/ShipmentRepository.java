@@ -21,6 +21,31 @@ import java.util.Optional;
 @Repository
 public interface ShipmentRepository extends JpaRepository<Shipment, String> {
 
+    // Match Java's trim and exact statement-ID membership rules in the aggregate.
+    @Query(value = """
+            SELECT c.client_id AS clientId, c.name AS clientName, c.contact_number AS contactNumber,
+                   COUNT(*) AS shipmentsCount,
+                   SUM(CASE WHEN s.statement_id IS NULL
+                       OR REGEXP_LIKE(s.statement_id, CONCAT('^[', CHAR(0 USING utf8mb4), '-', CHAR(32 USING utf8mb4), ']*$')) THEN 1 ELSE 0 END) AS unbilledCount,
+                   COALESCE(SUM(s.total_amount), 0) AS currentCharges,
+                   COALESCE(SUM((SELECT SUM(p.amount_paid)
+                                 FROM payment p WHERE p.shipment_id = s.shipment_id)), 0) AS paid
+            FROM shipment s
+            JOIN client c ON c.client_id = s.client_id
+            WHERE s.date_registered BETWEEN :cycleStart AND :cycleEnd
+              AND (s.statement_id IS NULL OR REGEXP_LIKE(s.statement_id, CONCAT('^[', CHAR(0 USING utf8mb4), '-', CHAR(32 USING utf8mb4), ']*$'))
+                   OR EXISTS (SELECT 1 FROM soa cycle_soa
+                              WHERE cycle_soa.soa_no = s.statement_id
+                                AND BINARY cycle_soa.soa_no = BINARY s.statement_id
+                                AND cycle_soa.statement_date = :statementDate))
+            GROUP BY c.client_id, c.name, c.contact_number
+            ORDER BY MAX(s.date_registered) DESC
+            """, nativeQuery = true)
+    List<ClientCollectionTotals> aggregateCollectionsByClient(
+            @Param("cycleStart") java.time.LocalDateTime cycleStart,
+            @Param("cycleEnd") java.time.LocalDateTime cycleEnd,
+            @Param("statementDate") LocalDate statementDate);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM Shipment s WHERE s.shipmentId = :id")
     Optional<Shipment> findByIdForUpdate(@Param("id") String id);
@@ -163,5 +188,95 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
            "GROUP BY s.shipmentId, c.clientId, c.name, c.contactNumber, s.dateRegistered, s.totalAmount " +
            "HAVING s.totalAmount > COALESCE(SUM(p.amountPaid), 0)")
     List<Object[]> findUnpaidShipmentsWithPayments();
+
+    @Query(value = """
+            SELECT 
+                unpaid.client_id AS clientId,
+                unpaid.client_name AS clientName,
+                unpaid.client_contact AS clientContact,
+                COUNT(*) AS unpaidShipmentsCount,
+                COALESCE(SUM(CASE WHEN DATEDIFF(:asOfDate, unpaid.date_registered) <= 7 THEN unpaid.balance ELSE 0 END), 0) AS currentDue,
+                COALESCE(SUM(CASE WHEN DATEDIFF(:asOfDate, unpaid.date_registered) BETWEEN 8 AND 14 THEN unpaid.balance ELSE 0 END), 0) AS pastDue,
+                COALESCE(SUM(CASE WHEN DATEDIFF(:asOfDate, unpaid.date_registered) > 14 THEN unpaid.balance ELSE 0 END), 0) AS overdue,
+                COALESCE(SUM(unpaid.balance), 0) AS totalOutstanding,
+                COALESCE(SUM(unpaid.paid), 0) AS openPaid
+            FROM (
+                SELECT 
+                    s.client_id,
+                    c.name AS client_name,
+                    c.contact_number AS client_contact,
+                    s.shipment_id,
+                    s.date_registered,
+                    s.total_amount,
+                    COALESCE(p.paid, 0) AS paid,
+                    (s.total_amount - COALESCE(p.paid, 0)) AS balance
+                FROM shipment s
+                JOIN client c ON c.client_id = s.client_id
+                LEFT JOIN (
+                    SELECT shipment_id, SUM(amount_paid) AS paid
+                    FROM payment
+                    GROUP BY shipment_id
+                ) p ON p.shipment_id = s.shipment_id
+                WHERE s.total_amount > COALESCE(p.paid, 0)
+            ) unpaid
+            GROUP BY unpaid.client_id, unpaid.client_name, unpaid.client_contact
+            HAVING SUM(unpaid.balance) > 0
+            ORDER BY totalOutstanding DESC
+            """, nativeQuery = true)
+    List<ClientAgingProjection> aggregateClientReceivablesAging(@Param("asOfDate") LocalDate asOfDate);
+
+    @Query(value = """
+            SELECT COUNT(*) AS totalShipments,
+                   COALESCE(SUM(total_amount), 0) AS totalBilled
+            FROM shipment
+            WHERE date_registered BETWEEN :start AND :end
+            """, nativeQuery = true)
+    PeriodShipmentTotals getPeriodShipmentTotals(
+            @Param("start") java.time.LocalDateTime start,
+            @Param("end") java.time.LocalDateTime end);
+
+    @Query(value = """
+            SELECT s.client_id AS clientId,
+                   c.name AS clientName,
+                   COUNT(*) AS totalShipments,
+                   COALESCE(SUM(s.total_amount), 0) AS totalBilled
+            FROM shipment s
+            JOIN client c ON c.client_id = s.client_id
+            WHERE s.date_registered BETWEEN :start AND :end
+            GROUP BY s.client_id, c.name
+            """, nativeQuery = true)
+    List<ClientPeriodShipmentTotals> aggregateClientPeriodShipments(
+            @Param("start") java.time.LocalDateTime start,
+            @Param("end") java.time.LocalDateTime end);
+
+    @Query(value = """
+            SELECT DATE(s.date_registered) AS regDate,
+                   COUNT(*) AS shipmentsCount
+            FROM shipment s
+            WHERE s.date_registered BETWEEN :start AND :end
+            GROUP BY DATE(s.date_registered)
+            """, nativeQuery = true)
+    List<DailyShipmentTotals> aggregateDailyShipments(
+            @Param("start") java.time.LocalDateTime start,
+            @Param("end") java.time.LocalDateTime end);
+
+    @Query(value = """
+            SELECT COUNT(*) AS shipmentCount,
+                   COALESCE(SUM(amounts.quantity), 0) AS parcelCount,
+                   COALESCE(SUM(amounts.total_amount), 0) AS totalCharges,
+                   COALESCE(SUM(CASE WHEN amounts.total_amount > amounts.paid THEN 1 ELSE 0 END), 0) AS unpaidShipmentCount,
+                   COALESCE(SUM(amounts.paid), 0) AS collectedPayments
+            FROM (
+                SELECT s.shipment_id, s.quantity, s.total_amount,
+                       COALESCE(SUM(p.amount_paid), 0) AS paid
+                FROM shipment s
+                LEFT JOIN payment p ON p.shipment_id = s.shipment_id
+                WHERE s.date_registered BETWEEN :cycleStart AND :cycleEnd
+                GROUP BY s.shipment_id, s.quantity, s.total_amount
+            ) amounts
+            """, nativeQuery = true)
+    CycleShipmentSummary getCycleShipmentSummary(
+            @Param("cycleStart") java.time.LocalDateTime cycleStart,
+            @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
 }
 

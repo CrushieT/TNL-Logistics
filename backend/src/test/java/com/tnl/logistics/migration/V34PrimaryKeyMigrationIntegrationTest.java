@@ -75,10 +75,10 @@ class V34PrimaryKeyMigrationIntegrationTest {
     }
 
     @Test
-    void migratesExistingWaybillThroughV39WithPrimaryKeysRequired() {
+    void migratesExistingWaybillThroughV40WithPrimaryKeysRequired() {
         seedExistingWaybill(2);
         Flyway migration = createMigration();
-        assertEquals(6, migration.migrate().migrationsExecuted);
+        assertEquals(7, migration.migrate().migrationsExecuted);
         migration.validate();
 
         assertEquals(2, migrationJdbcTemplate.queryForObject(
@@ -122,7 +122,7 @@ class V34PrimaryKeyMigrationIntegrationTest {
                 + "VALUES ('TRK-UPGRADE-2', 'SHP-UPGRADE', 2)");
         migrationJdbcTemplate.execute("DROP TABLE waybill_backfill_guard");
         migration.repair();
-        assertEquals(6, migration.migrate().migrationsExecuted);
+        assertEquals(7, migration.migrate().migrationsExecuted);
         migration.validate();
         assertEquals(2, migrationJdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM parcel_unit WHERE waybill_id = 'WYB-UPGRADE'", Integer.class));
@@ -149,7 +149,7 @@ class V34PrimaryKeyMigrationIntegrationTest {
         Flyway correctedMigration = createMigration();
         assertThrows(Exception.class, correctedMigration::validate);
         correctedMigration.repair();
-        assertEquals(6, correctedMigration.migrate().migrationsExecuted);
+        assertEquals(7, correctedMigration.migrate().migrationsExecuted);
         correctedMigration.validate();
         assertEquals(2, migrationJdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM parcel_unit WHERE waybill_id = 'WYB-UPGRADE'", Integer.class));
@@ -170,7 +170,7 @@ class V34PrimaryKeyMigrationIntegrationTest {
         Exception failure = assertThrows(Exception.class, correctedMigration::validate);
         assertTrue(failure.getMessage().contains("checksum mismatch for migration version 34"), failure.getMessage());
         correctedMigration.repair();
-        assertEquals(5, correctedMigration.migrate().migrationsExecuted);
+        assertEquals(6, correctedMigration.migrate().migrationsExecuted);
         correctedMigration.validate();
         assertEquals(2, migrationJdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM parcel_unit WHERE waybill_id = 'WYB-UPGRADE'", Integer.class));

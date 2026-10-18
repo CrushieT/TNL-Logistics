@@ -11,7 +11,8 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors, fonts, spacing, radius } from '../../theme';
 import { getReportSummary, PrintableReportDocument } from '../../features/reports';
-import { normalizeReportPrintParams } from '../../features/reports/utils/reportPrintModel.mjs';
+import { normalizeReportPrintParams, normalizeReportBranding } from '../../features/reports/utils/reportPrintModel.mjs';
+import { getCompanyBranding } from '../../features/settings/services/settingsApi';
 
 export default function ReportPrintScreen() {
   const router = useRouter();
@@ -21,6 +22,9 @@ export default function ReportPrintScreen() {
     [params.startDate, params.endDate],
   );
   const [reportData, setReportData] = useState(null);
+  const [branding, setBranding] = useState(null);
+  const [isLogoReady, setIsLogoReady] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
   const hasAutoPrinted = useRef(false);
@@ -40,12 +44,20 @@ export default function ReportPrintScreen() {
     async function loadReport() {
       try {
         setLoading(true);
+        setBranding(null);
+        setIsLogoReady(false);
         setErrorMessage(null);
-        const data = await getReportSummary({
-          startDate: printParams.startDate,
-          endDate: printParams.endDate,
-        });
-        if (isMounted) setReportData(data);
+        const [data, companyBranding] = await Promise.all([
+          getReportSummary({
+            startDate: printParams.startDate,
+            endDate: printParams.endDate,
+          }),
+          getCompanyBranding(true).then(normalizeReportBranding),
+        ]);
+        if (isMounted) {
+          setReportData(data);
+          setBranding(companyBranding);
+        }
       } catch (error) {
         if (isMounted) {
           setReportData(null);
@@ -65,12 +77,14 @@ export default function ReportPrintScreen() {
     return () => {
       isMounted = false;
     };
-  }, [printParams.endDate, printParams.error, printParams.isValid, printParams.startDate]);
+  }, [printParams.endDate, printParams.error, printParams.isValid, printParams.startDate, loadAttempt]);
 
   useEffect(() => {
     if (
       loading
       || !reportData
+      || !branding
+      || !isLogoReady
       || hasAutoPrinted.current
       || Platform.OS !== 'web'
       || typeof window === 'undefined'
@@ -100,7 +114,7 @@ export default function ReportPrintScreen() {
       if (animationFrame) window.cancelAnimationFrame(animationFrame);
       if (printTimer) window.clearTimeout(printTimer);
     };
-  }, [loading, reportData]);
+  }, [loading, reportData, branding, isLogoReady]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined' || !printParams.isValid) {
@@ -108,14 +122,14 @@ export default function ReportPrintScreen() {
     }
 
     const originalTitle = document.title;
-    document.title = `TNL Logistics Report ${printParams.startDate} to ${printParams.endDate}`;
+    document.title = `${branding?.companyName || 'Business'} Report ${printParams.startDate} to ${printParams.endDate}`;
     return () => {
       document.title = originalTitle;
     };
-  }, [printParams.endDate, printParams.isValid, printParams.startDate]);
+  }, [printParams.endDate, printParams.isValid, printParams.startDate, branding]);
 
   const handlePrintNow = () => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') window.print();
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && reportData && branding && !loading && isLogoReady) window.print();
   };
 
   const handleBack = () => {
@@ -206,9 +220,9 @@ export default function ReportPrintScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.primaryButton, (!reportData || loading) && styles.disabledButton]}
+          style={[styles.primaryButton, (!reportData || !branding || loading || !isLogoReady) && styles.disabledButton]}
           onPress={handlePrintNow}
-          disabled={!reportData || loading}
+          disabled={!reportData || !branding || loading || !isLogoReady}
         >
           <Text style={styles.primaryButtonText}>Print / Save as PDF</Text>
         </TouchableOpacity>
@@ -231,15 +245,23 @@ export default function ReportPrintScreen() {
             <View style={styles.errorCard}>
               <Text style={styles.errorTitle}>Unable to prepare report</Text>
               <Text style={styles.errorText}>{errorMessage}</Text>
+              {printParams.isValid ? (
+                <TouchableOpacity style={styles.secondaryButton} onPress={() => setLoadAttempt((attempt) => attempt + 1)}>
+                  <Text style={styles.secondaryButtonText}>Retry</Text>
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity style={styles.secondaryButton} onPress={handleBack}>
                 <Text style={styles.secondaryButtonText}>Return to Reports</Text>
               </TouchableOpacity>
             </View>
           ) : (
             <PrintableReportDocument
+              key={loadAttempt}
               reportData={reportData}
               startDate={printParams.startDate}
               endDate={printParams.endDate}
+              branding={branding}
+              onLogoReady={() => setIsLogoReady(true)}
             />
           )}
         </View>

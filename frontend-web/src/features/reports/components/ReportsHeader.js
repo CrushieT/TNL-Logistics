@@ -11,6 +11,7 @@ export default function ReportsHeader({
   onEndDateChange,
   onPrintPress,
   isLiveUpdating,
+  printDisabled = false,
 }) {
   const presets = [
     { id: 'TODAY', label: 'Today' },
@@ -38,8 +39,15 @@ export default function ReportsHeader({
         </View>
 
         {/* Print Action */}
-        <TouchableOpacity style={styles.printButton} onPress={onPrintPress} activeOpacity={0.8}>
-          <Text style={styles.printButtonText}>Print Report</Text>
+        <TouchableOpacity
+          style={[styles.printButton, printDisabled && styles.printButtonDisabled]}
+          onPress={printDisabled ? undefined : onPrintPress}
+          disabled={printDisabled}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.printButtonText, printDisabled && styles.printButtonTextDisabled]}>
+            Print Report
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -156,11 +164,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 9,
   },
+  printButtonDisabled: {
+    opacity: 0.5,
+    borderColor: colors.border,
+  },
   printButtonText: {
     fontFamily: fonts.sans,
     fontSize: 13,
     fontWeight: '700',
     color: colors.ink,
+  },
+  printButtonTextDisabled: {
+    color: colors.inkFaint,
   },
   toolbar: {
     flexDirection: 'row',

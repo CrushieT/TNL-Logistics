@@ -55,7 +55,8 @@ class ParcelLossMigrationIntegrationTest {
         flyway.validate();
         JdbcTemplate database = new JdbcTemplate(dataSource);
         assertEquals(3, database.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ? AND table_name IN ('parcel_loss_event', 'waybill_reconciliation_event', 'parcel_exception_command')", Integer.class, schema));
-        assertEquals("39", flyway.info().current().getVersion().toString());
+        assertEquals("40", flyway.info().current().getVersion().toString());
+        assertPersonalTrackingIndexes(database);
     }
 
     @Test void upgradeDefaultsLossWithoutChangingExistingCustodyOrBilling() {
@@ -67,7 +68,7 @@ class ParcelLossMigrationIntegrationTest {
         database.update("INSERT INTO waybill (waybill_id, shipment_id, generated_by, hauler_name, status) VALUES ('WYB-LOSS', 'SHP-LOSS', 'USR-LOSS', 'Fixture', 'SENT_TO_HAULER')");
         database.update("INSERT INTO parcel_unit (tracking_id, shipment_id, waybill_id, seq, current_status, label_status) VALUES ('TRK-LOSS', 'SHP-LOSS', 'WYB-LOSS', 1, 'LOADED_TO_HAULER', 'PRINTED')");
         Flyway flyway = Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load();
-        assertEquals(1, flyway.migrate().migrationsExecuted);
+        assertEquals(2, flyway.migrate().migrationsExecuted);
         flyway.validate();
         assertFalse(Boolean.TRUE.equals(database.queryForObject("SELECT is_lost FROM parcel_unit WHERE tracking_id = 'TRK-LOSS'", Boolean.class)));
         assertEquals(0L, database.queryForObject("SELECT revision FROM parcel_unit WHERE tracking_id = 'TRK-LOSS'", Long.class));
@@ -75,5 +76,16 @@ class ParcelLossMigrationIntegrationTest {
         assertEquals("SENT_TO_HAULER:0", database.queryForObject("SELECT CONCAT(status, ':', manifest_revision) FROM waybill WHERE waybill_id = 'WYB-LOSS'", String.class));
         assertEquals(new java.math.BigDecimal("100.00"), database.queryForObject("SELECT total_amount FROM shipment WHERE shipment_id = 'SHP-LOSS'", java.math.BigDecimal.class));
         assertEquals(0, database.queryForObject("SELECT COUNT(*) FROM parcel_loss_event", Integer.class));
+        assertPersonalTrackingIndexes(database);
+    }
+
+    private void assertPersonalTrackingIndexes(JdbcTemplate database) {
+        String indexColumnsQuery = "SELECT column_name FROM information_schema.statistics "
+                + "WHERE table_schema = DATABASE() AND table_name = 'tracking_event' "
+                + "AND index_name = ? ORDER BY seq_in_index";
+        assertEquals(java.util.List.of("staff_id", "event_timestamp", "status"),
+                database.queryForList(indexColumnsQuery, String.class, "idx_tracking_event_staff_timestamp_status"));
+        assertEquals(java.util.List.of("staff_id", "status", "event_timestamp", "event_id"),
+                database.queryForList(indexColumnsQuery, String.class, "idx_tracking_event_staff_status_timestamp_event"));
     }
 }

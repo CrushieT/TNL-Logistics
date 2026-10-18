@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { colors, fonts } from '../../../theme';
 import { createPrintableReportModel } from '../utils/reportPrintModel.mjs';
 
@@ -110,17 +110,17 @@ function Signatures() {
     <View nativeID="report-footer-signatures" style={styles.footerSignatureBlock}>
       <View style={styles.signatureBox}>
         <View style={styles.signatureLine} />
-        <Text style={styles.signatureRole}>Prepared By (Operations / Billing)</Text>
-      </View>
-      <View style={styles.signatureBox}>
-        <View style={styles.signatureLine} />
-        <Text style={styles.signatureRole}>Approved By (Administration)</Text>
+        <Text style={styles.signatureRole}>Prepared By</Text>
       </View>
     </View>
   );
 }
 
-export default function PrintableReportDocument({ reportData, startDate, endDate }) {
+export default function PrintableReportDocument({ reportData, startDate, endDate, branding, onLogoReady }) {
+  const [isLogoFailed, setIsLogoFailed] = useState(false);
+  const companyName = branding?.companyName || '';
+  const companySubtext = [branding?.companyAddress, branding?.companyContact, branding?.billingEmail]
+    .filter(Boolean).join(' | ');
   const model = useMemo(
     () => createPrintableReportModel(reportData, startDate, endDate),
     [reportData, startDate, endDate],
@@ -135,8 +135,24 @@ export default function PrintableReportDocument({ reportData, startDate, endDate
           style={styles.printPage}
         >
           <View style={styles.letterhead}>
-            <View>
-              <Text style={styles.companyName}>TNL LOGISTICS EXPRESS</Text>
+            {isLogoFailed ? (
+              <View style={styles.logoFallback}><Text style={styles.logoFallbackText}>LOGISTICS</Text></View>
+            ) : (
+              <Image
+                source={require('../../../../assets/tracking-logo.png')}
+                style={styles.brandLogo}
+                resizeMode="contain"
+                accessibilityLabel={companyName}
+                onLoad={() => onLogoReady?.()}
+                onError={() => { setIsLogoFailed(true); onLogoReady?.(); }}
+              />
+            )}
+            <Text style={styles.companyName}>{companyName.toUpperCase()}</Text>
+            {companySubtext ? <Text style={styles.companySubtext}>{companySubtext}</Text> : null}
+          </View>
+          <View style={styles.letterheadDivider} />
+          <View style={styles.metaRow}>
+            <View style={styles.titleColumn}>
               <Text style={styles.reportDocTitle}>OPERATIONAL & FINANCIAL CONSOLIDATION REPORT</Text>
             </View>
             <View style={styles.docMeta}>
@@ -184,6 +200,42 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   letterhead: {
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  brandLogo: {
+    width: 150,
+    height: 50,
+    marginBottom: 3,
+  },
+  logoFallback: {
+    width: 150,
+    height: 50,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 3,
+  },
+  logoFallbackText: {
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#111111',
+  },
+  companySubtext: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    color: colors.inkMuted,
+    textAlign: 'center',
+    marginTop: 1,
+  },
+  letterheadDivider: {
+    borderTopWidth: 1,
+    borderTopColor: '#E1DFD5',
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  metaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
@@ -193,7 +245,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
     color: '#111111',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
+    textAlign: 'center',
+  },
+  titleColumn: {
+    flex: 1,
+    paddingRight: 16,
   },
   reportDocTitle: {
     fontFamily: fonts.mono,

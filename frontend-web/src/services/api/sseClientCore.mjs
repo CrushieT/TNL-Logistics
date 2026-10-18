@@ -51,3 +51,29 @@ export function createSseStreamParser(onEvent) {
 
   return { feed, reset };
 }
+
+/**
+ * Calculate exponential backoff with small jitter and a 30-second ceiling.
+ * Schedule: 1s, 2s, 4s, 8s, 16s, then 30s ceiling.
+ *
+ * @param {number} attempt - Zero-based attempt count
+ * @param {number} [randomFactor=0.5] - Random factor between 0 and 1 for deterministic testing
+ * @returns {number} Delay in milliseconds
+ */
+export function calculateBackoffDelay(attempt, randomFactor = 0.5) {
+  const baseDelays = [1000, 2000, 4000, 8000, 16000];
+  const base = attempt < baseDelays.length ? baseDelays[attempt] : 30000;
+  const jitter = Math.floor(randomFactor * 250);
+  return Math.min(30000, base + jitter);
+}
+
+/**
+ * Check if HTTP status represents an unrecoverable authorization failure.
+ *
+ * @param {number} status
+ * @returns {boolean}
+ */
+export function isAuthFailureStatus(status) {
+  return status === 401 || status === 403;
+}
+

@@ -465,6 +465,37 @@ public class PersonalTrackingHistoryIntegrationTest {
 
     // 11. Exact status filtering works for every supported status
     @Test
+    public void testCombinedSubstringStatusFilterHasExactTotalsAndEmptyPages() throws Exception {
+        String trackingId = createTestShipment(1);
+        String otherTrackingId = createTestShipment(1);
+        trackingService.processStatusScan(new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "First"), "USR-FIELD-1");
+        trackingService.processStatusScan(new TrackingScanRequest(trackingId, ParcelStatus.ARRIVED_AT_TNL, null, "Second"), "USR-FIELD-1");
+        trackingService.processStatusScan(new TrackingScanRequest(otherTrackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Other staff"), "USR-FIELD-2");
+        String shipmentId = parcelUnitRepository.findById(trackingId).orElseThrow().getShipment().getShipmentId();
+
+        for (String search : List.of(trackingId.substring(1).toLowerCase(java.util.Locale.ROOT),
+                shipmentId.substring(1).toLowerCase(java.util.Locale.ROOT))) {
+            mockMvc.perform(get("/api/v1/tracking-events/mine")
+                            .header("Authorization", field1Token)
+                            .param("search", search).param("status", "LOADED_ON_TRUCK").param("size", "1"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.page.totalElements").value(1))
+                    .andExpect(jsonPath("$.content[0].trackingId").value(trackingId));
+            mockMvc.perform(get("/api/v1/tracking-events/mine")
+                            .header("Authorization", field1Token)
+                            .param("search", search).param("status", "LOADED_ON_TRUCK").param("size", "1").param("page", "1"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.page.totalElements").value(1))
+                    .andExpect(jsonPath("$.content", hasSize(0)));
+        }
+        mockMvc.perform(get("/api/v1/tracking-events/mine")
+                        .header("Authorization", field1Token).param("status", "COMPLETED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page.totalElements").value(0))
+                .andExpect(jsonPath("$.content", hasSize(0)));
+    }
+
+    @Test
     public void testStatusFilteringWorksForSupportedStatuses() throws Exception {
         String trackingId = createTestShipment(1);
         ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();

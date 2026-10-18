@@ -125,7 +125,10 @@ public class TrackingEventController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "eventTimestamp"));
+        int clampedPage = Math.max(0, page);
+        int clampedSize = Math.min(500, Math.max(1, size));
+        Pageable pageable = PageRequest.of(clampedPage, clampedSize,
+                Sort.by(Sort.Order.desc("eventTimestamp"), Sort.Order.desc("eventId")));
         Page<TrackingLogEntryResponse> response = trackingService.getTrackingLogs(search, status, startDate, endDate, pageable);
         return ResponseEntity.ok(response);
     }

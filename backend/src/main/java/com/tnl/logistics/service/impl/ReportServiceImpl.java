@@ -5,20 +5,23 @@ import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.*;
 import com.tnl.logistics.service.CollectionsService;
 import com.tnl.logistics.service.ReportService;
+import org.springframework.dao.DataAccessException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
 /**
  * Production implementation of the Operational and Financial Reports engine.
+ * Computes bounded aggregates and projections in SQL to preserve application memory.
  */
 @Service
 public class ReportServiceImpl implements ReportService {
@@ -52,6 +55,19 @@ public class ReportServiceImpl implements ReportService {
     @Override
     @Transactional(readOnly = true)
     public ReportSummaryResponse getReportSummary(LocalDate startDate, LocalDate endDate) {
+        try {
+            return computeReportSummary(startDate, endDate);
+        } catch (ResponseStatusException ex) {
+            throw ex;
+        } catch (DataAccessException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "REPORT_UNAVAILABLE: Financial report calculation is temporarily unavailable",
+                    ex);
+        }
+    }
+
+    private ReportSummaryResponse computeReportSummary(LocalDate startDate, LocalDate endDate) {
         LocalDate today = LocalDate.now(clock);
         LocalDate resolvedEnd = (endDate != null) ? endDate : today;
         LocalDate resolvedStart = (startDate != null) ? startDate : resolvedEnd.withDayOfMonth(1);
@@ -65,117 +81,83 @@ public class ReportServiceImpl implements ReportService {
         LocalDateTime startDateTime = resolvedStart.atStartOfDay();
         LocalDateTime endDateTime = resolvedEnd.atTime(23, 59, 59, 999999999);
 
-        // 1. Fetch Shipments within period (for period billed revenue and operational breakdown)
-        List<Shipment> periodShipments = shipmentRepository.findByDateRegisteredBetweenOrderByDateRegisteredDesc(startDateTime, endDateTime);
-        List<String> shipmentIds = periodShipments.stream().map(Shipment::getShipmentId).collect(Collectors.toList());
+        // 1. Period Shipment Aggregates (Billed Revenue & Shipments Count)
+        PeriodShipmentTotals periodShipmentTotals = shipmentRepository.getPeriodShipmentTotals(startDateTime, endDateTime);
+        BigDecimal totalBilled = periodShipmentTotals != null && periodShipmentTotals.getTotalBilled() != null
+                ? periodShipmentTotals.getTotalBilled()
+                : BigDecimal.ZERO;
+        long totalShipmentsCount = periodShipmentTotals != null ? periodShipmentTotals.getTotalShipments() : 0L;
 
-        // 2. Fetch Payments recorded within period (cash-based: paymentDate between resolvedStart and resolvedEnd)
-        List<Payment> periodPayments = paymentRepository.findByPaymentDateBetween(resolvedStart, resolvedEnd);
+        // 2. Period Collected Revenue (cash-based: payment_date between resolvedStart and resolvedEnd)
+        BigDecimal totalCollected = paymentRepository.sumAmountPaidBetween(resolvedStart, resolvedEnd);
+        if (totalCollected == null) {
+            totalCollected = BigDecimal.ZERO;
+        }
 
-        // 3. Fetch Parcels for period shipments
-        List<ParcelUnit> periodParcels = shipmentIds.isEmpty()
-                ? Collections.emptyList()
-                : parcelUnitRepository.findByShipment_ShipmentIdInOrderBySeqAsc(shipmentIds);
+        // 3. Operational Parcel Distribution and Delivery Metrics
+        List<DailyParcelTotals> parcelRows = parcelUnitRepository.aggregateDailyParcels(startDateTime, endDateTime);
+        Map<String, Long> statusCounts = new HashMap<>();
+        Map<LocalDate, List<DailyParcelTotals>> parcelsByDate = new HashMap<>();
+        long lostParcelsCount = 0L;
+        long completedParcelsCount = 0L;
+        long totalParcelsCount = 0L;
 
-        // 4. Lifetime Accounts Receivable Aging and Live Balances via Repository Aggregate Projection
-        List<Object[]> unpaidShipmentsData = shipmentRepository.findUnpaidShipmentsWithPayments();
-
-        Map<String, ClientAgingAccumulator> clientAgingMap = new LinkedHashMap<>();
-        Map<String, BigDecimal> clientLiveBalances = new HashMap<>();
-        Map<String, BigDecimal> clientLiveOpenPaid = new HashMap<>();
-        BigDecimal liveOutstandingReceivables = BigDecimal.ZERO;
-
-        for (Object[] row : unpaidShipmentsData) {
-            String shipmentId = (String) row[0];
-            String clientId = (String) row[1];
-            String clientName = (String) row[2];
-            String clientContact = (String) row[3];
-
-            LocalDate regDate = today;
-            if (row[4] instanceof LocalDateTime) {
-                regDate = ((LocalDateTime) row[4]).toLocalDate();
-            } else if (row[4] instanceof java.sql.Timestamp) {
-                regDate = ((java.sql.Timestamp) row[4]).toLocalDateTime().toLocalDate();
-            } else if (row[4] instanceof LocalDate) {
-                regDate = (LocalDate) row[4];
-            }
-
-            BigDecimal sBilled = BigDecimal.ZERO;
-            if (row[5] instanceof BigDecimal) {
-                sBilled = (BigDecimal) row[5];
-            } else if (row[5] != null) {
-                sBilled = new BigDecimal(row[5].toString());
-            }
-
-            BigDecimal sPaid = BigDecimal.ZERO;
-            if (row[6] instanceof BigDecimal) {
-                sPaid = (BigDecimal) row[6];
-            } else if (row[6] != null) {
-                sPaid = new BigDecimal(row[6].toString());
-            }
-
-            BigDecimal sBalance = sBilled.subtract(sPaid);
-            if (sBalance.compareTo(BigDecimal.ZERO) <= 0) {
-                continue;
-            }
-
-            liveOutstandingReceivables = liveOutstandingReceivables.add(sBalance);
-            clientLiveBalances.put(clientId, clientLiveBalances.getOrDefault(clientId, BigDecimal.ZERO).add(sBalance));
-            clientLiveOpenPaid.put(clientId, clientLiveOpenPaid.getOrDefault(clientId, BigDecimal.ZERO).add(sPaid));
-
-            ClientAgingAccumulator acc = clientAgingMap.computeIfAbsent(clientId,
-                    k -> new ClientAgingAccumulator(clientId, clientName, clientContact));
-            acc.unpaidShipmentsCount++;
-
-            long ageDays = ChronoUnit.DAYS.between(regDate, today);
-            if (ageDays <= 7) {
-                acc.currentDue = acc.currentDue.add(sBalance);
-            } else if (ageDays <= 14) {
-                acc.pastDue = acc.pastDue.add(sBalance);
+        for (DailyParcelTotals parcelRow : parcelRows) {
+            long count = parcelRow.getParcelsCount();
+            totalParcelsCount += count;
+            if (parcelRow.getLostFlag().intValue() != 0) {
+                lostParcelsCount += count;
             } else {
-                acc.overdue = acc.overdue.add(sBalance);
+                statusCounts.merge(parcelRow.getCurrentStatus(), count, Long::sum);
+            }
+            if (ParcelStatus.COMPLETED.name().equals(parcelRow.getCurrentStatus())) {
+                completedParcelsCount += count;
+            }
+            LocalDate regDate = extractLocalDate(parcelRow.getRegDate());
+            if (regDate != null) {
+                parcelsByDate.computeIfAbsent(regDate, ignored -> new ArrayList<>()).add(parcelRow);
             }
         }
-
-        List<ReceivablesAgingReportRow> agingRows = new ArrayList<>();
-        for (ClientAgingAccumulator acc : clientAgingMap.values()) {
-            BigDecimal totalOut = acc.currentDue.add(acc.pastDue).add(acc.overdue);
-            if (totalOut.compareTo(BigDecimal.ZERO) > 0) {
-                agingRows.add(new ReceivablesAgingReportRow(
-                        acc.clientId,
-                        acc.clientName,
-                        acc.clientContact,
-                        acc.unpaidShipmentsCount,
-                        acc.currentDue,
-                        acc.pastDue,
-                        acc.overdue,
-                        totalOut
-                ));
-            }
-        }
-        agingRows.sort(Comparator.comparing(ReceivablesAgingReportRow::getTotalOutstanding).reversed());
-
-        // 5. Calculate Top 5 KPIs
-        BigDecimal totalBilled = periodShipments.stream()
-                .map(s -> s.getTotalAmount() != null ? s.getTotalAmount() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        BigDecimal totalCollected = periodPayments.stream()
-                .map(p -> p.getAmountPaid() != null ? p.getAmountPaid() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        long totalShipmentsCount = periodShipments.size();
-        long totalParcelsCount = periodParcels.size();
-
-        long completedParcelsCount = periodParcels.stream()
-                .filter(p -> p.getCurrentStatus() == ParcelStatus.COMPLETED)
-                .count();
 
         double deliveryCompletionRate = totalParcelsCount > 0
                 ? BigDecimal.valueOf((double) completedParcelsCount * 100.0 / totalParcelsCount)
                 .setScale(1, RoundingMode.HALF_UP).doubleValue()
                 : 0.0;
 
+        // 4. Lifetime Accounts Receivable Aging and Live Balances via Bounded SQL Aggregation
+        List<ClientAgingProjection> agingProjections = shipmentRepository.aggregateClientReceivablesAging(today);
+
+        List<ReceivablesAgingReportRow> agingRows = new ArrayList<>(agingProjections.size());
+        Map<String, BigDecimal> clientLiveBalances = new HashMap<>();
+        Map<String, BigDecimal> clientLiveOpenPaid = new HashMap<>();
+        BigDecimal liveOutstandingReceivables = BigDecimal.ZERO;
+
+        for (ClientAgingProjection projection : agingProjections) {
+            String clientId = projection.getClientId();
+            BigDecimal clientTotalOutstanding = projection.getTotalOutstanding() != null
+                    ? projection.getTotalOutstanding()
+                    : BigDecimal.ZERO;
+            BigDecimal openPaid = projection.getOpenPaid() != null
+                    ? projection.getOpenPaid()
+                    : BigDecimal.ZERO;
+
+            liveOutstandingReceivables = liveOutstandingReceivables.add(clientTotalOutstanding);
+            clientLiveBalances.put(clientId, clientTotalOutstanding);
+            clientLiveOpenPaid.put(clientId, openPaid);
+
+            agingRows.add(new ReceivablesAgingReportRow(
+                    clientId,
+                    projection.getClientName(),
+                    projection.getClientContact() != null ? projection.getClientContact() : "",
+                    projection.getUnpaidShipmentsCount(),
+                    projection.getCurrentDue() != null ? projection.getCurrentDue() : BigDecimal.ZERO,
+                    projection.getPastDue() != null ? projection.getPastDue() : BigDecimal.ZERO,
+                    projection.getOverdue() != null ? projection.getOverdue() : BigDecimal.ZERO,
+                    clientTotalOutstanding
+            ));
+        }
+
+        // 5. Construct Top 5 KPIs
         ReportKpiResponse kpis = new ReportKpiResponse(
                 totalBilled,
                 totalCollected,
@@ -186,30 +168,34 @@ public class ReportServiceImpl implements ReportService {
         );
 
         // 6. Client Revenue Breakdown (Period Charges & Collections with Live Balances)
-        Map<String, List<Shipment>> shipmentsByClient = periodShipments.stream()
-                .filter(s -> s.getClient() != null)
-                .collect(Collectors.groupingBy(s -> s.getClient().getClientId()));
+        List<ClientPeriodShipmentTotals> clientShipments =
+                shipmentRepository.aggregateClientPeriodShipments(startDateTime, endDateTime);
+        Map<String, ClientPeriodShipmentTotals> shipmentsByClient = clientShipments.stream()
+                .collect(Collectors.toMap(ClientPeriodShipmentTotals::getClientId, s -> s, (a, b) -> a));
 
-        Map<String, BigDecimal> paymentsByClient = periodPayments.stream()
-                .filter(p -> p.getShipment() != null && p.getShipment().getClient() != null)
-                .collect(Collectors.groupingBy(
-                        p -> p.getShipment().getClient().getClientId(),
-                        Collectors.reducing(BigDecimal.ZERO, Payment::getAmountPaid, BigDecimal::add)
+        List<ClientPeriodPaymentTotals> clientPayments =
+                paymentRepository.aggregateClientPeriodPayments(resolvedStart, resolvedEnd);
+        Map<String, BigDecimal> paymentsByClient = clientPayments.stream()
+                .collect(Collectors.toMap(
+                        ClientPeriodPaymentTotals::getClientId,
+                        p -> p.getTotalPaid() != null ? p.getTotalPaid() : BigDecimal.ZERO,
+                        BigDecimal::add
                 ));
 
         List<Client> allClients = clientRepository.findAll();
         List<ClientRevenueReportRow> clientRevenueRows = new ArrayList<>();
         for (Client client : allClients) {
             String clientId = client.getClientId();
-            List<Shipment> cShipments = shipmentsByClient.getOrDefault(clientId, Collections.emptyList());
-            BigDecimal clientBilled = cShipments.stream()
-                    .map(s -> s.getTotalAmount() != null ? s.getTotalAmount() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            ClientPeriodShipmentTotals cTotals = shipmentsByClient.get(clientId);
+            long clientShipmentCount = (cTotals != null) ? cTotals.getTotalShipments() : 0L;
+            BigDecimal clientBilled = (cTotals != null && cTotals.getTotalBilled() != null)
+                    ? cTotals.getTotalBilled()
+                    : BigDecimal.ZERO;
 
             BigDecimal clientPaid = paymentsByClient.getOrDefault(clientId, BigDecimal.ZERO);
             BigDecimal liveBalance = clientLiveBalances.getOrDefault(clientId, BigDecimal.ZERO);
 
-            boolean hasPeriodActivity = !cShipments.isEmpty() || clientPaid.compareTo(BigDecimal.ZERO) > 0;
+            boolean hasPeriodActivity = clientShipmentCount > 0 || clientPaid.compareTo(BigDecimal.ZERO) > 0;
             boolean hasLiveBalance = liveBalance.compareTo(BigDecimal.ZERO) > 0;
 
             if (!hasPeriodActivity && !hasLiveBalance) {
@@ -231,7 +217,7 @@ public class ReportServiceImpl implements ReportService {
             clientRevenueRows.add(new ClientRevenueReportRow(
                     clientId,
                     client.getName(),
-                    cShipments.size(),
+                    clientShipmentCount,
                     clientBilled,
                     clientPaid,
                     liveBalance,
@@ -244,26 +230,22 @@ public class ReportServiceImpl implements ReportService {
                         .thenComparing(ClientRevenueReportRow::getBalance, Comparator.reverseOrder())
         );
 
-        // 6. Active Thursday Collection Summary (from CollectionsService)
-        WeeklyCollectionsResponse collectionSummary = null;
-        try {
-            collectionSummary = collectionsService.getWeeklyCollections(null);
-        } catch (Exception ignored) {
-            // Gracefully handle if weekly collection data is empty
-        }
+        // 7. Active Thursday Collection Summary (from CollectionsService)
+        WeeklyCollectionsResponse collectionSummary = collectionsService.getWeeklyCollections(null);
 
-        // 7. Payment Methods Breakdown
-        Map<PaymentMethod, List<Payment>> paymentsByMethod = periodPayments.stream()
-                .filter(p -> p.getMethod() != null)
-                .collect(Collectors.groupingBy(Payment::getMethod));
+        // 8. Payment Methods Breakdown
+        List<PaymentMethodTotals> methodTotals =
+                paymentRepository.aggregatePaymentMethodsBetween(resolvedStart, resolvedEnd);
+        Map<String, PaymentMethodTotals> totalsByMethod = methodTotals.stream()
+                .collect(Collectors.toMap(PaymentMethodTotals::getMethod, m -> m, (a, b) -> a));
 
         List<PaymentMethodReportRow> paymentMethodRows = new ArrayList<>();
         for (PaymentMethod method : PaymentMethod.values()) {
-            List<Payment> mPayments = paymentsByMethod.getOrDefault(method, Collections.emptyList());
-            long count = mPayments.size();
-            BigDecimal methodTotal = mPayments.stream()
-                    .map(p -> p.getAmountPaid() != null ? p.getAmountPaid() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            PaymentMethodTotals mTotals = totalsByMethod.get(method.name());
+            long count = mTotals != null ? mTotals.getCount() : 0L;
+            BigDecimal methodTotal = (mTotals != null && mTotals.getTotalAmount() != null)
+                    ? mTotals.getTotalAmount()
+                    : BigDecimal.ZERO;
 
             double percentage = totalCollected.compareTo(BigDecimal.ZERO) > 0
                     ? methodTotal.multiply(BigDecimal.valueOf(100)).divide(totalCollected, 1, RoundingMode.HALF_UP).doubleValue()
@@ -272,69 +254,55 @@ public class ReportServiceImpl implements ReportService {
             paymentMethodRows.add(new PaymentMethodReportRow(method.name(), count, methodTotal, percentage));
         }
 
-        // 8. Deductions Breakdown (from SOAs in period)
-        List<Soa> periodSoas = soaRepository.findByStatementDateBetween(resolvedStart, resolvedEnd);
-        Map<String, BigDecimal> deductionsByCategory = new HashMap<>();
-        deductionsByCategory.put("BAD_ORDER", BigDecimal.ZERO);
-        deductionsByCategory.put("DISCREPANCY", BigDecimal.ZERO);
-        deductionsByCategory.put("CLAIM", BigDecimal.ZERO);
-
-        Map<String, Long> countByCategory = new HashMap<>();
-        countByCategory.put("BAD_ORDER", 0L);
-        countByCategory.put("DISCREPANCY", 0L);
-        countByCategory.put("CLAIM", 0L);
-
-        for (Soa soa : periodSoas) {
-            if (soa.getDeductions() != null && soa.getDeductions().compareTo(BigDecimal.ZERO) > 0) {
-                String reason = soa.getDeductionReason() != null ? soa.getDeductionReason().toUpperCase() : "";
-                String category = "CLAIM";
-                if (reason.contains("BAD") || reason.contains("DAMAGE")) {
-                    category = "BAD_ORDER";
-                } else if (reason.contains("DISCREPANCY") || reason.contains("SHORT") || reason.contains("WEIGHT")) {
-                    category = "DISCREPANCY";
-                }
-
-                deductionsByCategory.put(category, deductionsByCategory.get(category).add(soa.getDeductions()));
-                countByCategory.put(category, countByCategory.get(category) + 1);
-            }
-        }
+        // 9. Deductions Breakdown (from SOAs in period)
+        List<DeductionCategoryTotals> deductionTotals =
+                soaRepository.aggregateDeductionsBetween(resolvedStart, resolvedEnd);
+        Map<String, DeductionCategoryTotals> totalsByCategory = deductionTotals.stream()
+                .collect(Collectors.toMap(DeductionCategoryTotals::getCategory, d -> d, (a, b) -> a));
 
         List<DeductionReportRow> deductionRows = new ArrayList<>();
         for (String cat : Arrays.asList("BAD_ORDER", "DISCREPANCY", "CLAIM")) {
-            deductionRows.add(new DeductionReportRow(cat, countByCategory.get(cat), deductionsByCategory.get(cat)));
+            DeductionCategoryTotals dTotals = totalsByCategory.get(cat);
+            long count = dTotals != null ? dTotals.getCount() : 0L;
+            BigDecimal amount = (dTotals != null && dTotals.getTotalAmount() != null)
+                    ? dTotals.getTotalAmount()
+                    : BigDecimal.ZERO;
+            deductionRows.add(new DeductionReportRow(cat, count, amount));
         }
 
-        // 9. Daily Volume Breakdown
-        Map<LocalDate, List<Shipment>> shipmentsByDate = periodShipments.stream()
-                .filter(s -> s.getDateRegistered() != null)
-                .collect(Collectors.groupingBy(s -> s.getDateRegistered().toLocalDate()));
-
-        Map<String, List<ParcelUnit>> parcelsByShipmentId = periodParcels.stream()
-                .filter(p -> p.getShipment() != null)
-                .collect(Collectors.groupingBy(p -> p.getShipment().getShipmentId()));
+        // 10. Daily Volume Breakdown
+        List<DailyShipmentTotals> dailyShipments =
+                shipmentRepository.aggregateDailyShipments(startDateTime, endDateTime);
+        Map<LocalDate, Long> shipmentsByDate = new HashMap<>();
+        for (DailyShipmentTotals dst : dailyShipments) {
+            LocalDate regDate = extractLocalDate(dst.getRegDate());
+            if (regDate != null) {
+                shipmentsByDate.put(regDate, dst.getShipmentsCount());
+            }
+        }
 
         List<DailyVolumeReportRow> dailyVolumeRows = new ArrayList<>();
         LocalDate walker = resolvedStart;
         while (!walker.isAfter(resolvedEnd)) {
-            List<Shipment> dayShipments = shipmentsByDate.getOrDefault(walker, Collections.emptyList());
-            long dayShipmentsCount = dayShipments.size();
-
-            List<ParcelUnit> dayParcels = dayShipments.stream()
-                    .flatMap(s -> parcelsByShipmentId.getOrDefault(s.getShipmentId(), Collections.emptyList()).stream())
-                    .collect(Collectors.toList());
-
-            long dayParcelsCount = dayParcels.size();
-            BigDecimal dayWeight = dayParcels.stream()
-                    .map(p -> p.getWeightKg() != null ? p.getWeightKg() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            BigDecimal dayVolume = dayParcels.stream()
-                    .map(p -> p.getVolumeCbm() != null ? p.getVolumeCbm() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            long dayCompleted = dayParcels.stream()
-                    .filter(p -> p.getCurrentStatus() == ParcelStatus.COMPLETED)
-                    .count();
+            long dayShipmentsCount = shipmentsByDate.getOrDefault(walker, 0L);
+            List<DailyParcelTotals> dayRows = parcelsByDate.getOrDefault(walker, List.of());
+            long dayParcelsCount = 0L;
+            BigDecimal dayWeight = BigDecimal.ZERO;
+            BigDecimal dayVolume = BigDecimal.ZERO;
+            long dayCompleted = 0L;
+            for (DailyParcelTotals parcelRow : dayRows) {
+                long count = parcelRow.getParcelsCount();
+                dayParcelsCount += count;
+                if (parcelRow.getTotalWeightKg() != null) {
+                    dayWeight = dayWeight.add(parcelRow.getTotalWeightKg());
+                }
+                if (parcelRow.getTotalVolumeCbm() != null) {
+                    dayVolume = dayVolume.add(parcelRow.getTotalVolumeCbm());
+                }
+                if (ParcelStatus.COMPLETED.name().equals(parcelRow.getCurrentStatus())) {
+                    dayCompleted += count;
+                }
+            }
 
             dailyVolumeRows.add(new DailyVolumeReportRow(
                     walker,
@@ -349,14 +317,10 @@ public class ReportServiceImpl implements ReportService {
             walker = walker.plusDays(1);
         }
 
-        // 10. Status Distribution
-        Map<ParcelStatus, Long> statusCounts = periodParcels.stream()
-                .filter(parcel -> !parcel.isLost())
-                .collect(Collectors.groupingBy(ParcelUnit::getCurrentStatus, Collectors.counting()));
-
+        // 11. Status Distribution
         List<StatusDistributionReportRow> statusDistributionRows = new ArrayList<>();
         for (ParcelStatus status : ParcelStatus.values()) {
-            long count = statusCounts.getOrDefault(status, 0L);
+            long count = statusCounts.getOrDefault(status.name(), 0L);
             double pct = totalParcelsCount > 0
                     ? BigDecimal.valueOf((double) count * 100.0 / totalParcelsCount).setScale(1, RoundingMode.HALF_UP).doubleValue()
                     : 0.0;
@@ -367,10 +331,10 @@ public class ReportServiceImpl implements ReportService {
                     pct
             ));
         }
-        long lostParcelsCount = periodParcels.stream().filter(ParcelUnit::isLost).count();
+
         double lostPercentage = totalParcelsCount > 0
                 ? BigDecimal.valueOf((double) lostParcelsCount * 100.0 / totalParcelsCount)
-                        .setScale(1, RoundingMode.HALF_UP).doubleValue()
+                .setScale(1, RoundingMode.HALF_UP).doubleValue()
                 : 0.0;
         statusDistributionRows.add(new StatusDistributionReportRow("LOST", "Lost", lostParcelsCount, lostPercentage));
 
@@ -401,19 +365,22 @@ public class ReportServiceImpl implements ReportService {
         }
     }
 
-    private static class ClientAgingAccumulator {
-        final String clientId;
-        final String clientName;
-        final String clientContact;
-        long unpaidShipmentsCount = 0;
-        BigDecimal currentDue = BigDecimal.ZERO;
-        BigDecimal pastDue = BigDecimal.ZERO;
-        BigDecimal overdue = BigDecimal.ZERO;
-
-        ClientAgingAccumulator(String clientId, String clientName, String clientContact) {
-            this.clientId = clientId;
-            this.clientName = clientName;
-            this.clientContact = clientContact != null ? clientContact : "";
+    private static LocalDate extractLocalDate(Object dateObj) {
+        if (dateObj == null) {
+            return null;
         }
+        if (dateObj instanceof LocalDate) {
+            return (LocalDate) dateObj;
+        }
+        if (dateObj instanceof java.sql.Date) {
+            return ((java.sql.Date) dateObj).toLocalDate();
+        }
+        if (dateObj instanceof java.sql.Timestamp) {
+            return ((java.sql.Timestamp) dateObj).toLocalDateTime().toLocalDate();
+        }
+        if (dateObj instanceof LocalDateTime) {
+            return ((LocalDateTime) dateObj).toLocalDate();
+        }
+        return LocalDate.parse(dateObj.toString());
     }
 }
