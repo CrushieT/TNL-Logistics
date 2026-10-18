@@ -2,6 +2,7 @@
 
 ### Frontend progressive loading and bounded memory cache
 
+- `frontend-web/src/services/api/useVerifiedAdminSession.js`: subscribes to session changes before rechecking authentication; exposes a stable verified user/session-generation key and blocks page reads and cache previews while verification is pending.
 - `frontend-web/src/services/api/responseCache.mjs`: pure in-memory response cache module with 6 slots (`dashboard_summary`, `reports_summary`, `weekly_collections`, `tracking_logs_page`, `tracking_logs_metrics`, `collection_cycles`), exact user ID, session generation, and canonical query parameter matching, 5-minute TTL, 1 MiB per-entry cap, 4 MiB total cache cap, oldest-entry eviction, and zero storage persistence.
 - `frontend-web/src/components/common/Skeleton.js`: accessible, static placeholder blocks and skeletons (`MetricCardSkeleton`, `ChartSkeleton`, `TableRowSkeleton`, `ActivityRowSkeleton`, `ReportsKpiSkeleton`, `CollectionSummarySkeleton`) for immediate page layout rendering without full-page spinners or financial flashes.
 - `frontend-web/tests/responseCache.test.mjs`: unit test suite verifying cache hits, expiration, identity & query bounds, slot replacement, payload size limits, and total eviction.
@@ -13,7 +14,8 @@
 - `frontend-web/src/services/api/useRequestCoordinator.js`: React hook integrating `createRequestCoordinator` with component lifecycle, window focus, and document visibility changes.
 - `frontend-web/src/services/api/sseClientCore.mjs`: added `calculateBackoffDelay` (1s, 2s, 4s, 8s, 16s, 30s ceiling with bounded jitter) and `isAuthFailureStatus` (401/403).
 - `frontend-web/src/services/api/sseClient.js`: single shared SSE connection with exponential backoff, immediate halt on 401/403 or session invalidation, parallel timer/connection prevention, and subscriber cleanup.
-- `frontend-web/tests/requestCoordinator.test.mjs`: unit test suite verifying deterministic keys, cancellation, stale response suppression, follow-up coalescing, 300ms debouncing, unmount, React remounts, and tab suspension/resume.
+- `frontend-web/tests/requestCoordinator.test.mjs`: unit test suite verifying deterministic keys, cancellation, stale response suppression, follow-up coalescing, 300ms debouncing, same-instance lifecycle reactivation, protected success metadata including live highlight flags, and tab suspension/resume.
+- `frontend-web/tests/progressiveLoadingFlows.test.mjs`: executes production screens and hooks for pending verification, mount-time subscription races, repeated notifications, account changes, retained-ref effect replay, live highlight expiry/cleanup, cache-hit Print gating, stale empty results, cancellation, and visibility resume; also executes production client session/cache transitions.
 - `frontend-web/tests/sseClient.test.mjs`: extended test suite covering backoff calculation, auth failure detection, and connection lifecycle.
 
 ### Admin tracking logs optimization

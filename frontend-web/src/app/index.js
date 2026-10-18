@@ -31,9 +31,11 @@ import { getActiveCollectionCycles } from '../features/collections/services/coll
 import { getRecentThursdays } from '../features/collections/utils/collectionsUtils';
 import { getDashboardSummary, subscribeRealtimeEvents } from '../features/shipments';
 import { useRequestCoordinator } from '../services/api/useRequestCoordinator';
+import { useVerifiedAdminSession, getVerifiedAdminSessionKey } from '../services/api/useVerifiedAdminSession';
 import { colors, fonts, spacing, radius } from '../theme';
 
 export default function DashboardScreen() {
+  const sessionKey = useVerifiedAdminSession();
   const router = useRouter();
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -43,6 +45,7 @@ export default function DashboardScreen() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
   const [cycles, setCycles] = useState([]);
+  const [cyclesSessionKey, setCyclesSessionKey] = useState(null);
   const [selectedCycle, setSelectedCycle] = useState('');
 
   const activeCycleRef = useRef(selectedCycle);
@@ -50,76 +53,6 @@ export default function DashboardScreen() {
 
   const summaryRef = useRef(summary);
   summaryRef.current = summary;
-
-  // Fetch active cycles containing registered shipments (with preview cache)
-  useEffect(() => {
-    let mounted = true;
-    const abortController = new AbortController();
-
-    // Check cached collection cycles
-    const auth = getSessionAuthContext();
-    const cachedCycles = getCacheEntry(CACHE_SLOTS.COLLECTION_CYCLES, {
-      userId: auth.userId,
-      sessionGeneration: auth.sessionGeneration,
-      queryParams: {},
-    });
-    if (cachedCycles?.data && cachedCycles.data.length > 0) {
-      setCycles(cachedCycles.data);
-      setSelectedCycle((prev) => (prev && cachedCycles.data.some((c) => c.isoDate === prev) ? prev : cachedCycles.data[0].isoDate));
-    }
-
-    async function loadCycles() {
-      const requestAuth = getSessionAuthContext();
-      try {
-        const activeCycles = await getActiveCollectionCycles({ signal: abortController.signal });
-        if (!mounted || abortController.signal.aborted) return;
-        const currentAuth = getSessionAuthContext();
-        if (
-          currentAuth.isAuthenticated && currentAuth.isVerified &&
-          currentAuth.userId === requestAuth.userId &&
-          currentAuth.sessionGeneration === requestAuth.sessionGeneration
-        ) {
-          if (activeCycles.length > 0) {
-            setCacheEntry(CACHE_SLOTS.COLLECTION_CYCLES, {
-              userId: currentAuth.userId,
-              sessionGeneration: currentAuth.sessionGeneration,
-              queryParams: {},
-              data: activeCycles,
-            });
-            setCycles(activeCycles);
-            setSelectedCycle((prev) => (prev && activeCycles.some((c) => c.isoDate === prev) ? prev : activeCycles[0].isoDate));
-          } else {
-            const fallback = getRecentThursdays(1);
-            setCycles(fallback);
-            setSelectedCycle(fallback[0]?.isoDate || '');
-          }
-        }
-      } catch (err) {
-        if (!mounted || abortController.signal.aborted || isCancellationError(err)) return;
-        const currentAuth = getSessionAuthContext();
-        if (
-          currentAuth.isAuthenticated && currentAuth.isVerified &&
-          currentAuth.userId === requestAuth.userId &&
-          currentAuth.sessionGeneration === requestAuth.sessionGeneration
-        ) {
-          const fallback = getRecentThursdays(1);
-          setCycles(fallback);
-          setSelectedCycle(fallback[0]?.isoDate || '');
-        }
-      }
-    }
-    loadCycles();
-
-    const unsubscribe = onSessionInvalidated(() => {
-      abortController.abort();
-    });
-
-    return () => {
-      mounted = false;
-      abortController.abort();
-      if (typeof unsubscribe === 'function') unsubscribe();
-    };
-  }, []);
 
   const { coordinator } = useRequestCoordinator({
     scope: 'dashboard',
@@ -181,25 +114,103 @@ export default function DashboardScreen() {
 
   // Session reset listener
   useEffect(() => {
-    const unsubscribe = onSessionInvalidated(() => {
+    const resetSession = () => {
       coordinator.cancel();
       setSummary(null);
       setCycles([]);
+      setCyclesSessionKey(null);
       setSelectedCycle('');
       setIsStale(false);
       setIsPreview(false);
       setInitialLoadFailed(false);
       setLastUpdated(null);
       setErrorMessage(null);
-      setLoading(false);
-    });
+      setLoading(true);
+    };
+    resetSession();
+    const unsubscribe = onSessionInvalidated(resetSession);
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [coordinator]);
+  }, [coordinator, sessionKey]);
+
+  // Fetch active cycles containing registered shipments (with preview cache)
+  useEffect(() => {
+    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey()) return;
+    let mounted = true;
+    const abortController = new AbortController();
+
+    // Check cached collection cycles
+    const auth = getSessionAuthContext();
+    const cachedCycles = getCacheEntry(CACHE_SLOTS.COLLECTION_CYCLES, {
+      userId: auth.userId,
+      sessionGeneration: auth.sessionGeneration,
+      queryParams: {},
+    });
+    if (cachedCycles?.data && cachedCycles.data.length > 0) {
+      setCycles(cachedCycles.data);
+      setCyclesSessionKey(sessionKey);
+      setSelectedCycle((prev) => (prev && cachedCycles.data.some((c) => c.isoDate === prev) ? prev : cachedCycles.data[0].isoDate));
+    }
+
+    async function loadCycles() {
+      const requestAuth = getSessionAuthContext();
+      try {
+        const activeCycles = await getActiveCollectionCycles({ signal: abortController.signal });
+        if (!mounted || abortController.signal.aborted) return;
+        const currentAuth = getSessionAuthContext();
+        if (
+          currentAuth.isAuthenticated && currentAuth.isVerified &&
+          currentAuth.userId === requestAuth.userId &&
+          currentAuth.sessionGeneration === requestAuth.sessionGeneration
+        ) {
+          if (activeCycles.length > 0) {
+            setCacheEntry(CACHE_SLOTS.COLLECTION_CYCLES, {
+              userId: currentAuth.userId,
+              sessionGeneration: currentAuth.sessionGeneration,
+              queryParams: {},
+              data: activeCycles,
+            });
+            setCycles(activeCycles);
+            setCyclesSessionKey(sessionKey);
+            setSelectedCycle((prev) => (prev && activeCycles.some((c) => c.isoDate === prev) ? prev : activeCycles[0].isoDate));
+          } else {
+            const fallback = getRecentThursdays(1);
+            setCycles(fallback);
+            setCyclesSessionKey(sessionKey);
+            setSelectedCycle(fallback[0]?.isoDate || '');
+          }
+        }
+      } catch (err) {
+        if (!mounted || abortController.signal.aborted || isCancellationError(err)) return;
+        const currentAuth = getSessionAuthContext();
+        if (
+          currentAuth.isAuthenticated && currentAuth.isVerified &&
+          currentAuth.userId === requestAuth.userId &&
+          currentAuth.sessionGeneration === requestAuth.sessionGeneration
+        ) {
+          const fallback = getRecentThursdays(1);
+          setCycles(fallback);
+          setCyclesSessionKey(sessionKey);
+          setSelectedCycle(fallback[0]?.isoDate || '');
+        }
+      }
+    }
+    loadCycles();
+
+    const unsubscribe = onSessionInvalidated(() => {
+      abortController.abort();
+    });
+
+    return () => {
+      mounted = false;
+      abortController.abort();
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [sessionKey]);
 
   const load = useCallback((cycleDate, showSpinner = true, debounce = false) => {
-    if (!cycleDate) return;
+    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey() || cyclesSessionKey !== sessionKey || !cycleDate) return;
     if (showSpinner) {
       setLoading(true);
       setErrorMessage(null);
@@ -214,11 +225,11 @@ export default function DashboardScreen() {
       requestAuth,
       requestQuery,
     });
-  }, [coordinator]);
+  }, [coordinator, sessionKey, cyclesSessionKey]);
 
   // Query key change with instant cached preview
   useEffect(() => {
-    if (!selectedCycle) return;
+    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey() || cyclesSessionKey !== sessionKey || !selectedCycle) return;
 
     const auth = getSessionAuthContext();
     const cached = getCacheEntry(CACHE_SLOTS.DASHBOARD, {

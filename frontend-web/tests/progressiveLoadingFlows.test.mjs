@@ -43,13 +43,14 @@ function componentModule(overrides = {}) {
 
 // Run production screens/hooks with deterministic state and API boundaries.
 // Child rendering is stubbed; DOM layout remains a browser verification gate.
-function mountScreen(name, api = {}) {
+function mountScreen(name, api = {}, initialAuth = {}, onSubscribe) {
   const slots = [];
   let cursor = 0;
   let dirty = true;
   let tree;
   let pendingEffects = [];
-  let auth = { isAuthenticated: true, isVerified: true, userId: 'ADMIN-A', sessionGeneration: 1 };
+  let auth = { isAuthenticated: true, isVerified: true, userId: 'ADMIN-A', sessionGeneration: 1, ...initialAuth };
+  const sessionListeners = new Set();
   const invalidationListeners = new Set();
   const realtimeListeners = new Set();
   const coordinators = new Map();
@@ -80,7 +81,7 @@ function mountScreen(name, api = {}) {
       const index = cursor++;
       if (!slots[index] || !equalDeps(slots[index].deps, deps)) {
         const previous = slots[index];
-        slots[index] = { deps, cleanup: previous?.cleanup };
+        slots[index] = { deps, effect, cleanup: previous?.cleanup };
         pendingEffects.push(() => { previous?.cleanup?.(); slots[index].cleanup = effect(); });
       }
     },
@@ -98,8 +99,14 @@ function mountScreen(name, api = {}) {
   const subscribeRealtimeEvents = listener => { realtimeListeners.add(listener); return () => realtimeListeners.delete(listener); };
   const authModule = {
     getSessionAuthContext: () => ({ ...auth }),
+    onSessionChanged: listener => {
+      sessionListeners.add(listener);
+      if (onSubscribe) auth = { ...auth, ...onSubscribe() };
+      return () => sessionListeners.delete(listener);
+    },
     onSessionInvalidated: listener => { invalidationListeners.add(listener); return () => invalidationListeners.delete(listener); },
   };
+  const verifiedSessionHook = loadProductionModule('../src/services/api/useVerifiedAdminSession.js', dependency => dependency === 'react' ? react : authModule);
   const Screen = loadProductionModule(`../src/app/${name}.js`, dependency => {
     if (dependency === 'react') return react;
     if (dependency === 'react-native') return native;
@@ -107,6 +114,7 @@ function mountScreen(name, api = {}) {
     if (dependency.endsWith('/responseCache.mjs')) return cache;
     if (dependency.endsWith('/requestCoordinator.mjs')) return requests;
     if (dependency.endsWith('/useRequestCoordinator')) return hook;
+    if (dependency.endsWith('/useVerifiedAdminSession')) return verifiedSessionHook;
     if (dependency.endsWith('/api/client')) return authModule;
     if (dependency.endsWith('/theme')) return { colors: new Proxy({}, { get: () => '#111' }), fonts: {}, spacing: {}, radius: {}, type: {} };
     return componentModule({
@@ -141,9 +149,18 @@ function mountScreen(name, api = {}) {
     props: displayName => nodes().find(node => node.type?.displayName === displayName)?.props,
     text: () => JSON.stringify(tree),
     emit: () => realtimeListeners.forEach(listener => listener({ type: 'STATUS_UPDATE', data: {} })),
+    changeSession(next = {}) {
+      auth = { ...auth, ...next };
+      sessionListeners.forEach(listener => listener());
+    },
+    replayEffects() {
+      slots.forEach(slot => slot?.cleanup?.());
+      slots.forEach(slot => { if (slot?.effect) slot.cleanup = slot.effect(); });
+    },
     invalidate() {
       auth = { isAuthenticated: false, isVerified: false, userId: null, sessionGeneration: 2 };
       cache.clearAllCache(); invalidationListeners.forEach(listener => listener());
+      sessionListeners.forEach(listener => listener());
     },
     unmount() { slots.forEach(slot => slot?.cleanup?.()); },
   };
@@ -158,6 +175,119 @@ for (const name of ['index', 'reports', 'weekly-collections', 'tracking-logs']) 
     await screen.flush(); screen.unmount();
   });
 }
+
+for (const name of ['index', 'reports', 'weekly-collections', 'tracking-logs']) {
+  test(`${name}: pending verification blocks reads and previews, then starts once`, async () => {
+    const reads = { dashboard: 0, reports: 0, collections: 0, cycles: 0, logs: 0, metrics: 0 };
+    const api = Object.fromEntries(Object.keys(reads).map(key => [key, async () => {
+      reads[key]++;
+      if (key === 'cycles') return [{ isoDate: '2026-10-22' }];
+      if (key === 'reports') return { kpis: { billed: 25 } };
+      if (key === 'logs') return { content: [{ eventId: 1 }] };
+      return { items: [], shipmentCount: 25, todayTotalScans: 25 };
+    }]));
+    cache.setCacheEntry(cache.CACHE_SLOTS.COLLECTION_CYCLES, {
+      userId: 'ADMIN-A', sessionGeneration: 1, queryParams: {}, data: [{ isoDate: '2026-10-22' }],
+    });
+    const screen = mountScreen(name, api, { isVerified: false });
+    screen.render();
+    if (name === 'reports') {
+      const { startDate, endDate } = screen.props('ReportsHeader');
+      cache.setCacheEntry(cache.CACHE_SLOTS.REPORTS, {
+        userId: 'ADMIN-A', sessionGeneration: 1, queryParams: { startDate, endDate }, data: { kpis: { billed: 999 } },
+      });
+    }
+    await screen.flush(); screen.emit(); await screen.flush();
+    assert.equal(Object.values(reads).reduce((sum, count) => sum + count, 0), 0);
+    assert.equal(screen.props('CycleDropdown')?.cycles?.length || 0, 0);
+    assert.equal(screen.props('ReportsKpiBar'), undefined);
+    assert.doesNotMatch(screen.text(), /Updating; last updated/);
+    screen.changeSession({ isVerified: true }); await screen.flush();
+    const expected = name === 'index' ? ['cycles', 'dashboard'] : name === 'weekly-collections' ? ['cycles', 'collections'] : name === 'reports' ? ['reports'] : ['logs', 'metrics'];
+    expected.forEach(key => assert.equal(reads[key], 1));
+    if (name === 'reports') assert.equal(screen.props('ReportsHeader').printDisabled, false);
+    if (name === 'tracking-logs') assert.equal(screen.props('TrackingLogsTable').loading, false);
+    screen.changeSession(); screen.changeSession(); await screen.flush();
+    expected.forEach(key => assert.equal(reads[key], 1));
+    screen.unmount();
+  });
+
+  for (const shouldReject of [false, true]) {
+    test(`${name}: account change cancels and rejects old ${shouldReject ? 'errors' : 'successes'}`, async () => {
+      const oldResponse = deferred();
+      const signals = [];
+      let reads = 0;
+      const read = (...args) => {
+        signals.push(args.at(-1).signal);
+        return ++reads === 1 ? oldResponse.promise : Promise.resolve({ kpis: { billed: 20 }, content: [{ eventId: 20 }], items: [] });
+      };
+      const apiKey = { index: 'dashboard', reports: 'reports', 'weekly-collections': 'collections', 'tracking-logs': 'logs' }[name];
+      const screen = mountScreen(name, { [apiKey]: read });
+      await screen.flush();
+      screen.changeSession({ userId: 'ADMIN-B', sessionGeneration: 2 }); await screen.flush();
+      assert.equal(signals[0].aborted, true);
+      assert.equal(reads, 2);
+      if (shouldReject) oldResponse.reject(new Error('Obsolete account failure'));
+      else oldResponse.resolve({ kpis: { billed: 999 }, content: [{ eventId: 999 }], items: [] });
+      await screen.flush();
+      assert.doesNotMatch(screen.text(), /999|Obsolete account failure/);
+      if (name === 'reports') assert.equal(screen.props('ReportsHeader').printDisabled, false);
+      screen.unmount();
+    });
+  }
+
+  test(`${name}: effect replay keeps coordinator refs and rejects pre-cleanup responses`, async () => {
+    const oldResponse = deferred();
+    let reads = 0;
+    let firstSignal;
+    const apiKey = { index: 'dashboard', reports: 'reports', 'weekly-collections': 'collections', 'tracking-logs': 'logs' }[name];
+    const screen = mountScreen(name, { [apiKey]: (...args) => {
+      if (++reads === 1) { firstSignal = args.at(-1).signal; return oldResponse.promise; }
+      return Promise.resolve({ kpis: { billed: 20 }, content: [{ eventId: 20 }], items: [] });
+    } });
+    await screen.flush();
+    const originalCoordinators = [...screen.coordinators.values()];
+    screen.replayEffects(); await screen.flush();
+    assert.equal(firstSignal.aborted, true);
+    assert.equal(reads, 2);
+    assert.deepEqual([...screen.coordinators.values()], originalCoordinators);
+    oldResponse.resolve({ kpis: { billed: 999 }, content: [{ eventId: 999 }], items: [] });
+    await screen.flush();
+    assert.doesNotMatch(screen.text(), /999/);
+    screen.unmount();
+  });
+}
+
+test('verified session hook rechecks after subscribing to avoid missing mount-time verification', async () => {
+  let reads = 0;
+  const screen = mountScreen('reports', { reports: async () => { reads++; return { kpis: {} }; } }, { isVerified: false }, () => ({ isVerified: true }));
+  await screen.flush();
+  assert.equal(reads, 1);
+  assert.equal(screen.props('ReportsHeader').printDisabled, false);
+  screen.unmount();
+});
+
+test('Tracking Logs live callback highlights only new rows and expires highlights', async () => {
+  let reads = 0;
+  const screen = mountScreen('tracking-logs', { logs: async () => ({ content: ++reads === 1 ? [{ eventId: 1 }] : [{ eventId: 2 }, { eventId: 1 }] }) });
+  await screen.flush(); screen.emit();
+  await new Promise(resolve => setTimeout(resolve, 320)); await screen.flush();
+  assert.deepEqual([...screen.props('TrackingLogsTable').highlightedEventIds], [2]);
+  await new Promise(resolve => setTimeout(resolve, 3550)); await screen.flush();
+  assert.equal(screen.props('TrackingLogsTable').highlightedEventIds.size, 0);
+  screen.unmount();
+});
+
+test('Tracking Logs clears live highlight timers when session is lost', async () => {
+  let reads = 0;
+  const screen = mountScreen('tracking-logs', { logs: async () => ({ content: [{ eventId: ++reads }] }) });
+  await screen.flush(); screen.emit();
+  await new Promise(resolve => setTimeout(resolve, 320)); await screen.flush();
+  assert.equal(screen.props('TrackingLogsTable').highlightedEventIds.size, 1);
+  screen.invalidate(); await screen.flush();
+  assert.equal(screen.props('TrackingLogsTable').highlightedEventIds.size, 0);
+  screen.unmount();
+});
 
 test('Reports actual handlers accept a silent cache refresh and unlock Print', async () => {
   const response = deferred();
@@ -198,7 +328,8 @@ test('Reports actual invalidation cancels and rejects a deferred response', asyn
   response.resolve({ kpis: { billed: 999 } }); await screen.flush();
   assert.equal(cache.getCacheStats().entryCount, 0);
   assert.equal(screen.props('ReportsHeader').printDisabled, true);
-  assert.equal(screen.props('ReportsKpiBar').kpis, undefined);
+  assert.equal(screen.props('ReportsKpiBar')?.kpis, undefined);
+  assert.ok(screen.props('ReportsKpiSkeleton'));
   screen.unmount();
 });
 

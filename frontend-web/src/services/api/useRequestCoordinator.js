@@ -32,6 +32,11 @@ export function useRequestCoordinator({
     });
   }
 
+  useEffect(() => {
+    coordinatorRef.current.mount();
+    return () => coordinatorRef.current.unmount();
+  }, []);
+
   // Window focus and document visibility handling
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
@@ -51,13 +56,6 @@ export function useRequestCoordinator({
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('focus', handleFocus);
-    };
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      coordinatorRef.current?.unmount();
     };
   }, []);
 

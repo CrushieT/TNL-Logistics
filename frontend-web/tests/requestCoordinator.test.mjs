@@ -324,3 +324,46 @@ test('cancellation is treated as normal cleanup without invoking onError', async
   assert.equal(res.status, 'cancelled');
   assert.equal(errorInvoked, false, 'onError should NOT be called for cancellation');
 });
+
+test('mount reactivates the same instance without resetting generation or restoring work', async () => {
+  const obsolete = deferred();
+  const successes = [];
+  let firstSignal;
+  let cancelledExecutions = 0;
+  const coordinator = createRequestCoordinator({ onSuccess: data => successes.push(data), debounceMs: 10 });
+  const pending = coordinator.request('same', signal => { firstSignal = signal; return obsolete.promise; });
+  await coordinator.request('same', async () => { cancelledExecutions++; });
+  coordinator.request('same', async () => { cancelledExecutions++; }, { debounce: true });
+  coordinator.unmount();
+  const cleanupGeneration = coordinator.getGeneration();
+  assert.equal(firstSignal.aborted, true);
+  coordinator.mount(); coordinator.mount();
+  assert.equal(coordinator.getGeneration(), cleanupGeneration);
+  assert.equal(coordinator.hasQueuedFollowUp(), false);
+  assert.equal(coordinator.hasMissedRefresh(), false);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(cancelledExecutions, 0);
+  assert.deepEqual(successes, []);
+  assert.equal((await coordinator.request('same', async () => 'fresh')).status, 'success');
+  obsolete.resolve('obsolete'); await pending;
+  assert.deepEqual(successes, ['fresh']);
+  coordinator.unmount();
+});
+
+test('highlightDiff survives debounce, queued refresh, and visibility resume without overriding owned metadata', async () => {
+  const metadata = [];
+  const coordinator = createRequestCoordinator({ onSuccess: (data, meta) => metadata.push(meta), debounceMs: 5 });
+  const options = { highlightDiff: true, isSilent: true, key: 'forged', generation: -1 };
+  await coordinator.request('actual', async () => 'debounced', { ...options, debounce: true });
+  const first = deferred();
+  const pending = coordinator.request('actual', () => first.promise);
+  await coordinator.request('actual', async () => 'queued', options);
+  first.resolve('first'); await pending;
+  await new Promise(resolve => setImmediate(resolve));
+  coordinator.setVisibility(false);
+  await coordinator.request('actual', async () => 'resumed', options);
+  await coordinator.setVisibility(true);
+  assert.deepEqual(metadata.map(meta => meta.highlightDiff), [true, false, true, true]);
+  metadata.forEach(meta => { assert.equal(meta.key, 'actual'); assert.ok(meta.generation > 0); });
+  coordinator.unmount();
+});

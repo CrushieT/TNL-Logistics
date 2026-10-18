@@ -117,6 +117,7 @@ export function createRequestCoordinator({
           key,
           generation: reqGen,
           isSilent: Boolean(options.isSilent),
+          highlightDiff: Boolean(options.highlightDiff),
         });
       }
       return { status: 'success', data };
@@ -211,12 +212,17 @@ export function createRequestCoordinator({
     cancel();
   }
 
+  function mount() {
+    isMounted = true;
+  }
+
   return {
     deriveKey: (params) => deriveKey(scope, params),
     request,
     cancel,
     setVisibility,
     unmount,
+    mount,
     getInFlight: () => inFlight,
     getGeneration: () => generation,
     getCurrentKey: () => currentKey,

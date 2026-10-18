@@ -33,9 +33,11 @@ import {
 } from '../services/api/client';
 import { subscribeRealtimeEvents } from '../features/shipments';
 import { useRequestCoordinator } from '../services/api/useRequestCoordinator';
+import { useVerifiedAdminSession, getVerifiedAdminSessionKey } from '../services/api/useVerifiedAdminSession';
 import { colors, fonts, radius, spacing } from '../theme';
 
 export default function ReportsScreen() {
+  const sessionKey = useVerifiedAdminSession();
   const formatDateString = (d) => {
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -157,23 +159,27 @@ export default function ReportsScreen() {
 
   // Session reset listener
   useEffect(() => {
-    const unsubscribe = onSessionInvalidated(() => {
+    const resetSession = () => {
       coordinator.cancel();
       setReportData(null);
+      setIsPrintModalOpen(false);
       setIsStale(false);
       setIsPreview(false);
       setLastUpdated(null);
       setErrorMessage(null);
       setInitialLoadFailed(false);
-      setLoading(false);
+      setLoading(true);
       setIsLiveUpdating(false);
-    });
+    };
+    resetSession();
+    const unsubscribe = onSessionInvalidated(resetSession);
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [coordinator]);
+  }, [coordinator, sessionKey]);
 
   const loadReport = useCallback((start, end, showSpinner = true, debounce = false) => {
+    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey()) return;
     if (showSpinner) {
       setLoading(true);
     } else {
@@ -189,10 +195,11 @@ export default function ReportsScreen() {
       requestAuth,
       requestQuery,
     });
-  }, [coordinator]);
+  }, [coordinator, sessionKey]);
 
   // Initial load and filter change with preview cache lookup
   useEffect(() => {
+    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey()) return;
     const auth = getSessionAuthContext();
     const cached = getCacheEntry(CACHE_SLOTS.REPORTS, {
       userId: auth.userId,

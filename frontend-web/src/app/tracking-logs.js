@@ -25,9 +25,11 @@ import {
 } from '../services/api/client';
 import { subscribeRealtimeEvents } from '../features/shipments';
 import { useRequestCoordinator } from '../services/api/useRequestCoordinator';
+import { useVerifiedAdminSession, getVerifiedAdminSessionKey } from '../services/api/useVerifiedAdminSession';
 import { colors, fonts, radius, spacing } from '../theme';
 
 export default function TrackingLogsScreen() {
+  const sessionKey = useVerifiedAdminSession();
   const [logs, setLogs] = useState([]);
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -236,7 +238,7 @@ export default function TrackingLogsScreen() {
 
   // Session reset listener
   useEffect(() => {
-    const unsubscribe = onSessionInvalidated(() => {
+    const resetSession = () => {
       logsCoordinator.cancel();
       metricsCoordinator.cancel();
       setLogs([]);
@@ -252,21 +254,26 @@ export default function TrackingLogsScreen() {
       setInitialMetricsFailed(false);
       setMetricsErrorMessage(null);
       setLastLogsUpdated(null);
+      highlightTimers.current.forEach((timer) => clearTimeout(timer));
+      highlightTimers.current.clear();
       setHighlightedIds(new Set());
       setUnreadLiveScans(0);
       hasActiveLogsSuccessRef.current = false;
       hasActiveMetricsSuccessRef.current = false;
-      setLoading(false);
-      setMetricsLoading(false);
-    });
+      setLoading(true);
+      setMetricsLoading(true);
+    };
+    resetSession();
+    const unsubscribe = onSessionInvalidated(resetSession);
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [logsCoordinator, metricsCoordinator]);
+  }, [logsCoordinator, metricsCoordinator, sessionKey]);
 
   // Fetch paginated logs with optional diff highlighting
   const fetchLogs = useCallback(
     (targetPage, targetSize, targetSearch, targetStatus, showSpinner = true, highlightDiff = false, debounce = false) => {
+      if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey()) return;
       if (showSpinner) {
         setLoading(true);
         setLogsErrorMessage(null);
@@ -298,12 +305,13 @@ export default function TrackingLogsScreen() {
         requestQuery,
       });
     },
-    [logsCoordinator]
+    [logsCoordinator, sessionKey]
   );
 
   // Fetch today's summary metrics
   const fetchMetrics = useCallback(
     (debounce = false) => {
+      if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey()) return;
       const todayUtc = new Date().toISOString().slice(0, 10);
       todayUtcRef.current = todayUtc;
       setInitialMetricsFailed(false);
@@ -319,11 +327,12 @@ export default function TrackingLogsScreen() {
         requestQuery,
       });
     },
-    [metricsCoordinator]
+    [metricsCoordinator, sessionKey]
   );
 
   // Initial load & whenever page / pageSize / statusFilter changes
   useEffect(() => {
+    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey()) return;
     hasActiveLogsSuccessRef.current = false;
     setIsLogsStale(false);
     setLogsErrorMessage(null);
@@ -358,10 +367,11 @@ export default function TrackingLogsScreen() {
       setLoading(true);
       fetchLogs(page, pageSize, search, statusFilter, true, false, false);
     }
-  }, [page, pageSize, statusFilter]);
+  }, [page, pageSize, statusFilter, sessionKey, fetchLogs]);
 
   // Initial metrics load with preview cache
   useEffect(() => {
+    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey()) return;
     const auth = getSessionAuthContext();
     const todayUtc = new Date().toISOString().slice(0, 10);
     todayUtcRef.current = todayUtc;
@@ -391,6 +401,7 @@ export default function TrackingLogsScreen() {
     setSearch(text);
     setPage(0);
     setUnreadLiveScans(0);
+    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey()) return;
 
     hasActiveLogsSuccessRef.current = false;
     setIsLogsStale(false);
@@ -453,6 +464,7 @@ export default function TrackingLogsScreen() {
   // Real-time SSE synchronization with 300ms debounce
   useEffect(() => {
     const unsubscribe = subscribeRealtimeEvents((event) => {
+      if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey()) return;
       if (event.type === 'STATUS_UPDATE' || event.type === 'SHIPMENT_CREATED') {
         fetchMetrics(true);
 
@@ -489,6 +501,7 @@ export default function TrackingLogsScreen() {
 
   // Export filtered logs to CSV (live request preserved)
   const handleExportCsv = async () => {
+    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey()) return;
     try {
       setIsExporting(true);
       // Fetch larger set of matching records for export
