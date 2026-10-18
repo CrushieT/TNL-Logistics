@@ -2,6 +2,18 @@
 
 This directory contains k6 performance benchmarks and load testing scripts designed to evaluate the application under low-cost container resource limits (512 MB RAM / 0.5 vCPU).
 
+### Acceptance runner exit status
+
+`run-acceptance.ps1` returns the saved k6 exit code after report collection and sanitization. Later Docker commands cannot turn a failed benchmark into success. Reporting, summary sanitization, missing summaries after a successful k6 run, and monitoring cleanup failures return a nonzero status; an existing nonzero k6 code takes precedence. Summary sanitization is attempted even if earlier report collection fails. The monitor stops when k6 returns, and monitoring-job and temporary credential environment cleanup run on failure as well as success.
+
+Run the mocked exit-status and cleanup regressions from the repository root:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File load-tests/tests/run-acceptance.Tests.ps1
+```
+
+These tests parse the runner and mock Docker, jobs, credentials, and report files; they do not launch workloads or access the database. Existing acceptance limits remain unchanged: 60 seconds discarded warm-up plus 600 measured seconds, 1 CPU / 1 GiB per container, five Hikari connections, admin p95 below 1,500 ms, Reports p95 below 5,000 ms, mobile p95 below 500 ms, and measured request failure rate below 1%. Passing runner regressions does not establish performance acceptance.
+
 ---
 
 ## Part 1: Docker Environments (Managing the Containers)

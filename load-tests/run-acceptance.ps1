@@ -74,103 +74,139 @@ function Get-DbCounts($container) {
     return $null
 }
 
-$countsBefore = Get-DbCounts $mysqlContainer
-Write-Host "Business record counts before run:"
-Write-Host ($countsBefore | Out-String)
-
-# 5. Start background resource monitoring
-$resSamples = [System.Collections.Generic.List[object]]::new()
-$resMonitorRunning = $true
-$startedAtUtc = [DateTime]::UtcNow
-
-$monitorJob = Start-Job -ScriptBlock {
-    param($backend, $mysql, $durationSec)
-    $samples = [System.Collections.Generic.List[object]]::new()
-    $start = [DateTime]::UtcNow
-    while (([DateTime]::UtcNow - $start).TotalSeconds -lt $durationSec) {
-        $ts = [DateTime]::UtcNow.ToString('o')
-        $raw = docker stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}' $backend $mysql 2>$null
-        if ($raw) {
-            foreach ($line in ($raw -split "`n")) {
-                if ($line.Trim()) {
-                    $parts = $line.Trim().Split('|')
-                    $samples.Add(@{ timestamp = $ts; container = $parts[0]; cpu = $parts[1]; memory = $parts[2] })
-                }
-            }
-        }
-        Start-Sleep -Seconds 5
-    }
-    return $samples
-} -ArgumentList $backendContainer, $mysqlContainer, 690
-
-# 6. Execute k6 benchmark (60s warm-up + 600s measured = 660s)
-Write-Host "Launching k6 container for 60s warm-up + 600s measured run..."
-$summaryFileContainer = "/scripts/results/$Label.json"
+$monitorJob = $null
+$k6ExitCode = $null
+$runnerExitCode = 0
 $summaryFileHost = Join-Path $PSScriptRoot "results/$Label.json"
 
 try {
-    $env:LOADTEST_PASSWORD = $password
-    docker run --rm `
-        -e BASE_URL=$baseUrl `
-        -e LOADTEST_PASSWORD `
-        -e COURIER_VUS=$courierVUs `
-        -e WARMUP_SECONDS=60 `
-        -e MEASURED_SECONDS=600 `
-        -e SUMMARY_PATH=$summaryFileContainer `
-        -v "${PSScriptRoot}:/scripts" `
-        grafana/k6 run /scripts/concurrent-acceptance.js
+    $countsBefore = Get-DbCounts $mysqlContainer
+    Write-Host "Business record counts before run:"
+    Write-Host ($countsBefore | Out-String)
 
-    $k6ExitCode = $LASTEXITCODE
+    # 5. Start background resource monitoring
+    $startedAtUtc = [DateTime]::UtcNow
+
+    $monitorJob = Start-Job -ScriptBlock {
+        param($backend, $mysql, $durationSec)
+        $start = [DateTime]::UtcNow
+        while (([DateTime]::UtcNow - $start).TotalSeconds -lt $durationSec) {
+            $ts = [DateTime]::UtcNow.ToString('o')
+            $raw = docker stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}' $backend $mysql 2>$null
+            if ($LASTEXITCODE -ne 0) { throw 'Failed to collect resource samples' }
+            if ($raw) {
+                foreach ($line in ($raw -split "`n")) {
+                    if ($line.Trim()) {
+                        $parts = $line.Trim().Split('|')
+                        Write-Output @{ timestamp = $ts; container = $parts[0]; cpu = $parts[1]; memory = $parts[2] }
+                    }
+                }
+            }
+            Start-Sleep -Seconds 5
+        }
+    } -ArgumentList $backendContainer, $mysqlContainer, 690
+
+    # 6. Execute k6 benchmark (60s warm-up + 600s measured = 660s)
+    Write-Host "Launching k6 container for 60s warm-up + 600s measured run..."
+    $summaryFileContainer = "/scripts/results/$Label.json"
+
+    try {
+        $env:LOADTEST_PASSWORD = $password
+        docker run --rm `
+            -e BASE_URL=$baseUrl `
+            -e LOADTEST_PASSWORD `
+            -e COURIER_VUS=$courierVUs `
+            -e WARMUP_SECONDS=60 `
+            -e MEASURED_SECONDS=600 `
+            -e SUMMARY_PATH=$summaryFileContainer `
+            -v "${PSScriptRoot}:/scripts" `
+            grafana/k6 run /scripts/concurrent-acceptance.js
+
+        $k6ExitCode = $LASTEXITCODE
+        $runnerExitCode = $k6ExitCode
+    } finally {
+        Remove-Item Env:LOADTEST_PASSWORD -ErrorAction SilentlyContinue
+    }
+
+    Write-Host "k6 run finished with exit code $k6ExitCode"
+
+    # 7. Stop resource monitor and collect samples
+    Stop-Job -Job $monitorJob
+    $jobOutput = Receive-Job -Job $monitorJob
+    if ($monitorJob.State -eq 'Failed') { throw 'Resource monitoring failed' }
+
+    # Count Hikari timeouts and container restarts/OOM kills
+    $backendLogs = docker logs --since $startedAtUtc.ToString('o') $backendContainer 2>&1
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to collect backend logs' }
+    $hikariTimeouts = @($backendLogs | Select-String 'SQLTransientConnectionException:.*Connection is not available, request timed out').Count
+    $heapErrors = @($backendLogs | Select-String 'java.lang.OutOfMemoryError').Count
+    $restartCount = (docker inspect $backendContainer --format '{{.RestartCount}}')
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to inspect backend restart count' }
+
+    # 8. Check Mem Reduct after run
+    $memReductAfter = (Get-Process *memreduct* -ErrorAction SilentlyContinue).Count -gt 0
+
+    # 9. Record post-run business counts
+    $countsAfter = Get-DbCounts $mysqlContainer
+    Write-Host "Business record counts after run:"
+    Write-Host ($countsAfter | Out-String)
+
+    # 10. Sanitize and save resource metrics
+    $resourceResults = @{
+        run = $Run
+        label = $Label
+        startedAtUtc = $startedAtUtc.ToString('o')
+        completedAtUtc = [DateTime]::UtcNow.ToString('o')
+        memReduct = @{ before = $memReductBefore; after = $memReductAfter }
+        countsBefore = $countsBefore
+        countsAfter = $countsAfter
+        hikariTimeouts = $hikariTimeouts
+        javaHeapErrors = $heapErrors
+        containerRestartCount = $restartCount
+        samples = $jobOutput
+    }
+
+    $resourceFile = Join-Path $PSScriptRoot "results/$Label-resources.json"
+    $resourceResults | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 -LiteralPath $resourceFile
+} catch {
+    if ($null -ne $k6ExitCode -and $k6ExitCode -ne 0) {
+        $runnerExitCode = $k6ExitCode
+    } else {
+        $runnerExitCode = 1
+    }
+    Write-Warning 'Acceptance runner failed before completing report collection.'
 } finally {
     Remove-Item Env:LOADTEST_PASSWORD -ErrorAction SilentlyContinue
-}
-
-Write-Host "k6 run finished with exit code $k6ExitCode"
-
-# 7. Stop resource monitor and collect samples
-$jobOutput = Receive-Job -Job $monitorJob -Wait
-Remove-Job -Job $monitorJob -Force -ErrorAction SilentlyContinue
-
-# Count Hikari timeouts and container restarts/OOM kills
-$backendLogs = docker logs --since $startedAtUtc.ToString('o') $backendContainer 2>&1
-$hikariTimeouts = @($backendLogs | Select-String 'SQLTransientConnectionException:.*Connection is not available, request timed out').Count
-$heapErrors = @($backendLogs | Select-String 'java.lang.OutOfMemoryError').Count
-$restartCount = (docker inspect $backendContainer --format '{{.RestartCount}}')
-
-# 8. Check Mem Reduct after run
-$memReductAfter = (Get-Process *memreduct* -ErrorAction SilentlyContinue).Count -gt 0
-
-# 9. Record post-run business counts
-$countsAfter = Get-DbCounts $mysqlContainer
-Write-Host "Business record counts after run:"
-Write-Host ($countsAfter | Out-String)
-
-# 10. Sanitize and save resource metrics
-$resourceResults = @{
-    run = $Run
-    label = $Label
-    startedAtUtc = $startedAtUtc.ToString('o')
-    completedAtUtc = [DateTime]::UtcNow.ToString('o')
-    memReduct = @{ before = $memReductBefore; after = $memReductAfter }
-    countsBefore = $countsBefore
-    countsAfter = $countsAfter
-    hikariTimeouts = $hikariTimeouts
-    javaHeapErrors = $heapErrors
-    containerRestartCount = $restartCount
-    samples = $jobOutput
-}
-
-$resourceFile = Join-Path $PSScriptRoot "results/$Label-resources.json"
-$resourceResults | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 -LiteralPath $resourceFile
-
-# 11. Sanitize k6 summary if present
-if (Test-Path -LiteralPath $summaryFileHost) {
-    $rawSummary = Get-Content -Raw -LiteralPath $summaryFileHost | ConvertFrom-Json
-    $sanitizedK6 = @{
-        metrics = $rawSummary.metrics
-        root_group = $rawSummary.root_group
+    try {
+        # 11. Sanitize k6 summary if present
+        if (Test-Path -LiteralPath $summaryFileHost) {
+            $rawSummary = Get-Content -Raw -LiteralPath $summaryFileHost | ConvertFrom-Json
+            $sanitizedK6 = @{
+                metrics = $rawSummary.metrics
+                root_group = $rawSummary.root_group
+            }
+            $sanitizedK6 | ConvertTo-Json -Depth 30 | Set-Content -Encoding UTF8 -LiteralPath $summaryFileHost
+        } elseif ($null -ne $k6ExitCode -and $k6ExitCode -eq 0) {
+            throw 'Successful k6 run did not produce a summary'
+        }
+    } catch {
+        if ($runnerExitCode -eq 0) { $runnerExitCode = 1 }
+        Write-Warning 'Failed to sanitize the k6 summary.'
     }
-    $sanitizedK6 | ConvertTo-Json -Depth 30 | Set-Content -Encoding UTF8 -LiteralPath $summaryFileHost
+    if ($null -ne $monitorJob) {
+        try {
+            Stop-Job -Job $monitorJob -ErrorAction Stop
+        } catch {
+            if ($runnerExitCode -eq 0) { $runnerExitCode = 1 }
+            Write-Warning 'Failed to stop the resource monitor.'
+        }
+        try {
+            Remove-Job -Job $monitorJob -Force -ErrorAction Stop
+        } catch {
+            if ($runnerExitCode -eq 0) { $runnerExitCode = 1 }
+            Write-Warning 'Failed to remove the resource monitor job.'
+        }
+    }
 }
-
-Write-Host "Acceptance benchmark $Run ($Label) completed. Results saved to $summaryFileHost and $resourceFile"
+Write-Host "Acceptance runner $Run ($Label) finished with exit code $runnerExitCode"
+exit $runnerExitCode
