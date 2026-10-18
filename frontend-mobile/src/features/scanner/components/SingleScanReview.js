@@ -1,4 +1,4 @@
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { colors, typography, spacing, radius } from '../../../theme';
 import { canSubmitSingle, getSingleScanPermission } from '../scannerFlow.mjs';
