@@ -17,6 +17,8 @@
 - `frontend-web/tests/requestCoordinator.test.mjs`: unit test suite verifying deterministic keys, cancellation, stale response suppression, follow-up coalescing, 300ms debouncing, same-instance lifecycle reactivation, protected success metadata including live highlight flags, and tab suspension/resume.
 - `frontend-web/tests/progressiveLoadingFlows.test.mjs`: executes production screens and hooks for pending verification, mount-time subscription races, repeated notifications, account changes, retained-ref effect replay, live highlight expiry/cleanup, cache-hit Print gating, stale empty results, cancellation, and visibility resume; also executes production client session/cache transitions.
 - `frontend-web/tests/sseClient.test.mjs`: extended test suite covering backoff calculation, auth failure detection, and connection lifecycle.
+- `backend/src/test/java/com/tnl/logistics/controller/SseConnectionLeakIntegrationTest.java`: regression test executing a real embedded HTTP server and real database pool verifying that long-lived SSE streaming connections, rapid client disconnects, and bounded heartbeat pruning do not retain HikariCP connections under `spring.jpa.open-in-view=false`.
+- `backend/src/test/java/com/tnl/logistics/controller/SseOpenInViewRetainedConnectionTest.java`: isolated reproduction test demonstrating that under `spring.jpa.open-in-view=true`, concurrent SSE streams retain borrowed HikariCP connections without explicit transaction boundaries, causing pool starvation (`active=5, idle=0`) and HTTP 500 connection acquisition timeouts on ordinary requests.
 
 ### Admin tracking logs optimization
 
