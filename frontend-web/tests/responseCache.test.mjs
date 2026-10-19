@@ -20,15 +20,21 @@ describe('Response Cache - Pure In-Memory Module', () => {
     clearAllCache();
   });
 
-  it('exposes exactly the 6 required resource slots', () => {
+  it('exposes exactly the 12 required resource slots', () => {
     const slotKeys = Object.keys(CACHE_SLOTS);
-    assert.equal(slotKeys.length, 6);
+    assert.equal(slotKeys.length, 12);
     assert.deepEqual(Object.values(CACHE_SLOTS).sort(), [
+      'clients',
       'collection_cycles',
       'dashboard_summary',
+      'payments',
       'reports_summary',
+      'shipments',
+      'statements',
       'tracking_logs_metrics',
       'tracking_logs_page',
+      'vehicles',
+      'waybills',
       'weekly_collections',
     ]);
   });

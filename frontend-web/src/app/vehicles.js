@@ -1,12 +1,15 @@
+import PreviewStatus from '../components/common/PreviewStatus';
+import { TableRowSkeleton } from '../components/common/Skeleton';
+import { useCachedPreview, requireDirectory } from '../services/api/useCachedPreview';
+import { CACHE_SLOTS } from '../services/api/responseCache.mjs';
 import CheckIcon from '../components/common/CheckIcon';
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
   TextInput,
   Pressable,
   StyleSheet,
-  ActivityIndicator,
   Platform,
 } from 'react-native';
 import AppShell from '../components/layout/AppShell';
@@ -21,14 +24,15 @@ import {
   RegisterVehicleModal,
   DeactivateVehicleModal,
 } from '../features/vehicles';
-import { subscribeRealtimeEvents } from '../features/shipments';
 import { colors, fonts, spacing, radius, type } from '../theme';
 
 const STATUS_FILTERS = ['ALL', 'Active', 'In Maintenance', 'Inactive'];
 
 export default function VehiclesScreen() {
-  const [vehicles, setVehicles] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const resource = useCachedPreview({ slot: CACHE_SLOTS.VEHICLES, query: { all: true },
+    fetcher: async signal => requireDirectory(await listVehicles(true, { signal })) });
+  const vehicles = resource.data || [];
+  const loading = resource.loading;
   const [registerModalVisible, setRegisterModalVisible] = useState(false);
   const [vehicleToEdit, setVehicleToEdit] = useState(null);
   const [vehicleToDelete, setVehicleToDelete] = useState(null);
@@ -51,47 +55,8 @@ export default function VehiclesScreen() {
     }, 4500);
   };
 
-  const loadVehiclesData = useCallback(async (showSpinner = true) => {
-    try {
-      if (showSpinner) setLoading(true);
-      const data = await listVehicles(true);
-      if (Array.isArray(data)) {
-        setVehicles(data);
-      }
-    } catch (err) {
-      console.warn('Failed to fetch vehicles:', err?.message);
-    } finally {
-      if (showSpinner) setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadVehiclesData(true);
-  }, [loadVehiclesData]);
-
-  // Real-time SSE listener: auto-update ON TRUCK counts and vehicle statuses upon scan events
-  useEffect(() => {
-    const handleSilentRefresh = () => {
-      loadVehiclesData(false);
-    };
-
-    const unsubscribe = subscribeRealtimeEvents(() => {
-      handleSilentRefresh();
-    });
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', handleSilentRefresh);
-    }
-
-    return () => {
-      unsubscribe();
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('focus', handleSilentRefresh);
-      }
-    };
-  }, [loadVehiclesData]);
-
   const handleSaveVehicle = async (payload, vehicleId) => {
+    if (vehicleId && (!resource.isCurrent() || JSON.stringify(vehicles.find(vehicle => vehicle.vehicleId === vehicleId)) !== JSON.stringify(vehicleToEdit))) throw new Error('This record changed. Refresh and reopen it before editing.');
     if (vehicleId) {
       await updateVehicle(vehicleId, payload);
       showFeedback(`Vehicle ${vehicleId} (${payload.plateNumber}) updated successfully.`);
@@ -100,16 +65,17 @@ export default function VehiclesScreen() {
       const newId = created?.vehicleId || 'Vehicle';
       showFeedback(`Vehicle ${newId} (${payload.plateNumber}) registered successfully.`);
     }
-    await loadVehiclesData(false);
   };
 
   const handleDeactivateVehicle = async (vehicleId) => {
+    if (!resource.isCurrent() || JSON.stringify(vehicles.find(vehicle => vehicle.vehicleId === vehicleId)) !== JSON.stringify(vehicleToDelete)) throw new Error('This record changed. Refresh and reopen it before deactivating.');
     const target = vehicles.find((v) => v.vehicleId === vehicleId);
     const targetPlate = target?.plateNumber ? ` (${target.plateNumber})` : '';
     await deleteVehicle(vehicleId);
     showFeedback(`Vehicle ${vehicleId}${targetPlate} removed / deactivated successfully.`);
-    await loadVehiclesData(false);
   };
+
+  useEffect(() => () => { if (feedbackTimer.current) clearTimeout(feedbackTimer.current); }, []);
 
   // Status counts
   const counts = useMemo(() => {
@@ -193,6 +159,7 @@ export default function VehiclesScreen() {
         </View>
       ) : null}
 
+      <PreviewStatus resource={resource} label="Vehicles" />
       {/* Search & Filter Toolbar */}
       <View style={styles.toolbar}>
         {/* Status Filter Pills */}
@@ -245,12 +212,9 @@ export default function VehiclesScreen() {
           <Text style={[styles.headerCell, { flex: 1.2, textAlign: 'right' }]}>ACTIONS</Text>
         </View>
 
-        {loading && vehicles.length === 0 ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color={colors.inkFaint} />
-            <Text style={styles.loadingText}>Loading fleet registry...</Text>
-          </View>
-        ) : filteredVehicles.length === 0 ? (
+        {loading ? (
+          <TableRowSkeleton />
+        ) : resource.data === null ? null : filteredVehicles.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>
               {vehicles.length === 0 ? 'No vehicles registered yet.' : 'No vehicles match your search or filter.'}
@@ -280,7 +244,9 @@ export default function VehiclesScreen() {
               <Text style={[styles.cellFaint, { flex: 1.5 }]}>{v.remarks || '-'}</Text>
               <View style={[styles.actionsCell, { flex: 1.2 }]}>
                 <Pressable
+                  disabled={!resource.isFresh}
                   onPress={() => {
+                    if (!resource.isCurrent()) return;
                     setVehicleToEdit(v);
                     setRegisterModalVisible(true);
                   }}
@@ -288,7 +254,7 @@ export default function VehiclesScreen() {
                   <Text style={styles.actionEdit}>Edit</Text>
                 </Pressable>
                 <Text style={styles.actionSep}>|</Text>
-                <Pressable onPress={() => setVehicleToDelete(v)}>
+                <Pressable disabled={!resource.isFresh} onPress={() => setVehicleToDelete(v)}>
                   <Text style={styles.actionDelete}>Delete</Text>
                 </Pressable>
               </View>

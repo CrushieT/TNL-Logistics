@@ -1,5 +1,12 @@
 # Project Structure
 
+### Initial HTML loading shell and browser refresh improvements
+
+- `frontend-web/public/index.html`: initial HTML template for Expo single-page web export (`output: "single"`), containing inline reset styles, application canvas background `#F3F2ED`, accessible pre-hydration loading shell with tracking logo, "ADMIN CONSOLE" badge, CSS spinner, and noscript alert.
+- `frontend-web/public/tracking-logo.png`: static tracking brand logo asset served from public root without hashing waterfalls.
+- `frontend-web/src/utils/loadingShell.js`: utility to safely dismiss the pre-hydration loading shell once React has mounted and populated the `#root` container.
+- `frontend-web/tests/loadingShell.test.mjs`: unit test suite verifying template structure, accessibility roles, noscript fallback, and dismissal logic.
+
 ### Frontend progressive loading and bounded memory cache
 
 - `frontend-web/src/services/api/useVerifiedAdminSession.js`: subscribes to session changes before rechecking authentication; exposes a stable verified user/session-generation key and blocks page reads and cache previews while verification is pending.
@@ -7,6 +14,7 @@
 - `frontend-web/src/components/common/Skeleton.js`: accessible, static placeholder blocks and skeletons (`MetricCardSkeleton`, `ChartSkeleton`, `TableRowSkeleton`, `ActivityRowSkeleton`, `ReportsKpiSkeleton`, `CollectionSummarySkeleton`) for immediate page layout rendering without full-page spinners or financial flashes.
 - `frontend-web/tests/responseCache.test.mjs`: unit test suite verifying cache hits, expiration, identity & query bounds, slot replacement, payload size limits, and total eviction.
 - `frontend-web/tests/responseCacheSession.test.mjs`: cache/session-core unit checks for invalidation, sliding renewal, response acceptance, and account isolation; production client integration is covered in progressiveLoadingFlows.test.mjs.
+- `frontend-web/tests/sessionValidationReload.test.mjs`: production client/interceptor, root synchronization, verified-session hook, and Reports regressions for deferred renewal, shared validation, bounded retry, obsolete responses, startup overlap, and accessible recovery; HTTP, router, platform, and child rendering boundaries are mocked.
 
 ### Request lifecycle, coordinator, and SSE outage handling
 
@@ -347,6 +355,10 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 - `load-tests/optimization-results.md`: slice verification, performance evidence, and unsuccessful-attempt ledger.
 
 ### Frontend progressive loading & navigation additions
+- `frontend-web/src/services/api/useCachedPreview.js`: shared verified-session preview state and response validation around the existing request coordinator, used by the six additional admin pages and fresh-only financial metadata/summary reads.
+- `frontend-web/src/components/common/PreviewStatus.js`: timestamped preview, stale/error, and Retry presentation.
+- `frontend-web/tests/previewHarness.mjs`: production React screen/hook/API module execution with isolated platform and transport fixtures.
+- `frontend-web/tests/adminPreviews.test.mjs`: added-page previews, revisions, request races, reference reuse, payment summary checks, and Statement draft review regressions.
 - `frontend-web/src/components/common/Skeleton.js`: generic and domain-specific skeleton placeholders for immediate layout rendering.
 - `frontend-web/src/services/api/responseCache.mjs`: bounded browser-memory preview cache with slot budgeting, 5-minute TTL, and `isResponseAcceptable` production session/query acceptance validation.
 - `frontend-web/src/components/layout/navScrollPosition.mjs`: navigation scroll-offset state preservation across page transitions.

@@ -72,6 +72,7 @@ export default function TrackingLogsScreen() {
 
   const { coordinator: logsCoordinator } = useRequestCoordinator({
     scope: 'tracking-logs',
+    onInvalidated: () => setIsLogsStale(true),
     onSuccess: (data, meta) => {
       const currentAuth = getSessionAuthContext();
       const currentQuery = {
@@ -179,6 +180,7 @@ export default function TrackingLogsScreen() {
 
   const { coordinator: metricsCoordinator } = useRequestCoordinator({
     scope: 'tracking-metrics',
+    onInvalidated: () => setIsMetricsStale(true),
     onSuccess: (data, meta) => {
       const currentAuth = getSessionAuthContext();
       const currentQuery = { metric: 'today', utcDate: todayUtcRef.current };

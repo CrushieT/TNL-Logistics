@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
 import { evaluateSessionValidationOutcome, isEligibleAdminToken } from './sessionCore.mjs';
-import { clearAllCache } from './responseCache.mjs';
+import { clearAllCache, invalidateMutation } from './responseCache.mjs';
 
 const TOKEN_KEY = 'tnl_admin_token';
 const USER_KEY = 'tnl_user_info';
@@ -13,6 +13,7 @@ let sessionGeneration = 0;
 const sessionInvalidationListeners = new Set();
 const sessionChangeListeners = new Set();
 let isAdminSessionVerified = false;
+let pendingValidation = null;
 
 export function getSessionGeneration() {
   return sessionGeneration;
@@ -282,7 +283,7 @@ export async function login(username, password) {
 
 export async function checkFirstBootStatus() {
   try {
-    const response = await axios.get(`${BASE_URL}/auth/first-boot-status`);
+    const response = await axios.get(`${BASE_URL}/auth/first-boot-status`, { timeout: 15000 });
     return Boolean(response.data?.isFirstBoot);
   } catch (error) {
     return null;
@@ -371,10 +372,13 @@ apiClient.interceptors.request.use((config) => {
 // Central 401 & 403 handling with sliding session renewal and stale 401 suppression.
 apiClient.interceptors.response.use(
   (response) => {
+    if (response?.config?.metadata?.generation === sessionGeneration && hasVerifiedAdminSession()) {
+      invalidateMutation(response.config);
+    }
     const renewedToken = response?.headers?.['x-renewed-token'];
     const reqGen = response?.config?.metadata?.generation;
     const reqToken = response?.config?.metadata?.token;
-    if (renewedToken && reqGen !== undefined && reqToken) {
+    if (!response?.config?.metadata?.deferTokenRenewal && renewedToken && reqGen !== undefined && reqToken) {
       handleSlidingTokenRenewal(renewedToken, reqToken, reqGen);
     }
     return response;
@@ -399,7 +403,11 @@ apiClient.interceptors.response.use(
       invalidateSession();
     }
 
-    if (status === 403 && error?.response?.data?.code === 'PASSWORD_CHANGE_REQUIRED') {
+    if (
+      status === 403 && error?.response?.data?.code === 'PASSWORD_CHANGE_REQUIRED' &&
+      (error?.config?.metadata?.generation === undefined || error.config.metadata.generation === sessionGeneration) &&
+      (!error?.config?.metadata?.token || error.config.metadata.token === getToken())
+    ) {
       const currentUser = getCurrentUser();
       if (currentUser) {
         setCurrentUser({ ...currentUser, mustChangePassword: true });
@@ -414,7 +422,21 @@ apiClient.interceptors.response.use(
   }
 );
 
-export async function validateSession(isRetry = false) {
+export function validateSession(isRetry = false) {
+  const token = getToken();
+  const payload = decodeJwtPayload(token);
+  const key = JSON.stringify([sessionGeneration, ...['uid', 'sub', 'role', 'ver', 'auth_time'].map(claim => payload?.[claim])]);
+  if (pendingValidation?.key === key) return pendingValidation.promise;
+
+  const operation = { key };
+  pendingValidation = operation;
+  operation.promise = validateSessionWorker(isRetry).finally(() => {
+    if (pendingValidation === operation) pendingValidation = null;
+  });
+  return operation.promise;
+}
+
+async function validateSessionWorker(isRetry = false) {
   const token = getToken();
   if (!token || !isEligibleAdminToken(token)) {
     clearIneligibleSession();
@@ -425,15 +447,17 @@ export async function validateSession(isRetry = false) {
   const requestToken = token;
 
   try {
-    const { data } = await apiClient.get('/auth/me', {
+    const response = await apiClient.get('/auth/me', {
       headers: {
         Authorization: `Bearer ${requestToken}`,
       },
       metadata: {
         generation: requestGeneration,
         token: requestToken,
+        deferTokenRenewal: true,
       },
     });
+    const { data } = response;
 
     const activeToken = getToken();
     const action = evaluateSessionValidationOutcome({
@@ -448,6 +472,7 @@ export async function validateSession(isRetry = false) {
     });
 
     if (action === 'APPLY') {
+      handleSlidingTokenRenewal(response.headers?.['x-renewed-token'], requestToken, requestGeneration);
       setCurrentUser({
         userId: data.userId,
         username: data.username,
@@ -461,7 +486,7 @@ export async function validateSession(isRetry = false) {
     }
 
     if (action === 'RETRY' && !isRetry) {
-      return await validateSession(true);
+      return await validateSessionWorker(true);
     }
 
     if (action === 'INVALIDATE') {
@@ -486,7 +511,7 @@ export async function validateSession(isRetry = false) {
     });
 
     if (action === 'RETRY' && !isRetry) {
-      return await validateSession(true);
+      return await validateSessionWorker(true);
     }
 
     if (action === 'INVALIDATE') {

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>%WEB_TITLE%</title>
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      /* These styles make the body full-height */
+      html,
+      body {
+        height: 100%;
+        background-color: #F3F2ED;
+        margin: 0;
+        padding: 0;
+      }
+      /* These styles disable body scrolling if you are using <ScrollView> */
+      body {
+        overflow: hidden;
+      }
+      /* These styles make the root element full-height */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+    <style id="app-loading-shell-styles">
+      #app-loading-shell {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: #F3F2ED;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        color: #1A1A1A;
+        opacity: 1;
+        transition: opacity 160ms cubic-bezier(0.4, 0, 0.2, 1);
+        pointer-events: auto;
+      }
+
+      #app-loading-shell.app-loading-shell-hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .app-loading-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 32px;
+        text-align: center;
+      }
+
+      .app-loading-logo-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+
+      .app-loading-logo {
+        width: 175px;
+        height: 56px;
+        max-width: 100%;
+        object-fit: contain;
+        display: block;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 20px;
+        font-weight: 800;
+        color: #1A1A1A;
+      }
+
+      .app-loading-logo-fallback {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+      }
+
+      .app-loading-brand-title {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 20px;
+        font-weight: 800;
+        color: #1A1A1A;
+        letter-spacing: 0.5px;
+      }
+
+      .app-loading-brand-badge {
+        font-family: "Roboto Mono", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+        font-size: 10px;
+        font-weight: 700;
+        color: #8A897F;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        background-color: #FAF9F5;
+        border: 1px solid #E1DFD5;
+        border-radius: 4px;
+        padding: 2px 6px;
+        margin-top: 6px;
+        display: inline-block;
+      }
+
+      .app-loading-status-wrap {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        margin-top: 24px;
+      }
+
+      .app-loading-spinner {
+        width: 18px;
+        height: 18px;
+        border: 2px solid #E1DFD5;
+        border-top-color: #C6491F;
+        border-radius: 50%;
+        animation: app-loading-spin 0.75s linear infinite;
+        box-sizing: border-box;
+      }
+
+      @keyframes app-loading-spin {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .app-loading-message {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 13px;
+        font-weight: 500;
+        color: #8A897F;
+        letter-spacing: 0.2px;
+      }
+
+      .app-loading-noscript-notice {
+        margin-top: 20px;
+        padding: 12px 18px;
+        background-color: #FEF2F2;
+        border: 1px solid #F87171;
+        border-radius: 6px;
+        color: #991B1B;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 13px;
+        line-height: 1.4;
+        text-align: center;
+        max-width: 340px;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #app-loading-shell {
+          transition: none;
+        }
+        .app-loading-spinner {
+          animation-duration: 2s;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- The root element for your Expo app. -->
+    <div id="root"></div>
+
+    <!-- Initial loading shell visible before JS executes -->
+    <div id="app-loading-shell" role="status" aria-live="polite" aria-label="Loading TNL Logistics Admin Console">
+      <div class="app-loading-card">
+        <div class="app-loading-logo-wrap">
+          <img
+            id="app-loading-logo"
+            class="app-loading-logo"
+            src="/tracking-logo.png"
+            alt="TNL Logistics"
+            width="175"
+            height="56"
+            onerror="this.style.display='none';var f=document.getElementById('app-loading-logo-fallback');if(f)f.style.display='flex';"
+          />
+          <div id="app-loading-logo-fallback" class="app-loading-logo-fallback" style="display:none;">
+            <span class="app-loading-brand-title">TNL LOGISTICS</span>
+          </div>
+          <span class="app-loading-brand-badge">ADMIN CONSOLE</span>
+        </div>
+
+        <noscript>
+          <style>
+            .app-loading-status-wrap { display: none !important; }
+          </style>
+          <div class="app-loading-noscript-notice" role="alert">
+            JavaScript is required to use the TNL Logistics Admin Console. Please enable JavaScript in your browser to continue.
+          </div>
+        </noscript>
+
+        <div class="app-loading-status-wrap">
+          <div class="app-loading-spinner" aria-hidden="true"></div>
+          <span class="app-loading-message">Loading console…</span>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

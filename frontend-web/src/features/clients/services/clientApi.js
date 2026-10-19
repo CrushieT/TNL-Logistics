@@ -6,7 +6,7 @@ export { mapClientRecord };
 /**
  * Client Management API Client
  */
-export async function listClients(params = {}) {
+export async function listClients(params = {}, options = {}) {
   const queryParams = new URLSearchParams();
 
   if (params.page !== undefined) queryParams.append('page', params.page);
@@ -24,7 +24,7 @@ export async function listClients(params = {}) {
   const queryString = queryParams.toString();
   const url = `/clients${queryString ? `?${queryString}` : ''}`;
 
-  const { data } = await apiClient.get(url);
+  const { data } = await apiClient.get(url, { signal: options.signal });
 
   // If response is a Spring Data Page object
   if (data && data.content && Array.isArray(data.content)) {
@@ -42,7 +42,7 @@ export async function listClients(params = {}) {
     return data.map(mapClientRecord);
   }
 
-  return [];
+  throw new Error('Invalid client directory response.');
 }
 
 export async function getClient(clientId) {

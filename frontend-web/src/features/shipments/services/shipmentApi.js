@@ -10,8 +10,8 @@ export async function getDashboardSummary(cycle, options = {}) {
   return data;
 }
 
-export async function listShipments(params = {}) {
-  const { data } = await apiClient.get('/shipments', { params });
+export async function listShipments(params = {}, options = {}) {
+  const { data } = await apiClient.get('/shipments', { params, signal: options.signal });
   return data;
 }
 

@@ -1,12 +1,15 @@
+import PreviewStatus from '../../components/common/PreviewStatus';
+import { TableRowSkeleton } from '../../components/common/Skeleton';
+import { useCachedPreview, requireDirectory } from '../../services/api/useCachedPreview';
+import { CACHE_SLOTS } from '../../services/api/responseCache.mjs';
 import CheckIcon from '../../components/common/CheckIcon';
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
   TextInput,
   Pressable,
   StyleSheet,
-  ActivityIndicator,
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -22,7 +25,6 @@ import {
   RegisterClientModal,
   DeactivateClientModal,
 } from '../../features/clients';
-import { subscribeRealtimeEvents } from '../../features/shipments';
 import { colors, fonts, spacing, radius, type } from '../../theme';
 
 const STATUS_FILTERS = ['ALL', 'Active', 'Inactive'];
@@ -30,8 +32,10 @@ const STATUS_FILTERS = ['ALL', 'Active', 'Inactive'];
 export default function ClientsScreen() {
   const router = useRouter();
 
-  const [clients, setClients] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const resource = useCachedPreview({ slot: CACHE_SLOTS.CLIENTS, query: { all: true },
+    fetcher: async signal => requireDirectory(await listClients({ all: true }, { signal })) });
+  const clients = resource.data || [];
+  const loading = resource.loading;
   const [registerModalVisible, setRegisterModalVisible] = useState(false);
   const [clientToEdit, setClientToEdit] = useState(null);
   const [clientToDelete, setClientToDelete] = useState(null);
@@ -54,50 +58,8 @@ export default function ClientsScreen() {
     }, 4500);
   };
 
-  const loadClientsData = useCallback(async (showSpinner = true) => {
-    try {
-      if (showSpinner) setLoading(true);
-      const data = await listClients({ all: true });
-
-      if (Array.isArray(data)) {
-        setClients(data);
-      } else if (data && data.content) {
-        setClients(data.content);
-      }
-    } catch (err) {
-      console.warn('Failed to fetch clients:', err?.message);
-    } finally {
-      if (showSpinner) setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadClientsData(true);
-  }, [loadClientsData]);
-
-  // Real-time SSE listener: auto-updates metrics and shipments
-  useEffect(() => {
-    const handleSilentRefresh = () => {
-      loadClientsData(false);
-    };
-
-    const unsubscribe = subscribeRealtimeEvents(() => {
-      handleSilentRefresh();
-    });
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', handleSilentRefresh);
-    }
-
-    return () => {
-      unsubscribe();
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('focus', handleSilentRefresh);
-      }
-    };
-  }, [loadClientsData]);
-
   const handleSaveClient = async (payload, clientId) => {
+    if (clientId && (!resource.isCurrent() || JSON.stringify(clients.find(client => (client.clientId || client.id) === clientId)) !== JSON.stringify(clientToEdit))) throw new Error('This record changed. Refresh and reopen it before editing.');
     if (clientId) {
       await updateClient(clientId, payload);
       showFeedback(`Client ${clientId} (${payload.name}) updated successfully.`);
@@ -106,16 +68,17 @@ export default function ClientsScreen() {
       const newId = created?.clientId || created?.id || 'Client';
       showFeedback(`Client ${newId} (${payload.name}) registered successfully.`);
     }
-    await loadClientsData(false);
   };
 
   const handleDeactivateClient = async (clientId) => {
+    if (!resource.isCurrent() || JSON.stringify(clients.find(client => (client.clientId || client.id) === clientId)) !== JSON.stringify(clientToDelete)) throw new Error('This record changed. Refresh and reopen it before deactivating.');
     const target = clients.find((c) => (c.clientId || c.id) === clientId);
     const targetName = target?.name ? ` (${target.name})` : '';
     await deleteClient(clientId);
     showFeedback(`Client ${clientId}${targetName} removed / deactivated successfully.`);
-    await loadClientsData(false);
   };
+
+  useEffect(() => () => { if (feedbackTimer.current) clearTimeout(feedbackTimer.current); }, []);
 
   // Status counts from all clients
   const counts = useMemo(() => {
@@ -189,6 +152,7 @@ export default function ClientsScreen() {
         </View>
       ) : null}
 
+      <PreviewStatus resource={resource} label="Clients" />
       {/* Search & Filter Toolbar */}
       <View style={styles.toolbar}>
         {/* Status Filter Pills */}
@@ -242,12 +206,9 @@ export default function ClientsScreen() {
           <Text style={[styles.headerCell, { flex: 1.5, textAlign: 'right' }]}>ACTIONS</Text>
         </View>
 
-        {loading && clients.length === 0 ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color={colors.inkFaint} />
-            <Text style={styles.loadingText}>Loading client directory...</Text>
-          </View>
-        ) : filteredClients.length === 0 ? (
+        {loading ? (
+          <TableRowSkeleton />
+        ) : resource.data === null ? null : filteredClients.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>
               {clients.length === 0 ? 'No clients registered yet.' : 'No clients match your search or filter.'}
@@ -307,7 +268,9 @@ export default function ClientsScreen() {
 
                 <View style={[styles.actionsCell, { flex: 1.5 }]}>
                   <Pressable
+                    disabled={!resource.isFresh}
                     onPress={() => {
+                      if (!resource.isCurrent()) return;
                       setClientToEdit(c);
                       setRegisterModalVisible(true);
                     }}
@@ -315,7 +278,7 @@ export default function ClientsScreen() {
                     <Text style={styles.actionEdit}>Edit</Text>
                   </Pressable>
                   <Text style={styles.actionSep}>|</Text>
-                  <Pressable onPress={() => setClientToDelete(c)}>
+                  <Pressable disabled={!resource.isFresh} onPress={() => setClientToDelete(c)}>
                     <Text style={styles.actionDelete}>Delete</Text>
                   </Pressable>
                   <Text style={styles.actionSep}>|</Text>

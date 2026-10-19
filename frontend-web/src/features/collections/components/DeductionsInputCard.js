@@ -20,6 +20,7 @@ export default function DeductionsInputCard({
   onSave,
   saving = false,
   disabled = false,
+  saveDisabled = false,
   maxDeduction = null,
 }) {
   const [collectorMode, setCollectorMode] = useState('select'); // 'select' | 'custom'
@@ -192,9 +193,9 @@ export default function DeductionsInputCard({
 
           {/* Save Button */}
           <TouchableOpacity
-            style={[styles.saveButton, (saving || disabled || isExceedingTotal) && styles.saveButtonDisabled]}
+            style={[styles.saveButton, (saving || disabled || saveDisabled || isExceedingTotal) && styles.saveButtonDisabled]}
             onPress={onSave}
-            disabled={saving || disabled || isExceedingTotal}
+            disabled={saving || disabled || saveDisabled || isExceedingTotal}
             activeOpacity={0.8}
           >
             {saving ? (

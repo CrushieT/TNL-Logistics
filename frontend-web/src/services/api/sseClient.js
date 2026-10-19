@@ -1,5 +1,6 @@
 import { getToken, getSessionAuthContext, onSessionChanged, onSessionInvalidated } from './client';
 import { Platform } from 'react-native';
+import { invalidateBusinessEvent } from './responseCache.mjs';
 import { createSseStreamParser, calculateBackoffDelay, isAuthFailureStatus } from './sseClientCore.mjs';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
@@ -62,6 +63,7 @@ function synchronizeSession() {
 }
 
 function dispatchEvent(type, data) {
+  invalidateBusinessEvent(type);
   listeners.forEach((listener) => {
     try {
       listener({ type, data });

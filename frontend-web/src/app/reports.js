@@ -101,6 +101,7 @@ export default function ReportsScreen() {
 
   const { coordinator } = useRequestCoordinator({
     scope: 'reports',
+    onInvalidated: () => setIsStale(true),
     onSuccess: (data, meta) => {
       const currentAuth = getSessionAuthContext();
       const currentQuery = activeDatesRef.current;
