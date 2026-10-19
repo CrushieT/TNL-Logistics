@@ -7,6 +7,7 @@
 - `frontend-web/src/components/common/Skeleton.js`: accessible, static placeholder blocks and skeletons (`MetricCardSkeleton`, `ChartSkeleton`, `TableRowSkeleton`, `ActivityRowSkeleton`, `ReportsKpiSkeleton`, `CollectionSummarySkeleton`) for immediate page layout rendering without full-page spinners or financial flashes.
 - `frontend-web/tests/responseCache.test.mjs`: unit test suite verifying cache hits, expiration, identity & query bounds, slot replacement, payload size limits, and total eviction.
 - `frontend-web/tests/responseCacheSession.test.mjs`: cache/session-core unit checks for invalidation, sliding renewal, response acceptance, and account isolation; production client integration is covered in progressiveLoadingFlows.test.mjs.
+- `frontend-web/tests/sessionValidationReload.test.mjs`: production client/interceptor, root synchronization, verified-session hook, and Reports regressions for deferred renewal, shared validation, bounded retry, obsolete responses, startup overlap, and accessible recovery; HTTP, router, platform, and child rendering boundaries are mocked.
 
 ### Request lifecycle, coordinator, and SSE outage handling
 

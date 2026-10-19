@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Platform, LogBox, StyleSheet, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Platform, LogBox, StyleSheet, View, Text, Pressable } from 'react-native';
 import { Stack, usePathname, useRouter, useRootNavigationState } from 'expo-router';
 import {
   checkFirstBootStatus,
   getCurrentUser,
+  getSessionGeneration,
   getToken,
   hasVerifiedAdminSession,
   isAuthenticated,
@@ -25,34 +26,44 @@ export default function RootLayout() {
   const navigationState = useRootNavigationState();
   const [firstBootStatus, setFirstBootStatus] = useState(null);
   const [isAdminVerified, setIsAdminVerified] = useState(hasVerifiedAdminSession());
+  const [synchronizationError, setSynchronizationError] = useState(null);
+  const [isSynchronizing, setIsSynchronizing] = useState(false);
+  const pendingSynchronization = useRef(null);
 
-  const synchronizeAccess = useCallback(async () => {
+  const synchronizeAccess = useCallback(() => {
     if (!navigationState?.key) return;
+    const generation = getSessionGeneration();
+    if (pendingSynchronization.current?.generation === generation) return pendingSynchronization.current.promise;
 
-    if (hasVerifiedAdminSession()) {
-      setIsAdminVerified(true);
-    }
-
-    const isFirstBoot = await checkFirstBootStatus();
-    setFirstBootStatus(isFirstBoot);
-
-    if (isFirstBoot !== false) {
-      setIsAdminVerified(false);
-      return;
-    }
-
-    if (!getToken()) {
-      setIsAdminVerified(false);
-      return;
-    }
-
-    if (hasVerifiedAdminSession()) {
-      setIsAdminVerified(true);
-      return;
-    }
-
-    const validationStatus = await validateSession();
-    setIsAdminVerified(validationStatus === 'VALID' && hasVerifiedAdminSession());
+    const operation = { generation };
+    pendingSynchronization.current = operation;
+    const isCurrent = () => pendingSynchronization.current === operation && getSessionGeneration() === generation;
+    setIsSynchronizing(true);
+    setIsAdminVerified(hasVerifiedAdminSession());
+    operation.promise = (async () => {
+      const isFirstBoot = await checkFirstBootStatus();
+      if (!isCurrent()) return;
+      setFirstBootStatus(isFirstBoot);
+      if (isFirstBoot === null) {
+        setSynchronizationError('Unable to verify access. Check your connection and retry.');
+        return;
+      }
+      if (isFirstBoot || !getToken()) {
+        setIsAdminVerified(false);
+        setSynchronizationError(null);
+        return;
+      }
+      const validationStatus = hasVerifiedAdminSession() ? 'VALID' : await validateSession();
+      if (!isCurrent()) return;
+      setIsAdminVerified(validationStatus === 'VALID' && hasVerifiedAdminSession());
+      setSynchronizationError(validationStatus === 'UNVERIFIED' ? 'Unable to verify your session. Check your connection and retry.' : null);
+    })().finally(() => {
+      if (isCurrent()) {
+        pendingSynchronization.current = null;
+        setIsSynchronizing(false);
+      }
+    });
+    return operation.promise;
   }, [navigationState?.key]);
 
   useEffect(() => {
@@ -71,6 +82,8 @@ export default function RootLayout() {
       window.removeEventListener('online', synchronizeAccess);
     };
   }, [synchronizeAccess]);
+
+  useEffect(() => () => { pendingSynchronization.current = null; }, []);
 
   useEffect(() => {
     if (!navigationState?.key || firstBootStatus === null) return;
@@ -134,6 +147,14 @@ export default function RootLayout() {
 
   return (
     <View style={styles.container}>
+      {synchronizationError && (
+        <View style={styles.errorBanner}>
+          <Text accessibilityRole="alert" style={styles.errorText}>{synchronizationError}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Retry session verification" accessibilityState={{ disabled: isSynchronizing }} disabled={isSynchronizing} onPress={synchronizeAccess}>
+            <Text style={styles.retryText}>{isSynchronizing ? 'Retrying…' : 'Retry'}</Text>
+          </Pressable>
+        </View>
+      )}
       <Stack
         screenOptions={{
           headerShown: false,
@@ -173,4 +194,7 @@ export default function RootLayout() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, backgroundColor: '#FEF2F2' },
+  errorText: { flex: 1, color: '#991B1B' },
+  retryText: { color: '#991B1B', fontWeight: '600', padding: 8 },
 });
