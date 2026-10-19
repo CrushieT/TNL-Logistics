@@ -4,8 +4,8 @@ import apiClient from '../../../services/api/client';
  * Fetch paginated shipments with financial rollups for payment management.
  * @param {Object} params - { search, paymentStatus, page, size }
  */
-export async function listPaymentShipments(params = {}) {
-  const { data } = await apiClient.get('/shipments', { params });
+export async function listPaymentShipments(params = {}, options = {}) {
+  const { data } = await apiClient.get('/shipments', { params, signal: options.signal });
   return data;
 }
 
@@ -22,8 +22,8 @@ export async function recordPayment(payload) {
  * Retrieve itemized payment records and balance history for a shipment.
  * @param {string} shipmentId
  */
-export async function getShipmentPaymentHistory(shipmentId) {
-  const { data } = await apiClient.get(`/payments/shipment/${shipmentId}`);
+export async function getShipmentPaymentHistory(shipmentId, options = {}) {
+  const { data } = await apiClient.get(`/payments/shipment/${shipmentId}`, { signal: options.signal });
   return data;
 }
 

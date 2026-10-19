@@ -1,5 +1,6 @@
 import { useRef, useEffect } from 'react';
 import { createRequestCoordinator } from './requestCoordinator.mjs';
+import { CACHE_SLOTS, onCacheInvalidated } from './responseCache.mjs';
 
 /**
  * React hook integrating RequestCoordinator with component lifecycle,
@@ -10,7 +11,10 @@ export function useRequestCoordinator({
   onSuccess,
   onError,
   debounceMs = 300,
+  onInvalidated,
 }) {
+  const invalidatedRef = useRef(onInvalidated);
+  invalidatedRef.current = onInvalidated;
   const successRef = useRef(onSuccess);
   const errorRef = useRef(onError);
 
@@ -37,6 +41,15 @@ export function useRequestCoordinator({
     return () => coordinatorRef.current.unmount();
   }, []);
 
+  useEffect(() => onCacheInvalidated(slots => {
+    const slot = Object.values(CACHE_SLOTS).find(value => value === scope)
+      || ({ dashboard: CACHE_SLOTS.DASHBOARD, reports: CACHE_SLOTS.REPORTS, 'tracking-metrics': CACHE_SLOTS.TRACKING_LOGS_METRICS, 'tracking-logs': CACHE_SLOTS.TRACKING_LOGS_PAGE, 'weekly-collections': CACHE_SLOTS.WEEKLY_COLLECTIONS })[scope];
+    if (slots.includes(slot)) {
+      invalidatedRef.current?.();
+      coordinatorRef.current.invalidate();
+    }
+  }), [scope]);
+
   // Window focus and document visibility handling
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
@@ -50,6 +63,7 @@ export function useRequestCoordinator({
       coordinatorRef.current?.setVisibility(document.visibilityState !== 'hidden');
     };
 
+    handleVisibility();
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('focus', handleFocus);
 

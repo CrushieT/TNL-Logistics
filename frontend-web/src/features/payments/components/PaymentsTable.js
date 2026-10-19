@@ -24,6 +24,7 @@ export default function PaymentsTable({
   pageSize = 20,
   onPageChange,
   onPageSizeChange,
+  canRecordPayment = true,
   onRecordPayment,
   onViewHistory,
 }) {
@@ -160,6 +161,7 @@ export default function PaymentsTable({
                       </View>
                     ) : (
                       <Pressable
+                        disabled={!canRecordPayment}
                         onPress={() => onRecordPayment?.(s)}
                         style={({ hovered }) => [
                           styles.recordActionBtn,

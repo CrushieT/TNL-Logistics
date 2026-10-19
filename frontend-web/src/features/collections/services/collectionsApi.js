@@ -63,12 +63,12 @@ export async function listAllClients() {
  * @param {string} clientId
  * @param {string} [targetDate] - Target Thursday (YYYY-MM-DD)
  */
-export async function getStatementPreview(clientId, targetDate) {
+export async function getStatementPreview(clientId, targetDate, options = {}) {
   const params = { clientId };
   if (targetDate) {
     params.targetDate = targetDate;
   }
-  const { data } = await apiClient.get('/soa/preview', { params });
+  const { data } = await apiClient.get('/soa/preview', { params, signal: options.signal });
   return data;
 }
 
@@ -84,8 +84,8 @@ export async function saveStatement(payload) {
 /**
  * Fetch active authorized staff list for the "COLLECTED BY" dropdown.
  */
-export async function getAuthorizedCollectors() {
-  const { data } = await apiClient.get('/soa/collectors');
+export async function getAuthorizedCollectors(options = {}) {
+  const { data } = await apiClient.get('/soa/collectors', { signal: options.signal });
   return data;
 }
 
@@ -98,6 +98,7 @@ export async function getActiveCollectionCycles(options = {}) {
     const { data } = await apiClient.get('/collections/cycles', {
       ...(options.signal ? { signal: options.signal } : {}),
     });
+    if (options.strict && !Array.isArray(data)) throw new Error('Invalid collection cycle response.');
     if (Array.isArray(data) && data.length > 0) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -130,7 +131,7 @@ export async function getActiveCollectionCycles(options = {}) {
       });
     }
   } catch (err) {
-    if (options.signal?.aborted) throw err;
+    if (options.signal?.aborted || options.strict) throw err;
     console.warn('Failed to load active cycles from backend:', err?.message);
   }
   return [];

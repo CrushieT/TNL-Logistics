@@ -2,7 +2,7 @@
  * Bounded Browser-Memory Response Cache for TNL Logistics admin pages.
  *
  * Requirements:
- * - Exactly 6 resource slots with max 1 entry per slot.
+ * - Exactly 12 resource slots with max 1 entry per slot.
  * - Exact user, session generation, and canonical query parameter matching.
  * - 5-minute TTL (300,000 ms).
  * - 1 MiB (1,048,576 bytes) serialized UTF-8 payload limit per entry.
@@ -18,7 +18,54 @@ export const CACHE_SLOTS = Object.freeze({
   TRACKING_LOGS_PAGE: 'tracking_logs_page',
   TRACKING_LOGS_METRICS: 'tracking_logs_metrics',
   COLLECTION_CYCLES: 'collection_cycles',
+  SHIPMENTS: 'shipments',
+  VEHICLES: 'vehicles',
+  CLIENTS: 'clients',
+  WAYBILLS: 'waybills',
+  PAYMENTS: 'payments',
+  STATEMENTS: 'statements',
 });
+
+const revisions = new Map();
+const invalidationListeners = new Set();
+export const getCacheRevision = slot => revisions.get(slot) || 0;
+export function onCacheInvalidated(listener) {
+  invalidationListeners.add(listener);
+  return () => invalidationListeners.delete(listener);
+}
+
+const financial = ['PAYMENTS', 'SHIPMENTS', 'STATEMENTS', 'WEEKLY_COLLECTIONS', 'DASHBOARD', 'REPORTS', 'CLIENTS', 'COLLECTION_CYCLES'];
+const operational = [...financial, 'WAYBILLS', 'VEHICLES', 'TRACKING_LOGS_PAGE', 'TRACKING_LOGS_METRICS'];
+export const INVALIDATION_DEPENDENCIES = Object.freeze({
+  clients: [...financial, 'WAYBILLS'],
+  vehicles: ['VEHICLES', 'SHIPMENTS', 'WAYBILLS', 'TRACKING_LOGS_PAGE', 'TRACKING_LOGS_METRICS'],
+  shipments: operational,
+  'parcel-units': operational,
+  scans: operational,
+  waybills: operational,
+  payments: financial,
+  soa: financial,
+});
+export function invalidateResources(resource) {
+  const slots = (INVALIDATION_DEPENDENCIES[resource] || []).map(name => CACHE_SLOTS[name]);
+  slots.forEach(slot => {
+    revisions.set(slot, getCacheRevision(slot) + 1);
+    cacheStorage.delete(slot);
+  });
+  if (slots.length) invalidationListeners.forEach(listener => listener(slots));
+}
+export function invalidateMutation(config = {}) {
+  if (!['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase())) return;
+  const resource = (config.url || '').replace(/^.*\/api\/v1\//, '/').split('/').filter(Boolean)[0]?.split('?')[0];
+  invalidateResources(resource);
+}
+export function invalidateBusinessEvent(type) {
+  const resource = {
+    PAYMENT_RECORDED: 'payments', SOA_UPDATED: 'soa', SHIPMENT_CREATED: 'shipments',
+    STATUS_UPDATE: 'shipments', LABEL_PRINTED: 'shipments', PARCEL_EXCEPTION: 'parcel-units', WAYBILL_UPDATE: 'waybills',
+  }[type];
+  if (resource) invalidateResources(resource);
+}
 
 export const MAX_ENTRY_BYTES = 1024 * 1024; // 1 MiB
 export const MAX_TOTAL_BYTES = 4 * 1024 * 1024; // 4 MiB
@@ -120,7 +167,8 @@ export function getCacheEntry(slot, { userId, sessionGeneration, queryParams, no
  * Replaces any existing entry in that slot.
  * Respects 1 MiB per-entry limit and 4 MiB total limit with oldest eviction.
  */
-export function setCacheEntry(slot, { userId, sessionGeneration, queryParams, data, now = Date.now() } = {}) {
+export function setCacheEntry(slot, { userId, sessionGeneration, queryParams, data, revision = getCacheRevision(slot), now = Date.now() } = {}) {
+  if (revision !== getCacheRevision(slot)) return false;
   if (!VALID_SLOTS.has(slot)) {
     return false;
   }

@@ -1,3 +1,5 @@
+import { useCachedPreview } from '../services/api/useCachedPreview';
+import PreviewStatus from '../components/common/PreviewStatus';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -44,8 +46,6 @@ export default function DashboardScreen() {
   const [isStale, setIsStale] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
-  const [cycles, setCycles] = useState([]);
-  const [cyclesSessionKey, setCyclesSessionKey] = useState(null);
   const [selectedCycle, setSelectedCycle] = useState('');
 
   const activeCycleRef = useRef(selectedCycle);
@@ -56,6 +56,7 @@ export default function DashboardScreen() {
 
   const { coordinator } = useRequestCoordinator({
     scope: 'dashboard',
+    onInvalidated: () => setIsStale(true),
     onSuccess: (data, meta) => {
       const currentAuth = getSessionAuthContext();
       const targetCycle = activeCycleRef.current;
@@ -116,9 +117,8 @@ export default function DashboardScreen() {
   useEffect(() => {
     const resetSession = () => {
       coordinator.cancel();
+      cycleResource.cancel();
       setSummary(null);
-      setCycles([]);
-      setCyclesSessionKey(null);
       setSelectedCycle('');
       setIsStale(false);
       setIsPreview(false);
@@ -134,80 +134,19 @@ export default function DashboardScreen() {
     };
   }, [coordinator, sessionKey]);
 
-  // Fetch active cycles containing registered shipments (with preview cache)
+  const cycleResource = useCachedPreview({
+    slot: CACHE_SLOTS.COLLECTION_CYCLES,
+    debounceEntry: false,
+    fetcher: signal => getActiveCollectionCycles({ signal, strict: true }),
+  });
+  const cycles = cycleResource.data?.length ? cycleResource.data
+    : cycleResource.data !== null ? getRecentThursdays(1) : [];
+  const cyclesSessionKey = cycleResource.data !== null ? sessionKey : null;
+
   useEffect(() => {
-    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey()) return;
-    let mounted = true;
-    const abortController = new AbortController();
-
-    // Check cached collection cycles
-    const auth = getSessionAuthContext();
-    const cachedCycles = getCacheEntry(CACHE_SLOTS.COLLECTION_CYCLES, {
-      userId: auth.userId,
-      sessionGeneration: auth.sessionGeneration,
-      queryParams: {},
-    });
-    if (cachedCycles?.data && cachedCycles.data.length > 0) {
-      setCycles(cachedCycles.data);
-      setCyclesSessionKey(sessionKey);
-      setSelectedCycle((prev) => (prev && cachedCycles.data.some((c) => c.isoDate === prev) ? prev : cachedCycles.data[0].isoDate));
-    }
-
-    async function loadCycles() {
-      const requestAuth = getSessionAuthContext();
-      try {
-        const activeCycles = await getActiveCollectionCycles({ signal: abortController.signal });
-        if (!mounted || abortController.signal.aborted) return;
-        const currentAuth = getSessionAuthContext();
-        if (
-          currentAuth.isAuthenticated && currentAuth.isVerified &&
-          currentAuth.userId === requestAuth.userId &&
-          currentAuth.sessionGeneration === requestAuth.sessionGeneration
-        ) {
-          if (activeCycles.length > 0) {
-            setCacheEntry(CACHE_SLOTS.COLLECTION_CYCLES, {
-              userId: currentAuth.userId,
-              sessionGeneration: currentAuth.sessionGeneration,
-              queryParams: {},
-              data: activeCycles,
-            });
-            setCycles(activeCycles);
-            setCyclesSessionKey(sessionKey);
-            setSelectedCycle((prev) => (prev && activeCycles.some((c) => c.isoDate === prev) ? prev : activeCycles[0].isoDate));
-          } else {
-            const fallback = getRecentThursdays(1);
-            setCycles(fallback);
-            setCyclesSessionKey(sessionKey);
-            setSelectedCycle(fallback[0]?.isoDate || '');
-          }
-        }
-      } catch (err) {
-        if (!mounted || abortController.signal.aborted || isCancellationError(err)) return;
-        const currentAuth = getSessionAuthContext();
-        if (
-          currentAuth.isAuthenticated && currentAuth.isVerified &&
-          currentAuth.userId === requestAuth.userId &&
-          currentAuth.sessionGeneration === requestAuth.sessionGeneration
-        ) {
-          const fallback = getRecentThursdays(1);
-          setCycles(fallback);
-          setCyclesSessionKey(sessionKey);
-          setSelectedCycle(fallback[0]?.isoDate || '');
-        }
-      }
-    }
-    loadCycles();
-
-    const unsubscribe = onSessionInvalidated(() => {
-      abortController.abort();
-    });
-
-    return () => {
-      mounted = false;
-      abortController.abort();
-      if (typeof unsubscribe === 'function') unsubscribe();
-    };
-  }, [sessionKey]);
+    if (cycleResource.data === null) return;
+    setSelectedCycle(previous => cycles.some(cycle => cycle.isoDate === previous) ? previous : cycles[0]?.isoDate || '');
+  }, [cycleResource.data]);
 
   const load = useCallback((cycleDate, showSpinner = true, debounce = false) => {
     if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey() || cyclesSessionKey !== sessionKey || !cycleDate) return;
@@ -292,7 +231,7 @@ export default function DashboardScreen() {
   const recentActivities = summary?.recentActivity || [];
 
   // Actions requiring fresh summary are disabled when loading, previewing, or stale
-  const actionsDisabled = loading || isPreview || isStale || !summary;
+  const actionsDisabled = !cycleResource.isFresh || loading || isPreview || isStale || !summary;
 
   return (
     <AppShell>
@@ -318,6 +257,8 @@ export default function DashboardScreen() {
           </View>
         }
       />
+
+      <PreviewStatus resource={cycleResource} label="Collection cycles" />
 
       {/* Updating Preview Banner */}
       {loading && isPreview && (

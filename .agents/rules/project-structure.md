@@ -347,6 +347,10 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 - `load-tests/optimization-results.md`: slice verification, performance evidence, and unsuccessful-attempt ledger.
 
 ### Frontend progressive loading & navigation additions
+- `frontend-web/src/services/api/useCachedPreview.js`: shared verified-session preview state and response validation around the existing request coordinator, used by the six additional admin pages and fresh-only financial metadata/summary reads.
+- `frontend-web/src/components/common/PreviewStatus.js`: timestamped preview, stale/error, and Retry presentation.
+- `frontend-web/tests/previewHarness.mjs`: production React screen/hook/API module execution with isolated platform and transport fixtures.
+- `frontend-web/tests/adminPreviews.test.mjs`: added-page previews, revisions, request races, reference reuse, payment summary checks, and Statement draft review regressions.
 - `frontend-web/src/components/common/Skeleton.js`: generic and domain-specific skeleton placeholders for immediate layout rendering.
 - `frontend-web/src/services/api/responseCache.mjs`: bounded browser-memory preview cache with slot budgeting, 5-minute TTL, and `isResponseAcceptable` production session/query acceptance validation.
 - `frontend-web/src/components/layout/navScrollPosition.mjs`: navigation scroll-offset state preservation across page transitions.

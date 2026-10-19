@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { Platform } from 'react-native';
 import { evaluateSessionValidationOutcome, isEligibleAdminToken } from './sessionCore.mjs';
-import { clearAllCache } from './responseCache.mjs';
+import { clearAllCache, invalidateMutation } from './responseCache.mjs';
 
 const TOKEN_KEY = 'tnl_admin_token';
 const USER_KEY = 'tnl_user_info';
@@ -371,6 +371,9 @@ apiClient.interceptors.request.use((config) => {
 // Central 401 & 403 handling with sliding session renewal and stale 401 suppression.
 apiClient.interceptors.response.use(
   (response) => {
+    if (response?.config?.metadata?.generation === sessionGeneration && hasVerifiedAdminSession()) {
+      invalidateMutation(response.config);
+    }
     const renewedToken = response?.headers?.['x-renewed-token'];
     const reqGen = response?.config?.metadata?.generation;
     const reqToken = response?.config?.metadata?.token;

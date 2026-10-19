@@ -1,3 +1,4 @@
+import * as cache from '../src/services/api/responseCache.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -194,7 +195,7 @@ function createClientHarness() {
   });
   const module = { exports: {} };
   new Function('require', 'module', 'exports', 'fetch', 'window', 'setTimeout', 'clearTimeout', 'console', code)(
-    dependency => dependency === './client' ? session : dependency === 'react-native' ? { Platform: { OS: 'web' } } : sseCore,
+    dependency => dependency === './responseCache.mjs' ? cache : dependency === './client' ? session : dependency === 'react-native' ? { Platform: { OS: 'web' } } : sseCore,
     module, module.exports,
     (url, options) => {
       const response = deferred(); attempts.push({ url, options, ...response }); return response.promise;

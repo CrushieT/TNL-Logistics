@@ -1,5 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import PreviewStatus from '../components/common/PreviewStatus';
+import { TableRowSkeleton, SkeletonBlock } from '../components/common/Skeleton';
+import { useCachedPreview, requirePage } from '../services/api/useCachedPreview';
+import { CACHE_SLOTS } from '../services/api/responseCache.mjs';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import AppShell from '../components/layout/AppShell';
 import PageHeader from '../components/layout/PageHeader';
 import SearchFilterBar from '../components/common/SearchFilterBar';
@@ -11,7 +15,6 @@ import {
   listPaymentShipments,
   recordPayment,
 } from '../features/payments';
-import { subscribeRealtimeEvents } from '../services/api/sseClient';
 import { colors, fonts, spacing, radius, type } from '../theme';
 
 const PAYMENT_FILTER_OPTIONS = [
@@ -23,9 +26,6 @@ const PAYMENT_FILTER_OPTIONS = [
 ];
 
 export default function PaymentsScreen() {
-  const [shipments, setShipments] = useState([]);
-  const [totalOutstanding, setTotalOutstanding] = useState(0);
-  const [loading, setLoading] = useState(true);
 
   // Search & Filter State
   const [search, setSearch] = useState('');
@@ -34,8 +34,6 @@ export default function PaymentsScreen() {
   // Pagination State
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalElements, setTotalElements] = useState(0);
 
   // Modal & Toast State
   const [selectedShipment, setSelectedShipment] = useState(null);
@@ -44,145 +42,21 @@ export default function PaymentsScreen() {
   const [isHistoryModalVisible, setIsHistoryModalVisible] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const searchDebounceTimer = useRef(null);
-  const filtersRef = useRef({
-    page,
-    pageSize,
-    search,
-    paymentFilter,
-  });
-
-  useEffect(() => {
-    filtersRef.current = {
-      page,
-      pageSize,
-      search,
-      paymentFilter,
-    };
-  }, [page, pageSize, search, paymentFilter]);
-
-  // Fetch paginated shipments with financial rollups
-  const fetchShipmentsData = useCallback(
-    async (currPage, currSize, currSearch, currPayment, showSpinner = true) => {
-      try {
-        if (showSpinner) setLoading(true);
-
-        const params = {
-          page: currPage,
-          size: currSize,
-        };
-
-        if (currSearch && currSearch.trim()) {
-          params.search = currSearch.trim();
-        }
-
-        if (currPayment && currPayment !== 'ALL') {
-          params.paymentStatus = currPayment;
-        }
-
-        const data = await listPaymentShipments(params);
-
-        if (data && data.content) {
-          setShipments(data.content);
-          setTotalPages(data.page?.totalPages ?? data.totalPages ?? 1);
-          setTotalElements(data.page?.totalElements ?? data.totalElements ?? data.content.length);
-
-          // Calculate total outstanding balance from uncollected items
-          const sumOutstanding = data.content.reduce((acc, item) => {
-            const bal = Number(item.collectibleBalance ?? item.balance ?? 0);
-            return acc + (bal > 0 ? bal : 0);
-          }, 0);
-          setTotalOutstanding(sumOutstanding);
-        } else if (Array.isArray(data)) {
-          setShipments(data);
-          setTotalPages(1);
-          setTotalElements(data.length);
-          const sumOutstanding = data.reduce((acc, item) => {
-            const bal = Number(item.collectibleBalance ?? item.balance ?? 0);
-            return acc + (bal > 0 ? bal : 0);
-          }, 0);
-          setTotalOutstanding(sumOutstanding);
-        } else {
-          setShipments([]);
-          setTotalPages(1);
-          setTotalElements(0);
-          setTotalOutstanding(0);
-        }
-      } catch (err) {
-        console.error('Failed to fetch payments data:', err);
-        setToast({ type: 'error', message: 'Failed to load payments data.' });
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
-
-  // Initial load
-  useEffect(() => {
-    fetchShipmentsData(page, pageSize, search, paymentFilter, true);
-  }, [page, pageSize, paymentFilter]);
-
-  // Debounced search
-  const handleSearchChange = (text) => {
-    setSearch(text);
-    if (searchDebounceTimer.current) clearTimeout(searchDebounceTimer.current);
-    searchDebounceTimer.current = setTimeout(() => {
-      setPage(0);
-      fetchShipmentsData(0, pageSize, text, paymentFilter, false);
-    }, 300);
-  };
-
-  const handlePaymentFilterChange = (filterVal) => {
-    setPaymentFilter(filterVal);
-    setPage(0);
-  };
-
-  const handlePageSizeChange = (newSize) => {
-    setPageSize(newSize);
-    setPage(0);
-  };
-
-  // Real-time SSE subscription + Window focus listener + Visible-tab periodic fallback
-  useEffect(() => {
-    const handleSilentRefresh = () => {
-      const { page: p, pageSize: ps, search: s, paymentFilter: pf } = filtersRef.current;
-      fetchShipmentsData(p, ps, s, pf, false);
-    };
-
-    const unsubscribe = subscribeRealtimeEvents((event) => {
-      if (
-        event.type === 'PAYMENT_RECORDED' ||
-        event.type === 'SOA_UPDATED' ||
-        event.type === 'SHIPMENT_CREATED' ||
-        event.type === 'STATUS_UPDATE' ||
-        event.type === 'LABEL_PRINTED'
-      ) {
-        handleSilentRefresh();
-      }
-    });
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', handleSilentRefresh);
-    }
-
-    const intervalId = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        handleSilentRefresh();
-      }
-    }, 30000);
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('focus', handleSilentRefresh);
-      }
-      clearInterval(intervalId);
-    };
-  }, [fetchShipmentsData]);
+  const query = { page, size: pageSize, search: search.trim(), paymentStatus: paymentFilter === 'ALL' ? undefined : paymentFilter };
+  const resource = useCachedPreview({ slot: CACHE_SLOTS.PAYMENTS, query, pollMs: 30000,
+    fetcher: async signal => requirePage(await listPaymentShipments(query, { signal })) });
+  const shipments = Array.isArray(resource.data) ? resource.data : resource.data?.content || [];
+  const loading = resource.loading;
+  const totalPages = resource.data?.page?.totalPages ?? resource.data?.totalPages ?? 1;
+  const totalElements = resource.data?.page?.totalElements ?? resource.data?.totalElements ?? shipments.length;
+  const totalOutstanding = shipments.reduce((sum, item) => sum + Math.max(0, Number(item.collectibleBalance ?? item.balance ?? 0)), 0);
+  const handleSearchChange = value => { setSearch(value); setPage(0); };
+  const handlePaymentFilterChange = value => { setPaymentFilter(value); setPage(0); };
+  const handlePageSizeChange = value => { setPageSize(value); setPage(0); };
 
   // Open Record Payment Modal
   const handleOpenRecordModal = (shipment) => {
+    if (!resource.isCurrent()) return;
     setSelectedShipment(shipment);
     setIsRecordModalVisible(true);
   };
@@ -195,14 +69,13 @@ export default function PaymentsScreen() {
 
   // Submit Payment Record
   const handleSubmitPayment = async (payload) => {
+    if (!resource.isCurrent()) throw new Error('Refresh the payment list before recording.');
     await recordPayment(payload);
     const amountVal = payload.amountPaid ?? payload.amount ?? 0;
     setToast({
       type: 'success',
       message: `Payment of ₱${Number(amountVal).toLocaleString()} recorded for ${payload.shipmentId}.`,
     });
-    // Refresh table immediately
-    fetchShipmentsData(page, pageSize, search, paymentFilter, false);
   };
 
   const formattedOutstanding = `₱${Number(totalOutstanding || 0).toLocaleString('en-US', {
@@ -230,7 +103,7 @@ export default function PaymentsScreen() {
           right={
             <View style={styles.metricCard}>
               <Text style={styles.metricLabel}>OUTSTANDING</Text>
-              <Text style={styles.metricValue}>{formattedOutstanding}</Text>
+              {resource.data === null ? <SkeletonBlock width={100} height={24} /> : <Text style={styles.metricValue}>{formattedOutstanding}</Text>}
             </View>
           }
         />
@@ -251,7 +124,8 @@ export default function PaymentsScreen() {
         />
 
         {/* Payments Table */}
-        <PaymentsTable
+        <PreviewStatus resource={resource} label="Payments" />
+        {loading ? <TableRowSkeleton /> : resource.data !== null ? <PaymentsTable
           shipments={shipments}
           loading={loading}
           page={page}
@@ -260,9 +134,10 @@ export default function PaymentsScreen() {
           pageSize={pageSize}
           onPageChange={setPage}
           onPageSizeChange={handlePageSizeChange}
+          canRecordPayment={resource.isFresh}
           onRecordPayment={handleOpenRecordModal}
           onViewHistory={handleOpenHistoryModal}
-        />
+        /> : null}
       </View>
 
       {/* Record Payment Modal */}
@@ -273,6 +148,7 @@ export default function PaymentsScreen() {
           setIsRecordModalVisible(false);
           setSelectedShipment(null);
         }}
+        canRecordPayment={resource.isFresh}
         onSubmitPayment={handleSubmitPayment}
       />
 

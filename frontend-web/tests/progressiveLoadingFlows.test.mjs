@@ -88,7 +88,7 @@ function mountScreen(name, api = {}, initialAuth = {}, onSubscribe) {
   };
   const react = { __esModule: true, default: hooks, ...hooks };
   const native = componentModule({ StyleSheet: { create: value => value }, Platform: { OS: 'web' }, useWindowDimensions: () => ({ width: 1200, height: 900 }) });
-  const hook = loadProductionModule('../src/services/api/useRequestCoordinator.js', dependency => dependency === 'react' ? react : {
+  const hook = loadProductionModule('../src/services/api/useRequestCoordinator.js', dependency => dependency === 'react' ? react : dependency.endsWith('/responseCache.mjs') ? cache : {
     ...requests, createRequestCoordinator(options) {
       const coordinator = requests.createRequestCoordinator(options);
       coordinators.set(options.scope, coordinator);
@@ -107,7 +107,17 @@ function mountScreen(name, api = {}, initialAuth = {}, onSubscribe) {
     onSessionInvalidated: listener => { invalidationListeners.add(listener); return () => invalidationListeners.delete(listener); },
   };
   const verifiedSessionHook = loadProductionModule('../src/services/api/useVerifiedAdminSession.js', dependency => dependency === 'react' ? react : authModule);
+  const cachedHook = loadProductionModule('../src/services/api/useCachedPreview.js', dependency => {
+    if (dependency === 'react') return react;
+    if (dependency === './client') return authModule;
+    if (dependency === './useVerifiedAdminSession') return verifiedSessionHook;
+    if (dependency === './useRequestCoordinator') return hook;
+    if (dependency === './sseClient') return { subscribeRealtimeEvents };
+    if (dependency === './responseCache.mjs') return cache;
+    throw new Error(`Unexpected preview dependency ${dependency}`);
+  });
   const Screen = loadProductionModule(`../src/app/${name}.js`, dependency => {
+    if (dependency.endsWith('/useCachedPreview')) return cachedHook;
     if (dependency === 'react') return react;
     if (dependency === 'react-native') return native;
     if (dependency === 'expo-router') return { useRouter: () => ({ push() {} }) };

@@ -1,3 +1,4 @@
+import { mountScreen } from './previewHarness.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -153,7 +154,7 @@ test('Statements maps generated SOAs and selection requests the correct client a
   const cycles = [{ isoDate: '2026-10-15' }, { isoDate: '2026-10-08' }];
   const previewRequests = [];
   const collectionRequests = [];
-  const screen = mountComponent('../src/app/statements.js', {
+  const screen = mountScreen('statements', {
     getActiveCollectionCycles: async () => cycles,
     getAuthorizedCollectors: async () => [],
     getWeeklyCollections: async cycle => {
@@ -169,19 +170,16 @@ test('Statements maps generated SOAs and selection requests the correct client a
     },
     getStatementPreview: async (clientId, cycle) => {
       previewRequests.push({ clientId, cycle });
-      return { items: [] };
+      return { items: [], totalCharges: 0 };
     },
   });
   const render = async () => {
-    let tree;
-    for (let iteration = 0; iteration < 8; iteration++) {
-      tree = screen();
-      await Promise.resolve();
-    }
-    return tree;
+    await screen.flush();
+    for (let step = 0; step < 3; step++) { await new Promise(resolve => setTimeout(resolve, 330)); await screen.flush(); }
+    return screen.render();
   };
   let tree = await render();
-  let props = elements(tree, 'SearchableClientDropdown')[0].props;
+  let props = screen.props('SearchableClientDropdown');
   assert.equal(props.showSoaNumber, true);
   assert.ok(props.placeholder.includes('SOA number'));
   assert.equal(props.clients.length, 2);
@@ -192,9 +190,9 @@ test('Statements maps generated SOAs and selection requests the correct client a
   recommendations(component.search('2026-10-15-CL-B'))[0].props.onPress();
   tree = await render();
   assert.deepEqual(previewRequests.at(-1), { clientId: 'CL-B', cycle: '2026-10-15' });
-  elements(tree, 'CycleDropdown')[0].props.onSelectCycle('2026-10-08');
+  screen.props('CycleDropdown').onSelectCycle('2026-10-08');
   tree = await render();
-  props = elements(tree, 'SearchableClientDropdown')[0].props;
+  props = screen.props('SearchableClientDropdown');
   assert.equal(collectionRequests.at(-1), '2026-10-08');
   assert.equal(props.clients[1].soaNumber, '2026-10-08-CL-B');
   const switched = dropdown(props);
@@ -202,4 +200,5 @@ test('Statements maps generated SOAs and selection requests the correct client a
   recommendations(switched.search('2026-10-08-CL-A'))[0].props.onPress();
   await render();
   assert.deepEqual(previewRequests.at(-1), { clientId: 'CL-A', cycle: '2026-10-08' });
+  screen.unmount();
 });

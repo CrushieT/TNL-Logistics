@@ -1,3 +1,5 @@
+import { CACHE_SLOTS, getCacheRevision } from './responseCache.mjs';
+
 /**
  * Shared Request Coordinator for TNL Logistics admin pages.
  *
@@ -40,6 +42,8 @@ export function createRequestCoordinator({
   onError,
   debounceMs = 300,
 } = {}) {
+  const slot = Object.values(CACHE_SLOTS).find(value => value === scope)
+    || ({ dashboard: CACHE_SLOTS.DASHBOARD, reports: CACHE_SLOTS.REPORTS, 'tracking-metrics': CACHE_SLOTS.TRACKING_LOGS_METRICS, 'tracking-logs': CACHE_SLOTS.TRACKING_LOGS_PAGE, 'weekly-collections': CACHE_SLOTS.WEEKLY_COLLECTIONS })[scope];
   let currentKey = null;
   let generation = 0;
   let activeController = null;
@@ -85,9 +89,7 @@ export function createRequestCoordinator({
 
     if (!isVisible) {
       hasMissedRefresh = true;
-      if (options.isSilent) {
-        return { status: 'suspended' };
-      }
+      return { status: 'suspended' };
     }
 
     if (inFlight) {
@@ -99,13 +101,14 @@ export function createRequestCoordinator({
     inFlight = true;
     generation += 1;
     const reqGen = generation;
+    const requestRevision = getCacheRevision(slot);
     const controller = new AbortController();
     activeController = controller;
 
     try {
       const data = await fetcher(controller.signal);
 
-      if (!isMounted || reqGen !== generation || controller.signal.aborted) {
+      if (!isMounted || reqGen !== generation || controller.signal.aborted || requestRevision !== getCacheRevision(slot)) {
         return { status: 'stale' };
       }
 
@@ -118,11 +121,12 @@ export function createRequestCoordinator({
           generation: reqGen,
           isSilent: Boolean(options.isSilent),
           highlightDiff: Boolean(options.highlightDiff),
+          requestRevision,
         });
       }
       return { status: 'success', data };
     } catch (err) {
-      if (!isMounted || reqGen !== generation || controller.signal.aborted || isCancellationError(err)) {
+      if (!isMounted || reqGen !== generation || controller.signal.aborted || requestRevision !== getCacheRevision(slot) || isCancellationError(err)) {
         return { status: 'cancelled' };
       }
 
@@ -179,6 +183,7 @@ export function createRequestCoordinator({
       });
     }
 
+    clearDebounce();
     return executeRequest(key, fetcher, options);
   }
 
@@ -216,6 +221,13 @@ export function createRequestCoordinator({
     isMounted = true;
   }
 
+  function invalidate() {
+    if (!resumeRequest) return;
+    const next = resumeRequest;
+    cancel();
+    return request(next.key, next.fetcher, { ...next.options, debounce: true });
+  }
+
   return {
     deriveKey: (params) => deriveKey(scope, params),
     request,
@@ -223,6 +235,7 @@ export function createRequestCoordinator({
     setVisibility,
     unmount,
     mount,
+    invalidate,
     getInFlight: () => inFlight,
     getGeneration: () => generation,
     getCurrentKey: () => currentKey,

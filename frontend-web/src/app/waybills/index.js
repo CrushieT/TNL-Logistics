@@ -1,8 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import PreviewStatus from '../../components/common/PreviewStatus';
+import { TableRowSkeleton } from '../../components/common/Skeleton';
+import { useCachedPreview, requirePage, requireDirectory } from '../../services/api/useCachedPreview';
+import { CACHE_SLOTS } from '../../services/api/responseCache.mjs';
+import React, { useState } from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import AppShell from '../../components/layout/AppShell';
-import Button from '../../components/common/Button';
 import PageHeader from '../../components/layout/PageHeader';
 import SearchFilterBar from '../../components/common/SearchFilterBar';
 import { listClients } from '../../features/clients';
@@ -23,71 +26,23 @@ const STATUS_OPTIONS = [
 
 export default function WaybillsScreen() {
   const router = useRouter();
-  const [waybills, setWaybills] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus] = useState('ALL');
   const [client, setClient] = useState('ALL');
-  const [clientOptions, setClientOptions] = useState([{ value: 'ALL', label: 'Client: All' }]);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalElements, setTotalElements] = useState(0);
-  const requestSequence = useRef(0);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 350);
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  useEffect(() => {
-    let isMounted = true;
-    listClients({ all: true })
-      .then((data) => {
-        if (!isMounted) return;
-        const records = Array.isArray(data) ? data : (data?.content || []);
-        const seen = new Set();
-        const options = records
-          .map((record) => record.name || record.clientId)
-          .filter((name) => name && !seen.has(name) && seen.add(name))
-          .sort((left, right) => left.localeCompare(right))
-          .map((name) => ({ value: name, label: name }));
-        setClientOptions([{ value: 'ALL', label: 'Client: All' }, ...options]);
-      })
-      .catch(() => {
-        if (isMounted) setClientOptions([{ value: 'ALL', label: 'Client: All' }]);
-      });
-    return () => { isMounted = false; };
-  }, []);
-
-  const loadWaybills = useCallback(async () => {
-    const requestId = ++requestSequence.current;
-    setLoading(true);
-    setError('');
-    try {
-      const response = await listWaybills({ page, size: pageSize, search: debouncedSearch, status, client });
-      if (requestId !== requestSequence.current) return;
-      const normalized = normalizeWaybillPage(response);
-      setWaybills(normalized.content);
-      setTotalPages(normalized.totalPages);
-      setTotalElements(normalized.totalElements);
-      if (normalized.page !== page) setPage(normalized.page);
-    } catch {
-      if (requestId !== requestSequence.current) return;
-      setWaybills([]);
-      setTotalPages(1);
-      setTotalElements(0);
-      setError('Could not load the waybill directory.');
-    } finally {
-      if (requestId === requestSequence.current) setLoading(false);
-    }
-  }, [client, debouncedSearch, page, pageSize, status]);
-
-  useEffect(() => {
-    loadWaybills();
-  }, [loadWaybills]);
+  const query = { page, size: pageSize, search: search.trim(), status: status === 'ALL' ? undefined : status, client: client === 'ALL' ? undefined : client };
+  const resource = useCachedPreview({ slot: CACHE_SLOTS.WAYBILLS, query,
+    fetcher: async signal => requirePage(await listWaybills(query, { signal })) });
+  const directory = useCachedPreview({ slot: CACHE_SLOTS.CLIENTS, query: { all: true },
+    fetcher: async signal => requireDirectory(await listClients({ all: true }, { signal })) });
+  const names = [...new Set((directory.data || []).map(record => record.name || record.clientId).filter(Boolean))].sort();
+  const clientOptions = [{ value: 'ALL', label: 'Client: All' }, ...names.map(name => ({ value: name, label: name }))];
+  const normalized = normalizeWaybillPage(resource.data);
+  const waybills = normalized.content;
+  const totalPages = normalized.totalPages;
+  const totalElements = normalized.totalElements;
+  const loading = resource.loading;
 
   const openWaybill = (waybill) => {
     router.push(buildWaybillDetailRoute(waybill.waybillId));
@@ -126,14 +81,9 @@ export default function WaybillsScreen() {
         ]}
       />
 
-      {error ? (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{error}</Text>
-          <Button label="Retry" variant="secondary" onPress={loadWaybills} style={styles.retryButton} />
-        </View>
-      ) : null}
-
-      <WaybillsTable
+      <PreviewStatus resource={directory} label="Client filters" />
+      <PreviewStatus resource={resource} label="Waybills" />
+      {loading ? <TableRowSkeleton /> : resource.data !== null ?       <WaybillsTable
         waybills={waybills}
         loading={loading}
         page={page}
@@ -146,7 +96,7 @@ export default function WaybillsScreen() {
           setPage(0);
         }}
         onView={openWaybill}
-      />
+      /> : null}
     </AppShell>
   );
 }

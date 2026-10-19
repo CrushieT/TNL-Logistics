@@ -1,3 +1,7 @@
+import { useCachedPreview } from '../../../services/api/useCachedPreview';
+import { CACHE_SLOTS } from '../../../services/api/responseCache.mjs';
+import PreviewStatus from '../../../components/common/PreviewStatus';
+import { getShipmentPaymentHistory } from '../services/paymentApi';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -24,6 +28,7 @@ export default function RecordPaymentModal({
   shipment,
   onClose,
   onSubmitPayment,
+  canRecordPayment = true,
 }) {
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('CASH');
@@ -33,12 +38,17 @@ export default function RecordPaymentModal({
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  // Compute remaining balance: Amount Due - Paid So Far
-  const totalDue = Number(shipment?.totalAmount ?? shipment?.amountDue ?? 0);
-  const paidSoFar = Number(shipment?.amountPaid ?? shipment?.paid ?? 0);
-  const remainingBalance = shipment?.balance !== undefined && shipment?.balance !== null
-    ? Number(shipment.balance)
-    : Math.max(0, totalDue - paidSoFar);
+  const summary = useCachedPreview({ slot: CACHE_SLOTS.PAYMENTS, cache: false,
+    query: { shipmentId: shipment?.shipmentId }, enabled: Boolean(visible && shipment?.shipmentId),
+    fetcher: async signal => {
+      const data = await getShipmentPaymentHistory(shipment.shipmentId, { signal });
+      if (!data || !Number.isFinite(Number(data.collectibleBalance ?? data.balance))) throw new Error('Invalid payment summary.');
+      return data;
+    } });
+  const remainingBalance = Number(summary.data?.collectibleBalance ?? summary.data?.balance ?? shipment?.collectibleBalance ?? shipment?.balance ?? 0);
+  const [reviewedBalance, setReviewedBalance] = useState(null);
+  const needsBalanceReview = summary.data !== null && reviewedBalance !== remainingBalance;
+  const canSubmit = canRecordPayment && summary.isFresh && !needsBalanceReview && Number(amount) > 0 && Number(amount) <= remainingBalance;
 
   useEffect(() => {
     if (shipment && visible) {
@@ -47,8 +57,9 @@ export default function RecordPaymentModal({
       setReferenceNumber('');
       setRemarks('');
       setErrorMessage(null);
+      setReviewedBalance(Number(shipment.collectibleBalance ?? shipment.balance ?? 0));
     }
-  }, [shipment, visible, remainingBalance]);
+  }, [shipment?.shipmentId, visible]);
 
   if (!visible || !shipment) return null;
 
@@ -67,8 +78,7 @@ export default function RecordPaymentModal({
     const numericVal = parseFloat(sanitized);
     if (!isNaN(numericVal)) {
       if (numericVal > remainingBalance) {
-        // Enforce maximum cap to remaining balance
-        setAmount(String(remainingBalance));
+        setAmount(sanitized);
         setErrorMessage(`Maximum payable amount is ₱${remainingBalance.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}.`);
         return;
       }
@@ -81,6 +91,7 @@ export default function RecordPaymentModal({
   const isReferenceRequired = ['GCASH', 'BANK', 'CHEQUE'].includes(method);
 
   const handleSubmit = async () => {
+    if (!canSubmit || !summary.isCurrent()) return;
     const numericAmount = parseFloat(amount);
 
     if (isNaN(numericAmount) || numericAmount <= 0) {
@@ -235,6 +246,11 @@ export default function RecordPaymentModal({
             </View>
           </View>
 
+          <PreviewStatus resource={summary} label="Current payment balance" />
+          {needsBalanceReview ? <View style={styles.errorBanner}>
+            <Text style={styles.errorBannerText}>Balance changed from {reviewedBalance} to {remainingBalance}. Review the amount before recording.</Text>
+            <Pressable onPress={() => setReviewedBalance(remainingBalance)}><Text>Review current balance</Text></Pressable>
+          </View> : null}
           {/* Footer Actions */}
           <View style={styles.footer}>
             <Pressable
@@ -251,7 +267,7 @@ export default function RecordPaymentModal({
 
             <Pressable
               onPress={handleSubmit}
-              disabled={submitting}
+              disabled={submitting || !canSubmit}
               style={({ hovered, pressed }) => [
                 styles.submitBtn,
                 hovered && styles.submitBtnHovered,

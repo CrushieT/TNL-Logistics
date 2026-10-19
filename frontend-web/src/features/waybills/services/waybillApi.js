@@ -25,8 +25,8 @@ export async function getWaybillByNumber(waybillId) {
   return data;
 }
 
-export async function listWaybills(params = {}) {
+export async function listWaybills(params = {}, options = {}) {
   const queryString = buildWaybillListQuery(params);
-  const { data } = await apiClient.get(`/waybills?${queryString}`);
+  const { data } = await apiClient.get(`/waybills?${queryString}`, { signal: options.signal });
   return data;
 }
