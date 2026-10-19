@@ -12,6 +12,7 @@ import {
   validateSession,
 } from '../services/api/client';
 import { retryPendingPrintAudits } from '../features/shipments/services/printAuditOutbox';
+import { dismissLoadingShell } from '../utils/loadingShell';
 
 LogBox.ignoreLogs([
   'Failed to complete waybill',
@@ -143,6 +144,16 @@ export default function RootLayout() {
       * { scrollbar-width: thin; scrollbar-color: #D1D0C7 transparent; }
     `;
     document.head.appendChild(styleEl);
+  }, []);
+
+  const useIsomorphicLayoutEffect =
+    typeof window !== 'undefined' && Platform.OS === 'web' && typeof React.useLayoutEffect === 'function'
+      ? React.useLayoutEffect
+      : useEffect;
+
+  useIsomorphicLayoutEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    dismissLoadingShell();
   }, []);
 
   return (

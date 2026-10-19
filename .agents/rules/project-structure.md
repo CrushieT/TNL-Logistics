@@ -1,5 +1,12 @@
 # Project Structure
 
+### Initial HTML loading shell and browser refresh improvements
+
+- `frontend-web/public/index.html`: initial HTML template for Expo single-page web export (`output: "single"`), containing inline reset styles, application canvas background `#F3F2ED`, accessible pre-hydration loading shell with tracking logo, "ADMIN CONSOLE" badge, CSS spinner, and noscript alert.
+- `frontend-web/public/tracking-logo.png`: static tracking brand logo asset served from public root without hashing waterfalls.
+- `frontend-web/src/utils/loadingShell.js`: utility to safely dismiss the pre-hydration loading shell once React has mounted and populated the `#root` container.
+- `frontend-web/tests/loadingShell.test.mjs`: unit test suite verifying template structure, accessibility roles, noscript fallback, and dismissal logic.
+
 ### Frontend progressive loading and bounded memory cache
 
 - `frontend-web/src/services/api/useVerifiedAdminSession.js`: subscribes to session changes before rechecking authentication; exposes a stable verified user/session-generation key and blocks page reads and cache previews while verification is pending.
