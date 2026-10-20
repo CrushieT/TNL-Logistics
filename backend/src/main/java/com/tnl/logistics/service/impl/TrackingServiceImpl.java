@@ -597,15 +597,27 @@ public class TrackingServiceImpl implements TrackingService {
             String search,
             ParcelStatus status,
             Pageable pageable) {
+        return trackingEventRepository.findPersonalEvents(
+                actingStaffUserId, normalizePersonalHistorySearch(search), status, pageable)
+                .map(this::mapToPersonalTrackingEventResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Slice<PersonalTrackingEventResponse> getPersonalTrackingEventSlice(
+            String actingStaffUserId, String search, ParcelStatus status, Pageable pageable) {
+        return trackingEventRepository.findPersonalEventSlice(
+                actingStaffUserId, normalizePersonalHistorySearch(search), status, pageable)
+                .map(this::mapToPersonalTrackingEventResponse);
+    }
+
+    private String normalizePersonalHistorySearch(String search) {
         String cleanSearch = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
         if (cleanSearch != null && cleanSearch.length() > 50) {
             cleanSearch = cleanSearch.substring(0, 50);
         }
 
-        Page<TrackingEvent> eventsPage = trackingEventRepository.findPersonalEvents(
-                actingStaffUserId, cleanSearch, status, pageable);
-
-        return eventsPage.map(this::mapToPersonalTrackingEventResponse);
+        return cleanSearch;
     }
 
     @Override

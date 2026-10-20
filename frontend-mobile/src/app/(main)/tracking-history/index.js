@@ -23,6 +23,7 @@ import {
   encodeTrackingId,
   HISTORY_PAGE_SIZE,
   replacePageZeroEvents,
+  normalizeHistoryPage,
 } from '../../../features/tracking-history/trackingHistoryFlow.mjs';
 import { createTrackingHistoryRequestCoordinator } from '../../../features/tracking-history/trackingHistoryRequestCoordinator.mjs';
 import { canAccessMobileRoute, MOBILE_ROUTES } from '../../../features/auth/services/roleAccess.mjs';
@@ -45,8 +46,7 @@ export default function TrackingHistoryScreen() {
   const [activeSearch, setActiveSearch] = useState('');
 
   const [currentPage, setCurrentPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalElements, setTotalElements] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [appendError, setAppendError] = useState(null);
 
@@ -112,11 +112,10 @@ export default function TrackingHistoryScreen() {
 
       if (!requestCoordinator.isCurrent(requestToken)) return;
 
-      const incoming = data?.content || [];
-      setEvents(replacePageZeroEvents(incoming));
-      setCurrentPage(data?.page?.number ?? data?.number ?? 0);
-      setTotalPages(data?.page?.totalPages ?? data?.totalPages ?? 0);
-      setTotalElements(data?.page?.totalElements ?? data?.totalElements ?? 0);
+      const acceptedPage = normalizeHistoryPage(data, 0);
+      setEvents(replacePageZeroEvents(acceptedPage.content));
+      setCurrentPage(acceptedPage.number);
+      setHasNext(acceptedPage.hasNext);
       setActiveSearch(search);
       activeSearchRef.current = search;
       setRefreshError(null);
@@ -141,7 +140,7 @@ export default function TrackingHistoryScreen() {
   const loadMoreEvents = useCallback(async () => {
     if (searchDebounceTimerRef.current) return;
     if (searchQueryRef.current !== activeSearchRef.current) return;
-    if (currentPage >= totalPages - 1) return;
+    if (!hasNext) return;
 
     const requestToken = requestCoordinator.beginPagination();
     if (!requestToken) return;
@@ -163,11 +162,10 @@ export default function TrackingHistoryScreen() {
 
       if (!requestCoordinator.isCurrent(requestToken)) return;
 
-      const incoming = data?.content || [];
-      setEvents((prev) => appendUniqueEvents(prev, incoming));
-      setCurrentPage(data?.page?.number ?? data?.number ?? nextPage);
-      setTotalPages(data?.page?.totalPages ?? data?.totalPages ?? totalPages);
-      setTotalElements(data?.page?.totalElements ?? data?.totalElements ?? totalElements);
+      const acceptedPage = normalizeHistoryPage(data, nextPage);
+      setEvents((prev) => appendUniqueEvents(prev, acceptedPage.content));
+      setCurrentPage(acceptedPage.number);
+      setHasNext(acceptedPage.hasNext);
     } catch (err) {
       if (err.name === 'CanceledError' || err.name === 'AbortError') return;
       if (!requestCoordinator.isCurrent(requestToken)) return;
@@ -177,7 +175,7 @@ export default function TrackingHistoryScreen() {
         setLoadingMore(false);
       }
     }
-  }, [currentPage, requestCoordinator, totalElements, totalPages]);
+  }, [currentPage, requestCoordinator, hasNext]);
 
   // Refresh data on screen focus
   useFocusEffect(

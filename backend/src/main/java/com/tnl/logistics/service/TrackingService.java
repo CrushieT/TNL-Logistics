@@ -29,6 +29,9 @@ public interface TrackingService {
             Pageable pageable
     );
 
+    org.springframework.data.domain.Slice<PersonalTrackingEventResponse> getPersonalTrackingEventSlice(
+            String actingStaffUserId, String search, ParcelStatus status, Pageable pageable);
+
     PersonalScanMetricsResponse getPersonalScanMetrics(String actingStaffUserId);
 
     PersonalParcelHistoryResponse getPersonalParcelHistory(

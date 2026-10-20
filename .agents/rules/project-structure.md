@@ -26,7 +26,9 @@
 - `frontend-web/tests/progressiveLoadingFlows.test.mjs`: executes production screens and hooks for pending verification, mount-time subscription races, repeated notifications, account changes, retained-ref effect replay, live highlight expiry/cleanup, cache-hit Print gating, stale empty results, cancellation, and visibility resume; also executes production client session/cache transitions.
 - `frontend-web/tests/sseClient.test.mjs`: parser/backoff tests and production SSE client regressions using deferred fetch responses for session/token changes, obsolete failures/successes/cleanup, current-session denial, reconnect timers, event acceptance, and subscriber teardown.
 - `load-tests/tests/run-acceptance.Tests.ps1`: standalone PowerShell parsing and mocked runner tests for k6 status propagation, report sanitization/failures, monitoring-job cleanup, and temporary credential cleanup; runs no Docker commands or workloads.
-- `backend/src/test/java/com/tnl/logistics/controller/SseConnectionLeakIntegrationTest.java`: regression test executing a real embedded HTTP server and real database pool verifying that long-lived SSE streaming connections, rapid client disconnects, and bounded heartbeat pruning do not retain HikariCP connections under `spring.jpa.open-in-view=false`.
+- `backend/src/main/java/com/tnl/logistics/exception/GlobalExceptionHandler.java`: centralized exception handler; handles `AsyncRequestNotUsableException` and `ClientAbortException` at DEBUG level without security audit logging or database connection usage on abrupt client disconnects.
+- `backend/src/test/java/com/tnl/logistics/exception/GlobalExceptionHandlerTest.java`: unit tests for `GlobalExceptionHandler`, verifying status mappings and clean absorption of client abort exceptions without 500 error responses.
+- `backend/src/test/java/com/tnl/logistics/controller/SseConnectionLeakIntegrationTest.java`: regression test executing a real embedded HTTP server and real database pool verifying that long-lived SSE streaming connections, rapid client disconnects with bounded connection settling, and bounded heartbeat pruning do not retain HikariCP connections under `spring.jpa.open-in-view=false`.
 - `backend/src/test/java/com/tnl/logistics/controller/SseOpenInViewRetainedConnectionTest.java`: isolated reproduction test demonstrating that under `spring.jpa.open-in-view=true`, concurrent SSE streams retain borrowed HikariCP connections without explicit transaction boundaries, causing pool starvation (`active=5, idle=0`) and HTTP 500 connection acquisition timeouts on ordinary requests.
 
 ### Admin tracking logs optimization
@@ -368,3 +370,7 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 - `frontend-web/tests/navScrollPosition.test.mjs`: regression tests for navigation scroll position retention.
 - `frontend-web/src/components/layout/SignOutModal.js`: web confirmation modal for admin console signout with icon anchor, section dividers, and backdrop dismissal.
 - `frontend-web/tests/signOutModal.test.mjs`: unit and interaction tests for signout popup presentation, callbacks, and Sidebar integration.
+
+### Count-free personal history
+- `backend/src/main/java/com/tnl/logistics/dto/PersonalTrackingEventSliceResponse.java`: explicit personal event slice metadata without totals.
+- `load-tests/count-free-history-results.md`: count-free contract, verification evidence, exact/count-free diagnostic comparison, baseline shutdown limitation, and pending device checks.

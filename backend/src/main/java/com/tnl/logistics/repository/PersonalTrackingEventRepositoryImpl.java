@@ -8,6 +8,8 @@ import jakarta.persistence.Query;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.SliceImpl;
 
 import java.util.List;
 
@@ -17,6 +19,24 @@ public class PersonalTrackingEventRepositoryImpl implements PersonalTrackingEven
 
     @Override
     public Page<TrackingEvent> findPersonalEvents(String staffId, String search, ParcelStatus status, Pageable pageable) {
+        String filters = buildFilters(search, status);
+        List<?> eventIds = findEventIds(staffId, search, status, pageable, filters, pageable.getPageSize());
+        Query countQuery = entityManager.createNativeQuery("SELECT COUNT(*)" + filters);
+        bindFilters(countQuery, staffId, search, status);
+        long total = ((Number) countQuery.getSingleResult()).longValue();
+        return new PageImpl<>(hydrateEvents(staffId, eventIds), pageable, total);
+    }
+
+    @Override
+    public Slice<TrackingEvent> findPersonalEventSlice(String staffId, String search, ParcelStatus status, Pageable pageable) {
+        List<?> eventIds = findEventIds(staffId, search, status, pageable,
+                buildFilters(search, status), pageable.getPageSize() + 1);
+        boolean hasNext = eventIds.size() > pageable.getPageSize();
+        List<?> pageIds = hasNext ? eventIds.subList(0, pageable.getPageSize()) : eventIds;
+        return new SliceImpl<>(hydrateEvents(staffId, pageIds), pageable, hasNext);
+    }
+
+    private String buildFilters(String search, ParcelStatus status) {
         String from = " FROM tracking_event e";
         if (search != null) {
             // DISTINCT keeps MySQL from merging this into an ordered scan of every event.
@@ -31,21 +51,25 @@ public class PersonalTrackingEventRepositoryImpl implements PersonalTrackingEven
         if (status != null) {
             predicate += " AND e.status = :status";
         }
-        Query idsQuery = entityManager.createNativeQuery("SELECT e.event_id" + from + predicate
+        return from + predicate;
+    }
+
+    private List<?> findEventIds(String staffId, String search, ParcelStatus status, Pageable pageable,
+                                String filters, int limit) {
+        Query idsQuery = entityManager.createNativeQuery("SELECT e.event_id" + filters
                 + " ORDER BY e.event_timestamp DESC, e.event_id DESC");
         bindFilters(idsQuery, staffId, search, status);
         idsQuery.setFirstResult(Math.toIntExact(pageable.getOffset()));
-        idsQuery.setMaxResults(pageable.getPageSize());
-        List<?> eventIds = idsQuery.getResultList();
+        idsQuery.setMaxResults(limit);
+        return idsQuery.getResultList();
+    }
 
-        Query countQuery = entityManager.createNativeQuery("SELECT COUNT(*)" + from + predicate);
-        bindFilters(countQuery, staffId, search, status);
-        long total = ((Number) countQuery.getSingleResult()).longValue();
+    private List<TrackingEvent> hydrateEvents(String staffId, List<?> eventIds) {
         if (eventIds.isEmpty()) {
-            return new PageImpl<>(List.of(), pageable, total);
+            return List.of();
         }
 
-        List<TrackingEvent> events = entityManager.createQuery("""
+        return entityManager.createQuery("""
                 SELECT e FROM TrackingEvent e
                 JOIN FETCH e.parcelUnit pu
                 JOIN FETCH pu.shipment
@@ -56,7 +80,6 @@ public class PersonalTrackingEventRepositoryImpl implements PersonalTrackingEven
                 .setParameter("staffId", staffId)
                 .setParameter("eventIds", eventIds.stream().map(id -> ((Number) id).longValue()).toList())
                 .getResultList();
-        return new PageImpl<>(events, pageable, total);
     }
 
     private void bindFilters(Query query, String staffId, String search, ParcelStatus status) {
