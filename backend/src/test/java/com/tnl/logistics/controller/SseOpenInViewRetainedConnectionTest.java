@@ -2,7 +2,9 @@ package com.tnl.logistics.controller;
 
 import com.zaxxer.hikari.HikariDataSource;
 import com.zaxxer.hikari.HikariPoolMXBean;
+import com.tnl.logistics.service.SseService;
 import com.tnl.logistics.support.TestSessionTokenFactory;
+import org.apache.catalina.core.StandardContext;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
@@ -10,6 +12,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.boot.web.embedded.tomcat.TomcatWebServer;
+import org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
 
 import javax.sql.DataSource;
@@ -61,6 +65,12 @@ public class SseOpenInViewRetainedConnectionTest {
 
     @Autowired
     private TestSessionTokenFactory sessionTokens;
+
+    @Autowired
+    private SseService sseService;
+
+    @Autowired
+    private ServletWebServerApplicationContext webServerApplicationContext;
 
     private static class ManagedStream implements AutoCloseable {
         final int id;
@@ -168,10 +178,10 @@ public class SseOpenInViewRetainedConnectionTest {
                 reader.setDaemon(true);
                 reader.start();
 
-                assertTrue(initLatch.await(5, TimeUnit.SECONDS), "Stream " + streamId + " failed to receive INIT");
-
                 ManagedStream handle = new ManagedStream(streamId, client, is, reader);
                 managedStreams.add(handle);
+
+                assertTrue(initLatch.await(5, TimeUnit.SECONDS), "Stream " + streamId + " failed to receive INIT");
 
                 Thread.sleep(100);
                 queryProcesslistViaDiagnosticConnection("AFTER_OPEN_STREAM_" + streamId);
@@ -208,11 +218,28 @@ public class SseOpenInViewRetainedConnectionTest {
 
         } finally {
             log.info("Cleaning up all test streams...");
-            for (ManagedStream ms : managedStreams) {
-                ms.close();
+            try {
+                sseService.closeStreamsForUser("USR-ADMIN");
+            } finally {
+                for (ManagedStream managedStream : managedStreams) {
+                    managedStream.close();
+                }
             }
-            Thread.sleep(200);
+            TomcatWebServer webServer = (TomcatWebServer) webServerApplicationContext.getWebServer();
+            StandardContext tomcatContext = (StandardContext) webServer.getTomcat().getHost().findChildren()[0];
+            long cleanupDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while ((pool.getActiveConnections() != 0 || tomcatContext.getInProgressAsyncCount() != 0)
+                    && System.nanoTime() < cleanupDeadline) {
+                Thread.sleep(25);
+            }
             queryProcesslistViaDiagnosticConnection("AFTER_STREAMS_CLOSED");
+            log.info("SSE fixture cleanup: activeConnections={}, inProgressAsyncRequests={}",
+                    pool.getActiveConnections(), tomcatContext.getInProgressAsyncCount());
+            assertAll(
+                    () -> assertEquals(0, pool.getActiveConnections(),
+                            "All test-owned SSE streams must release their borrowed connections"),
+                    () -> assertEquals(0, tomcatContext.getInProgressAsyncCount(),
+                            "All test-owned SSE servlet requests must complete"));
         }
     }
 }
