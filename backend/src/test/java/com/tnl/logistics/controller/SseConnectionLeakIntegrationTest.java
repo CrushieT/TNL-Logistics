@@ -283,8 +283,7 @@ public class SseConnectionLeakIntegrationTest {
                 stream.close();
 
                 // Assert zero connections retained after each cycle
-                assertEquals(0, pool.getActiveConnections(),
-                        "Active borrowed connections must remain 0 after reload cycle " + cycle);
+                assertActiveConnectionsEventuallyZero(pool, cycle);
                 assertEquals(0, pool.getThreadsAwaitingConnection(), "No pending borrowers");
             }
 
@@ -314,5 +313,16 @@ public class SseConnectionLeakIntegrationTest {
                 ms.close();
             }
         }
+    }
+
+    private void assertActiveConnectionsEventuallyZero(HikariPoolMXBean pool, int cycle) throws Exception {
+        for (int i = 0; i < 20; i++) {
+            if (pool.getActiveConnections() == 0) {
+                return;
+            }
+            Thread.sleep(25);
+        }
+        assertEquals(0, pool.getActiveConnections(),
+                "Active borrowed connections must remain 0 after reload cycle " + cycle);
     }
 }

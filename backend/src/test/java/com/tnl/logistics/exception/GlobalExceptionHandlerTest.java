@@ -1,13 +1,19 @@
 package com.tnl.logistics.exception;
 
+import com.tnl.logistics.repository.AppUserRepository;
+import com.tnl.logistics.service.AuthSecurityService;
+import org.apache.catalina.connector.ClientAbortException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -17,11 +23,17 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -33,8 +45,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(GlobalExceptionHandlerTest.ExceptionTriggerController.class)
 public class GlobalExceptionHandlerTest {
 
+    private static final String TEST_USER_ID = "USR-ADMIN-001";
+
     @Autowired
     private MockMvc mockMvc;
+
+    @SpyBean
+    private AppUserRepository appUserRepository;
+
+    @SpyBean
+    private AuthSecurityService authSecurityService;
+
+    private UsernamePasswordAuthenticationToken createJwtAuthentication() {
+        return new UsernamePasswordAuthenticationToken(
+                TEST_USER_ID,
+                null,
+                List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+    }
 
     @RestController
     @RequestMapping("/api/v1/test-exception")
@@ -69,6 +96,21 @@ public class GlobalExceptionHandlerTest {
         public String triggerBodyParse(@RequestBody Map<String, Object> body) {
             return "OK";
         }
+
+        @GetMapping("/client-abort")
+        public void triggerClientAbort() throws Exception {
+            throw new AsyncRequestNotUsableException("Response not usable after response errors.");
+        }
+
+        @GetMapping("/client-abort-async")
+        public void triggerAsyncClientAbort() throws Exception {
+            throw new AsyncRequestNotUsableException("Response not usable after response errors.");
+        }
+
+        @GetMapping("/client-abort-catalina")
+        public void triggerCatalinaClientAbort() throws Exception {
+            throw new ClientAbortException("Connection reset by peer");
+        }
     }
 
     @Test
@@ -91,6 +133,20 @@ public class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.error").value("Internal Server Error"))
                 .andExpect(jsonPath("$.message").value("An unexpected internal server error occurred. Please contact system administrator."))
                 .andExpect(jsonPath("$.message", not(containsString("Sensitive internal database connection string"))));
+    }
+
+    @Test
+    void testUnhandledExceptionWithJwtPrincipalInvokesAuditLookupAndReturnsSanitized500() throws Exception {
+        clearInvocations(appUserRepository, authSecurityService);
+        mockMvc.perform(get("/api/v1/test-exception/runtime-error")
+                        .with(authentication(createJwtAuthentication())))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500))
+                .andExpect(jsonPath("$.error").value("Internal Server Error"))
+                .andExpect(jsonPath("$.message").value("An unexpected internal server error occurred. Please contact system administrator."))
+                .andExpect(jsonPath("$.message", not(containsString("Sensitive internal database connection string"))));
+
+        verify(appUserRepository).findById(TEST_USER_ID);
     }
 
     @Test
@@ -131,5 +187,27 @@ public class GlobalExceptionHandlerTest {
     void testAccessDeniedExceptionPreservedAsForbidden403() throws Exception {
         mockMvc.perform(get("/api/v1/test-exception/access-denied"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void testAsyncRequestNotUsableExceptionAbsorbedWithoutDatabaseOrAuditWork() throws Exception {
+        clearInvocations(appUserRepository, authSecurityService);
+        mockMvc.perform(get("/api/v1/test-exception/client-abort-async")
+                        .with(authentication(createJwtAuthentication())))
+                .andExpect(status().isOk());
+
+        verifyNoInteractions(appUserRepository);
+        verifyNoInteractions(authSecurityService);
+    }
+
+    @Test
+    void testClientAbortExceptionAbsorbedWithoutDatabaseOrAuditWork() throws Exception {
+        clearInvocations(appUserRepository, authSecurityService);
+        mockMvc.perform(get("/api/v1/test-exception/client-abort-catalina")
+                        .with(authentication(createJwtAuthentication())))
+                .andExpect(status().isOk());
+
+        verifyNoInteractions(appUserRepository);
+        verifyNoInteractions(authSecurityService);
     }
 }
