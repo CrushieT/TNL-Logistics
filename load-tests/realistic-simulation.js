@@ -4,6 +4,10 @@ import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';
 
 const baseUrl = __ENV.BASE_URL || 'http://host.docker.internal:8082';
 const password = __ENV.LOADTEST_PASSWORD;
+const historyIncludeTotals = __ENV.HISTORY_INCLUDE_TOTALS || 'false';
+if (!['true', 'false'].includes(historyIncludeTotals)) {
+  throw new Error('HISTORY_INCLUDE_TOTALS must be true or false');
+}
 
 export const options = {
   scenarios: {
@@ -142,7 +146,7 @@ function runTrackingWorkflow(session, trackingIds, role) {
 
   const responses = http.batch([
     ['GET', `${baseUrl}/api/v1/tracking-events/mine/metrics`, null, { headers }],
-    ['GET', `${baseUrl}/api/v1/tracking-events/mine?page=0&size=20`, null, { headers }],
+    ['GET', `${baseUrl}/api/v1/tracking-events/mine?page=0&size=20&includeTotals=${historyIncludeTotals}`, null, { headers }],
     ['GET', `${baseUrl}/api/v1/tracking-events/scan-context/${trackingId}`, null, { headers }],
   ]);
 

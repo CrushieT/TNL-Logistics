@@ -14,6 +14,7 @@ import {
   formatPackageDisplay,
   resolveTrackingStatusDisplay,
   encodeTrackingId,
+  normalizeHistoryPage,
 } from '../src/features/tracking-history/trackingHistoryFlow.mjs';
 import { createTrackingHistoryRequestCoordinator } from '../src/features/tracking-history/trackingHistoryRequestCoordinator.mjs';
 
@@ -354,6 +355,152 @@ describe('Tracking History Display Resolution', () => {
       'utf8'
     );
 
-    assert.match(screenSource, /replacePageZeroEvents\(incoming\)/);
+    assert.match(screenSource, /replacePageZeroEvents\(acceptedPage.content\)/);
+  });
+});
+
+function mountHistoryHandlers() {
+  const source = readFileSync(new URL('../src/app/(main)/tracking-history/index.js', import.meta.url), 'utf8');
+  const body = source.slice(source.indexOf('  const router ='), source.indexOf('  if (authLoading ||'));
+  const slots = [];
+  let cursor = 0;
+  const requests = [];
+  const timers = new Map();
+  let timerId = 0;
+  const apiSource = readFileSync(new URL('../src/features/tracking-history/services/trackingHistoryApi.js', import.meta.url), 'utf8')
+    .replace(/^import .*;\r?\n/gm, '').replace('export const trackingHistoryApi', 'const trackingHistoryApi');
+  const api = new Function('apiClient', 'buildPersonalHistoryParams', 'encodeTrackingId', `${apiSource}; return trackingHistoryApi;`)({
+    get(url, options) {
+      if (url.endsWith('/metrics')) return Promise.resolve({ data: {} });
+      return new Promise((resolve, reject) => requests.push({ url, ...options, resolve: data => resolve({ data }), reject }));
+    },
+  }, buildPersonalHistoryParams, encodeTrackingId);
+  const bindings = {
+    useRouter: () => ({}), useAuth: () => ({ user: { role: 'COURIER_STAFF' }, isLoading: false }),
+    useState(initial) {
+      const index = cursor++;
+      slots[index] ??= { value: initial };
+      return [slots[index].value, update => { slots[index].value = typeof update === 'function' ? update(slots[index].value) : update; }];
+    },
+    useRef(initial) { const index = cursor++; return slots[index] ??= { current: initial }; },
+    useEffect() {}, useFocusEffect() {}, useCallback: callback => callback,
+    trackingHistoryApi: api, appendUniqueEvents, replacePageZeroEvents, normalizeHistoryPage,
+    HISTORY_PAGE_SIZE, createTrackingHistoryRequestCoordinator, encodeTrackingId,
+    setTimeout(callback) { timers.set(++timerId, callback); return timerId; },
+    clearTimeout(id) { timers.delete(id); },
+  };
+  const render = new Function(...Object.keys(bindings), `${body}; return {
+    fetchPageZero, loadMoreEvents, handleSearchChange, handlePullToRefresh, requestCoordinator,
+    events, currentPage, hasNext, appendError, initialError, refreshError, loadingMore
+  };`);
+  return {
+    requests,
+    render() { cursor = 0; return render(...Object.values(bindings)); },
+    flushTimers() { const callbacks = [...timers.values()]; timers.clear(); callbacks.forEach(callback => callback()); },
+  };
+}
+
+const historyResponse = (number, hasNext, ids = Array.from({ length: 20 }, (_, index) => 100 - number * 20 - index)) => ({
+  content: ids.map(eventId => ({ eventId })), page: { number, size: 20, hasNext },
+});
+
+describe('Production history pagination handlers', () => {
+  it('requests count-free pages, deduplicates shifted boundaries and stops at the final page', async () => {
+    const history = mountHistoryHandlers();
+    const first = history.render().fetchPageZero('');
+    assert.deepEqual(history.requests[0].params, { page: 0, size: 20, includeTotals: false });
+    history.requests[0].resolve(historyResponse(0, true));
+    await first;
+    const append = history.render().loadMoreEvents();
+    await history.render().loadMoreEvents();
+    assert.equal(history.requests.length, 2);
+    history.requests[1].resolve(historyResponse(1, false, [81, 80]));
+    await append;
+    assert.equal(history.render().events.length, 21);
+    assert.equal(history.render().hasNext, false);
+    await history.render().loadMoreEvents();
+    assert.equal(history.requests.length, 2);
+  });
+
+  it('retains the page after append failure and retries the same page', async () => {
+    const history = mountHistoryHandlers();
+    const first = history.render().fetchPageZero('');
+    history.requests[0].resolve(historyResponse(0, true));
+    await first;
+    const append = history.render().loadMoreEvents();
+    history.requests[1].reject(new Error('Network error'));
+    await append;
+    assert.equal(history.render().currentPage, 0);
+    assert.equal(history.render().events.length, 20);
+    assert.ok(history.render().appendError);
+    const retry = history.render().loadMoreEvents();
+    assert.equal(history.requests[2].params.page, 1);
+    history.requests[2].resolve(historyResponse(1, false, [80]));
+    await retry;
+    assert.equal(history.render().appendError, null);
+    assert.equal(history.render().currentPage, 1);
+  });
+
+  it('refresh aborts an append and replaces its pagination metadata', async () => {
+    const history = mountHistoryHandlers();
+    const first = history.render().fetchPageZero('');
+    history.requests[0].resolve(historyResponse(0, true));
+    await first;
+    const append = history.render().loadMoreEvents();
+    history.render().handlePullToRefresh();
+    assert.equal(history.requests[1].signal.aborted, true);
+    history.requests[2].resolve(historyResponse(0, false, [200]));
+    await new Promise(resolve => setImmediate(resolve));
+    history.requests[1].resolve(historyResponse(1, true));
+    await append;
+    assert.deepEqual(history.render().events, [{ eventId: 200 }]);
+    assert.equal(history.render().currentPage, 0);
+    assert.equal(history.render().hasNext, false);
+  });
+
+  it('rapid search and cancellation ignore obsolete success and error responses', async () => {
+    const history = mountHistoryHandlers();
+    const first = history.render().fetchPageZero('old');
+    history.render().handleSearchChange('middle');
+    history.render().handleSearchChange('new');
+    history.flushTimers();
+    assert.equal(history.requests[0].signal.aborted, true);
+    assert.equal(history.requests[1].params.search, 'new');
+    history.requests[1].resolve(historyResponse(0, false, [300]));
+    await new Promise(resolve => setImmediate(resolve));
+    history.requests[0].reject(new Error('Obsolete failure'));
+    await first;
+    assert.deepEqual(history.render().events, [{ eventId: 300 }]);
+    assert.equal(history.render().initialError, null);
+    const cancelled = history.render().fetchPageZero('cancelled');
+    history.render().requestCoordinator.cancelAll();
+    history.requests[2].resolve(historyResponse(0, false, [400]));
+    await cancelled;
+    assert.deepEqual(history.render().events, [{ eventId: 300 }]);
+  });
+
+  it('accepts legacy pages and surfaces malformed metadata as load failures', async () => {
+    const history = mountHistoryHandlers();
+    const first = history.render().fetchPageZero('');
+    history.requests[0].resolve({ content: [{ eventId: 1 }], page: { number: 0, size: 20, totalPages: 1, totalElements: 1 } });
+    await first;
+    assert.equal(history.render().hasNext, false);
+    const malformed = history.render().fetchPageZero('');
+    history.requests[1].resolve({ content: [] });
+    await malformed;
+    assert.ok(history.render().initialError);
+    assert.deepEqual(history.render().events, [{ eventId: 1 }]);
+  });
+});
+
+describe('History page compatibility validation', () => {
+  it('supports legacy root metadata and rejects missing or invalid metadata', () => {
+    assert.equal(normalizeHistoryPage({ content: [], number: 0, size: 20, totalPages: 0, totalElements: 0 }, 0).hasNext, false);
+    for (const invalid of [null, {}, { content: [] }, historyResponse(1, false),
+      { content: [], page: { number: 0, size: 20, hasNext: 'false' } },
+      { content: [], page: { number: 0, size: 20, hasNext: true } },
+      { content: [], page: { number: 0, size: 20, totalPages: 2, totalElements: 0 } }]) {
+      assert.throws(() => normalizeHistoryPage(invalid, 0), /Invalid personal history/);
+    }
   });
 });

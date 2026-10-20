@@ -42,11 +42,12 @@ public class TrackingEventController {
 
     @GetMapping("/mine")
     @PreAuthorize("hasAnyRole('COURIER_STAFF', 'DISPATCH_STAFF')")
-    public ResponseEntity<Page<PersonalTrackingEventResponse>> getPersonalTrackingEvents(
+    public ResponseEntity<?> getPersonalTrackingEvents(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) ParcelStatus status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "true") boolean includeTotals,
             Authentication authentication) {
         if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
             throw new AccessDeniedException("Authenticated user context is required");
@@ -56,6 +57,10 @@ public class TrackingEventController {
         int clampedSize = Math.min(50, Math.max(1, size));
         Pageable pageable = PageRequest.of(clampedPage, clampedSize,
                 Sort.by(Sort.Order.desc("eventTimestamp"), Sort.Order.desc("eventId")));
+        if (!includeTotals) {
+            return ResponseEntity.ok(PersonalTrackingEventSliceResponse.from(
+                    trackingService.getPersonalTrackingEventSlice(actingStaffUserId, search, status, pageable)));
+        }
         Page<PersonalTrackingEventResponse> response = trackingService.getPersonalTrackingEvents(
                 actingStaffUserId, search, status, pageable);
         return ResponseEntity.ok(response);

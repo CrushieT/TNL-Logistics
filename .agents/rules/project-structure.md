@@ -368,3 +368,7 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 - `frontend-web/tests/navScrollPosition.test.mjs`: regression tests for navigation scroll position retention.
 - `frontend-web/src/components/layout/SignOutModal.js`: web confirmation modal for admin console signout with icon anchor, section dividers, and backdrop dismissal.
 - `frontend-web/tests/signOutModal.test.mjs`: unit and interaction tests for signout popup presentation, callbacks, and Sidebar integration.
+
+### Count-free personal history
+- `backend/src/main/java/com/tnl/logistics/dto/PersonalTrackingEventSliceResponse.java`: explicit personal event slice metadata without totals.
+- `load-tests/count-free-history-results.md`: count-free contract, verification evidence, exact/count-free diagnostic comparison, baseline shutdown limitation, and pending device checks.

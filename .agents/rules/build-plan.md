@@ -1,5 +1,12 @@
 # TNL Logistics — Master Build Plan
 
+## Count-free personal history [IN PROGRESS]
+
+- Add opt-in count-free personal history while preserving the default exact Page contract; mobile and realistic simulation request `includeTotals=false`.
+- History functional assertions [COMPLETED]: 66 focused backend tests and 268 mobile Node tests passed; Android/iOS production exports passed. Full backend suite run: 523 tests, zero failures/errors, five existing skips, Maven exit 0; separate test-fork shutdown timeout is isolated to the SSE test baseline. History diff audit found no findings. Evidence: `load-tests/count-free-history-results.md`.
+- Simulation backend rebuild and benchmark comparison [COMPLETED]: seed skipping confirmed; business counts, MySQL container, and volume preserved. Single sequential diagnostic benchmark comparison: Mobile Couriers p95 dropped to 358.02 ms (<500 ms gate) and Dispatch to 252.99 ms (<500 ms gate); MySQL CPU dropped from 86.91% to 63.52%. Receiving (aggregate p95 680.20 ms, /shipments p95 750.34 ms vs 500 ms gate) and Admin (aggregate p95 2,165.15 ms, /dashboard/summary p95 2,425.61 ms vs 1,500 ms gate) still miss their gates. Earlier plans identify broad aggregation and counting costs; query/read consolidation requires further measurement, and no new index is justified by this comparison.
+- Dashboard optimization remains a separate slice; resource limits, schema, and workload gates are unchanged. Physical-device scrolling and refresh verification remain [UPCOMING].
+
 ## Merge blocker corrections [COMPLETED]
 
 - SSE session ownership [COMPLETED]: each production stream attempt captures connection identity, verified user ID, session generation, and token. Obsolete responses, event chunks, cleanup, and timers cannot block a newer session, clear its connection, or create duplicate reconnects. Verified session changes recover connections; genuine current-session 401/403 still halt retries. Existing exponential backoff, subscriber teardown, and invalidation behavior are preserved.

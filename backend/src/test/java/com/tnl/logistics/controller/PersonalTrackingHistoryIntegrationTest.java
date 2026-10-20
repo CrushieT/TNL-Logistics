@@ -35,11 +35,123 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest
+@SpringBootTest(properties = "spring.jpa.properties.hibernate.session_factory.statement_inspector=com.tnl.logistics.controller.PersonalTrackingHistoryIntegrationTest$SqlCapture")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
 public class PersonalTrackingHistoryIntegrationTest {
+
+    public static class SqlCapture implements org.hibernate.resource.jdbc.spi.StatementInspector {
+        static final ThreadLocal<List<String>> statements = ThreadLocal.withInitial(ArrayList::new);
+
+        @Override
+        public String inspect(String sql) {
+            statements.get().add(sql);
+            return sql;
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, 1, 20, 21, 40, 41})
+    void countFreePagesMatchExactPagesWithoutCounting(int matchCount) throws Exception {
+        String trackingId = createTestShipment(1);
+        ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+        List<TrackingEvent> fixtures = new ArrayList<>();
+        for (int eventNumber = 0; eventNumber < matchCount; eventNumber++) {
+            fixtures.add(new TrackingEvent(parcel, ParcelStatus.LOADED_ON_TRUCK, fieldUser1, "History fixture"));
+        }
+        trackingEventRepository.saveAllAndFlush(fixtures);
+        LocalDateTime timestamp = LocalDateTime.of(2026, 1, 1, 12, 0);
+        for (TrackingEvent event : fixtures) {
+            entityManager.createNativeQuery("UPDATE tracking_event SET event_timestamp = :timestamp WHERE event_id = :id")
+                    .setParameter("timestamp", timestamp).setParameter("id", event.getEventId()).executeUpdate();
+        }
+        entityManager.clear();
+
+        for (int pageNumber = 0; pageNumber <= (matchCount + 19) / 20; pageNumber++) {
+            JsonNode exact = historyPage(field1Token, trackingId, pageNumber, 20, null);
+            JsonNode explicit = historyPage(field1Token, trackingId, pageNumber, 20, "true");
+            assertEquals(exact, explicit);
+            assertEquals(matchCount, exact.path("page").path("totalElements").asInt());
+            SqlCapture.statements.get().clear();
+            JsonNode slice = historyPage(field1Token, trackingId, pageNumber, 20, "false");
+            List<String> sql = List.copyOf(SqlCapture.statements.get());
+            assertTrue(sql.stream().anyMatch(statement -> statement.contains("SELECT e.event_id")), sql.toString());
+            assertFalse(sql.stream().map(String::toLowerCase)
+                    .anyMatch(statement -> statement.contains("count(") && statement.contains("tracking_event")), sql.toString());
+            assertEquals(exact.path("content"), slice.path("content"));
+            assertEquals(java.util.Set.of("content", "page"), fieldNames(slice));
+            assertEquals(java.util.Set.of("number", "size", "hasNext"), fieldNames(slice.path("page")));
+            assertEquals(pageNumber, slice.path("page").path("number").asInt());
+            assertEquals((pageNumber + 1) * 20 < matchCount, slice.path("page").path("hasNext").asBoolean());
+            List<Long> expectedIds = fixtures.stream().map(TrackingEvent::getEventId)
+                    .sorted(java.util.Comparator.reverseOrder()).skip(pageNumber * 20L).limit(20).toList();
+            List<Long> actualIds = new ArrayList<>();
+            slice.path("content").forEach(event -> actualIds.add(event.path("eventId").asLong()));
+            assertEquals(expectedIds, actualIds);
+        }
+    }
+
+    private java.util.Set<String> fieldNames(JsonNode node) {
+        java.util.Set<String> fields = new java.util.HashSet<>();
+        node.fieldNames().forEachRemaining(fields::add);
+        return fields;
+    }
+
+    private JsonNode historyPage(String token, String search, int page, int size, String includeTotals) throws Exception {
+        var request = get("/api/v1/tracking-events/mine").header("Authorization", token)
+                .param("search", search).param("status", "LOADED_ON_TRUCK")
+                .param("page", String.valueOf(page)).param("size", String.valueOf(size));
+        if (includeTotals != null) request.param("includeTotals", includeTotals);
+        return objectMapper.readTree(mockMvc.perform(request).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString());
+    }
+
+    @Test
+    void countFreeFiltersIsolationClampingAndAuthorization() throws Exception {
+        String trackingId = createTestShipment(1);
+        ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+        AppUser dispatchUser = appUserRepository.save(new AppUser("USR-HISTORY-DISPATCH", "history_dispatch",
+                passwordEncoder.encode("test-only"), "History Dispatch", UserRole.DISPATCH_STAFF));
+        dispatchUser.setMustChangePassword(false);
+        dispatchUser.setTokenVersion(1);
+        appUserRepository.saveAndFlush(dispatchUser);
+        String dispatchToken = "Bearer " + sessionTokens.generateToken(dispatchUser.getUserId(), "DISPATCH_STAFF");
+        trackingEventRepository.saveAllAndFlush(List.of(
+                new TrackingEvent(parcel, ParcelStatus.LOADED_ON_TRUCK, fieldUser1, "Own"),
+                new TrackingEvent(parcel, ParcelStatus.ARRIVED_AT_TNL, fieldUser1, "Other status"),
+                new TrackingEvent(parcel, ParcelStatus.LOADED_ON_TRUCK, fieldUser2, "Other courier"),
+                new TrackingEvent(parcel, ParcelStatus.LOADED_ON_TRUCK, dispatchUser, "Dispatch")));
+        for (String token : List.of(field1Token, dispatchToken)) {
+            for (String search : List.of(trackingId.toLowerCase(java.util.Locale.ROOT).substring(1),
+                    "  " + parcel.getShipment().getShipmentId() + "  ")) {
+                JsonNode exact = historyPage(token, search, 0, 20, "true");
+                JsonNode slice = historyPage(token, search, 0, 20, "false");
+                assertEquals(1, slice.path("content").size());
+                assertEquals(exact.path("content"), slice.path("content"));
+            }
+        }
+        assertEquals(0, historyPage(field1Token, "no-match", 0, 20, "false").path("content").size());
+        assertEquals(1, historyPage(field1Token, trackingId, -1, 0, "false").path("page").path("size").asInt());
+        assertEquals(50, historyPage(field1Token, trackingId, 0, 999, "false").path("page").path("size").asInt());
+        JsonNode own = historyPage(field1Token, trackingId, 0, 20, "false");
+        JsonNode spoofed = objectMapper.readTree(mockMvc.perform(get("/api/v1/tracking-events/mine")
+                        .header("Authorization", field1Token).param("includeTotals", "false")
+                        .param("search", trackingId).param("status", "LOADED_ON_TRUCK")
+                        .param("staffId", dispatchUser.getUserId()).param("userId", fieldUser2.getUserId()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertEquals(own, spoofed);
+        mockMvc.perform(get("/api/v1/tracking-events/mine").param("includeTotals", "false"))
+                .andExpect(status().isUnauthorized());
+        for (String token : List.of(officeToken, adminToken)) {
+            mockMvc.perform(get("/api/v1/tracking-events/mine").header("Authorization", token)
+                    .param("includeTotals", "false")).andExpect(status().isForbidden());
+        }
+        for (String parameter : List.of("includeTotals", "status", "page", "size")) {
+            mockMvc.perform(get("/api/v1/tracking-events/mine").header("Authorization", field1Token)
+                    .param(parameter, "invalid")).andExpect(status().isBadRequest());
+        }
+    }
 
     @Autowired
     private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
