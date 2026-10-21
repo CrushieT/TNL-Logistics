@@ -29,6 +29,16 @@ public interface CollectionsService {
     com.tnl.logistics.dto.CollectionTotals getCollectionTotals(LocalDate targetDate);
 
     /**
+     * Retrieve internal totals-only collection metrics for the given cycle date using a pre-calculated cycle start date.
+     * Reuses the caller's resolved cycle boundary to eliminate duplicate cycle discovery.
+     *
+     * @param targetDate target cycle closing date (optional)
+     * @param cycleStartDate pre-calculated cycle start date
+     * @return CollectionTotals containing company totals and active client count
+     */
+    com.tnl.logistics.dto.CollectionTotals getCollectionTotals(LocalDate targetDate, LocalDate cycleStartDate);
+
+    /**
      * Retrieve a distinct, sorted list of active cycle closing dates that actually contain shipments or finalized SOAs.
      *
      * @return list of cycle closing dates (newest first)

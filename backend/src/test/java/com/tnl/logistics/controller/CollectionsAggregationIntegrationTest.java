@@ -128,6 +128,59 @@ class CollectionsAggregationIntegrationTest {
         assertEquals(2, collectionTotals.activeClientsCount(), "Only clients with unbilled shipments or net balance > 0 qualify as active");
     }
 
+    @Test
+    void testSingleArgumentGetCollectionTotalsRetainsExistingBehavior() {
+        LocalDate cycle = LocalDate.of(2036, 1, 10);
+        Client client = createClient("AGG-SINGLE-ARG");
+        Shipment shipment = createShipment("SHP-SINGLE-1", client, cycle.minusDays(2), null, new BigDecimal("150.00"));
+        paymentRepository.saveAndFlush(new Payment(shipment, new BigDecimal("50.00"), PaymentMethod.CASH, cycle.minusDays(1)));
+
+        LocalDate calculatedStart = collectionsService.calculateCycleStartDate(cycle);
+
+        var singleArgTotals = collectionsService.getCollectionTotals(cycle);
+        var overloadedTotals = collectionsService.getCollectionTotals(cycle, calculatedStart);
+        var nullExplicitStartTotals = collectionsService.getCollectionTotals(cycle, null);
+
+        assertNotNull(singleArgTotals);
+        assertEquals(singleArgTotals.totalDue(), overloadedTotals.totalDue(), "totalDue must match");
+        assertEquals(singleArgTotals.totalCollected(), overloadedTotals.totalCollected(), "totalCollected must match");
+        assertEquals(singleArgTotals.outstandingBalance(), overloadedTotals.outstandingBalance(), "outstandingBalance must match");
+        assertEquals(singleArgTotals.activeClientsCount(), overloadedTotals.activeClientsCount(), "activeClientsCount must match");
+
+        assertEquals(singleArgTotals.outstandingBalance(), nullExplicitStartTotals.outstandingBalance(),
+                "Passing null explicit start must delegate identically to single-arg resolution");
+    }
+
+    @Test
+    void testExplicitCycleBoundaryPreservesFinancialResultsAcrossPopulatedAndEmptyCycles() {
+        // Populated case
+        LocalDate populatedCycle = LocalDate.of(2036, 1, 17);
+        Client client = createClient("AGG-EXPLICIT-POP");
+        Shipment insideCycle = createShipment("SHP-EXP-IN", client, populatedCycle.minusDays(3), null, new BigDecimal("250.00"));
+        Shipment outsideCycle = createShipment("SHP-EXP-OUT", client, populatedCycle.minusDays(10), null, new BigDecimal("100.00"));
+
+        LocalDate calculatedStart = collectionsService.calculateCycleStartDate(populatedCycle);
+        var defaultTotals = collectionsService.getCollectionTotals(populatedCycle);
+        var explicitTotals = collectionsService.getCollectionTotals(populatedCycle, calculatedStart);
+
+        assertEquals(defaultTotals.totalDue(), explicitTotals.totalDue());
+        assertEquals(defaultTotals.outstandingBalance(), explicitTotals.outstandingBalance());
+        assertEquals(defaultTotals.activeClientsCount(), explicitTotals.activeClientsCount());
+        assertAmount("250.00", explicitTotals.totalDue());
+
+        // Empty case
+        LocalDate emptyCycle = LocalDate.of(2036, 5, 22);
+        LocalDate emptyStart = collectionsService.calculateCycleStartDate(emptyCycle);
+        var emptyDefaultTotals = collectionsService.getCollectionTotals(emptyCycle);
+        var emptyExplicitTotals = collectionsService.getCollectionTotals(emptyCycle, emptyStart);
+
+        assertEquals(BigDecimal.ZERO, emptyExplicitTotals.totalDue());
+        assertEquals(BigDecimal.ZERO, emptyExplicitTotals.totalCollected());
+        assertEquals(BigDecimal.ZERO, emptyExplicitTotals.outstandingBalance());
+        assertEquals(0, emptyExplicitTotals.activeClientsCount());
+        assertEquals(emptyDefaultTotals, emptyExplicitTotals);
+    }
+
     private Client createClient(String id) {
         return clientRepository.save(new Client(id, id, "Test address", "09170000000", "test@example.com", ChargeModel.FLAT, true));
     }

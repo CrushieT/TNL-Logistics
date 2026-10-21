@@ -48,12 +48,47 @@ public class DashboardIntegrationTest {
     private ParcelUnitRepository parcelUnitRepository;
 
     @Autowired private DashboardService dashboardService;
-    @Autowired private CollectionsService collectionsService;
+    @org.springframework.boot.test.mock.mockito.SpyBean
+    private CollectionsService collectionsService;
     @Autowired private ClientRepository clientRepository;
     @Autowired private PaymentRepository paymentRepository;
     @Autowired private SoaRepository soaRepository;
     @Autowired private WeeklyCollectionRepository weeklyCollectionRepository;
     @Autowired private ObjectMapper objectMapper;
+
+    @Test
+    void testDashboardResolvesCycleDiscoveryOnceAndPassesCalculatedStartToCollectionTotals() {
+        LocalDate cycle = LocalDate.of(2036, 1, 10);
+        LocalDate expectedStart = collectionsService.calculateCycleStartDate(cycle);
+        reset(collectionsService);
+
+        DashboardSummaryResponse response = dashboardService.getDashboardSummary(cycle);
+        assertNotNull(response);
+
+        // Verify calculateCycleStartDate was invoked exactly once for the Dashboard summary request
+        verify(collectionsService, times(1)).calculateCycleStartDate(eq(cycle));
+
+        // Verify getCollectionTotals was invoked with the pre-calculated cycle start
+        verify(collectionsService, times(1)).getCollectionTotals(eq(cycle), eq(expectedStart));
+
+        // Verify single-argument overload was never invoked during Dashboard summary calculation
+        verify(collectionsService, never()).getCollectionTotals(eq(cycle));
+    }
+
+    @Test
+    void testDashboardDefaultCycleResolvesCycleDiscoveryOnceAndPassesCalculatedStart() {
+        reset(collectionsService);
+
+        DashboardSummaryResponse response = dashboardService.getDashboardSummary();
+        assertNotNull(response);
+
+        // Verify calculateCycleStartDate was invoked exactly once
+        verify(collectionsService, times(1)).calculateCycleStartDate(any(LocalDate.class));
+
+        // Verify two-argument getCollectionTotals was invoked with resolved cycle boundary
+        verify(collectionsService, times(1)).getCollectionTotals(any(LocalDate.class), any(LocalDate.class));
+        verify(collectionsService, never()).getCollectionTotals(any(LocalDate.class));
+    }
 
     @Test
     @WithMockUser(username = "admin", roles = {"ADMIN"})
