@@ -331,7 +331,10 @@ public class ShipmentServiceImpl implements ShipmentService {
         String cleanVehicle = normalizeVehicle(vehicleId);
         String cleanLabel = normalizeLabel(labelStatus);
 
-        Page<Shipment> shipmentsPage = shipmentRepository.searchShipmentsWithFilters(cleanSearch, cleanStatus, cleanPayment, cleanVehicle, cleanLabel, pageable);
+        boolean isUnfiltered = (cleanSearch == null && cleanStatus == null && cleanPayment == null && cleanVehicle == null && cleanLabel == null);
+        Page<Shipment> shipmentsPage = isUnfiltered
+                ? shipmentRepository.findAllShipmentsWithClient(pageable)
+                : shipmentRepository.searchShipmentsWithFilters(cleanSearch, cleanStatus, cleanPayment, cleanVehicle, cleanLabel, pageable);
         List<Shipment> shipments = shipmentsPage.getContent();
         if (shipments.isEmpty()) {
             return new PageImpl<>(Collections.emptyList(), pageable, shipmentsPage.getTotalElements());

@@ -1538,4 +1538,249 @@ public class ShipmentIntegrationTest {
                         .param("clientId", "CL-001"))
                 .andExpect(status().isOk());
     }
+
+    @Test
+    public void testUnfilteredShipmentListingFastPathSelectionAndEquivalence() throws Exception {
+        for (int i = 1; i <= 3; i++) {
+            ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+            request.setRecipientAddress("Baguio Street " + i);
+            mockMvc.perform(post("/api/v1/shipments")
+                            .header("Authorization", officeToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isCreated());
+            Thread.sleep(5);
+        }
+
+        // 1. Fast path with completely absent/null query parameters
+        MvcResult nullParamsResult = mockMvc.perform(get("/api/v1/shipments?page=0&size=10")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode nullParamsJson = objectMapper.readTree(nullParamsResult.getResponse().getContentAsString());
+        assertEquals(3, getTotalElements(nullParamsJson));
+        assertEquals(3, nullParamsJson.get("content").size());
+
+        JsonNode firstShipment = nullParamsJson.get("content").get(0);
+        assertTrue(firstShipment.has("shipmentId"));
+        assertTrue(firstShipment.has("clientName"));
+        assertEquals("Acme Logistics Client", firstShipment.get("clientName").asText());
+        assertTrue(firstShipment.has("quantity"));
+        assertEquals(2, firstShipment.get("quantity").asInt());
+
+        // 2. Fast path with legitimately normalized-empty filters
+        MvcResult normalizedEmptyResult = mockMvc.perform(get("/api/v1/shipments?page=0&size=10&search=   &status=ALL&paymentStatus=ALL&vehicleId=ALL&labelStatus=ALL")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode normalizedEmptyJson = objectMapper.readTree(normalizedEmptyResult.getResponse().getContentAsString());
+        assertEquals(3, getTotalElements(normalizedEmptyJson));
+        assertEquals(3, normalizedEmptyJson.get("content").size());
+
+        // 3. Fast path with empty string parameters
+        MvcResult emptyStringsResult = mockMvc.perform(get("/api/v1/shipments?page=0&size=10&search=&status=&paymentStatus=&vehicleId=&labelStatus=")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode emptyStringsJson = objectMapper.readTree(emptyStringsResult.getResponse().getContentAsString());
+        assertEquals(3, getTotalElements(emptyStringsJson));
+        assertEquals(3, emptyStringsJson.get("content").size());
+
+        // 4. Exact equivalence between specialized query and filtered query in repository
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
+                0, 10, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "dateRegistered"));
+        org.springframework.data.domain.Page<Shipment> fastPage = shipmentRepository.findAllShipmentsWithClient(pageable);
+        org.springframework.data.domain.Page<Shipment> filterPage = shipmentRepository.searchShipmentsWithFilters(null, null, null, null, null, pageable);
+
+        assertEquals(fastPage.getTotalElements(), filterPage.getTotalElements());
+        assertEquals(fastPage.getContent().size(), filterPage.getContent().size());
+        for (int i = 0; i < fastPage.getContent().size(); i++) {
+            assertEquals(fastPage.getContent().get(i).getShipmentId(), filterPage.getContent().get(i).getShipmentId());
+            assertEquals(fastPage.getContent().get(i).getClient().getName(), filterPage.getContent().get(i).getClient().getName());
+        }
+    }
+
+    @Test
+    public void testFilteredPathRetentionForIndividualAndCombinedFilters() throws Exception {
+        Client alphaClient = clientRepository.findById("CL-ALPHA").orElseGet(() ->
+                clientRepository.save(new Client("CL-ALPHA", "Alpha Logistics Client", "Manila", "09111111111", "alpha@client.com", ChargeModel.FLAT, true)));
+        Client betaClient = clientRepository.findById("CL-BETA").orElseGet(() ->
+                clientRepository.save(new Client("CL-BETA", "Beta Logistics Client", "Cebu", "09222222222", "beta@client.com", ChargeModel.FLAT, true)));
+
+        ShipmentRegistrationRequest unpaidReq = createMobileRegistrationRequest();
+        unpaidReq.setClientId(alphaClient.getClientId());
+        unpaidReq.setPaidAtRegistration(false);
+        mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(unpaidReq)))
+                .andExpect(status().isCreated());
+
+        ShipmentRegistrationRequest paidReq = createMobileRegistrationRequest();
+        paidReq.setClientId(betaClient.getClientId());
+        paidReq.setPaidAtRegistration(true);
+        paidReq.setChargeModel(ChargeModel.PER_PARCEL);
+        mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(paidReq)))
+                .andExpect(status().isCreated());
+
+        // Individual search filter
+        MvcResult searchRes = mockMvc.perform(get("/api/v1/shipments?search=Alpha")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode searchJson = objectMapper.readTree(searchRes.getResponse().getContentAsString());
+        assertEquals(1, getTotalElements(searchJson));
+        assertEquals("Alpha Logistics Client", searchJson.get("content").get(0).get("recipientName").asText());
+
+        // Individual status filter
+        MvcResult statusRes = mockMvc.perform(get("/api/v1/shipments?status=QR_GENERATED")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode statusJson = objectMapper.readTree(statusRes.getResponse().getContentAsString());
+        assertEquals(2, getTotalElements(statusJson));
+
+        // Individual payment filter
+        MvcResult paymentRes = mockMvc.perform(get("/api/v1/shipments?paymentStatus=PAID")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode paymentJson = objectMapper.readTree(paymentRes.getResponse().getContentAsString());
+        assertEquals(1, getTotalElements(paymentJson));
+        assertEquals("Beta Logistics Client", paymentJson.get("content").get(0).get("recipientName").asText());
+
+        // Individual label filter
+        MvcResult labelRes = mockMvc.perform(get("/api/v1/shipments?labelStatus=NEEDS_LABEL")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode labelJson = objectMapper.readTree(labelRes.getResponse().getContentAsString());
+        assertEquals(2, getTotalElements(labelJson));
+
+        // Combined filters
+        MvcResult combinedRes = mockMvc.perform(get("/api/v1/shipments?search=Beta&paymentStatus=PAID")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode combinedJson = objectMapper.readTree(combinedRes.getResponse().getContentAsString());
+        assertEquals(1, getTotalElements(combinedJson));
+        assertEquals("Beta Logistics Client", combinedJson.get("content").get(0).get("recipientName").asText());
+
+        // Non-matching filter combination
+        MvcResult noMatchRes = mockMvc.perform(get("/api/v1/shipments?search=Beta&paymentStatus=UNPAID")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode noMatchJson = objectMapper.readTree(noMatchRes.getResponse().getContentAsString());
+        assertEquals(0, getTotalElements(noMatchJson));
+        assertEquals(0, noMatchJson.get("content").size());
+
+        // Invalid filter value
+        MvcResult invalidRes = mockMvc.perform(get("/api/v1/shipments?status=NON_EXISTENT_STATUS")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode invalidJson = objectMapper.readTree(invalidRes.getResponse().getContentAsString());
+        assertEquals(0, getTotalElements(invalidJson));
+        assertEquals(0, invalidJson.get("content").size());
+    }
+
+    @Test
+    public void testUnfilteredShipmentPaginationEdgeCasesAndClamping() throws Exception {
+        for (int i = 1; i <= 5; i++) {
+            ShipmentRegistrationRequest req = createMobileRegistrationRequest();
+            req.setRecipientAddress("Edge Case Street " + i);
+            mockMvc.perform(post("/api/v1/shipments")
+                            .header("Authorization", officeToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isCreated());
+            Thread.sleep(5);
+        }
+
+        // Page 0 (size 2) -> first page
+        MvcResult p0Res = mockMvc.perform(get("/api/v1/shipments?page=0&size=2")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode p0Json = objectMapper.readTree(p0Res.getResponse().getContentAsString());
+        assertEquals(5, getTotalElements(p0Json));
+        assertEquals(2, p0Json.get("content").size());
+        int p0Number = p0Json.has("page") ? p0Json.get("page").get("number").asInt() : p0Json.get("number").asInt();
+        int p0TotalPages = p0Json.has("page") ? p0Json.get("page").get("totalPages").asInt() : p0Json.get("totalPages").asInt();
+        assertEquals(0, p0Number);
+        assertEquals(3, p0TotalPages);
+
+        // Page 1 (size 2) -> adjacent page
+        MvcResult p1Res = mockMvc.perform(get("/api/v1/shipments?page=1&size=2")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode p1Json = objectMapper.readTree(p1Res.getResponse().getContentAsString());
+        assertEquals(2, p1Json.get("content").size());
+        int p1Number = p1Json.has("page") ? p1Json.get("page").get("number").asInt() : p1Json.get("number").asInt();
+        assertEquals(1, p1Number);
+
+        // Page 2 (size 2) -> final page with remainder 1
+        MvcResult p2Res = mockMvc.perform(get("/api/v1/shipments?page=2&size=2")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode p2Json = objectMapper.readTree(p2Res.getResponse().getContentAsString());
+        assertEquals(1, p2Json.get("content").size());
+        int p2Number = p2Json.has("page") ? p2Json.get("page").get("number").asInt() : p2Json.get("number").asInt();
+        assertEquals(2, p2Number);
+
+        // Beyond-last page (page 10)
+        MvcResult pBeyondRes = mockMvc.perform(get("/api/v1/shipments?page=10&size=2")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode pBeyondJson = objectMapper.readTree(pBeyondRes.getResponse().getContentAsString());
+        assertEquals(5, getTotalElements(pBeyondJson));
+        assertEquals(0, pBeyondJson.get("content").size());
+        int pBeyondNumber = pBeyondJson.has("page") ? pBeyondJson.get("page").get("number").asInt() : pBeyondJson.get("number").asInt();
+        assertEquals(10, pBeyondNumber);
+
+        // Negative page clamped to 0
+        MvcResult negPageRes = mockMvc.perform(get("/api/v1/shipments?page=-5&size=2")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode negPageJson = objectMapper.readTree(negPageRes.getResponse().getContentAsString());
+        int negNumber = negPageJson.has("page") ? negPageJson.get("page").get("number").asInt() : negPageJson.get("number").asInt();
+        assertEquals(0, negNumber);
+        assertEquals(2, negPageJson.get("content").size());
+
+        // Size clamping: size=0 clamped to 1
+        MvcResult zeroSizeRes = mockMvc.perform(get("/api/v1/shipments?page=0&size=0")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode zeroSizeJson = objectMapper.readTree(zeroSizeRes.getResponse().getContentAsString());
+        assertEquals(1, zeroSizeJson.get("content").size());
+        int zeroSize = zeroSizeJson.has("page") ? zeroSizeJson.get("page").get("size").asInt() : zeroSizeJson.get("size").asInt();
+        assertEquals(1, zeroSize);
+
+        // Size clamping: size=500 clamped to MAX_PAGE_SIZE (100)
+        MvcResult largeSizeRes = mockMvc.perform(get("/api/v1/shipments?page=0&size=500")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode largeSizeJson = objectMapper.readTree(largeSizeRes.getResponse().getContentAsString());
+        int largeSize = largeSizeJson.has("page") ? largeSizeJson.get("page").get("size").asInt() : largeSizeJson.get("size").asInt();
+        assertEquals(100, largeSize);
+        assertEquals(5, largeSizeJson.get("content").size());
+    }
+
+    @Test
+    public void testShipmentListingRoleAccessAndAuthorization() throws Exception {
+        // ADMIN -> 200 OK
+        mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", adminToken))
+                .andExpect(status().isOk());
+
+        // RECEIVING_STAFF -> 200 OK
+        mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk());
+
+        // COURIER_STAFF -> 403 Forbidden
+        mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", fieldToken))
+                .andExpect(status().isForbidden());
+
+        // Unauthenticated -> 401 Unauthorized
+        mockMvc.perform(get("/api/v1/shipments"))
+                .andExpect(status().isUnauthorized());
+    }
 }

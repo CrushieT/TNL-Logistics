@@ -112,6 +112,10 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
             @Param("labelFilter") String labelFilter,
             Pageable pageable);
 
+    @Query(value = "SELECT s FROM Shipment s JOIN FETCH s.client c",
+           countQuery = "SELECT COUNT(s) FROM Shipment s")
+    Page<Shipment> findAllShipmentsWithClient(Pageable pageable);
+
     @Query("SELECT s.client.clientId, COUNT(s), COALESCE(SUM(s.quantity), 0), COALESCE(SUM(s.totalAmount), 0) " +
            "FROM Shipment s WHERE s.client.clientId IN :clientIds GROUP BY s.client.clientId")
     List<Object[]> countAndSumShipmentsByClientIds(@Param("clientIds") Collection<String> clientIds);
