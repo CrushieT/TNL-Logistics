@@ -94,7 +94,7 @@ public class DashboardServiceImpl implements DashboardService {
             String collectionDayShort = collectionDay != null
                     ? collectionDay.getDisplayName(TextStyle.SHORT, Locale.ENGLISH)
                     : "Thu";
-            CollectionTotals totals = collectionsService.getCollectionTotals(activeCycleEnd);
+            CollectionTotals totals = collectionsService.getCollectionTotals(activeCycleEnd, cycleStartLocalDate);
             BigDecimal amount = (totals != null && totals.outstandingBalance() != null)
                     ? totals.outstandingBalance()
                     : BigDecimal.ZERO;

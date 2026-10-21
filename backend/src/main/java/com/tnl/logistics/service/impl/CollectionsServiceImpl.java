@@ -58,8 +58,14 @@ public class CollectionsServiceImpl implements CollectionsService {
     @Override
     @Transactional(readOnly = true)
     public CollectionTotals getCollectionTotals(LocalDate targetDate) {
+        return getCollectionTotals(targetDate, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CollectionTotals getCollectionTotals(LocalDate targetDate, LocalDate cycleStartDate) {
         try {
-            return (CollectionTotals) computeWeeklyCollections(targetDate, false);
+            return (CollectionTotals) computeWeeklyCollections(targetDate, cycleStartDate, false);
         } catch (ResponseStatusException ex) {
             throw ex;
         } catch (DataAccessException ex) {
@@ -71,9 +77,15 @@ public class CollectionsServiceImpl implements CollectionsService {
     }
 
     private Object computeWeeklyCollections(LocalDate targetDate, boolean includeItems) {
+        return computeWeeklyCollections(targetDate, null, includeItems);
+    }
+
+    private Object computeWeeklyCollections(LocalDate targetDate, LocalDate explicitCycleStartDate, boolean includeItems) {
         LocalDate targetThursday = (targetDate != null) ? targetDate : calculateActiveCycleDate(LocalDate.now());
 
-        LocalDate cycleStartLocalDate = calculateCycleStartDate(targetThursday);
+        LocalDate cycleStartLocalDate = (explicitCycleStartDate != null)
+                ? explicitCycleStartDate
+                : calculateCycleStartDate(targetThursday);
         LocalDateTime cycleStart = cycleStartLocalDate.atStartOfDay();
         LocalDateTime cycleEnd = targetThursday.atTime(23, 59, 59, 999999999);
 
