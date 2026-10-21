@@ -1,5 +1,84 @@
 # Count-free personal history
 
+## Unfiltered history ID access path, 2026-10-21
+
+Status: implementation and scoped correctness/query-shape verification [COMPLETED]. The separately authorized 100k before/after loaded benchmark is now [COMPLETED]; formal performance acceptance remains open. The implementation-only verification below and the older count-free benchmark describe separate slices and must not be conflated with this index-hint comparison.
+
+Subsequent controlled benchmark: four unchanged two-minute workloads in Baseline-Candidate-Candidate-Baseline order, with 36 complete history JSON parity comparisons and unchanged business counts/resources. Courier history medians were 5,798.63/6,105.20 ms for Baseline and 17.50/17.49 ms for Candidate; dispatch medians were 3,643.44/3,241.97 ms versus 17.55/17.13 ms. Actual request rates rose from 5.33-5.76/s to 30.09-30.79/s, while MySQL cgroup CPU fell from 119.55-121.37 s to 88.79-90.18 s. Admin and receiving failed both Candidate runs; courier history p95 was 471.08 then 541.27 ms, with its role gate passing once and failing once. Dispatch passed both, and every run had zero HTTP failures. This demonstrates improvement, not resolution of all CPU/latency acceptance problems. The full supported measurement tables and limitations are in `.github/PR_DRAFT.md`. Candidate remains deployed; no further optimization or workload followed.
+
+The exact Page and count-free Slice share `PersonalTrackingEventRepositoryImpl.findEventIds`. On the 100k dataset the previous unfiltered plan used the global timestamp index, visiting about 194,500 entries before returning 21 staff-matching IDs. The approved branch adds `FORCE INDEX (idx_tracking_event_staff_timestamp_event)` only when normalized search and status are null. The existing V29 index begins with staff ID and then timestamp/event ID, so it can read the requested staff's entries in the required descending order directly.
+
+The prior persistent-JDBC candidate measurements used equivalent staff IDs, LIMIT 21, offsets 0/20 and descending timestamp/event-ID order. Three alternating pairs per case compared every ordered returned ID with matching checksums. Populated medians were 238.006-242.803 ms before and 2.017-2.296 ms with the hint; empty cases also matched. These are isolated elapsed-query observations, not CPU measurements or loaded API gains. No further candidate investigation, plan profiling, Docker operation or deployment occurred during implementation.
+
+This changes SQL branching and forces a named MySQL index. It depends on the existing V29 index being present and retaining its name; unsupported SQL dialects would reject the syntax, and future data distributions could favor a different plan. Both exact and count-free unfiltered ID selection use the branch. Exact count SQL, status/search SQL, wildcard/backslash semantics, bound staff/filter parameters, authorization/device-session validation, page limits, size+1 lookahead, bounded hydration and DTO fields are preserved. Admin Tracking Logs and metrics source are unchanged.
+
+### Verification report
+
+- Scope: `/test check recent changes`, diff-derived personal-history GET/repository verification. Related authorization, mobile-session, scan, populated-day metrics and admin Tracking Logs regressions run through the existing Spring Boot/MockMvc suites. No HTTP calls to either simulation stack.
+- Runtime/database: existing Temurin 21.0.12.1, Maven offline, existing test profile resolving to local `tnl_test` on port 3306. New fixture writes are confined to transactional tests and roll back; existing suite setup/security concurrency fixtures use only that dedicated test schema. Neither preserved 50k/100k database or volume is accessed. No dependencies or configuration changes.
+- Exact command, from `backend`:
+
+```powershell
+mvn.cmd --offline --batch-mode '-Dtest=PersonalTrackingHistoryIntegrationTest,FourRoleAuthorizationIntegrationTest,AdminConsoleAuthorizationIntegrationTest,TrackingScanIntegrationTest,TrackingAndVehicleIntegrationTest,TrackingLogIntegrationTest,MobileBindingSwitchIntegrationTest,MobileAuthIntegrationTest,TrackingTransitionPolicyTest' test
+```
+
+| Suite | Run | Failures | Errors | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| PersonalTrackingHistoryIntegrationTest | 43 | 0 | 0 | 0 |
+| FourRoleAuthorizationIntegrationTest | 11 | 0 | 0 | 0 |
+| AdminConsoleAuthorizationIntegrationTest | 2 | 0 | 0 | 0 |
+| TrackingScanIntegrationTest | 33 | 0 | 0 | 0 |
+| TrackingAndVehicleIntegrationTest | 5 | 0 | 0 | 0 |
+| TrackingLogIntegrationTest | 26 | 0 | 0 | 0 |
+| MobileBindingSwitchIntegrationTest | 11 | 0 | 0 | 0 |
+| MobileAuthIntegrationTest | 53 | 0 | 0 | 0 |
+| TrackingTransitionPolicyTest | 2 | 0 | 0 | 0 |
+| Total | 186 | 0 | 0 | 0 |
+
+- Automated result: BUILD SUCCESS; native Maven exit 0, 1 minute 26 seconds, completed 2026-10-21 09:37:43 Asia/Shanghai. Sixteen added parameterized cases cover both courier/dispatch roles with 0/1/20/21/40/41/51 own events, another staff member's events, tied timestamps, adjacent/final/beyond-last pages, omitted/true/false totals, 1/50-item clamping and lookahead. Filtered cases cover status-only, search-only, combined search/status, case/trim normalization, `%`, `_`, backslash, empty matches and blank search normalization.
+- Query behavior: actual MySQL request SQL contains the hint only for unfiltered ID selection, with bound staff predicate and deterministic ordering. Exact count SQL remains unhinted; count-free reads issue no history COUNT. Clearing the persistence context before requests prevents the first-level cache from hiding hydration: there is exactly one event hydration SELECT for nonempty pages, with staff restriction and an ID-IN list exactly matching content size; empty pages issue none. Lookahead IDs are excluded from hydration. These are query-shape/execution guards, not a new 100k plan/timing benchmark.
+- Contract/schema: omitted and explicit true responses match, with exact totals including beyond-last pages. Count-free content matches exact content and exposes only `content` plus `page: {number,size,hasNext}`. All ten event DTO keys are checked; existing PII/forbidden-field and lazy-mapping regressions pass. No leaked fields found.
+- Role/session/negative checks: courier and dispatch history permitted and ownership isolated; receiving/admin history denied with 403; missing/invalid/obsolete sessions return 401; malformed includeTotals/status/page/size return 400. Existing device-binding and token-version rejection tests pass. History GET introduces no 409 transition; existing scan conflicting-vehicle and binding-switch confirmation 409 cases pass.
+- Metrics/concurrency: populated-day personal metrics, another staff member/yesterday exclusion, operational metrics and idempotent-scan regressions pass. History is read-only and adds no state/counter concurrency invariant. Existing mobile-security races and binding ownership/version invariants pass; no new load or concurrency benchmark is claimed.
+- Warnings: Mockito self-attachment, dynamically loaded Java agent and CDS/class-sharing warnings remain. Surefire emitted a Windows boot-manifest classpath diagnostic (`'other' has different root`). Initial test compilation also reported existing MockBean/SpyBean deprecations. No forced fork termination or shutdown timeout was reported in the confirmed scoped run; deferred SSE shutdown behavior was not retested or repaired.
+- Deviation/remediation log: the first invocation produced the same passing suite XML, but PowerShell `ErrorActionPreference=Stop` treated Mockito stderr as a NativeCommandError before native Maven exit capture. The identical scoped command was repeated with stderr handled as diagnostic output and native exit captured explicitly. No assertion failure, product fix, weakened expectation, or test/audit remediation cycle occurred.
+- Summary verdict: PASS for the scoped functional, security and SQL-shape checks. `git diff --check` passes. Loaded API latency, MySQL CPU improvement, production capacity and independent clean SSE shutdown remain unmeasured.
+
+### Audit Scope Header
+
+- Audit Mode: Git Diff Scoped.
+- Audited targets: changed `findEventIds` branch in `backend/src/main/java/com/tnl/logistics/repository/PersonalTrackingEventRepositoryImpl.java`, added tests/helpers in `backend/src/test/java/com/tnl/logistics/controller/PersonalTrackingHistoryIntegrationTest.java`, `.agents/rules/build-plan.md`, this results update and `.github/PR_DRAFT.md`. Immediate controller/service/security/migration context inspected read-only; no full sweep.
+
+The scoped implementation preserves access restrictions and result contracts, keeps dynamic values parameterized, and leaves filtering, counts and hydration intact. The existing index hint is the approved MySQL-specific trade-off. No actionable findings were identified in the changed scope.
+
+| Severity | Count | Category |
+| --- | ---: | --- |
+| Critical | 0 | Injection, authentication bypass, sensitive data |
+| High | 0 | Authorization, transaction leaks, severe query regressions |
+| Medium | 0 | Validation, error handling, query bounds |
+| Low / Info | 0 | Naming, test coverage, maintainability |
+
+Detailed findings: none. High/Critical remediation: none; zero test-fix and audit-fix cycles.
+
+Reviewed, not flagged: the index name is a constant, not interpolated input; V29 already creates it. Sharing the unfiltered ID path between Page/Slice changes neither exact-count execution nor DTOs. The hint is intentionally excluded from status/search predicates. Hydration remains staff-bound and page-ID-bound in read-only service transactions. Test-only timestamp updates are parameterized and transactional. Portability/future plan selection are documented constraints rather than an unsupported new-index remedy. No global security/CORS/SSE code was changed.
+
+Positive observations: minimal production diff, real MySQL SQL inspection, both-role ownership fixtures, tied-order/empty/boundary cases, exact schema assertions, no-count guards and bounded hydration assertions. No existing assertions were changed.
+
+### What to Test and later benchmark scope
+
+1. Automated command and results are recorded above. To reproduce, select the existing Java 21 runtime for the Maven process and use the unchanged dedicated test profile. Do not point these fixture tests at a preserved simulation database.
+2. Manual reads, in a later approved isolated test deployment: use existing synthetic courier and dispatch sessions. Request `/api/v1/tracking-events/mine?page=0&size=20` with includeTotals omitted, true and false; then page 1, final and beyond-last pages. Compare ordered event IDs, field values and exact totals; false must have only the three nested pagination fields, and hasNext must reflect the one-ID lookahead. Use tied timestamps and events owned by another staff member. Test size 0/999 and negative page for 1/50/0 clamping. Repeat with status-only, tracking/shipment substring, combined, wildcard/backslash and no-match filters. Confirm receiving/admin denial, missing/stale session denial and malformed-parameter rejection. Existing populated-day metrics must retain expected own-staff totals and yesterday exclusion.
+3. Copyable read command after supplying an approved isolated base URL/session through environment variables; no credentials are embedded:
+
+```powershell
+curl.exe "$env:HISTORY_TEST_BASE_URL/api/v1/tracking-events/mine?page=0&size=20&includeTotals=false" -H "Authorization: Bearer $env:TEST_COURIER_TOKEN" -H "X-Device-Id: $env:TEST_DEVICE_ID" -H "X-Device-Token: $env:TEST_DEVICE_TOKEN"
+```
+
+4. Expected database state: history GET changes no shipment, parcel, tracking-event, payment, label, waybill or staff ownership data. Compare returned IDs to a parameterized `SELECT event_id FROM tracking_event WHERE staff_id = :authenticated_staff_id ORDER BY event_timestamp DESC, event_id DESC LIMIT :size OFFSET :offset`; count-free hydration receives only the returned page IDs, not the lookahead. Fixture writes belong only in rollback-isolated tests. No status lifecycle is coupled to pagination.
+5. Later controlled before/after benchmark proposal, NOT RUN: obtain explicit deployment/run authorization and a quiet exclusive window; identify before/after artifacts, preserve rollback images, both datasets/volumes and 1 CPU/1 GiB/5-Hikari/256-MiB limits; verify counts and full history/metrics parity. Pre-agree a bounded comparison budget, identical outside-window read warm-up, unchanged realistic-simulation roles/stages/pauses with includeTotals=false, endpoint/role tags and shared-account caveat. Capture sufficient endpoint samples (no p95 acceptance below 30), errors/completed throughput, CPU/throttling, logical/physical reads and available pool waits. Keep source/query elapsed, loaded HTTP and CPU measurements distinct; no unavailable Performance Schema attribution. Hold SSE and unrelated aggregate/index/resource changes outside that benchmark.
+
+No Docker command, image build, container recreation, simulation DB access, dependency installation, Git write or SSE experiment was performed in this implementation slice. No tracked file/package was added or moved, so project-structure documentation requires no update; private investigation artifacts remain excluded from it.
+
 Status: implementation verified and benchmarked independently as of 2026-10-19.
 
 `GET /api/v1/tracking-events/mine` preserves its existing exact Page response when `includeTotals` is omitted or true. With `includeTotals=false`, it returns `content` and `page: { number, size, hasNext }`; totals are absent. Both paths share normalized bound filters, authenticated staff isolation, descending timestamp/event-ID ordering, and event hydration. The Slice path selects at most `size + 1` IDs and hydrates at most `size` events without executing a history count.

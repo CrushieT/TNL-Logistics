@@ -56,7 +56,11 @@ public class PersonalTrackingEventRepositoryImpl implements PersonalTrackingEven
 
     private List<?> findEventIds(String staffId, String search, ParcelStatus status, Pageable pageable,
                                 String filters, int limit) {
-        Query idsQuery = entityManager.createNativeQuery("SELECT e.event_id" + filters
+        String idFilters = (search == null && status == null)
+                ? " FROM tracking_event e FORCE INDEX (idx_tracking_event_staff_timestamp_event)"
+                        + " WHERE e.staff_id = :staffId"
+                : filters;
+        Query idsQuery = entityManager.createNativeQuery("SELECT e.event_id" + idFilters
                 + " ORDER BY e.event_timestamp DESC, e.event_id DESC");
         bindFilters(idsQuery, staffId, search, status);
         idsQuery.setFirstResult(Math.toIntExact(pageable.getOffset()));

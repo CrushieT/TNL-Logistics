@@ -98,6 +98,149 @@ public class PersonalTrackingHistoryIntegrationTest {
         return fields;
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "COURIER_STAFF,0", "COURIER_STAFF,1", "COURIER_STAFF,20", "COURIER_STAFF,21",
+            "COURIER_STAFF,40", "COURIER_STAFF,41", "COURIER_STAFF,51",
+            "DISPATCH_STAFF,0", "DISPATCH_STAFF,1", "DISPATCH_STAFF,20", "DISPATCH_STAFF,21",
+            "DISPATCH_STAFF,40", "DISPATCH_STAFF,41", "DISPATCH_STAFF,51"
+    })
+    void unfilteredHistoryUsesStaffIndexWithIsolatedBoundedPages(UserRole role, int matchCount) throws Exception {
+        AppUser staff = createHistoryIndexStaff(role);
+        String token = "Bearer " + sessionTokens.generateToken(staff.getUserId(), role.name());
+        String trackingId = createTestShipment(1);
+        ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+        List<TrackingEvent> ownEvents = new ArrayList<>();
+        for (int eventNumber = 0; eventNumber < matchCount; eventNumber++) {
+            ownEvents.add(new TrackingEvent(parcel, ParcelStatus.LOADED_ON_TRUCK, staff, "Own history"));
+        }
+        trackingEventRepository.saveAllAndFlush(ownEvents);
+        trackingEventRepository.saveAndFlush(
+                new TrackingEvent(parcel, ParcelStatus.LOADED_ON_TRUCK, fieldUser2, "Other staff"));
+        entityManager.createNativeQuery("UPDATE tracking_event SET event_timestamp = :timestamp WHERE tracking_id = :trackingId")
+                .setParameter("timestamp", LocalDateTime.of(2026, 1, 1, 12, 0))
+                .setParameter("trackingId", trackingId).executeUpdate();
+        List<Long> expectedIds = ownEvents.stream().map(TrackingEvent::getEventId)
+                .sorted(java.util.Comparator.reverseOrder()).toList();
+
+        for (int pageNumber = 0; pageNumber <= (matchCount + 19) / 20; pageNumber++) {
+            JsonNode defaultPage = null;
+            for (String totalsMode : new String[] {null, "true", "false"}) {
+                JsonNode response = readHistoryIndexPage(token, null, null, pageNumber, 20, totalsMode);
+                List<Long> actualIds = new ArrayList<>();
+                response.path("content").forEach(event -> actualIds.add(event.path("eventId").asLong()));
+                assertEquals(expectedIds.stream().skip(pageNumber * 20L).limit(20).toList(), actualIds);
+                assertHistorySelectionSql(true, !"false".equals(totalsMode), actualIds.size());
+                assertEquals(pageNumber, response.path("page").path("number").asInt());
+                assertEquals(20, response.path("page").path("size").asInt());
+                if (totalsMode == null) defaultPage = response;
+                else if ("true".equals(totalsMode)) assertEquals(defaultPage, response);
+                else {
+                    assertEquals(defaultPage.path("content"), response.path("content"));
+                    assertEquals(java.util.Set.of("content", "page"), fieldNames(response));
+                    assertEquals(java.util.Set.of("number", "size", "hasNext"), fieldNames(response.path("page")));
+                    assertEquals((pageNumber + 1) * 20 < matchCount, response.path("page").path("hasNext").asBoolean());
+                }
+                if (!"false".equals(totalsMode)) {
+                    assertEquals(matchCount, response.path("page").path("totalElements").asInt());
+                }
+                for (JsonNode event : response.path("content")) {
+                    assertEquals(java.util.Set.of("eventId", "trackingId", "shipmentId", "packageIndex", "packageCount",
+                            "statusCode", "statusDisplay", "vehicleId", "vehiclePlateNumber", "timestamp"), fieldNames(event));
+                }
+            }
+        }
+        for (String totalsMode : new String[] {null, "false"}) {
+            JsonNode minimum = readHistoryIndexPage(token, null, null, -1, 0, totalsMode);
+            assertEquals(0, minimum.path("page").path("number").asInt());
+            assertEquals(1, minimum.path("page").path("size").asInt());
+            assertEquals(Math.min(1, matchCount), minimum.path("content").size());
+            assertHistorySelectionSql(true, totalsMode == null, minimum.path("content").size());
+            JsonNode maximum = readHistoryIndexPage(token, null, null, 0, 999, totalsMode);
+            assertEquals(50, maximum.path("page").path("size").asInt());
+            assertEquals(Math.min(50, matchCount), maximum.path("content").size());
+            if ("false".equals(totalsMode)) assertEquals(matchCount > 50, maximum.path("page").path("hasNext").asBoolean());
+            assertHistorySelectionSql(true, totalsMode == null, maximum.path("content").size());
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = UserRole.class, names = {"COURIER_STAFF", "DISPATCH_STAFF"})
+    void filteredHistoryRetainsQueryPathsAndWildcardSemantics(UserRole role) throws Exception {
+        AppUser staff = createHistoryIndexStaff(role);
+        String token = "Bearer " + sessionTokens.generateToken(staff.getUserId(), role.name());
+        String trackingId = createTestShipment(1);
+        ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+        trackingEventRepository.saveAllAndFlush(List.of(
+                new TrackingEvent(parcel, ParcelStatus.LOADED_ON_TRUCK, staff, "Own loaded"),
+                new TrackingEvent(parcel, ParcelStatus.ARRIVED_AT_TNL, staff, "Own arrived"),
+                new TrackingEvent(parcel, ParcelStatus.LOADED_ON_TRUCK, fieldUser2, "Other staff")));
+        String[][] filters = {{null, "LOADED_ON_TRUCK"}, {trackingId, null},
+                {"  " + parcel.getShipment().getShipmentId() + "  ", "LOADED_ON_TRUCK"},
+                {trackingId.toLowerCase(java.util.Locale.ROOT), null}, {"%", null}, {"_", null},
+                {"\\", null}, {"no-match", null}};
+        for (String[] filter : filters) {
+            int expectedCount = "\\".equals(filter[0]) || "no-match".equals(filter[0]) ? 0 : filter[1] == null ? 2 : 1;
+            JsonNode exact = readHistoryIndexPage(token, filter[0], filter[1], 0, 20, null);
+            assertEquals(expectedCount, exact.path("content").size());
+            assertEquals(expectedCount, exact.path("page").path("totalElements").asInt());
+            assertHistorySelectionSql(false, true, expectedCount);
+            JsonNode slice = readHistoryIndexPage(token, filter[0], filter[1], 0, 20, "false");
+            assertEquals(exact.path("content"), slice.path("content"));
+            assertFalse(slice.path("page").path("hasNext").asBoolean());
+            assertHistorySelectionSql(false, false, expectedCount);
+        }
+        JsonNode blankSearch = readHistoryIndexPage(token, "  ", null, 0, 20, "false");
+        assertEquals(2, blankSearch.path("content").size());
+        assertHistorySelectionSql(true, false, 2);
+    }
+
+    private AppUser createHistoryIndexStaff(UserRole role) {
+        AppUser staff = new AppUser("USR-HISTORY-INDEX", "history_index_staff", fieldUser1.getPasswordHash(),
+                "History Index Staff", role);
+        staff.setMustChangePassword(false);
+        return appUserRepository.saveAndFlush(staff);
+    }
+
+    private JsonNode readHistoryIndexPage(String token, String search, String parcelStatus, int page, int size,
+                                         String includeTotals) throws Exception {
+        entityManager.flush();
+        entityManager.clear();
+        SqlCapture.statements.get().clear();
+        var request = get("/api/v1/tracking-events/mine").header("Authorization", token)
+                .param("page", String.valueOf(page)).param("size", String.valueOf(size));
+        if (search != null) request.param("search", search);
+        if (parcelStatus != null) request.param("status", parcelStatus);
+        if (includeTotals != null) request.param("includeTotals", includeTotals);
+        return objectMapper.readTree(mockMvc.perform(request).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString());
+    }
+
+    private void assertHistorySelectionSql(boolean shouldUseStaffIndex, boolean shouldCount, int contentSize) {
+        List<String> statements = List.copyOf(SqlCapture.statements.get());
+        List<String> idSelections = statements.stream().filter(sql -> sql.contains("SELECT e.event_id")).toList();
+        assertEquals(1, idSelections.size(), statements.toString());
+        assertEquals(shouldUseStaffIndex,
+                idSelections.getFirst().contains("FORCE INDEX (idx_tracking_event_staff_timestamp_event)"));
+        assertTrue(idSelections.getFirst().contains("ORDER BY e.event_timestamp DESC, e.event_id DESC"));
+        assertTrue(idSelections.getFirst().contains("e.staff_id = ?"));
+        List<String> otherStatements = statements.stream().filter(sql -> !sql.contains("SELECT e.event_id"))
+                .map(sql -> sql.toLowerCase(java.util.Locale.ROOT)).toList();
+        assertFalse(otherStatements.stream().anyMatch(sql -> sql.contains("force index")));
+        assertEquals(shouldCount ? 1L : 0L, otherStatements.stream()
+                .filter(sql -> sql.contains("count(") && sql.contains("tracking_event")).count());
+        List<String> hydration = otherStatements.stream()
+                .filter(sql -> sql.contains("from tracking_event ") && !sql.contains("count(")).toList();
+        assertEquals(contentSize == 0 ? 0 : 1, hydration.size(), statements.toString());
+        if (contentSize > 0) {
+            var idsPredicate = java.util.regex.Pattern.compile("event_id\\s+in\\s*\\(([^)]+)\\)")
+                    .matcher(hydration.getFirst());
+            assertTrue(idsPredicate.find(), hydration.toString());
+            assertEquals(contentSize, idsPredicate.group(1).chars().filter(character -> character == '?').count());
+            assertTrue(hydration.getFirst().contains("staff_id=?"), hydration.toString());
+        }
+    }
+
     private JsonNode historyPage(String token, String search, int page, int size, String includeTotals) throws Exception {
         var request = get("/api/v1/tracking-events/mine").header("Authorization", token)
                 .param("search", search).param("status", "LOADED_ON_TRUCK")
