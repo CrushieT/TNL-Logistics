@@ -49,3 +49,17 @@ test('release manifest guard rejects missing flags, missing permissions, duplica
   delete noFlag.manifest['uses-permission'].find((entry) => entry.$['android:name'].endsWith('.BLUETOOTH_SCAN')).$['android:usesPermissionFlags'];
   assert.throws(() => verifyBluetoothManifest(noFlag));
 });
+
+test('release manifest guard accepts compiled numeric permission attributes', () => {
+  const manifest = plugin.normalizeBluetoothPermissions({ manifest: {} });
+  const permissions = manifest.manifest['uses-permission'];
+  permissions.find((entry) => entry.$['android:name'].endsWith('.BLUETOOTH_SCAN')).$['android:usesPermissionFlags'] = '0x00010000';
+  for (const entry of permissions.filter((permissionEntry) => permissionEntry.$['android:maxSdkVersion'])) {
+    entry.$['android:maxSdkVersion'] = '0x1e';
+  }
+  assert.doesNotThrow(() => verifyBluetoothManifest(manifest));
+  permissions.find((entry) => entry.$['android:name'].endsWith('.BLUETOOTH_SCAN')).$['android:usesPermissionFlags'] = '65536';
+  assert.doesNotThrow(() => verifyBluetoothManifest(manifest));
+  permissions.find((entry) => entry.$['android:name'].endsWith('.BLUETOOTH_SCAN')).$['android:usesPermissionFlags'] = '0x00000001';
+  assert.throws(() => verifyBluetoothManifest(manifest), /neverForLocation/);
+});

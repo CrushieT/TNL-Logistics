@@ -1,6 +1,17 @@
 const assert = require('node:assert/strict');
 const { AndroidConfig } = require('expo/config-plugins');
 
+function parseManifestNumber(value) {
+  const text = String(value ?? '').trim();
+  return /^(?:0x[0-9a-f]+|\d+)$/i.test(text) ? Number(text) : null;
+}
+
+function hasNeverForLocation(value) {
+  if (typeof value === 'string' && value.split('|').some((flag) => flag.trim() === 'neverForLocation')) return true;
+  const numericFlags = parseManifestNumber(value);
+  return numericFlags !== null && (numericFlags & 0x00010000) !== 0;
+}
+
 function verifyBluetoothManifest(androidManifest) {
   const permissions = androidManifest.manifest['uses-permission'] || [];
   for (const permission of ['BLUETOOTH_SCAN', 'BLUETOOTH_CONNECT', 'BLUETOOTH', 'BLUETOOTH_ADMIN', 'ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION']) {
@@ -11,10 +22,12 @@ function verifyBluetoothManifest(androidManifest) {
     if (permission === 'BLUETOOTH_SCAN' || permission === 'BLUETOOTH_CONNECT') {
       assert.equal(attributes['android:maxSdkVersion'], undefined, `${permission} must remain available on modern Android`);
       if (permission === 'BLUETOOTH_SCAN') {
-        assert.ok(attributes['android:usesPermissionFlags']?.split('|').includes('neverForLocation'), 'BLUETOOTH_SCAN must declare neverForLocation');
+        assert.ok(hasNeverForLocation(attributes['android:usesPermissionFlags']),
+          `BLUETOOTH_SCAN must declare neverForLocation (found ${attributes['android:usesPermissionFlags'] ?? 'none'})`);
       }
     } else {
-      assert.equal(attributes['android:maxSdkVersion'], '30', `${permission} must be capped at API 30`);
+      assert.equal(parseManifestNumber(attributes['android:maxSdkVersion']), 30,
+        `${permission} must be capped at API 30`);
     }
   }
 }
