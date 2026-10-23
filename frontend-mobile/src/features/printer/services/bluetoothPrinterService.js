@@ -141,7 +141,8 @@ export class EscposBluetoothDriver {
     try {
       await this.nativeModule.BluetoothManager.connect(device.address);
     } catch (error) {
-      if (error?.code !== 'Unable to connect device') throw error;
+      const isConnectFailure = error?.code === 'EVENT_UNABLE_CONNECT' || error?.code === 'Unable to connect device' || error?.message?.includes('Unable to connect');
+      if (!isConnectFailure) throw error;
       // Allow the previous native socket to finish closing before one retry.
       await new Promise((resolve) => setTimeout(resolve, 500));
       await this.nativeModule.BluetoothManager.connect(device.address);
@@ -150,8 +151,8 @@ export class EscposBluetoothDriver {
   }
 
   async disconnect(device) {
-    if (this.nativeModule?.BluetoothManager?.disconnect && device?.address) {
-      await this.nativeModule.BluetoothManager.disconnect(device.address);
+    if (this.nativeModule?.BluetoothManager?.disconnect) {
+      await this.nativeModule.BluetoothManager.disconnect(device?.address || '');
     }
   }
 

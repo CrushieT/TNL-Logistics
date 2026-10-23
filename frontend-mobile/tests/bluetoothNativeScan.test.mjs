@@ -240,3 +240,87 @@ ${receiver}
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('patched Java disconnect stops service and clears pending connection', () => {
+  const source = readFileSync(new URL('../node_modules/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/RNBluetoothManagerModule.java', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(source.includes('public void disconnect(String address, final Promise promise)'));
+  assert.ok(source.includes('The printer may be connected to another device or out of range.'));
+  const directory = mkdtempSync(join(tmpdir(), 'tnl-bluetooth-disconnect-'));
+  try {
+    writeFileSync(join(directory, 'DisconnectHarness.java'), `
+import java.util.*;
+public class DisconnectHarness {
+  static class Promise {
+    int settlements; Object result; String code; String message;
+    void resolve(Object value) { settlements++; result = value; }
+    void reject(String code, String message, Throwable... error) { settlements++; this.code = code; this.message = message; }
+  }
+  static class Log {
+    static int e(String tag, String msg) { return 0; }
+    static int e(String tag, String msg, Throwable tr) { return 0; }
+  }
+  static class BluetoothService {
+    int stops = 0;
+    void stop() { stops++; }
+  }
+  static class DisconnectTestModule {
+    private static final String TAG = "BluetoothManager";
+    private static final String PROMISE_CONNECT = "CONNECT";
+    private final Map<String, Promise> promiseMap = Collections.synchronizedMap(new HashMap<String, Promise>());
+    private BluetoothService mService = new BluetoothService();
+    private String mConnectedDeviceName = "XP-470B";
+
+    public void disconnect(String address, final Promise promise) {
+        try {
+            Promise pendingConnect = promiseMap.remove(PROMISE_CONNECT);
+            if (pendingConnect != null) {
+                pendingConnect.reject("CANCELLED", "Connection cancelled by disconnect request.");
+            }
+            if (mService != null) {
+                mService.stop();
+            }
+            mConnectedDeviceName = null;
+            promise.resolve(true);
+        } catch (Exception exception) {
+            Log.e(TAG, "Error disconnecting bluetooth service", exception);
+            promise.reject("DISCONNECT_FAILED", "Failed to disconnect printer.", exception);
+        }
+    }
+  }
+
+  static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
+
+  public static void main(String[] args) {
+    DisconnectTestModule module = new DisconnectTestModule();
+    Promise connectPromise = new Promise();
+    module.promiseMap.put("CONNECT", connectPromise);
+
+    Promise disconnectPromise = new Promise();
+    module.disconnect("AA:BB:CC", disconnectPromise);
+
+    check(disconnectPromise.settlements == 1, "disconnect promise must resolve");
+    check(Boolean.TRUE.equals(disconnectPromise.result), "disconnect promise result must be true");
+    check(connectPromise.settlements == 1, "pending connect must be cancelled");
+    check("CANCELLED".equals(connectPromise.code), "cancelled code mismatch: " + connectPromise.code);
+    check(module.mService.stops == 1, "service stop must be called once");
+    check(module.mConnectedDeviceName == null, "connected device name must be cleared");
+    check(module.promiseMap.isEmpty(), "promiseMap must be empty");
+
+    Promise secondDisconnect = new Promise();
+    module.disconnect("", secondDisconnect);
+    check(secondDisconnect.settlements == 1 && Boolean.TRUE.equals(secondDisconnect.result), "second disconnect must succeed");
+    check(module.mService.stops == 2, "service stop must be called again");
+
+    System.out.println("Native disconnect scenarios passed.");
+  }
+}
+`);
+    const compilation = spawnSync('javac', ['-encoding', 'UTF-8', 'DisconnectHarness.java'], { cwd: directory, encoding: 'utf8' });
+    assert.equal(compilation.status, 0, compilation.stderr || compilation.error?.message);
+    const execution = spawnSync('java', ['-cp', directory, 'DisconnectHarness'], { encoding: 'utf8' });
+    assert.equal(execution.status, 0, execution.stderr || execution.error?.message);
+    assert.match(execution.stdout, /Native disconnect scenarios passed/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
