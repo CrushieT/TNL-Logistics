@@ -58,6 +58,27 @@ index d86e4f5..7f57dfe 100644
 +    implementation 'androidx.core:core:1.13.1'
      implementation "com.google.zxing:core:3.3.0"
  }
+diff --git a/node_modules/react-native-bluetooth-escpos-printer/android/src/main/AndroidManifest.xml b/node_modules/react-native-bluetooth-escpos-printer/android/src/main/AndroidManifest.xml
+index b646487..84a7ab9 100644
+--- a/node_modules/react-native-bluetooth-escpos-printer/android/src/main/AndroidManifest.xml
++++ b/node_modules/react-native-bluetooth-escpos-printer/android/src/main/AndroidManifest.xml
+@@ -1,10 +1,10 @@
+ 
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+           package="cn.jystudio.bluetooth">
+-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+-    <uses-permission android:name="android.permission.BLUETOOTH" />
+-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
++    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
++    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
++    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="30"/>
++    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30"/>
+ 
+ </manifest>
+-  
+\ No newline at end of file
++  
 diff --git a/node_modules/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/BluetoothService.java b/node_modules/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/BluetoothService.java
 index d048d04..e0d6e79 100644
 --- a/node_modules/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/BluetoothService.java

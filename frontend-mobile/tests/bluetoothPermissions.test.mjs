@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
+const { AndroidConfig } = require('expo/config-plugins');
 const plugin = require('../plugins/withBluetoothPermissions');
 const { verifyBluetoothManifest } = require('../scripts/verifyBluetoothManifest');
 const permission = (name, attributes = {}) => ({ $: { 'android:name': `android.permission.${name}`, ...attributes } });
@@ -62,4 +64,14 @@ test('release manifest guard accepts compiled numeric permission attributes', ()
   assert.doesNotThrow(() => verifyBluetoothManifest(manifest));
   permissions.find((entry) => entry.$['android:name'].endsWith('.BLUETOOTH_SCAN')).$['android:usesPermissionFlags'] = '0x00000001';
   assert.throws(() => verifyBluetoothManifest(manifest), /neverForLocation/);
+});
+
+test('patched printer library caps its legacy Bluetooth and Location permissions', async () => {
+  const manifestPath = fileURLToPath(new URL('../node_modules/react-native-bluetooth-escpos-printer/android/src/main/AndroidManifest.xml', import.meta.url));
+  const manifest = await AndroidConfig.Manifest.readAndroidManifestAsync(manifestPath);
+  for (const permissionName of ['BLUETOOTH', 'BLUETOOTH_ADMIN', 'ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION']) {
+    const name = `android.permission.${permissionName}`;
+    const declaration = manifest.manifest['uses-permission'].find((entry) => entry.$['android:name'] === name);
+    assert.equal(declaration?.$['android:maxSdkVersion'], '30', `${permissionName} must be capped in the library manifest`);
+  }
 });
