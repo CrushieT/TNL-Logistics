@@ -374,3 +374,7 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 ### Count-free personal history
 - `backend/src/main/java/com/tnl/logistics/dto/PersonalTrackingEventSliceResponse.java`: explicit personal event slice metadata without totals.
 - `load-tests/count-free-history-results.md`: count-free contract, verification evidence, exact/count-free diagnostic comparison, baseline shutdown limitation, and pending device checks.
+
+### Shipment current vehicle columns
+- `frontend-web/tests/shipmentVehicles.test.mjs`: executes shipment table and detail screen rendering for current vehicle columns, missing fields, lost packages, pagination, View, and Reprint actions.
+- Existing `ShipmentIntegrationTest` includes cold-context SQL capture and assignment/history regressions; no new backend package or endpoint.

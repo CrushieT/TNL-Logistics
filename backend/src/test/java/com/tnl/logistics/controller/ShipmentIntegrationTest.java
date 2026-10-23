@@ -35,11 +35,157 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
-@SpringBootTest
+@SpringBootTest(properties = "spring.jpa.properties.hibernate.session_factory.statement_inspector=com.tnl.logistics.controller.ShipmentIntegrationTest$SqlCapture")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
 public class ShipmentIntegrationTest {
+
+    public static class SqlCapture implements org.hibernate.resource.jdbc.spi.StatementInspector {
+        static final ThreadLocal<List<String>> statements = ThreadLocal.withInitial(java.util.ArrayList::new);
+
+        @Override
+        public String inspect(String sql) {
+            statements.get().add(sql);
+            return sql;
+        }
+    }
+
+    @Autowired
+    private jakarta.persistence.EntityManager entityManager;
+
+    @Autowired
+    private com.tnl.logistics.service.ShipmentService shipmentService;
+
+    @Test
+    void currentVehicleReadsPreserveBoundedSql() throws Exception {
+        for (int shipmentNumber = 0; shipmentNumber < 3; shipmentNumber++) {
+            ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+            request.setRecipientName("Vehicle SQL " + shipmentNumber);
+            mockMvc.perform(post("/api/v1/shipments").header("Authorization", officeToken)
+                    .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isCreated());
+        }
+        Vehicle vehicle = vehicleRepository.save(new Vehicle("SQL-TRUCK", "SQL-PLATE", "SQL fixture"));
+        List<ParcelUnit> parcels = parcelUnitRepository.findAll();
+        parcels.forEach(parcel -> parcel.setCurrentVehicle(vehicle));
+        parcelUnitRepository.saveAll(parcels);
+        entityManager.flush();
+        entityManager.clear();
+        SqlCapture.statements.get().clear();
+        var page = shipmentService.getShipments(null, null, null, null, null,
+                org.springframework.data.domain.PageRequest.of(0, 2));
+        List<String> listSql = List.copyOf(SqlCapture.statements.get());
+        assertEquals(4, listSql.size(), listSql.toString());
+        assertTrue(listSql.get(0).contains("limit ?"));
+        assertFalse(listSql.get(0).contains("join vehicle"));
+        assertEquals("select count(s1_0.shipment_id) from shipment s1_0", listSql.get(1));
+        assertTrue(listSql.get(2).contains("left join vehicle"));
+        assertTrue(listSql.get(2).contains("shipment_id in (?,?)"));
+        var returnedShipmentIds = page.getContent().stream().map(summary -> summary.getShipmentId())
+                .collect(java.util.stream.Collectors.toSet());
+        var loadedParcels = entityManager.unwrap(org.hibernate.engine.spi.SessionImplementor.class)
+                .getPersistenceContextInternal().getEntitiesByKey().values().stream()
+                .filter(ParcelUnit.class::isInstance).map(ParcelUnit.class::cast).toList();
+        assertEquals(4, loadedParcels.size());
+        assertTrue(loadedParcels.stream().allMatch(parcel -> returnedShipmentIds.contains(parcel.getShipment().getShipmentId())));
+        assertEquals(2, page.getNumberOfElements());
+        assertEquals(3, page.getTotalElements());
+        String shipmentId = page.getContent().get(0).getShipmentId();
+        entityManager.clear();
+        SqlCapture.statements.get().clear();
+        assertEquals(2, shipmentService.getShipmentById(shipmentId).getUnits().size());
+        List<String> detailSql = List.copyOf(SqlCapture.statements.get());
+        assertEquals(5, detailSql.size(), detailSql.toString());
+        assertTrue(detailSql.stream().anyMatch(sql -> sql.contains("left join vehicle") && sql.contains("shipment_id in (?)")));
+        assertFalse(detailSql.stream().anyMatch(sql -> sql.contains(" from vehicle ")));
+        System.out.println("VEHICLE_LIST_SQL " + listSql.size() + " " + listSql);
+        System.out.println("VEHICLE_DETAIL_SQL " + detailSql.size() + " " + detailSql);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "NONE", "SINGLE", "REPEATED", "MULTIPLE", "PARTIAL", "LOST", "LOST_ONLY", "CLEARED", "BLANK_PLATE"
+    })
+    void currentVehicleAssignmentsRemainSeparateFromHistory(String scenario) throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        if (scenario.equals("SINGLE")) {
+            request.setQuantity(1);
+            request.setParcels(request.getParcels().subList(0, 1));
+        }
+        MvcResult created = mockMvc.perform(post("/api/v1/shipments").header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated()).andReturn();
+        String shipmentId = objectMapper.readTree(created.getResponse().getContentAsString()).get("shipmentId").asText();
+        List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
+        String firstPlate = scenario.equals("BLANK_PLATE") ? " " : "PLATE-A";
+        Vehicle firstVehicle = vehicleRepository.save(new Vehicle("CURRENT-A", firstPlate, "Current fixture"));
+        Vehicle secondVehicle = vehicleRepository.save(new Vehicle("CURRENT-B", "PLATE-B", "Current fixture"));
+        boolean hasFirstAssignment = !scenario.equals("NONE") && !scenario.equals("CLEARED");
+        if (hasFirstAssignment) {
+            parcels.get(0).setCurrentVehicle(firstVehicle);
+            parcels.get(0).setCurrentStatus(ParcelStatus.LOADED_ON_TRUCK);
+        }
+        if (scenario.equals("REPEATED")) parcels.get(1).setCurrentVehicle(firstVehicle);
+        if (List.of("MULTIPLE", "LOST").contains(scenario)) {
+            parcels.get(1).setCurrentVehicle(secondVehicle);
+        }
+        if (scenario.equals("LOST")) parcels.get(1).setLost(true);
+        if (scenario.equals("LOST_ONLY")) parcels.get(0).setLost(true);
+        if (scenario.equals("CLEARED")) {
+            parcels.forEach(parcel -> parcel.setCurrentStatus(ParcelStatus.ARRIVED_AT_TNL));
+            AppUser staff = entityManager.find(AppUser.class, "USR-OFFICE");
+            trackingEventRepository.save(new TrackingEvent(parcels.get(0), ParcelStatus.LOADED_ON_TRUCK,
+                    firstVehicle, staff, "Retained previous assignment"));
+        }
+        parcelUnitRepository.saveAllAndFlush(parcels);
+        entityManager.clear();
+        SqlCapture.statements.get().clear();
+        var page = shipmentService.getShipments(null, null, null, null, null,
+                org.springframework.data.domain.PageRequest.of(0, 10));
+        var summary = page.getContent().get(0);
+        int expectedCount = List.of("NONE", "LOST_ONLY", "CLEARED").contains(scenario) ? 0
+                : scenario.equals("MULTIPLE") ? 2 : 1;
+        assertEquals(expectedCount, summary.getCurrentVehicleCount());
+        assertEquals(expectedCount == 1 ? "CURRENT-A" : null, summary.getCurrentVehicleId());
+        assertEquals(expectedCount == 1 ? firstPlate : null, summary.getCurrentVehiclePlate());
+        if (scenario.equals("CLEARED")) assertEquals("CURRENT-A", summary.getVehicleId());
+        assertTrue(SqlCapture.statements.get().stream().allMatch(sql -> sql.startsWith("select ")),
+                "Read-only list must not modify business records");
+        entityManager.clear();
+        SqlCapture.statements.get().clear();
+        var detail = shipmentService.getShipmentById(shipmentId);
+        assertEquals(5, SqlCapture.statements.get().size(), SqlCapture.statements.get().toString());
+        assertFalse(SqlCapture.statements.get().stream().anyMatch(sql -> sql.contains(" from vehicle ")));
+        assertEquals(parcels.stream().map(ParcelUnit::getSeq).toList(),
+                detail.getUnits().stream().map(unit -> unit.getPackageIndex()).toList());
+        for (int parcelIndex = 0; parcelIndex < parcels.size(); parcelIndex++) {
+            ParcelUnit fixture = parcels.get(parcelIndex);
+            var unit = detail.getUnits().get(parcelIndex);
+            Vehicle expectedVehicle = fixture.isLost() ? null : fixture.getCurrentVehicle();
+            assertEquals(expectedVehicle == null ? null : expectedVehicle.getVehicleId(), unit.getCurrentVehicleId());
+            assertEquals(expectedVehicle == null ? null : expectedVehicle.getPlateNumber(), unit.getCurrentVehiclePlate());
+        }
+        assertTrue(SqlCapture.statements.get().stream().allMatch(sql -> sql.startsWith("select ")),
+                "Read-only list and detail must not modify business records");
+        MvcResult detailResult = mockMvc.perform(get("/api/v1/shipments/" + shipmentId).header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode detailJson = objectMapper.readTree(detailResult.getResponse().getContentAsString());
+        assertTrue(detailJson.get("units").get(0).has("currentVehicleId"));
+        assertTrue(detailJson.get("units").get(0).has("currentVehiclePlate"));
+        MvcResult listResult = mockMvc.perform(get("/api/v1/shipments").header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        assertEquals(expectedCount, objectMapper.readTree(listResult.getResponse().getContentAsString())
+                .get("content").get(0).get("currentVehicleCount").asInt());
+        if (scenario.equals("CLEARED")) {
+            var filtered = shipmentService.getShipments(null, null, null, "CURRENT-A", null,
+                    org.springframework.data.domain.PageRequest.of(0, 10));
+            assertEquals(1, filtered.getTotalElements());
+            assertEquals(0, filtered.getContent().get(0).getCurrentVehicleCount());
+            assertEquals(1, trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(
+                    parcels.get(0).getTrackingId()).stream().filter(event -> event.getVehicle() != null).count());
+        }
+    }
 
     @Autowired
     private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;

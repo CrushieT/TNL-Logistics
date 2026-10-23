@@ -6,10 +6,11 @@ import { colors, fonts, spacing, radius } from '../../../theme';
 
 const COLUMNS = [
   { key: 'shipment', label: 'SHIPMENT', flex: 1.6 },
-  { key: 'recipient', label: 'RECIPIENT', flex: 1.4 },
-  { key: 'client', label: 'CLIENT', flex: 1.4 },
-  { key: 'qty', label: 'QTY', flex: 0.6 },
-  { key: 'status', label: 'STATUS', flex: 1.6 },
+  { key: 'recipient', label: 'RECIPIENT', flex: 1.2 },
+  { key: 'client', label: 'CLIENT', flex: 1.1 },
+  { key: 'qty', label: 'QTY', flex: 0.5 },
+  { key: 'status', label: 'STATUS', flex: 1.4 },
+  { key: 'vehicle', label: 'VEHICLE', flex: 1.1 },
   { key: 'payment', label: 'PAYMENT', flex: 1 },
   { key: 'balance', label: 'BALANCE', flex: 1 },
   { key: 'action', label: '', flex: 0.7 },
@@ -74,19 +75,20 @@ export default function ShipmentsTable({
               {s.lostCount > 0 ? (
                 <Text style={styles.rollupText}>{s.deliveredCount} of {s.quantity} delivered</Text>
               ) : s.statusRollup ? <Text style={styles.rollupText}>{s.statusRollup}</Text> : null}
-              {s.vehiclePlate ? (
-                <Text style={styles.vehicleText}>
-                  {s.vehicleId ? `${s.vehicleId} | ` : ''}{s.vehiclePlate}
-                </Text>
-              ) : null}
             </View>
             <View style={[styles.cell, { flex: COLUMNS[5].flex }]}>
-              <StatusBadge value={s.payment} kind="payment" />
+              <Text style={styles.vehicleText}>
+                {s.currentVehicleCount > 1 ? 'Multiple vehicles' : s.currentVehicleCount === 1
+                  ? s.currentVehiclePlate?.trim() || s.currentVehicleId || '—' : '—'}
+              </Text>
             </View>
             <View style={[styles.cell, { flex: COLUMNS[6].flex }]}>
+              <StatusBadge value={s.payment} kind="payment" />
+            </View>
+            <View style={[styles.cell, { flex: COLUMNS[7].flex }]}>
               <Text style={styles.primaryText}>₱{Number(s.balance || 0).toLocaleString()}</Text>
             </View>
-            <View style={[styles.cell, { flex: COLUMNS[7].flex, alignItems: 'flex-end' }]}>
+            <View style={[styles.cell, { flex: COLUMNS[8].flex, alignItems: 'flex-end' }]}>
               <Pressable onPress={() => onView?.(s)}>
                 <Text style={styles.viewLink}>View</Text>
               </Pressable>
@@ -223,6 +225,8 @@ const styles = StyleSheet.create({
   },
   cell: {
     justifyContent: 'center',
+    minWidth: 0,
+    paddingRight: 8,
   },
   shipmentId: {
     fontFamily: fonts.mono,
@@ -257,8 +261,8 @@ const styles = StyleSheet.create({
   vehicleText: {
     fontFamily: fonts.mono,
     fontSize: 12,
-    color: colors.inkFaint,
-    marginTop: 2,
+    color: colors.inkSoft,
+    overflowWrap: 'anywhere',
   },
   viewLink: {
     fontFamily: fonts.sans,

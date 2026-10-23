@@ -3,6 +3,8 @@ import { TableRowSkeleton } from '../../components/common/Skeleton';
 import { useCachedPreview, requirePage, requireDirectory } from '../../services/api/useCachedPreview';
 import { CACHE_SLOTS } from '../../services/api/responseCache.mjs';
 import React, { useState } from 'react';
+import { Text } from 'react-native';
+import { colors, fonts, spacing } from '../../theme';
 import { useRouter } from 'expo-router';
 import AppShell from '../../components/layout/AppShell';
 import PageHeader from '../../components/layout/PageHeader';
@@ -97,6 +99,9 @@ export default function ShipmentsListScreen() {
         ]}
       />
 
+      <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: colors.inkFaint, marginBottom: spacing.sm }}>
+        Vehicle filter includes current and previous assignments. The Vehicle column shows current assignments only.
+      </Text>
       <PreviewStatus resource={directory} label="Vehicle filters" />
       <PreviewStatus resource={resource} label="Shipments" />
       {loading ? <TableRowSkeleton /> : resource.data !== null ? <ShipmentsTable

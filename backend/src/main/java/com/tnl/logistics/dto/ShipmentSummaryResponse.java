@@ -34,6 +34,16 @@ public class ShipmentSummaryResponse {
     private String dateLabel;
     private String vehicleId;
     private String vehiclePlate;
+    private int currentVehicleCount;
+    private String currentVehicleId;
+    private String currentVehiclePlate;
+
+    public int getCurrentVehicleCount() { return currentVehicleCount; }
+    public void setCurrentVehicleCount(int currentVehicleCount) { this.currentVehicleCount = currentVehicleCount; }
+    public String getCurrentVehicleId() { return currentVehicleId; }
+    public void setCurrentVehicleId(String currentVehicleId) { this.currentVehicleId = currentVehicleId; }
+    public String getCurrentVehiclePlate() { return currentVehiclePlate; }
+    public void setCurrentVehiclePlate(String currentVehiclePlate) { this.currentVehiclePlate = currentVehiclePlate; }
     private String registeredVia;
     private Boolean allLabelsPrinted;
 

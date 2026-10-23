@@ -15,6 +15,13 @@ public class ParcelUnitResponse {
     public void setRevision(long revision) { this.revision = revision; }
 
     private String trackingId;
+    private String currentVehicleId;
+    private String currentVehiclePlate;
+
+    public String getCurrentVehicleId() { return currentVehicleId; }
+    public void setCurrentVehicleId(String currentVehicleId) { this.currentVehicleId = currentVehicleId; }
+    public String getCurrentVehiclePlate() { return currentVehiclePlate; }
+    public void setCurrentVehiclePlate(String currentVehiclePlate) { this.currentVehiclePlate = currentVehiclePlate; }
     private Integer packageIndex;
     private Integer packageCount;
     private String status;
