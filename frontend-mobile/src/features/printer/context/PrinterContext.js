@@ -40,6 +40,9 @@ export function PrinterProvider({ children }) {
   const [brandingError, setBrandingError] = useState(null);
   const [isVirtualMode, setIsVirtualMode] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [scanNotice, setScanNotice] = useState(null);
+  const scanGenerationRef = useRef(0);
+  const isScanningRef = useRef(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const isConnectingRef = useRef(false);
   const [availableDevices, setAvailableDevices] = useState([]);
@@ -116,12 +119,20 @@ export function PrinterProvider({ children }) {
   }, [retryPendingAudits]);
 
   const scanDevices = useCallback(async () => {
+    if (isScanningRef.current) throw new Error('A printer scan is already in progress.');
+    isScanningRef.current = true;
+    const scanGeneration = ++scanGenerationRef.current;
+    setScanNotice(null);
     setIsScanning(true);
     try {
-      const devices = await bluetoothPrinterService.scanDevices();
-      setAvailableDevices(devices);
+      const { devices, discoveryStatus } = await bluetoothPrinterService.scanDevices();
+      if (scanGeneration === scanGenerationRef.current) {
+        setAvailableDevices(devices);
+        setScanNotice(discoveryStatus === 'paired_only' ? 'Discovery unavailable; showing paired devices.' : null);
+      }
       return devices;
     } finally {
+      isScanningRef.current = false;
       setIsScanning(false);
     }
   }, []);
@@ -146,6 +157,8 @@ export function PrinterProvider({ children }) {
   }, []);
 
   const toggleVirtualMode = useCallback(async (enabled) => {
+    scanGenerationRef.current += 1;
+    setScanNotice(null);
     await bluetoothPrinterService.setVirtualMode(enabled);
     setIsVirtualMode(Boolean(enabled));
     setConnectedDevice(bluetoothPrinterService.getConnectedDevice());
@@ -249,7 +262,7 @@ export function PrinterProvider({ children }) {
   return (
     <PrinterContext.Provider value={{
       isConnected: Boolean(connectedDevice), connectedDevice, isVirtualMode, isScanning, isConnecting,
-      availableDevices, isPrinting, pendingAuditCount, scanDevices, connectPrinter,
+      availableDevices, scanNotice, isPrinting, pendingAuditCount, scanDevices, connectPrinter,
       disconnectPrinter, toggleVirtualMode, printParcelLabels, confirmSystemPrint,
       retryPendingAudits, assertCanRecordPrintAudit, branding, brandingLoading,
       brandingError, fetchBranding,

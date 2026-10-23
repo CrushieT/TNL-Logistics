@@ -1,5 +1,14 @@
 # Project Structure
 
+### Android Bluetooth printer permission and discovery verification
+
+- `frontend-mobile/plugins/withBluetoothPermissions.js`: idempotent Expo manifest plugin for printer-only Bluetooth scanning, modern Scan/Connect permissions, and API 30 legacy permission caps.
+- `frontend-mobile/scripts/verifyBluetoothManifest.js`: validates generated, merged, or decoded APK manifests; the release workflow executes it before signing/upload.
+- `frontend-mobile/tests/bluetoothPermissions.test.mjs`: plugin normalization and fail-closed release manifest checks.
+- `frontend-mobile/tests/bluetoothNativeScan.test.mjs`: compiles patched production Java scan methods against mocked Android boundaries to verify fallback, single settlement, concurrency, and explicit failures; requires the existing JDK.
+- `frontend-mobile/tests/printerDiscoveryFlows.test.mjs`: executes the actual printer service, provider, and Printer screen against native/storage/API mocks.
+- `frontend-mobile/docs/bluetooth-permissions-verification.md`: implementation evidence, scoped review, and pending hardware acceptance checklist.
+
 ### Initial HTML loading shell and browser refresh improvements
 
 - `frontend-web/public/index.html`: initial HTML template for Expo single-page web export (`output: "single"`), containing inline reset styles, application canvas background `#F3F2ED`, accessible pre-hydration loading shell with tracking logo, "ADMIN CONSOLE" badge, CSS spinner, and noscript alert.

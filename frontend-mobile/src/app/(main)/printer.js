@@ -28,6 +28,7 @@ export default function PrinterSetupScreen() {
     isScanning,
     isConnecting,
     availableDevices,
+    scanNotice,
     isPrinting,
     scanDevices,
     connectPrinter,
@@ -252,6 +253,7 @@ export default function PrinterSetupScreen() {
             </PressableScale>
           </View>
 
+          {scanNotice ? <Text style={styles.statusSubtitle} accessibilityRole="alert">{scanNotice}</Text> : null}
           {availableDevices.map((device) => {
             const isThisConnected = connectedDevice?.address === device.address;
             return (
