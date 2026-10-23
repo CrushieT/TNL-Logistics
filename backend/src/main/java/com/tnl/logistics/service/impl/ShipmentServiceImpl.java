@@ -439,7 +439,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         Shipment shipment = shipmentRepository.findById(shipmentId)
                 .orElseThrow(() -> new IllegalArgumentException("Shipment not found: " + shipmentId));
 
-        List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
+        List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdInOrderBySeqAsc(List.of(shipmentId));
         List<Payment> payments = paymentRepository.findByShipment_ShipmentId(shipmentId);
 
         BigDecimal totalPaid = payments.stream()
@@ -596,6 +596,10 @@ public class ShipmentServiceImpl implements ShipmentService {
             ParcelUnit parcel = parcelsById.get(unit.getTrackingId());
             unit.setLost(parcel.isLost());
             unit.setRevision(parcel.getRevision());
+            if (!parcel.isLost() && parcel.getCurrentVehicle() != null) {
+                unit.setCurrentVehicleId(parcel.getCurrentVehicle().getVehicleId());
+                unit.setCurrentVehiclePlate(parcel.getCurrentVehicle().getPlateNumber());
+            }
         }
         long lostCount = parcels.stream().filter(ParcelUnit::isLost).count();
         long deliveredCount = parcels.stream().filter(parcel -> !parcel.isLost() && parcel.getCurrentStatus() == ParcelStatus.COMPLETED).count();
@@ -912,6 +916,19 @@ public class ShipmentServiceImpl implements ShipmentService {
                 allLabelsPrinted
         );
         response.setFinancialStatus(financialStatus);
+        Map<String, Vehicle> currentVehicles = new HashMap<>();
+        for (ParcelUnit parcel : parcels) {
+            if (!parcel.isLost() && parcel.getCurrentVehicle() != null) {
+                Vehicle vehicle = parcel.getCurrentVehicle();
+                currentVehicles.putIfAbsent(vehicle.getVehicleId(), vehicle);
+            }
+        }
+        response.setCurrentVehicleCount(currentVehicles.size());
+        if (currentVehicles.size() == 1) {
+            Vehicle currentVehicle = currentVehicles.values().iterator().next();
+            response.setCurrentVehicleId(currentVehicle.getVehicleId());
+            response.setCurrentVehiclePlate(currentVehicle.getPlateNumber());
+        }
         response.setCollectibleBalance(collectibleBalance);
         response.setStatementId(s.getStatementId());
         response.setLostCount(parcels.stream().filter(ParcelUnit::isLost).count());
