@@ -25,7 +25,7 @@ import {
   syncPrintAuditEntry,
 } from '../src/features/printer/services/printAuditOutbox.js';
 
-function loadPrinterService(isDevelopment, savedValues = {}, scheduleTimeout = setTimeout) {
+function loadPrinterService(isDevelopment, savedValues = {}, scheduleTimeout = setTimeout, nativeBoundaries = {}) {
   const source = readFileSync(new URL('../src/features/printer/services/bluetoothPrinterService.js', import.meta.url), 'utf8')
     .replace(/^import .*;\r?\n/gm, '').replace(/^export /gm, '');
   const storage = new Map(Object.entries(savedValues));
@@ -35,8 +35,101 @@ function loadPrinterService(isDevelopment, savedValues = {}, scheduleTimeout = s
       getItem: async (key) => storage.get(key) ?? null,
       setItem: async (key, value) => storage.set(key, value),
     },
+    ...nativeBoundaries,
   });
 }
+
+function loadAndroidPrinter(apiLevel, nativeResult, isGranted = true) {
+  const requests = [];
+  const calls = { scans: 0, connections: 0, prints: 0 };
+  const nativeModule = {
+    BluetoothManager: {
+      scanDevices: async () => {
+        calls.scans += 1;
+        if (nativeResult instanceof Error) throw nativeResult;
+        return nativeResult;
+      },
+      connect: async () => { calls.connections += 1; },
+    },
+    BluetoothTscPrinter: { printLabel: async () => { calls.prints += 1; } },
+  };
+  const { service } = loadPrinterService(false, {}, setTimeout, {
+    Platform: { OS: 'android', Version: apiLevel },
+    require: () => nativeModule,
+    PermissionsAndroid: {
+      PERMISSIONS: { BLUETOOTH_SCAN: 'SCAN', BLUETOOTH_CONNECT: 'CONNECT', ACCESS_FINE_LOCATION: 'FINE' },
+      RESULTS: { GRANTED: 'granted' },
+      requestMultiple: async (permissions) => {
+        requests.push([...permissions]);
+        return Object.fromEntries(permissions.map((permission) => [permission, isGranted ? 'granted' : 'denied']));
+      },
+      request: async (permission) => { requests.push([permission]); return isGranted ? 'granted' : 'denied'; },
+    },
+  });
+  return { service, requests, calls };
+}
+
+for (const apiLevel of [30, 31, 36]) {
+  test(`Android ${apiLevel} requests only operation-specific Bluetooth permissions`, async () => {
+    const { service, requests, calls } = loadAndroidPrinter(apiLevel, { paired: [], found: [], discoveryStarted: true });
+    assert.equal((await service.scanDevices()).discoveryStatus, 'complete');
+    assert.deepEqual(requests, [apiLevel >= 31 ? ['SCAN', 'CONNECT'] : ['FINE']]);
+    requests.length = 0;
+    await service.connect({ address: 'AA:BB', type: 'BLUETOOTH' });
+    assert.deepEqual(requests, apiLevel >= 31 ? [['CONNECT']] : []);
+    assert.deepEqual(calls, { scans: 1, connections: 1, prints: 0 });
+  });
+
+  test(`Android ${apiLevel} denies scanning before calling native code`, async () => {
+    const { service, calls } = loadAndroidPrinter(apiLevel, {}, false);
+    await assert.rejects(service.scanDevices(), { code: 'PERMISSION_DENIED' });
+    assert.equal(calls.scans, 0);
+    if (apiLevel >= 31) {
+      await assert.rejects(service.connect({ address: 'AA:BB', type: 'BLUETOOTH' }), { code: 'PERMISSION_DENIED' });
+      assert.equal(calls.connections, 0);
+    } else {
+      await service.connect({ address: 'AA:BB', type: 'BLUETOOTH' });
+      assert.equal(calls.connections, 1);
+    }
+  });
+}
+
+test('paired-only native results remain selectable and require an explicit connection', async () => {
+  const { service, calls } = loadAndroidPrinter(36, JSON.stringify({
+    paired: [{ name: 'XP-470B', address: 'AA:BB' }], found: [], discoveryStarted: false,
+  }));
+  const result = await service.scanDevices();
+  assert.equal(result.discoveryStatus, 'paired_only');
+  assert.equal(result.devices[0].name, 'XP-470B');
+  assert.equal(result.devices[0].status, 'AVAILABLE');
+  assert.equal(service.isConnected(), false);
+  assert.deepEqual(calls, { scans: 1, connections: 0, prints: 0 });
+  await service.connect(result.devices[0]);
+  assert.equal(service.isConnected(), true);
+  assert.equal(calls.connections, 1);
+});
+
+test('successful and legacy native responses default to complete discovery', async () => {
+  for (const metadata of [{ discoveryStarted: true }, {}]) {
+    const { service } = loadAndroidPrinter(31, {
+      paired: [{ address: 'PAIRED' }], found: [{ address: 'FOUND' }], ...metadata,
+    });
+    const result = await service.scanDevices();
+    assert.equal(result.discoveryStatus, 'complete');
+    assert.equal(result.devices.length, 2);
+    assert.equal(result.devices[1].address, 'FOUND');
+  }
+});
+
+test('no-paired refusal, denied native permissions, Bluetooth-off and unsupported hardware stay errors', async () => {
+  for (const code of ['DISCOVER', 'PERMISSION_DENIED', 'BT NOT ENABLED', 'EVENT_BLUETOOTH_NOT_SUPPORT']) {
+    const failure = Object.assign(new Error(code === 'DISCOVER' ? 'NOT_STARTED: Check Bluetooth and pair the printer in Android Settings.' : code), { code });
+    const { service, calls } = loadAndroidPrinter(36, failure);
+    await assert.rejects(service.scanDevices(), (error) => error === failure);
+    assert.equal(calls.connections, 0);
+    assert.equal(calls.prints, 0);
+  }
+});
 
 test('production ignores saved simulation mode and virtual printer selections', async () => {
   for (const savedMode of [null, 'false', 'true']) {
@@ -91,7 +184,7 @@ test('development retains simulation restoration and toggling', async () => {
   const { service, IS_VIRTUAL_PRINTER_ENABLED } = loadPrinterService(true, { tnl_virtual_printer_mode: 'true' });
   assert.equal(IS_VIRTUAL_PRINTER_ENABLED, true);
   assert.equal((await service.initialize()).type, 'VIRTUAL');
-  assert.equal((await service.scanDevices())[0].type, 'VIRTUAL');
+  assert.equal((await service.scanDevices()).devices[0].type, 'VIRTUAL');
   const result = await service.printRaw(new Uint8Array([1, 2]));
   assert.equal(result.virtual, true);
   await service.setVirtualMode(false);

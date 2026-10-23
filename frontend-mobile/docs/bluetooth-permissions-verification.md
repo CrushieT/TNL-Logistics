@@ -1,0 +1,33 @@
+# Android Bluetooth printer verification
+
+Status: software implementation complete; physical release acceptance pending. Bluetooth results are used only for printer selection and never to derive physical location. The four business lifecycles and print commands were not changed.
+
+## Local evidence
+
+- Baseline: `node --test frontend-mobile/tests/printer.test.mjs` passed 42 tests before editing.
+- Final mobile suite: from the repository root, `node --test frontend-mobile/tests/*.test.mjs` passed 285 tests across 13 suites. This includes API 30/31/36 permission requests, denied permissions, paired-only/complete/legacy responses, the actual Printer provider and screen with mocked native boundaries, and compiled Java scan control-flow checks. The native harness covers missing and late broadcasts, timeout, permission revocation, Bluetooth-off, retry, and bridge invalidation. Scanning caused zero print transmissions and zero print-audit calls in the component checks.
+- `npx expo export --platform android` succeeded from `frontend-mobile` and produced a production Android bundle.
+- An isolated copy of `frontend-mobile` passed `npx expo prebuild --platform android --no-install`. A fresh copy of the published `react-native-bluetooth-escpos-printer@0.0.5` package passed `patch-package --error-on-fail`; both patched Java files matched the intended sources byte-for-byte. The native library passed `:react-native-bluetooth-escpos-printer:compileReleaseJavaWithJavac` after the timeout change in the generated project.
+- `:app:processReleaseMainManifest` passed in the isolated project with the JavaScript bundle task skipped; the production export above checks that bundle separately. `node scripts/verifyBluetoothManifest.js` passed against both the generated app manifest and the merged release manifest. The merged manifest has one `BLUETOOTH_SCAN` with `neverForLocation`, one uncapped `BLUETOOTH_CONNECT`, and API 30 caps on `BLUETOOTH`, `BLUETOOTH_ADMIN`, `ACCESS_FINE_LOCATION`, and the printer library's `ACCESS_COARSE_LOCATION`.
+- `git -c core.whitespace=-blank-at-eol diff --check` passed. The default `git diff --check` flags blank context lines inside the unified native patch; those leading spaces are required by the patch format and the patch applies cleanly.
+- No release APK was assembled, signed, installed, or printed from this work. The workflow's APK manifest gate is ready but has not run in CI.
+
+## Scoped merge review
+
+Correctness: The plugin preserves unrelated permissions and is idempotent; tests cover duplicates, missing declarations, flags, and caps. Native scans reject overlap before replacing shared state and clear their promise before fallback or failure. A 45-second native deadline handles a missing completion broadcast, with explicit permission or Bluetooth-off failures and single settlement. A late deadline or discovery broadcast cannot settle a replacement scan. Scan promises and deadlines are owned by each native module instance, and bridge shutdown clears its pending scan and listeners. The UI keeps paired devices selectable while leaving connection and reachability to the explicit Connect action. Component checks cover notice clearing, timeout recovery, mode changes, connection failure, and no print/audit side effects.
+
+Readability and architecture: The permission rules live in one Expo plugin and one release validator; the service owns runtime requests and response normalization; the context owns notice state. No backend, web, dependency, or label-command changes were introduced. The patch retains the library's prior build and AndroidX changes.
+
+Security and performance: `neverForLocation` is limited to printer discovery, with Location capped at API 30; no Bluetooth data is used to infer location. No unbounded work, new network calls, or print-audit writes were added to scanning. Native and UI single-scan guards prevent one scan from replacing another. No critical or high code finding remains in the scoped review. The only acceptance limit is physical radio behavior and the signed APK manifest, which the local build did not test.
+
+## What to test on the HONOR Pad
+
+These checks require explicit approval for the release build and installation. Use the approved sample-print workflow. Do not reset application data, force permission grants, or change production records for this test.
+
+1. Inspect the built release APK with the workflow gate. Expect the same six Bluetooth/legacy permission attributes as the merged manifest above. Install it, leave Location unavailable or denied, allow Nearby Devices, and scan with system Location both on and off. Expect XP-470B in the list, no Location prompt, and no print/audit request from scanning.
+2. Select XP-470B and tap Connect. Expect a connected state only after a successful native connection. A listed printer alone must show as available, not connected. Send one approved sample label using the existing test action; verify physical output and expected printer status. This sample action uses `auditMode: 'NONE'`, so no parcel print-audit write is expected. No shipment, parcel, tracking, payment, label, or waybill database state should change.
+3. Force discovery refusal while XP-470B remains paired. Expect `Discovery unavailable; showing paired devices.` above the selectable list and an explicit Connect action. Repeat without paired devices; expect `DISCOVER` / `NOT_STARTED` guidance to enable Bluetooth and pair in Android Settings, with no fallback list.
+4. Deny Nearby Devices and scan, then retry connecting to a paired printer. Expect explicit `PERMISSION_DENIED` failures. Turn Bluetooth off and scan; expect an explicit Bluetooth-off error. Restore permissions and Bluetooth; a new successful scan should clear any old notice and leave scan controls enabled.
+5. If an accepted scan never produces a completion broadcast, wait at most 45 seconds. Expect an explicit timeout error and an enabled Scan control; a retry should work. If permission is revoked or Bluetooth turns off during the scan, expect the corresponding permission or Bluetooth-off error instead. This requires a controlled native test setup; ordinary scans should complete before the deadline.
+
+There are no scan API payloads or database writes to verify. The Printer screen may read branding and pending print-audit entries during normal initialization; it must not submit a print-audit request merely because a scan or Connect action ran. Hardware and signed-APK results should be added here after the approved test.

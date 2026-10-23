@@ -36,16 +36,15 @@ function loadNativeModule() {
   }
 }
 
-async function requestBluetoothPermissions() {
+async function requestBluetoothPermissions(isDiscovery) {
   if (Platform.OS !== 'android') return true;
 
   try {
     const apiLevel = Platform.Version;
     if (apiLevel >= 31) {
-      const permissions = [
-        PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-        PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-      ];
+      const permissions = isDiscovery
+        ? [PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN, PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT]
+        : [PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT];
       const results = await PermissionsAndroid.requestMultiple(permissions);
       const allGranted = permissions.every(
         (perm) => results[perm] === PermissionsAndroid.RESULTS.GRANTED
@@ -53,12 +52,13 @@ async function requestBluetoothPermissions() {
       return allGranted;
     }
 
-    // Android 11 and lower requires location permission for Bluetooth discovery
+    if (!isDiscovery) return true;
+    // Android 11 and lower requires location permission for Bluetooth discovery.
     const granted = await PermissionsAndroid.request(
       PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
       {
         title: 'Bluetooth Printer Permission',
-        message: 'Allow TC & CT Staff App to discover and connect to your thermal label printer.',
+        message: 'Allow TC & CT Staff App to discover your thermal label printer.',
         buttonPositive: 'Allow',
       }
     );
@@ -78,7 +78,7 @@ export class VirtualPrinterDriver {
 
   async scanDevices() {
     assertVirtualPrinterEnabled();
-    return VIRTUAL_PRINTERS;
+    return { devices: VIRTUAL_PRINTERS, discoveryStatus: 'complete' };
   }
 
   async printLabel(bytes, metadata) {
@@ -108,11 +108,13 @@ export class EscposBluetoothDriver {
 
   async scanDevices() {
     this.assertAvailable();
-    const hasPermission = await requestBluetoothPermissions();
+    const hasPermission = await requestBluetoothPermissions(true);
     if (!hasPermission) {
       throw new PrinterTransportError(
         'PERMISSION_DENIED',
-        'Nearby devices permission is required to scan and connect to Bluetooth printers.'
+        Platform.Version >= 31
+          ? 'Nearby devices permission is required to scan for Bluetooth printers.'
+          : 'Location permission is required to discover Bluetooth printers on Android 11 and earlier.'
       );
     }
 
@@ -120,12 +122,15 @@ export class EscposBluetoothDriver {
     const result = typeof rawResult === 'string' ? JSON.parse(rawResult) : rawResult;
     const paired = Array.isArray(result?.paired) ? result.paired : [];
     const found = Array.isArray(result?.found) ? result.found : [];
-    return [...paired, ...found].map((device) => ({ ...device, type: 'BLUETOOTH', status: 'AVAILABLE' }));
+    return {
+      devices: [...paired, ...found].map((device) => ({ ...device, type: 'BLUETOOTH', status: 'AVAILABLE' })),
+      discoveryStatus: result?.discoveryStarted === false ? 'paired_only' : 'complete',
+    };
   }
 
   async connect(device) {
     this.assertAvailable();
-    const hasPermission = await requestBluetoothPermissions();
+    const hasPermission = await requestBluetoothPermissions(false);
     if (!hasPermission) {
       throw new PrinterTransportError(
         'PERMISSION_DENIED',
