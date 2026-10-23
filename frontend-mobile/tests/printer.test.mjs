@@ -255,6 +255,60 @@ test('overlapping Bluetooth connects share the same device attempt and reject sw
   assert.equal(firstResult, secondResult);
 });
 
+test('Bluetooth connection retries once when receiving EVENT_UNABLE_CONNECT or contention guidance message', async () => {
+  for (const failure of [
+    Object.assign(new Error('Unable to connect to printer. The printer may be connected to another device or out of range. Disconnect other devices or restart the printer.'), { code: 'EVENT_UNABLE_CONNECT' }),
+    new Error('Unable to connect to printer: socket closed'),
+  ]) {
+    const delays = [];
+    const { service } = loadPrinterService(false, {}, (callback, delay) => { delays.push(delay); queueMicrotask(callback); });
+    let attempts = 0;
+    service.bluetoothDriver.nativeModule = {
+      BluetoothManager: {
+        connect: async () => {
+          attempts += 1;
+          if (attempts === 1) throw failure;
+        },
+        disconnect: async () => {},
+      },
+    };
+    const connected = await service.connect({ type: 'BLUETOOTH', address: 'PRINTER-1' });
+    assert.equal(connected.address, 'PRINTER-1');
+    assert.equal(attempts, 2);
+    assert.deepEqual(delays, [500]);
+    await service.disconnect();
+  }
+});
+
+test('Bluetooth disconnect passes address and invokes native disconnect to release the RFCOMM socket', async () => {
+  const disconnected = [];
+  const { service } = loadPrinterService(false);
+  service.bluetoothDriver.nativeModule = {
+    BluetoothManager: {
+      connect: async () => {},
+      disconnect: async (address) => { disconnected.push(address); },
+    },
+  };
+  await service.connect({ type: 'BLUETOOTH', address: 'PRINTER-1' });
+  assert.equal(service.isConnected(), true);
+  await service.disconnect();
+  assert.equal(service.isConnected(), false);
+  assert.deepEqual(disconnected, ['PRINTER-1']);
+});
+
+test('Bluetooth disconnect handles missing device or address gracefully with empty address fallback', async () => {
+  const disconnected = [];
+  const { service } = loadPrinterService(false);
+  service.bluetoothDriver.nativeModule = {
+    BluetoothManager: {
+      connect: async () => {},
+      disconnect: async (address) => { disconnected.push(address); },
+    },
+  };
+  await service.disconnect();
+  assert.deepEqual(disconnected, ['']);
+});
+
 test('Bluetooth printing is never retried after a native failure', async () => {
   const { service } = loadPrinterService(false, {}, () => assert.fail('Unexpected print retry delay'));
   let printAttempts = 0;
