@@ -191,7 +191,18 @@ public class ShipmentServiceImpl implements ShipmentService {
         BigDecimal roundedActualWeight = totalActualWeight.setScale(2, RoundingMode.HALF_UP);
         BigDecimal totalVolumetricWeight = totalVolumeCm3.divide(divisorBd, 2, RoundingMode.HALF_UP);
         BigDecimal billableWeight = roundedActualWeight.max(totalVolumetricWeight);
-        BigDecimal shippingFee = billableWeight.multiply(effectiveRatePerKilo).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal calculatedShippingFee = billableWeight.multiply(effectiveRatePerKilo).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal shippingFee;
+        if (request.getShippingFee() != null) {
+            BigDecimal manualFee = request.getShippingFee();
+            if (manualFee.compareTo(BigDecimal.ZERO) < 0 || manualFee.scale() > 2) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "INVALID_SHIPPING_FEE: Shipping fee must be non-negative with at most 2 decimal places.");
+            }
+            shippingFee = manualFee.setScale(2, RoundingMode.HALF_UP);
+        } else {
+            shippingFee = calculatedShippingFee;
+        }
         BigDecimal otherCharges = request.getOtherCharges() != null ? request.getOtherCharges() : BigDecimal.ZERO;
         BigDecimal totalAmount = shippingFee.add(otherCharges);
 
@@ -205,6 +216,9 @@ public class ShipmentServiceImpl implements ShipmentService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "CALCULATION_OVERFLOW: Calculated shipping fee or total amount exceeds maximum allowed capacity.");
         }
+
+        boolean isFreeShipment = totalAmount.compareTo(BigDecimal.ZERO) == 0;
+        boolean paidAtRegistration = !isFreeShipment && Boolean.TRUE.equals(request.getPaidAtRegistration());
 
         // 2. Generate Sequential Shipment ID: SHP-YYYY-XXX
         String currentYear = String.valueOf(LocalDate.now().getYear());
@@ -224,7 +238,7 @@ public class ShipmentServiceImpl implements ShipmentService {
                 shippingFee,
                 otherCharges,
                 totalAmount,
-                request.getPaidAtRegistration() != null ? request.getPaidAtRegistration() : false,
+                paidAtRegistration,
                 request.getRegisteredVia()
         );
         shipment.setDescription(request.getDescription());
@@ -290,7 +304,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
 
         // 5. Process Auto-Payment if Paid at Registration
-        if (Boolean.TRUE.equals(request.getPaidAtRegistration())) {
+        if (paidAtRegistration) {
             Payment payment = new Payment(
                     shipment,
                     totalAmount,

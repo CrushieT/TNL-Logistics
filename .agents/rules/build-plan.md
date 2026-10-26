@@ -1,5 +1,13 @@
 # TNL Logistics — Master Build Plan
 
+## Post-release client requests [IN PROGRESS]
+
+- QR label cleanup [UPCOMING]: remove the displayed amount and bottom client field from web and mobile previews and print formats.
+- Document copy labels [UPCOMING]: print `ORIGINAL COPY` and `CLIENT COPY` on every waybill and SOA sheet while preserving the existing two-copy output.
+- Shipment fee editing [COMPLETED]: allow a per-shipment shipping fee during web and mobile registration; retain other charges separately and validate the persisted total in the backend. Editable shipping fee on web and mobile registration, resets to calculated, zero fee and zero-total free shipments supported with paidAtRegistration disabled, strict validation on currency amounts, preserved across stale settings and input changes.
+- Courier truck-loading-only scans [UPCOMING]: restrict courier single and batch scans to `LOADED_ON_TRUCK`; keep receiving arrival and dispatch hauler-loading paths.
+- Implementation and verification detail: `.review/current/post-release-client-changes-plan.md`. Baseline `dev` includes the `main` release sync.
+
 ## SSE Open-In-View test-fixture cleanup [COMPLETED]
 
 - Completed the test-owned `USR-ADMIN` streams before closing client handles, retained client closure on server-cleanup failures, and asserted zero borrowed connections and zero Tomcat async requests after a bounded five-second wait with 25ms polling. Handles are registered before the INIT assertion. The deliberate five-connection starvation assertions and genuine abrupt-disconnect coverage are preserved.
@@ -56,7 +64,7 @@
 
 - Generated statements in the selected collection cycle show their SOA number in bold beneath the client name and support full/partial, trimmed, case-insensitive number searches.
 - Client name, code, contact, and email searches remain supported; Weekly Collections keeps the default dropdown behavior. No backend or database changes.
-- Automated verification [COMPLETED]: 11 focused component/screen tests and all 117 web tests passed (`node --test tests/*.test.mjs src/features/waybills/services/waybillPrint.test.mjs`, from `frontend-web`); production web export passed (`node node_modules/expo/bin/cli export --platform web --output-dir ../.review/soa-dropdown-web-export`).
+- Automated verification [COMPLETED]: 11 focused component/screen tests and all 117 web tests passed (`node --test tests/*.test.mjs src/features/waybills/services/waybillPrint.test.mjs`, from `frontend-web`); production web export passed (`node node_modules/expo/bin/cli export --platform web --output-dir ../.review/soa-dropdown-web-export`). The generated export is archived at `.review/archive/soa-dropdown-web-export/`.
 - Browser acceptance [UPCOMING]: check dropdown readability, SOA searches, selection, and cycle switching against generated statements.
 
 **System Architecture:** Unified Modular Monolith (Spring Boot 3.4 + MySQL 8.0 + React Native / Expo Web & Mobile). Single shared database where every transaction encoded on PC or mobile is immediately available across all platforms in real time.
@@ -92,7 +100,7 @@
 
 ## Progress Overview
 
-Post-client-demo implementation plan closeout [COMPLETED] on 2026-10-12 at the user's request. `.review/client-demo-change-plan.md` now records the delivered scope merged into `dev` via #72 and the V34 MySQL compatibility follow-up via #73. Pending pricing/retry browser/phone checks, targeted password-cleanup phone verification, deployment smoke checks, and deferred physical-printer acceptance remain separate release follow-ups; this closeout does not claim they passed.
+Post-client-demo implementation plan closeout [COMPLETED] on 2026-10-12 at the user's request. `.review/archive/client-demo-change/client-demo-change-plan.md` now records the delivered scope merged into `dev` via #72 and the V34 MySQL compatibility follow-up via #73. Pending pricing/retry browser/phone checks, targeted password-cleanup phone verification, deployment smoke checks, and deferred physical-printer acceptance remain separate release follow-ups; this closeout does not claim they passed.
 
 | Phase | Description | Status |
 | :--- | :--- | :---: |

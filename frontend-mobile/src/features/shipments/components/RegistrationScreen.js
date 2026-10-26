@@ -87,11 +87,13 @@ export function RegistrationScreen() {
     form.clientMode === 'NEW' ||
     form.recipientAddress !== '' ||
     form.recipientContact !== '' ||
+    form.isShippingFeeOverridden ||
     form.parcels.length > 1 ||
     Boolean(form.parcels[0]?.weightKg || form.parcels[0]?.lengthCm || form.parcels[0]?.widthCm || form.parcels[0]?.heightCm)
   );
 
   const totals = calculateRegistration(form, divisor, ratePerKilo);
+  const isZeroTotal = totals.totalAmount !== null && totals.totalAmount === 0;
 
   useEffect(() => {
     isActive.current = true;
@@ -566,6 +568,59 @@ export function RegistrationScreen() {
                 </View>
               </View>
 
+              <View ref={(node) => { fieldRefs.current.shippingFee = node; }} collapsable={false} style={styles.field}>
+                <View style={styles.shippingFeeHeader}>
+                  <Text style={styles.label}>SHIPPING FEE (₱)</Text>
+                  {form.isShippingFeeOverridden ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={isSubmitting}
+                      onPress={() => {
+                        changeField('isShippingFeeOverridden', false);
+                        changeField('shippingFee', '');
+                        setErrors((prev) => ({ ...prev, shippingFee: undefined }));
+                      }}
+                      style={styles.resetButton}
+                    >
+                      <Text style={styles.resetButtonText}>Reset to calculated</Text>
+                    </Pressable>
+                  ) : (
+                    <View style={styles.calculatedBadge}>
+                      <Text style={styles.calculatedBadgeText}>Calculated</Text>
+                    </View>
+                  )}
+                </View>
+                <TextInput
+                  ref={(node) => { inputRefs.current.shippingFee = node; }}
+                  accessibilityLabel="Shipping fee in pesos"
+                  accessibilityHint={errors.shippingFee || undefined}
+                  value={form.isShippingFeeOverridden
+                    ? (form.shippingFee ?? '')
+                    : (totals.calculatedShippingFee !== null && totals.calculatedShippingFee !== undefined
+                        ? totals.calculatedShippingFee.toFixed(2)
+                        : (totals.shippingFee !== null ? totals.shippingFee.toFixed(2) : ''))}
+                  onChangeText={(val) => {
+                    changeField('isShippingFeeOverridden', true);
+                    changeField('shippingFee', val);
+                    if (errors.shippingFee) setErrors((prev) => ({ ...prev, shippingFee: undefined }));
+                  }}
+                  editable={!isSubmitting}
+                  placeholderTextColor={colors.inkFaint}
+                  placeholder="0.00"
+                  style={[styles.input, errors.shippingFee && styles.inputError]}
+                  {...numericProps}
+                  maxLength={13}
+                />
+                <Text style={styles.helper}>
+                  {form.isShippingFeeOverridden
+                    ? (totals.calculatedShippingFee !== null && totals.calculatedShippingFee !== undefined
+                        ? `Manual override (Calculated: ₱${totals.calculatedShippingFee.toFixed(2)})`
+                        : 'Manual override')
+                    : 'Calculated from billable weight & rate'}
+                </Text>
+                {errors.shippingFee ? <Text accessibilityRole="alert" style={styles.error}>{errors.shippingFee}</Text> : null}
+              </View>
+
               {field('otherCharges', 'OTHER CHARGES (₱)', { ...numericProps, maxLength: 13, placeholder: '0' })}
 
               <View style={styles.totalBox}>
@@ -612,8 +667,8 @@ export function RegistrationScreen() {
               <View style={styles.paymentRow}>
                 <Switch
                   accessibilityLabel="Paid at registration"
-                  value={form.paidAtRegistration}
-                  disabled={isSubmitting}
+                  value={isZeroTotal ? false : form.paidAtRegistration}
+                  disabled={isSubmitting || isZeroTotal}
                   onValueChange={(value) => changeField('paidAtRegistration', value)}
                   trackColor={{ false: colors.border, true: colors.black }}
                   thumbColor={colors.surface}
@@ -621,7 +676,11 @@ export function RegistrationScreen() {
                 <View style={styles.paymentCopy}>
                   <Text style={styles.paymentTitle}>Paid at Registration</Text>
                   <Text style={styles.helper}>
-                    {form.paidAtRegistration ? 'Records the full amount as an immediate cash payment.' : 'Unpaid. To be billed in the statement of account.'}
+                    {isZeroTotal
+                      ? 'Free shipment (₱0.00 total) · No payment record created.'
+                      : form.paidAtRegistration
+                        ? 'Records the full amount as an immediate cash payment.'
+                        : 'Unpaid. To be billed in the statement of account.'}
                   </Text>
                 </View>
               </View>
@@ -785,6 +844,34 @@ const styles = StyleSheet.create({
   paymentRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.md },
   paymentCopy: { flex: 1 },
   paymentTitle: { ...typography.body, fontWeight: '700', color: colors.ink },
+  shippingFeeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  resetButton: {
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
+  resetButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.accent,
+    textDecorationLine: 'underline',
+  },
+  calculatedBadge: {
+    backgroundColor: colors.slateSoft,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  calculatedBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.inkSoft,
+    textTransform: 'uppercase',
+  },
   footer: { borderTopWidth: 1, borderColor: colors.border, padding: spacing.lg, backgroundColor: colors.canvas },
   submit: { minHeight: 56, maxWidth: 688, width: '100%', alignSelf: 'center', backgroundColor: colors.black, flexDirection: 'row', gap: spacing.md, padding: spacing.md, alignItems: 'center', justifyContent: 'center' },
   disabled: { opacity: 0.6 },

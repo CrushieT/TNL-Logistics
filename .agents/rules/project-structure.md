@@ -1,5 +1,11 @@
 # Project Structure
 
+### Local review artifacts
+
+- `.review/current/`: active plans and deployment guidance, including `post-release-client-changes-plan.md` for QR labels, document copies, shipment fee editing, and courier scanning.
+- `.review/archive/`: completed client-demo, SSE, and release verification artifacts. The final release evidence is grouped in `archive/release-v1.4.0/`.
+- `.review/performance/`: performance investigations and diagnostic scripts, kept at their working paths.
+
 ### Android Bluetooth printer permission and discovery verification
 
 - `frontend-mobile/plugins/withBluetoothPermissions.js`: idempotent Expo manifest plugin for printer-only Bluetooth scanning, modern Scan/Connect permissions, and API 30 legacy permission caps.
