@@ -248,6 +248,7 @@ public class WaybillServiceImpl implements WaybillService {
         for (ParcelUnit parcel : parcels) parcel.setWaybill(waybill);
         parcelUnitRepository.saveAll(parcels);
         parcelUnitRepository.flush();
+        sseService.broadcastEvent("WAYBILL_UPDATE", Map.of("shipmentId", shipment.getShipmentId(), "waybillId", waybill.getWaybillId()));
         return buildManifestResponse(shipment, waybill, parcels);
     }
 
@@ -266,6 +267,7 @@ public class WaybillServiceImpl implements WaybillService {
         waybill.setStatus(WaybillStatus.SENT_TO_HAULER);
         waybill.setSentBy(actor);
         waybill.setDispatchedAt(LocalDateTime.now());
+        sseService.broadcastEvent("WAYBILL_UPDATE", Map.of("shipmentId", waybill.getShipment().getShipmentId(), "waybillId", waybillId));
         return getManifestById(waybillId);
     }
 

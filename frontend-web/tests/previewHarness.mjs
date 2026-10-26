@@ -101,6 +101,8 @@ export function mountScreen(name, api = {}, initialAuth = {}, onSubscribe) {
   const cycleList = [{ isoDate: '2026-10-22', label: 'Current Cycle' }];
   const subscribeRealtimeEvents = listener => { realtimeListeners.add(listener); return () => realtimeListeners.delete(listener); };
   const authModule = {
+    default: { get: api.clientGet || (async () => ({ data: [] })) },
+    get: api.clientGet || (async () => ({ data: [] })),
     getSessionAuthContext: () => ({ ...auth }),
     onSessionChanged: listener => {
       sessionListeners.add(listener);
@@ -174,7 +176,10 @@ export function mountScreen(name, api = {}, initialAuth = {}, onSubscribe) {
     allProps: displayName => nodes().filter(node => node.type?.displayName === displayName).map(node => node.props),
     props: displayName => nodes().find(node => node.type?.displayName === displayName)?.props,
     text: () => JSON.stringify(tree),
-    emit: () => { cache.invalidateBusinessEvent('STATUS_UPDATE'); realtimeListeners.forEach(listener => listener({ type: 'STATUS_UPDATE', data: {} })); },
+    emit: (event = { type: 'STATUS_UPDATE', data: {} }) => {
+      cache.invalidateBusinessEvent(event.type);
+      realtimeListeners.forEach(listener => listener(event));
+    },
     changeSession(next = {}) {
       auth = { ...auth, ...next };
       sessionListeners.forEach(listener => listener());

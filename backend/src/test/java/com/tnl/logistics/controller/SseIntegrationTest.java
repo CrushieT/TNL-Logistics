@@ -397,6 +397,35 @@ public class SseIntegrationTest {
         return transaction;
     }
 
+    @Test
+    void waybillUpdatesAreDeliveredOnlyAfterARealTransactionCommits() throws Exception {
+        String userId = "USR-SSE-WAYBILL";
+        AppUserRepository repository = mock(AppUserRepository.class);
+        AppUserRepository.SseAuthorizationState adminState = createAdminState(1);
+        when(repository.findSseAuthorizationState(userId)).thenReturn(Optional.of(adminState));
+        SseServiceImpl isolatedService = new SseServiceImpl(repository);
+        try (MockedConstruction<SseEmitter> emitters = mockConstruction(SseEmitter.class)) {
+            isolatedService.registerClient(userId, 1, System.currentTimeMillis() + 60000);
+            SseEmitter emitter = emitters.constructed().getFirst();
+            newIndependentTransaction().executeWithoutResult(status -> {
+                isolatedService.broadcastEvent("WAYBILL_UPDATE", java.util.Map.of("shipmentId", "SHP-TEST", "waybillId", "WYB-TEST"));
+                try {
+                    verify(emitter, times(1)).send(any(SseEmitter.SseEventBuilder.class));
+                } catch (java.io.IOException exception) {
+                    throw new AssertionError(exception);
+                }
+            });
+            verify(emitter, times(2)).send(any(SseEmitter.SseEventBuilder.class));
+            newIndependentTransaction().executeWithoutResult(status -> {
+                isolatedService.broadcastEvent("WAYBILL_UPDATE", java.util.Map.of("shipmentId", "SHP-TEST", "waybillId", "WYB-TEST"));
+                status.setRollbackOnly();
+            });
+            verify(emitter, times(2)).send(any(SseEmitter.SseEventBuilder.class));
+        } finally {
+            isolatedService.closeStreamsForUser(userId);
+        }
+    }
+
     private AppUserRepository.SseAuthorizationState createAdminState(int tokenVersion) {
         AppUserRepository.SseAuthorizationState state = mock(AppUserRepository.SseAuthorizationState.class);
         when(state.getActive()).thenReturn(true);

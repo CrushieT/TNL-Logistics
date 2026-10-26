@@ -90,6 +90,52 @@ public class SoaIntegrationTest {
 
     @Test
     @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void partialDeductionCapsPaymentAndBothSummaryEndpoints() throws Exception {
+        ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
+        request.setClientId("CL-SOA-001");
+        request.setRecipientAddress("Baguio City Center");
+        request.setRecipientContact("09173334444");
+        request.setQuantity(1);
+        request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        request.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        request.setExpectedVolumetricDivisor(5000);
+        request.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("5.00"),
+                BigDecimal.TEN, BigDecimal.TEN, BigDecimal.TEN)));
+        var result = mockMvc.perform(post("/api/v1/shipments").contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))).andExpect(status().isCreated()).andReturn();
+        String shipmentId = objectMapper.readTree(result.getResponse().getContentAsString()).get("shipmentId").asText();
+        mockMvc.perform(post("/api/v1/soa/save").contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new SaveStatementRequest("CL-SOA-001", LocalDate.now(),
+                        new BigDecimal("300.00"), "Approved adjustment", "Collector"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.amountDue").value(200.00));
+        mockMvc.perform(get("/api/v1/payments/shipment/" + shipmentId)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.collectibleBalance").value(200.00))
+                .andExpect(jsonPath("$.balance").value(500.00))
+                .andExpect(jsonPath("$.paymentStatus").value("Unpaid"));
+        mockMvc.perform(get("/api/v1/shipments").param("search", shipmentId)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].collectibleBalance").value(200.00));
+        mockMvc.perform(post("/api/v1/payments").contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new PaymentRecordRequest(shipmentId,
+                        new BigDecimal("500.00"), PaymentMethod.CASH, null, LocalDate.now(), null))))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/payments/shipment/" + shipmentId)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.payments").isEmpty()).andExpect(jsonPath("$.collectibleBalance").value(200.00));
+        for (int paymentNumber = 0; paymentNumber < 2; paymentNumber++) {
+            mockMvc.perform(post("/api/v1/payments").contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(new PaymentRecordRequest(shipmentId,
+                            new BigDecimal("100.00"), PaymentMethod.CASH, null, LocalDate.now(), null))))
+                    .andExpect(status().isCreated());
+        }
+        mockMvc.perform(get("/api/v1/payments/shipment/" + shipmentId)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.collectibleBalance").value(0.00))
+                .andExpect(jsonPath("$.balance").value(300.00))
+                .andExpect(jsonPath("$.paymentStatus").value("Partial"))
+                .andExpect(jsonPath("$.financialStatus").value("Settled"))
+                .andExpect(jsonPath("$.payments.length()").value(2));
+    }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testWeeklyCollectionsAndActiveCyclesEndpoints() throws Exception {
         mockMvc.perform(get("/api/v1/collections/weekly"))
                 .andExpect(status().isOk())

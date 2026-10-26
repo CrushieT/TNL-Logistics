@@ -387,3 +387,11 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 ### Shipment current vehicle columns
 - `frontend-web/tests/shipmentVehicles.test.mjs`: executes shipment table and detail screen rendering for current vehicle columns, missing fields, lost packages, pagination, View, and Reprint actions.
 - Existing `ShipmentIntegrationTest` includes cold-context SQL capture and assignment/history regressions; no new backend package or endpoint.
+
+### Release checkpoint remediation
+- `backend/src/main/java/com/tnl/logistics/service/PaymentCollectibility.java`: shared shipment/SOA collectible balance calculation.
+- `backend/src/test/java/com/tnl/logistics/service/impl/PaymentServiceImplTest.java`: database-free deduction and payment-summary regressions.
+- `backend/src/test/java/com/tnl/logistics/controller/PaymentConcurrencyIntegrationTest.java`: independent-transaction payment, deduction-edit and statement-linking races.
+- `backend/src/test/java/com/tnl/logistics/service/impl/WaybillNotificationTest.java`: production SSE callback and replay regressions without a database.
+- `backend/src/test/java/com/tnl/logistics/service/impl/UserRetentionTest.java`: database-free retained/unreferenced staff and deletion guard coverage.
+- `frontend-web/tests/waybillDetailRace.test.mjs`: production waybill-detail component regressions for out-of-order responses, route changes, obsolete failures, and loading-state edge cases.

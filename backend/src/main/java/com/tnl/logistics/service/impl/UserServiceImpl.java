@@ -22,6 +22,9 @@ import java.util.List;
 @Transactional
 public class UserServiceImpl implements UserService {
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     private static final String USER_ID_PREFIX = "U-";
 
     private final AppUserRepository appUserRepository;
@@ -146,20 +149,16 @@ public class UserServiceImpl implements UserService {
     @Override
     public void deleteUser(String userId, String requestingUserId) {
         guardSelfModification(userId, requestingUserId);
-        AppUser user = findUserOrThrow(userId);
+        AppUser user = appUserRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + userId));
+        entityManager.refresh(user, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
 
         if (user.getRole() == UserRole.ADMIN) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "The system administrator account cannot be deleted or deactivated.");
         }
 
-        long linkedRecords = appUserRepository.countTrackingEventsByStaff(userId)
-                + appUserRepository.countPaymentsByStaff(userId)
-                + appUserRepository.countWaybillsByStaff(userId)
-                + appUserRepository.countSoaBatchesByStaff(userId)
-                + appUserRepository.countPrintEventsByStaff(userId);
-
-        if (linkedRecords > 0) {
+        if (appUserRepository.countAuditReferencePresence(userId) > 0) {
             // Soft deactivate — preserves audit trail
             user.setActive(false);
             user.incrementTokenVersion();

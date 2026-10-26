@@ -15,6 +15,7 @@ import com.tnl.logistics.repository.ShipmentRepository;
 import com.tnl.logistics.repository.SoaRepository;
 import com.tnl.logistics.repository.WeeklyCollectionRepository;
 import com.tnl.logistics.service.PaymentService;
+import com.tnl.logistics.service.PaymentCollectibility;
 import com.tnl.logistics.service.SseService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -41,6 +42,9 @@ import java.util.stream.Collectors;
 @Transactional
 public class PaymentServiceImpl implements PaymentService {
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("MMM d, yyyy");
 
     private final PaymentRepository paymentRepository;
@@ -65,16 +69,34 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public PaymentResponse recordPayment(PaymentRecordRequest request, String actingStaffUserId) {
         Shipment shipment = shipmentRepository.findByIdForUpdate(request.getShipmentId())
                 .orElseThrow(() -> new IllegalArgumentException("Shipment not found: " + request.getShipmentId()));
+        entityManager.refresh(shipment, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+
+        Soa statement = null;
+        WeeklyCollection collection = null;
+        if (shipment.getStatementId() != null && !shipment.getStatementId().isBlank()) {
+            statement = soaRepository.findByIdForUpdate(shipment.getStatementId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Linked statement is unavailable."));
+            entityManager.refresh(statement, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            if (statement.getCollection() != null) {
+                collection = weeklyCollectionRepository.findByIdForUpdate(statement.getCollection().getCollectionId()).orElse(null);
+            } else if (statement.getClient() != null && statement.getStatementDate() != null) {
+                collection = weeklyCollectionRepository.findByClientAndCollectionDateForUpdate(
+                        statement.getClient().getClientId(), statement.getStatementDate()).orElse(null);
+            }
+            if (collection != null) entityManager.refresh(collection, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        }
 
         AppUser actingStaff = null;
         if (actingStaffUserId != null && !actingStaffUserId.isBlank()) {
             actingStaff = appUserRepository.findById(actingStaffUserId).orElse(null);
         }
 
-        List<Payment> existingPayments = paymentRepository.findByShipment_ShipmentId(shipment.getShipmentId());
+        List<Payment> existingPayments = paymentRepository.findByShipmentIdsForUpdate(List.of(shipment.getShipmentId()));
+        existingPayments.forEach(payment -> entityManager.refresh(payment, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE));
         BigDecimal totalPaidBefore = existingPayments.stream()
                 .map(Payment::getAmountPaid)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -84,25 +106,21 @@ public class PaymentServiceImpl implements PaymentService {
             throw new IllegalStateException(String.format("Shipment %s is already fully paid.", shipment.getShipmentId()));
         }
 
-        if (shipment.getStatementId() != null && !shipment.getStatementId().isBlank()) {
-            soaRepository.findById(shipment.getStatementId()).ifPresent(soa -> {
-                BigDecimal statementBalance = soa.getOutstandingBalance() != null
-                        ? soa.getOutstandingBalance()
-                        : BigDecimal.ZERO;
-                if (statementBalance.compareTo(BigDecimal.ZERO) <= 0) {
-                    throw new ResponseStatusException(
-                            HttpStatus.CONFLICT,
-                            String.format("Shipment %s belongs to settled statement %s.",
-                                    shipment.getShipmentId(), soa.getSoaNo())
-                    );
-                }
-            });
+        BigDecimal collectibleBalance = PaymentCollectibility.calculate(remainingBalance, statement);
+        if (statement != null && collectibleBalance.signum() == 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    String.format("Shipment %s belongs to settled statement %s.", shipment.getShipmentId(), statement.getSoaNo()));
         }
 
         if (request.getAmountPaid().compareTo(remainingBalance) > 0) {
             throw new IllegalArgumentException(String.format(
                     "Payment amount ₱%s exceeds remaining balance ₱%s for shipment %s",
                     request.getAmountPaid(), remainingBalance, shipment.getShipmentId()));
+        }
+        if (request.getAmountPaid().compareTo(collectibleBalance) > 0) {
+            throw new IllegalArgumentException(String.format(
+                    "Payment amount %s exceeds collectible balance %s for shipment %s",
+                    request.getAmountPaid(), collectibleBalance, shipment.getShipmentId()));
         }
 
         LocalDate payDate = request.getPaymentDate() != null ? request.getPaymentDate() : LocalDate.now();
@@ -133,37 +151,19 @@ public class PaymentServiceImpl implements PaymentService {
 
         Payment saved = paymentRepository.save(payment);
 
-        if (shipment.getStatementId() != null && !shipment.getStatementId().isBlank()) {
-            soaRepository.findById(shipment.getStatementId()).ifPresent(soa -> {
-                BigDecimal currentTotalPaid = soa.getTotalPaid() != null ? soa.getTotalPaid() : BigDecimal.ZERO;
-                BigDecimal updatedTotalPaid = currentTotalPaid.add(saved.getAmountPaid());
-                soa.setTotalPaid(updatedTotalPaid);
-
-                BigDecimal charges = soa.getCurrentCharges() != null ? soa.getCurrentCharges() : BigDecimal.ZERO;
-                BigDecimal deductions = soa.getDeductions() != null ? soa.getDeductions() : BigDecimal.ZERO;
-                BigDecimal previousBalance = soa.getPreviousBalance() != null
-                        ? soa.getPreviousBalance()
-                        : BigDecimal.ZERO;
-                BigDecimal updatedBalance = charges.add(previousBalance).subtract(updatedTotalPaid).subtract(deductions);
-                if (updatedBalance.compareTo(BigDecimal.ZERO) < 0) {
-                    updatedBalance = BigDecimal.ZERO;
-                }
-                soa.setOutstandingBalance(updatedBalance);
-                soaRepository.save(soa);
-
-                WeeklyCollection collection = soa.getCollection();
-                if (collection == null && soa.getClient() != null && soa.getStatementDate() != null) {
-                    collection = weeklyCollectionRepository.findByClient_ClientIdAndCollectionDate(
-                            soa.getClient().getClientId(), soa.getStatementDate()
-                    ).orElse(null);
-                }
-                if (collection != null) {
-                    collection.setTotalPaid(updatedTotalPaid);
-                    collection.setBalance(updatedBalance);
-                    collection.setStatus(updatedBalance.compareTo(BigDecimal.ZERO) == 0 ? "PAID" : "FOR_COLLECTION");
-                    weeklyCollectionRepository.save(collection);
-                }
-            });
+        if (statement != null) {
+            BigDecimal currentTotalPaid = statement.getTotalPaid() != null ? statement.getTotalPaid() : BigDecimal.ZERO;
+            BigDecimal updatedTotalPaid = currentTotalPaid.add(saved.getAmountPaid());
+            BigDecimal updatedBalance = statement.getOutstandingBalance().subtract(saved.getAmountPaid());
+            statement.setTotalPaid(updatedTotalPaid);
+            statement.setOutstandingBalance(updatedBalance);
+            soaRepository.save(statement);
+            if (collection != null) {
+                collection.setTotalPaid(updatedTotalPaid);
+                collection.setBalance(updatedBalance);
+                collection.setStatus(updatedBalance.compareTo(BigDecimal.ZERO) == 0 ? "PAID" : "FOR_COLLECTION");
+                weeklyCollectionRepository.save(collection);
+            }
         }
 
         BigDecimal totalPaidAfter = totalPaidBefore.add(saved.getAmountPaid());
@@ -215,7 +215,7 @@ public class PaymentServiceImpl implements PaymentService {
                 && statement.getOutstandingBalance().compareTo(BigDecimal.ZERO) <= 0;
         String financialStatus = isPaid ? "Paid"
                 : (isStatementSettled ? "Settled" : paymentStatus);
-        BigDecimal collectibleBalance = (isPaid || isStatementSettled) ? BigDecimal.ZERO : balance;
+        BigDecimal collectibleBalance = PaymentCollectibility.calculate(balance, statement);
 
         List<PaymentResponse> paymentResponses = payments.stream()
                 .map(p -> mapToResponse(p, shipment, totalPaid, balance, paymentStatus))
