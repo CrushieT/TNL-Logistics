@@ -4,6 +4,7 @@ import com.tnl.logistics.dto.*;
 import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.*;
 import com.tnl.logistics.service.ShipmentService;
+import com.tnl.logistics.service.PaymentCollectibility;
 import com.tnl.logistics.service.SseService;
 import com.tnl.logistics.service.IdentifierCounterService;
 import org.springframework.data.domain.Page;
@@ -858,7 +859,7 @@ public class ShipmentServiceImpl implements ShipmentService {
                 && statement.getOutstandingBalance() != null
                 && statement.getOutstandingBalance().compareTo(BigDecimal.ZERO) <= 0;
         String financialStatus = isStatementSettled ? "Settled" : paymentStr;
-        BigDecimal collectibleBalance = (isPaid || isStatementSettled) ? BigDecimal.ZERO : balance;
+        BigDecimal collectibleBalance = PaymentCollectibility.calculate(balance, statement);
 
         RollupStatus rollup = computeRollupStatus(parcels);
 

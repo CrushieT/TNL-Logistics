@@ -347,3 +347,65 @@ test('actual SSE client replaces an old-session reconnect timer without duplicat
   assert.equal(harness.attempts.length, 2);
   unsubscribe();
 });
+
+
+test('actual SSE client preserves active stream and delivers events across sliding token renewals', async () => {
+  const harness = createClientHarness();
+  const events = [];
+  const unsubscribe = harness.client.subscribeRealtimeEvents(event => events.push(event));
+  const stream = streamingResponse();
+  harness.attempts[0].resolve(stream.response);
+  await harness.settle();
+
+  stream.reads[0].resolve({
+    done: false,
+    value: new TextEncoder().encode('event: WAYBILL_UPDATE\ndata: {"waybillId":"WYB-001"}\n\n'),
+  });
+  await harness.settle();
+  assert.equal(events.length, 1);
+  assert.equal(events[0].data.waybillId, 'WYB-001');
+
+  // Sliding renewal updates active token without changing session identity or firing session change
+  harness.changeSession({}, 'test-token-renewed', false);
+
+  // Subsequent dispatch event arrives on the open stream
+  stream.reads[1].resolve({
+    done: false,
+    value: new TextEncoder().encode('event: WAYBILL_UPDATE\ndata: {"waybillId":"WYB-001","status":"SENT_TO_HAULER"}\n\n'),
+  });
+  await harness.settle();
+
+  assert.equal(events.length, 2);
+  assert.equal(events[1].data.status, 'SENT_TO_HAULER');
+  assert.equal(harness.attempts.length, 1);
+  assert.equal(harness.attempts[0].options.signal.aborted, false);
+  unsubscribe();
+});
+
+for (const [scenario, change] of [
+  ['logout', { isAuthenticated: false }],
+  ['loss of verification', { isVerified: false }],
+  ['session generation change', { sessionGeneration: 2 }],
+  ['account switching', { userId: 'ADMIN-B', sessionGeneration: 2 }],
+]) {
+  test(`actual SSE client closes old stream on ${scenario}`, async () => {
+    const harness = createClientHarness();
+    const events = [];
+    const unsubscribe = harness.client.subscribeRealtimeEvents(event => events.push(event));
+    const stream = streamingResponse();
+    harness.attempts[0].resolve(stream.response);
+    await harness.settle();
+
+    harness.changeSession(change);
+    await harness.settle();
+
+    assert.equal(harness.attempts[0].options.signal.aborted, true);
+    stream.reads[0].resolve({
+      done: false,
+      value: new TextEncoder().encode('event: WAYBILL_UPDATE\ndata: {"obsolete":true}\n\n'),
+    });
+    await harness.settle();
+    assert.deepEqual(events, []);
+    unsubscribe();
+  });
+}

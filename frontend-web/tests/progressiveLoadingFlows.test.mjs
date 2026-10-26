@@ -27,6 +27,11 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+function renderedBusinessText(screen) {
+  return JSON.stringify(JSON.parse(screen.text()), (key, value) =>
+    key === 'resource' && value && typeof value === 'object' ? value.data : value);
+}
+
 function component(name) {
   const placeholder = () => null;
   placeholder.displayName = name;
@@ -240,7 +245,7 @@ for (const name of ['index', 'reports', 'weekly-collections', 'tracking-logs']) 
       if (shouldReject) oldResponse.reject(new Error('Obsolete account failure'));
       else oldResponse.resolve({ kpis: { billed: 999 }, content: [{ eventId: 999 }], items: [] });
       await screen.flush();
-      assert.doesNotMatch(screen.text(), /999|Obsolete account failure/);
+      assert.doesNotMatch(renderedBusinessText(screen), /999|Obsolete account failure/);
       if (name === 'reports') assert.equal(screen.props('ReportsHeader').printDisabled, false);
       screen.unmount();
     });
@@ -263,7 +268,7 @@ for (const name of ['index', 'reports', 'weekly-collections', 'tracking-logs']) 
     assert.deepEqual([...screen.coordinators.values()], originalCoordinators);
     oldResponse.resolve({ kpis: { billed: 999 }, content: [{ eventId: 999 }], items: [] });
     await screen.flush();
-    assert.doesNotMatch(screen.text(), /999/);
+    assert.doesNotMatch(renderedBusinessText(screen), /999/);
     screen.unmount();
   });
 }

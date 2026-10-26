@@ -49,6 +49,50 @@ class SplitWaybillIntegrationTest {
     @Autowired com.tnl.logistics.service.SystemSettingService systemSettingService;
     @Autowired com.tnl.logistics.service.WaybillService waybillService;
 
+    @Test
+    void generationAndDispatchRollbackLeaveNoPersistedTransition() throws Exception {
+        String shipmentId = register(1);
+        List<ParcelUnit> units = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
+        arrive(units);
+        load(units.getFirst().getTrackingId());
+        org.springframework.test.context.transaction.TestTransaction.flagForCommit();
+        org.springframework.test.context.transaction.TestTransaction.end();
+        try {
+            org.springframework.test.context.transaction.TestTransaction.start();
+            String key = UUID.randomUUID().toString();
+            String rolledBackId = generate(shipmentId, ids(units), key);
+            org.springframework.test.context.transaction.TestTransaction.flagForRollback();
+            org.springframework.test.context.transaction.TestTransaction.end();
+            assertTrue(waybillRepository.findById(rolledBackId).isEmpty());
+            assertNull(parcelUnitRepository.findById(units.getFirst().getTrackingId()).orElseThrow().getWaybill());
+
+            org.springframework.test.context.transaction.TestTransaction.start();
+            String committedId = generate(shipmentId, ids(units), key);
+            org.springframework.test.context.transaction.TestTransaction.flagForCommit();
+            org.springframework.test.context.transaction.TestTransaction.end();
+
+            org.springframework.test.context.transaction.TestTransaction.start();
+            send(committedId);
+            org.springframework.test.context.transaction.TestTransaction.flagForRollback();
+            org.springframework.test.context.transaction.TestTransaction.end();
+            Waybill retained = waybillRepository.findById(committedId).orElseThrow();
+            assertEquals(WaybillStatus.GENERATED, retained.getStatus());
+            assertNull(retained.getSentBy());
+            assertNull(retained.getDispatchedAt());
+        } finally {
+            if (org.springframework.test.context.transaction.TestTransaction.isActive()) {
+                org.springframework.test.context.transaction.TestTransaction.flagForRollback();
+                org.springframework.test.context.transaction.TestTransaction.end();
+            }
+            jdbcTemplate.update("DELETE FROM tracking_event WHERE tracking_id IN (SELECT tracking_id FROM parcel_unit WHERE shipment_id = ?)", shipmentId);
+            jdbcTemplate.update("UPDATE parcel_unit SET waybill_id = NULL WHERE shipment_id = ?", shipmentId);
+            jdbcTemplate.update("DELETE FROM waybill WHERE shipment_id = ?", shipmentId);
+            jdbcTemplate.update("DELETE FROM parcel_unit WHERE shipment_id = ?", shipmentId);
+            jdbcTemplate.update("DELETE FROM payment WHERE shipment_id = ?", shipmentId);
+            jdbcTemplate.update("DELETE FROM shipment WHERE shipment_id = ?", shipmentId);
+        }
+    }
+
     @BeforeEach
     void setup() {
         cleanupWaybillClientShipments();

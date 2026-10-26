@@ -26,11 +26,24 @@ function getConnectionAuth() {
   return { ...getSessionAuthContext(), token: getToken() };
 }
 
+function matchesSession(left, right) {
+  return Boolean(
+    left && right && right.isAuthenticated && right.isVerified
+    && left.userId === right.userId
+    && left.sessionGeneration === right.sessionGeneration
+  );
+}
+
 function matchesAuth(left, right) {
   return left && right.isAuthenticated && right.isVerified
     && left.userId === right.userId
     && left.sessionGeneration === right.sessionGeneration
     && left.token === right.token;
+}
+
+function isCurrentSession(connection) {
+  return activeConnection === connection && !connection.controller.signal.aborted
+    && matchesSession(connection.auth, getConnectionAuth());
 }
 
 function isCurrentConnection(connection) {
@@ -49,7 +62,7 @@ function synchronizeSession() {
     blockedAuth = null;
     reconnectAttempt = 0;
   }
-  if (activeConnection && !matchesAuth(activeConnection.auth, auth)) {
+  if (activeConnection && !matchesSession(activeConnection.auth, auth)) {
     closeRealtimeConnection();
     reconnectAttempt = 0;
   }
@@ -84,7 +97,7 @@ export async function initRealtimeConnection() {
   }
 
   if (activeConnection) {
-    if (!matchesAuth(activeConnection.auth, auth)) synchronizeSession();
+    if (!matchesSession(activeConnection.auth, auth)) synchronizeSession();
     return activeConnection?.controller || null;
   }
 
@@ -106,14 +119,22 @@ export async function initRealtimeConnection() {
       signal: abortController.signal,
     });
 
-    if (!isCurrentConnection(connection)) {
+    if (!matchesSession(connection.auth, getConnectionAuth())) {
       if (activeConnection === connection) synchronizeSession();
       return null;
     }
 
     if (!response.ok || !response.body) {
       if (isAuthFailureStatus(response.status)) {
-        blockedAuth = auth;
+        if (matchesAuth(connection.auth, getConnectionAuth())) {
+          blockedAuth = auth;
+        } else {
+          if (activeConnection === connection) {
+            activeConnection = null;
+            synchronizeSession();
+          }
+          return null;
+        }
       }
       throw new Error(`SSE connection failed with HTTP status ${response.status}`);
     }
@@ -125,12 +146,12 @@ export async function initRealtimeConnection() {
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8');
     const parser = createSseStreamParser((eventName, eventData) => {
-      if (isCurrentConnection(connection)) dispatchEvent(eventName, eventData);
+      if (isCurrentSession(connection)) dispatchEvent(eventName, eventData);
     });
 
     while (!abortController.signal.aborted) {
       const { done, value } = await reader.read();
-      if (!isCurrentConnection(connection)) {
+      if (!isCurrentSession(connection)) {
         if (activeConnection === connection) synchronizeSession();
         return null;
       }
@@ -141,14 +162,14 @@ export async function initRealtimeConnection() {
       parser.feed(decoder.decode(value, { stream: true }));
     }
   } catch (err) {
-    if (!isCurrentConnection(connection)) {
+    if (!matchesSession(connection.auth, getConnectionAuth())) {
       if (activeConnection === connection) synchronizeSession();
       return null;
     }
     console.warn('Realtime SSE stream interrupted:', err?.message);
   } finally {
     if (activeConnection === connection) {
-      if (!isCurrentConnection(connection)) {
+      if (!isCurrentSession(connection)) {
         synchronizeSession();
       } else {
         activeConnection = null;

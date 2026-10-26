@@ -20,6 +20,10 @@ import java.util.List;
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Payment p WHERE p.shipment.shipmentId IN :shipmentIds ORDER BY p.paymentId")
+    List<Payment> findByShipmentIdsForUpdate(@Param("shipmentIds") Collection<String> shipmentIds);
+
     List<Payment> findByShipment_ShipmentId(String shipmentId);
 
     List<Payment> findByShipment_ShipmentIdOrderByRecordedAtDesc(String shipmentId);

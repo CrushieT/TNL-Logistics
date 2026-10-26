@@ -30,6 +30,141 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public class UserManagementIntegrationTest {
 
     @Autowired
+    private jakarta.persistence.EntityManager entityManager;
+
+    @Autowired
+    private com.tnl.logistics.service.WaybillService waybillService;
+
+    @Autowired
+    private com.tnl.logistics.service.UserService userService;
+
+    @Autowired
+    private org.springframework.transaction.PlatformTransactionManager transactionManager;
+
+    @Test
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    void concurrentAuditCreationPreventsHardDeletionOfItsActor() throws Exception {
+        String suffix = java.util.UUID.randomUUID().toString().substring(0, 8);
+        var actor = appUserRepository.save(new com.tnl.logistics.model.AppUser("USR-RACE-" + suffix,
+                "race-" + suffix, "unused-test-hash", "Historical actor", UserRole.DISPATCH_STAFF));
+        String requestId = java.util.UUID.randomUUID().toString();
+        var auditWritten = new java.util.concurrent.CountDownLatch(1);
+        var releaseAudit = new java.util.concurrent.CountDownLatch(1);
+        var deletionStarted = new java.util.concurrent.CountDownLatch(1);
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var audit = executor.submit(() -> new org.springframework.transaction.support.TransactionTemplate(transactionManager)
+                    .executeWithoutResult(status -> {
+                        entityManager.persist(new com.tnl.logistics.model.ParcelExceptionCommand(requestId,
+                                "LOST", "TRK-HISTORICAL", actor.getUserId(), "Historical audit", 0));
+                        entityManager.flush();
+                        auditWritten.countDown();
+                        try {
+                            org.junit.jupiter.api.Assertions.assertTrue(releaseAudit.await(10, java.util.concurrent.TimeUnit.SECONDS));
+                        } catch (InterruptedException exception) {
+                            Thread.currentThread().interrupt();
+                            throw new AssertionError(exception);
+                        }
+                    }));
+            org.junit.jupiter.api.Assertions.assertTrue(auditWritten.await(10, java.util.concurrent.TimeUnit.SECONDS));
+            var deletion = executor.submit(() -> {
+                deletionStarted.countDown();
+                userService.deleteUser(actor.getUserId(), "USR-ADMIN");
+            });
+            org.junit.jupiter.api.Assertions.assertTrue(deletionStarted.await(10, java.util.concurrent.TimeUnit.SECONDS));
+            releaseAudit.countDown();
+            audit.get(15, java.util.concurrent.TimeUnit.SECONDS);
+            deletion.get(15, java.util.concurrent.TimeUnit.SECONDS);
+            org.junit.jupiter.api.Assertions.assertFalse(appUserRepository.findById(actor.getUserId()).orElseThrow().getActive());
+            org.junit.jupiter.api.Assertions.assertEquals(1, appUserRepository.countAuditReferencePresence(actor.getUserId()));
+        } finally {
+            releaseAudit.countDown();
+            executor.shutdownNow();
+            org.junit.jupiter.api.Assertions.assertTrue(executor.awaitTermination(20, java.util.concurrent.TimeUnit.SECONDS));
+            new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                entityManager.createQuery("DELETE FROM ParcelExceptionCommand c WHERE c.requestId = :id")
+                        .setParameter("id", requestId).executeUpdate();
+                appUserRepository.findById(actor.getUserId()).ifPresent(appUserRepository::delete);
+            });
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "TRACKING", "PAYMENT", "GENERATED", "SENT", "COMPLETED", "SOA_BATCH", "PRINT_EVENT",
+            "PRINT_JOB", "RETURN_SCAN", "LOSS", "EXCEPTION_COMMAND", "RECONCILIATION"
+    })
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void eachAuditReferenceRetainsItsActor(String reference) throws Exception {
+        String suffix = java.util.UUID.randomUUID().toString().substring(0, 8);
+        var actor = new com.tnl.logistics.model.AppUser("USR-RET-" + suffix, "retain-" + suffix,
+                "unused-test-hash", "Retained staff", UserRole.DISPATCH_STAFF);
+        entityManager.persist(actor);
+        int originalVersion = actor.getTokenVersion();
+        var admin = appUserRepository.findByRoleAndActiveTrue(UserRole.ADMIN).getFirst();
+        var client = clientRepository.findById("CL-001").orElseThrow();
+        var shipment = new com.tnl.logistics.model.Shipment("SHP-RET-" + suffix, client, "Recipient", "Address", "09170000000", 1,
+                com.tnl.logistics.model.ChargeModel.FLAT, java.math.BigDecimal.TEN, java.math.BigDecimal.ZERO,
+                java.math.BigDecimal.TEN, false, com.tnl.logistics.model.RegisteredVia.DESKTOP_OFFICE);
+        entityManager.persist(shipment);
+        var parcel = new com.tnl.logistics.model.ParcelUnit("TRK-RET-" + suffix, shipment, 1,
+                java.math.BigDecimal.ONE, java.math.BigDecimal.ONE, java.math.BigDecimal.ONE,
+                java.math.BigDecimal.ONE, java.math.BigDecimal.ONE);
+        parcel.setCurrentStatus(com.tnl.logistics.model.ParcelStatus.LOADED_TO_HAULER);
+        entityManager.persist(parcel);
+        var waybill = new com.tnl.logistics.model.Waybill("WYB-RET-" + suffix, shipment,
+                reference.equals("GENERATED") ? actor : admin, "Hauler");
+        entityManager.persist(waybill);
+        parcel.setWaybill(waybill);
+        String requestId = java.util.UUID.randomUUID().toString();
+        switch (reference) {
+            case "TRACKING" -> entityManager.persist(new com.tnl.logistics.model.TrackingEvent(parcel,
+                    com.tnl.logistics.model.ParcelStatus.LOADED_TO_HAULER, actor, "Audit fixture"));
+            case "PAYMENT" -> entityManager.persist(new com.tnl.logistics.model.Payment(shipment,
+                    java.math.BigDecimal.ONE, com.tnl.logistics.model.PaymentMethod.CASH, java.time.LocalDate.now(), actor, null));
+            case "GENERATED" -> { }
+            case "SENT" -> {
+                entityManager.flush();
+                waybillService.sendToHauler(waybill.getWaybillId(), actor.getUserId());
+            }
+            case "COMPLETED" -> waybill.setCompletedBy(actor);
+            case "SOA_BATCH" -> {
+                var collection = new com.tnl.logistics.model.WeeklyCollection("COL-RET-" + suffix, client,
+                        java.time.LocalDate.now(), java.time.LocalDate.now(), java.math.BigDecimal.TEN,
+                        java.math.BigDecimal.ZERO, java.math.BigDecimal.TEN, "FOR_COLLECTION");
+                entityManager.persist(collection);
+                entityManager.persist(new com.tnl.logistics.model.SoaBatch("BAT-RET-" + suffix, collection, "SELECTED", 1, actor));
+            }
+            case "PRINT_EVENT" -> entityManager.persist(new com.tnl.logistics.model.PrintEvent(parcel,
+                    com.tnl.logistics.model.PrintKind.PRINT, 1, actor, null, null));
+            case "PRINT_JOB" -> entityManager.persist(new com.tnl.logistics.model.PrintAuditJob(requestId,
+                    shipment, actor, null, "0".repeat(64)));
+            case "RETURN_SCAN" -> entityManager.persist(new com.tnl.logistics.model.WaybillReturnScan(waybill, parcel, actor));
+            case "LOSS" -> entityManager.persist(new com.tnl.logistics.model.ParcelLossEvent(parcel,
+                    "LOST", "Historical loss", actor.getUserId(), requestId, 0));
+            case "EXCEPTION_COMMAND" -> entityManager.persist(new com.tnl.logistics.model.ParcelExceptionCommand(requestId,
+                    "LOST", parcel.getTrackingId(), actor.getUserId(), "Historical command", 0));
+            case "RECONCILIATION" -> entityManager.persist(new com.tnl.logistics.model.WaybillReconciliationEvent(waybill,
+                    "CLOSED", "Historical reconciliation", actor.getUserId(), requestId, 0L));
+            default -> throw new IllegalArgumentException(reference);
+        }
+        entityManager.flush();
+        entityManager.clear();
+        org.junit.jupiter.api.Assertions.assertEquals(1, appUserRepository.countAuditReferencePresence(actor.getUserId()));
+        mockMvc.perform(delete("/api/v1/users/" + actor.getUserId())).andExpect(status().isOk());
+        entityManager.flush();
+        entityManager.clear();
+        var retained = appUserRepository.findById(actor.getUserId()).orElseThrow();
+        org.junit.jupiter.api.Assertions.assertFalse(retained.getActive());
+        org.junit.jupiter.api.Assertions.assertEquals(originalVersion + 1, retained.getTokenVersion());
+        org.junit.jupiter.api.Assertions.assertEquals(1, appUserRepository.countAuditReferencePresence(actor.getUserId()));
+        if (reference.equals("SENT")) {
+            org.junit.jupiter.api.Assertions.assertEquals(actor.getUserId(),
+                    waybillRepository.findById(waybill.getWaybillId()).orElseThrow().getSentBy().getUserId());
+        }
+    }
+
+    @Autowired
     private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
 
     @Autowired

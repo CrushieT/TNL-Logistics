@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AppShell from '../../components/layout/AppShell';
@@ -24,39 +24,56 @@ export default function WaybillDetailScreen() {
   const [reconciliationHistory, setReconciliationHistory] = useState([]);
   const [branding, setBranding] = useState(null);
   const [state, setState] = useState('loading');
+  const requestRef = useRef({ version: 0, waybillId });
+  requestRef.current.waybillId = waybillId;
 
   const loadManifest = useCallback(async (showSpinner = true) => {
+    const requestVersion = ++requestRef.current.version;
+    const isCurrentRequest = () => requestRef.current.version === requestVersion
+      && requestRef.current.waybillId === waybillId;
     if (!waybillId) {
-      setState('notFound');
-      return;
+      if (isCurrentRequest()) setState('notFound');
+      return null;
     }
-    if (showSpinner === true) setState('loading');
+    if (showSpinner === true && isCurrentRequest()) setState('loading');
     try {
       const [result, brandingResult] = await Promise.all([
         getWaybillByNumber(waybillId),
         getCompanyBranding().catch(() => null),
       ]);
-      setManifest(result);
       const { data: history } = await apiClient.get(`/waybills/${encodeURIComponent(waybillId)}/reconciliation-history`);
+      if (!isCurrentRequest()) return null;
+      setManifest(result);
       setReconciliationHistory(history);
       if (brandingResult) setBranding(brandingResult);
       setState('ready');
+      return result;
     } catch (error) {
-      if (showSpinner === false) return;
+      if (!isCurrentRequest()) return null;
       const message = error?.response?.data?.message || '';
       const isNotFound = error?.response?.status === 404 || /waybill not found/i.test(message);
+      if (showSpinner === false) {
+        setState(currentState => currentState === 'loading' ? (isNotFound ? 'notFound' : 'error') : currentState);
+        return null;
+      }
       setManifest(null);
       setState(isNotFound ? 'notFound' : 'error');
+      return null;
     }
   }, [waybillId]);
 
   useEffect(() => {
     loadManifest();
+    return () => { requestRef.current.version += 1; };
   }, [loadManifest]);
 
   useEffect(() => subscribeRealtimeEvents((event) => {
-    if (event.data?.shipmentId === manifest?.shipmentId) loadManifest(false);
-  }), [loadManifest, manifest?.shipmentId]);
+    const matchesWaybill = Boolean(waybillId && event.data?.waybillId && event.data.waybillId === waybillId);
+    const matchesShipment = Boolean(manifest?.shipmentId && event.data?.shipmentId && event.data.shipmentId === manifest.shipmentId);
+    if (matchesWaybill || matchesShipment) loadManifest(false);
+  }), [loadManifest, waybillId, manifest?.shipmentId]);
+
+  const hasPreviousManifest = Boolean(manifest && manifest.waybillId !== waybillId);
 
   const printManifest = () => {
     if (!manifest || typeof document === 'undefined') return;
@@ -81,7 +98,7 @@ export default function WaybillDetailScreen() {
         <Text style={styles.backLink}>Back to Waybills</Text>
       </Pressable>
 
-      {state === 'loading' ? (
+      {state === 'loading' || (state === 'ready' && hasPreviousManifest) ? (
         <View style={styles.stateContainer}>
           <ActivityIndicator color={colors.ink} size="large" />
           <Text style={styles.stateText}>Loading waybill {waybillId || ''}...</Text>
@@ -118,10 +135,8 @@ export default function WaybillDetailScreen() {
                   && manifest.lostCount === manifest.totalQuantity}
                 endpoint={`/waybills/${encodeURIComponent(waybillId)}/close-all-lost`}
                 onRefresh={async () => {
-                  const record = await getWaybillByNumber(waybillId);
-                  const { data: history } = await apiClient.get(`/waybills/${encodeURIComponent(waybillId)}/reconciliation-history`);
-                  setManifest(record);
-                  setReconciliationHistory(history);
+                  const record = await loadManifest(false);
+                  if (!record) throw new Error('Could not refresh this waybill');
                   return record;
                 }} />
             </View>

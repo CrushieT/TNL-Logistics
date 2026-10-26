@@ -18,6 +18,7 @@ Keep project documentation strictly synchronized with code changes:
   - Label Status: `NOT_PRINTED` -> `PRINTED` -> `REPRINTED`.
   - Waybill Status: `NOT_GENERATED` -> `GENERATED` -> `SENT_TO_HAULER` -> `COMPLETED`.
   Never conflate or cross-couple these independent lifecycles.
+  Approved exception: completing a waybill completes its eligible non-lost manifest parcels. Manifest-assigned parcels must complete through that waybill. Payment and label lifecycles remain independent.
 
 ## Path & Reference Standards
 

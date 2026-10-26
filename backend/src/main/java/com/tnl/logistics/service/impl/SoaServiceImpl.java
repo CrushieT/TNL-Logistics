@@ -26,6 +26,9 @@ import java.util.stream.Collectors;
 @Service
 public class SoaServiceImpl implements SoaService {
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     private static final DateTimeFormatter MONTH_DAY_YEAR = DateTimeFormatter.ofPattern("MMM d, yyyy");
 
     private final ClientRepository clientRepository;
@@ -208,7 +211,7 @@ public class SoaServiceImpl implements SoaService {
     }
 
     @Override
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public StatementPreviewResponse saveStatement(SaveStatementRequest request, String actingUserId) {
         if (request.getClientId() == null || request.getClientId().trim().isEmpty()) {
             throw new IllegalArgumentException("Client ID is required");
@@ -225,9 +228,19 @@ public class SoaServiceImpl implements SoaService {
         LocalDateTime cycleStart = cycleStartLocalDate.atStartOfDay();
         LocalDateTime cycleEnd = targetThursday.atTime(23, 59, 59, 999999999);
 
+        // Match payment lock order: shipments, statement, collection, then payments.
+        List<Shipment> rawShipments = shipmentRepository.findByClientAndCycleForUpdate(client.getClientId(), cycleStart, cycleEnd);
+        rawShipments.forEach(shipment -> entityManager.refresh(shipment, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE));
+        Optional<Soa> existingOpt = soaRepository.findByClientAndStatementDateForUpdate(client.getClientId(), targetThursday);
+        existingOpt.ifPresent(statement -> entityManager.refresh(statement, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE));
+
         // 1. Ensure WeeklyCollection record exists
         String collectionId = "COL-" + client.getClientId() + "-" + targetThursday;
-        WeeklyCollection collection = weeklyCollectionRepository.findByClient_ClientIdAndCollectionDate(client.getClientId(), targetThursday)
+        WeeklyCollection collection = weeklyCollectionRepository.findByClientAndCollectionDateForUpdate(client.getClientId(), targetThursday)
+                .map(existingCollection -> {
+                    entityManager.refresh(existingCollection, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+                    return existingCollection;
+                })
                 .orElseGet(() -> {
                     WeeklyCollection newCol = new WeeklyCollection(
                             collectionId,
@@ -261,8 +274,6 @@ public class SoaServiceImpl implements SoaService {
                 });
 
         // 3. Compute charges and payments for cycle shipments
-        Optional<Soa> existingOpt = soaRepository.findByClient_ClientIdAndStatementDate(client.getClientId(), targetThursday);
-        List<Shipment> rawShipments = shipmentRepository.findByClientAndCycleForUpdate(client.getClientId(), cycleStart, cycleEnd);
         List<Shipment> shipments = rawShipments.stream()
                 .filter(s -> {
                     if (s.getStatementId() != null && !s.getStatementId().trim().isEmpty()) {
@@ -281,9 +292,10 @@ public class SoaServiceImpl implements SoaService {
                 .collect(Collectors.toList());
 
         BigDecimal totalPaid = BigDecimal.ZERO;
+        List<Payment> scopedPayments = shipmentIds.isEmpty() ? List.of() : paymentRepository.findByShipmentIdsForUpdate(shipmentIds);
+        scopedPayments.forEach(payment -> entityManager.refresh(payment, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE));
         if (!shipmentIds.isEmpty()) {
-            List<Payment> payments = paymentRepository.findByShipment_ShipmentIdIn(shipmentIds);
-            for (Payment p : payments) {
+            for (Payment p : scopedPayments) {
                 if (p.getAmountPaid() != null) {
                     totalPaid = totalPaid.add(p.getAmountPaid());
                 }
@@ -346,8 +358,7 @@ public class SoaServiceImpl implements SoaService {
             }
         }
         if (!shipmentIds.isEmpty()) {
-            List<Payment> unlinkedPayments = paymentRepository.findByShipment_ShipmentIdIn(shipmentIds);
-            for (Payment p : unlinkedPayments) {
+            for (Payment p : scopedPayments) {
                 if (p.getStatementId() == null || p.getStatementId().trim().isEmpty()) {
                     p.setStatementId(soa.getSoaNo());
                     paymentRepository.save(p);
