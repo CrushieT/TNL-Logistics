@@ -41,7 +41,7 @@ public class ReportIntegrationTest {
     @Autowired
     private ClientRepository clientRepository;
 
-    @Autowired
+    @org.springframework.boot.test.mock.mockito.SpyBean
     private ShipmentRepository shipmentRepository;
 
     @Autowired
@@ -55,6 +55,56 @@ public class ReportIntegrationTest {
 
     @Autowired
     private com.tnl.logistics.service.CollectionsService collectionsService;
+
+    @Autowired
+    private com.tnl.logistics.service.ReportService reportService;
+
+    @Autowired
+    private WeeklyCollectionRepository weeklyCollectionRepository;
+
+    private ParcelUnit createParcel(String trackingId, Shipment shipment, int seq, ParcelStatus status, boolean lost, BigDecimal weight, BigDecimal volume) {
+        ParcelUnit p = new ParcelUnit();
+        p.setTrackingId(trackingId);
+        p.setShipment(shipment);
+        p.setSeq(seq);
+        p.setCurrentStatus(status);
+        p.setLost(lost);
+        p.setWeightKg(weight != null ? weight : new BigDecimal("2.50"));
+        p.setLengthCm(new BigDecimal("20.00"));
+        p.setWidthCm(new BigDecimal("20.00"));
+        p.setHeightCm(new BigDecimal("20.00"));
+        p.setVolumeCbm(volume != null ? volume : new BigDecimal("0.0080"));
+        return parcelUnitRepository.save(p);
+    }
+
+    private Soa createSoa(String soaNo, Client client, LocalDate statementDate, BigDecimal deductions, String reason) {
+        WeeklyCollection collection = weeklyCollectionRepository.save(new WeeklyCollection(
+                "COL-" + soaNo,
+                client,
+                statementDate.minusDays(6),
+                statementDate,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                "PENDING"
+        ));
+        Soa soa = new Soa(
+                soaNo,
+                null,
+                collection,
+                client,
+                new BigDecimal("1000.00"),
+                new BigDecimal("1000.00"),
+                deductions != null ? deductions : BigDecimal.ZERO,
+                reason,
+                BigDecimal.ZERO,
+                new BigDecimal("1000.00").subtract(deductions != null ? deductions : BigDecimal.ZERO),
+                "Staff",
+                statementDate,
+                null
+        );
+        return soaRepository.save(soa);
+    }
 
     private Client createOrGetClient(String id, String name) {
         return clientRepository.findById(id).orElseGet(() -> {
@@ -124,7 +174,7 @@ public class ReportIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "field", roles = {"FIELD_STAFF"})
+    @WithMockUser(username = "courier", roles = {"COURIER_STAFF"})
     void testGetReportSummaryAsFieldStaffReturns403Forbidden() throws Exception {
         mockMvc.perform(get("/api/v1/reports/summary")
                 .contentType(MediaType.APPLICATION_JSON))
@@ -287,5 +337,331 @@ public class ReportIntegrationTest {
         assertEquals(0, new BigDecimal("200.00").compareTo(row.getPastDue()));
         assertEquals(0, new BigDecimal("300.00").compareTo(row.getOverdue()));
         assertEquals(0, new BigDecimal("600.00").compareTo(row.getTotalOutstanding()));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testMultipleParcelsDoNotMultiplyShipmentRevenueAndStatusDistributionAccurate() throws Exception {
+        Client client = createOrGetClient("CL-RPT-PARCELS", "Multi-Parcel Client");
+        LocalDateTime regDate = LocalDateTime.now().minusDays(2);
+        Shipment shipment = createShipment("SHP-MULTI-PARCEL", client, new BigDecimal("3000.00"), regDate);
+
+        // 3 parcels for 1 shipment
+        createParcel("TRK-MP-001", shipment, 1, ParcelStatus.COMPLETED, false, new BigDecimal("3.00"), new BigDecimal("0.0100"));
+        createParcel("TRK-MP-002", shipment, 2, ParcelStatus.LOADED_ON_TRUCK, false, new BigDecimal("2.00"), new BigDecimal("0.0050"));
+        createParcel("TRK-MP-003", shipment, 3, ParcelStatus.QR_GENERATED, true, new BigDecimal("1.00"), new BigDecimal("0.0020"));
+
+        LocalDate start = LocalDate.now().minusDays(3);
+        LocalDate end = LocalDate.now().minusDays(1);
+
+        mockMvc.perform(get("/api/v1/reports/summary")
+                .param("startDate", start.toString())
+                .param("endDate", end.toString())
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                // Ensure shipment revenue and count are NOT multiplied by 3 parcels
+                .andExpect(jsonPath("$.kpis.totalShipments").value(1))
+                .andExpect(jsonPath("$.kpis.totalBilledRevenue").value(3000.00))
+                .andExpect(jsonPath("$.kpis.totalParcels").value(3))
+                // 1 completed out of 3 total = 33.3%
+                .andExpect(jsonPath("$.kpis.deliveryCompletionRate").value(33.3))
+                // Status distribution
+                .andExpect(jsonPath("$.statusDistribution[?(@.status == 'COMPLETED')].count").value(1))
+                .andExpect(jsonPath("$.statusDistribution[?(@.status == 'COMPLETED')].percentage").value(33.3))
+                .andExpect(jsonPath("$.statusDistribution[?(@.status == 'LOADED_ON_TRUCK')].count").value(1))
+                .andExpect(jsonPath("$.statusDistribution[?(@.status == 'LOADED_ON_TRUCK')].percentage").value(33.3))
+                // TRK-MP-003 is lost, so QR_GENERATED non-lost count is 0
+                .andExpect(jsonPath("$.statusDistribution[?(@.status == 'QR_GENERATED')].count").value(0))
+                .andExpect(jsonPath("$.statusDistribution[?(@.status == 'LOST')].count").value(1))
+                .andExpect(jsonPath("$.statusDistribution[?(@.status == 'LOST')].percentage").value(33.3))
+                // Client revenue row for CL-RPT-PARCELS
+                .andExpect(jsonPath("$.clientRevenue[?(@.clientId == 'CL-RPT-PARCELS')].totalShipments").value(1))
+                .andExpect(jsonPath("$.clientRevenue[?(@.clientId == 'CL-RPT-PARCELS')].totalBilled").value(3000.00));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testMultiplePaymentsOnSingleShipmentDoNotMultiplyRevenueAndReflectPartialBalance() throws Exception {
+        Client client = createOrGetClient("CL-RPT-MULTIPAY", "Multi-Payment Client");
+        LocalDateTime regDate = LocalDateTime.now().minusDays(5);
+        Shipment shipment = createShipment("SHP-MULTI-PAY", client, new BigDecimal("5000.00"), regDate);
+
+        // Record 2 partial payments for the same shipment
+        recordPayment(shipment, new BigDecimal("1000.00"), PaymentMethod.CASH, LocalDate.now().minusDays(3));
+        recordPayment(shipment, new BigDecimal("1500.00"), PaymentMethod.BANK, LocalDate.now().minusDays(2));
+
+        LocalDate start = LocalDate.now().minusDays(7);
+        LocalDate end = LocalDate.now();
+
+        mockMvc.perform(get("/api/v1/reports/summary")
+                .param("startDate", start.toString())
+                .param("endDate", end.toString())
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                // Verify billed revenue is 5000 (not multiplied)
+                .andExpect(jsonPath("$.kpis.totalBilledRevenue").value(5000.00))
+                // Aging for this client reflects remaining balance: 5000 - (1000 + 1500) = 2500
+                .andExpect(jsonPath("$.receivablesAging[?(@.clientId == 'CL-RPT-MULTIPAY')].totalOutstanding").value(2500.00))
+                .andExpect(jsonPath("$.receivablesAging[?(@.clientId == 'CL-RPT-MULTIPAY')].currentDue").value(2500.00))
+                .andExpect(jsonPath("$.receivablesAging[?(@.clientId == 'CL-RPT-MULTIPAY')].unpaidShipmentsCount").value(1))
+                // Client revenue row: billed 5000, paid 2500, balance 2500, status PARTIAL
+                .andExpect(jsonPath("$.clientRevenue[?(@.clientId == 'CL-RPT-MULTIPAY')].totalBilled").value(5000.00))
+                .andExpect(jsonPath("$.clientRevenue[?(@.clientId == 'CL-RPT-MULTIPAY')].totalPaid").value(2500.00))
+                .andExpect(jsonPath("$.clientRevenue[?(@.clientId == 'CL-RPT-MULTIPAY')].balance").value(2500.00))
+                .andExpect(jsonPath("$.clientRevenue[?(@.clientId == 'CL-RPT-MULTIPAY')].paymentStatus").value("PARTIAL"))
+                // Payment methods breakdown includes CASH >= 1000 and BANK >= 1500
+                .andExpect(jsonPath("$.paymentMethods[?(@.method == 'CASH')].totalAmount").value(1000.00))
+                .andExpect(jsonPath("$.paymentMethods[?(@.method == 'BANK')].totalAmount").value(1500.00));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testDeductionsCategoryPrecedenceAndOrdering() throws Exception {
+        Client client = createOrGetClient("CL-RPT-DEDUCT", "Deductions Client");
+        LocalDate statementDate = LocalDate.now().minusDays(2);
+
+        createSoa("SOA-DED-1", client, statementDate, new BigDecimal("200.00"), "Damage to cartons in transit");
+        createSoa("SOA-DED-2", client, statementDate, new BigDecimal("150.00"), "Weight discrepancy on weighing");
+        createSoa("SOA-DED-3", client, statementDate, new BigDecimal("100.00"), "General goodwill claim");
+
+        LocalDate start = LocalDate.now().minusDays(5);
+        LocalDate end = LocalDate.now();
+
+        mockMvc.perform(get("/api/v1/reports/summary")
+                .param("startDate", start.toString())
+                .param("endDate", end.toString())
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                // Deductions array has exactly 3 categories in precedence order: BAD_ORDER, DISCREPANCY, CLAIM
+                .andExpect(jsonPath("$.deductions[0].category").value("BAD_ORDER"))
+                .andExpect(jsonPath("$.deductions[0].count").value(1))
+                .andExpect(jsonPath("$.deductions[0].totalAmount").value(200.00))
+                .andExpect(jsonPath("$.deductions[1].category").value("DISCREPANCY"))
+                .andExpect(jsonPath("$.deductions[1].count").value(1))
+                .andExpect(jsonPath("$.deductions[1].totalAmount").value(150.00))
+                .andExpect(jsonPath("$.deductions[2].category").value("CLAIM"))
+                .andExpect(jsonPath("$.deductions[2].count").value(1))
+                .andExpect(jsonPath("$.deductions[2].totalAmount").value(100.00));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testReversedDateRangeAutoInvertsAndReturnsValidReport() throws Exception {
+        LocalDate laterDate = LocalDate.now().plusDays(5);
+        LocalDate earlierDate = LocalDate.now().minusDays(5);
+
+        // Provide inverted range (start is later than end)
+        mockMvc.perform(get("/api/v1/reports/summary")
+                .param("startDate", laterDate.toString())
+                .param("endDate", earlierDate.toString())
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                // Assert that the service auto-reversed the dates
+                .andExpect(jsonPath("$.startDate").value(earlierDate.toString()))
+                .andExpect(jsonPath("$.endDate").value(laterDate.toString()));
+    }
+
+    @Test
+    void testReportFailureReturns503AndNeverFabricatesZeroes() {
+        // Construct a ReportServiceImpl with a failing mock repository that throws DataAccessException
+        ShipmentRepository failingShipmentRepo = org.mockito.Mockito.mock(ShipmentRepository.class);
+        org.mockito.Mockito.when(failingShipmentRepo.getPeriodShipmentTotals(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new org.springframework.dao.DataAccessResourceFailureException("Database connection timeout"));
+
+        com.tnl.logistics.service.impl.ReportServiceImpl serviceWithFailure = new com.tnl.logistics.service.impl.ReportServiceImpl(
+                failingShipmentRepo,
+                parcelUnitRepository,
+                paymentRepository,
+                soaRepository,
+                clientRepository,
+                collectionsService,
+                Clock.systemDefaultZone()
+        );
+
+        org.springframework.web.server.ResponseStatusException ex = assertThrows(
+                org.springframework.web.server.ResponseStatusException.class,
+                () -> serviceWithFailure.getReportSummary(LocalDate.now().minusDays(7), LocalDate.now())
+        );
+
+        assertEquals(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, ex.getStatusCode());
+        assertTrue(ex.getReason() != null && ex.getReason().contains("REPORT_UNAVAILABLE"));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testReportFailureReturnsHttp503AndStructuredErrorViaMockMvc() throws Exception {
+        org.mockito.Mockito.doThrow(new org.springframework.dao.DataAccessResourceFailureException("Simulated DB connection failure"))
+                .when(shipmentRepository).getPeriodShipmentTotals(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+
+        try {
+            mockMvc.perform(get("/api/v1/reports/summary")
+                    .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.status").value(503))
+                    .andExpect(jsonPath("$.code").value("REPORT_UNAVAILABLE"))
+                    .andExpect(jsonPath("$.message").value("Financial report calculation is temporarily unavailable"))
+                    .andExpect(jsonPath("$.error").exists())
+                    .andExpect(jsonPath("$.timestamp").exists());
+        } finally {
+            org.mockito.Mockito.reset(shipmentRepository);
+        }
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testCompletedAndLostParcelsCompletionRateSemantics() throws Exception {
+        Client client = createOrGetClient("CL-RPT-COMPL-LOST", "Completion Rate Semantics Client");
+        LocalDateTime regDate = LocalDate.now().minusDays(1).atTime(10, 0);
+        Shipment s = createShipment("SHP-CPL-1", client, new BigDecimal("2000.00"), regDate);
+
+        // Parcel 1: COMPLETED, NOT lost
+        createParcel("TRK-CPL-1", s, 1, ParcelStatus.COMPLETED, false, new BigDecimal("2.50"), new BigDecimal("0.0060"));
+        // Parcel 2: COMPLETED, but marked LOST
+        createParcel("TRK-CPL-2", s, 2, ParcelStatus.COMPLETED, true, new BigDecimal("3.50"), new BigDecimal("0.0080"));
+
+        LocalDate start = LocalDate.now().minusDays(3);
+        LocalDate end = LocalDate.now();
+
+        mockMvc.perform(get("/api/v1/reports/summary")
+                .param("startDate", start.toString())
+                .param("endDate", end.toString())
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                // Top-level KPIs: both parcels are COMPLETED, so completion rate = 100.0%
+                .andExpect(jsonPath("$.kpis.totalParcels").value(2))
+                .andExpect(jsonPath("$.kpis.deliveryCompletionRate").value(100.0))
+                // Status distribution: non-lost COMPLETED count is 1 (50.0%)
+                .andExpect(jsonPath("$.statusDistribution[?(@.status == 'COMPLETED')].count").value(1))
+                .andExpect(jsonPath("$.statusDistribution[?(@.status == 'COMPLETED')].percentage").value(50.0))
+                // Status distribution: LOST count is 1 (50.0%)
+                .andExpect(jsonPath("$.statusDistribution[?(@.status == 'LOST')].count").value(1))
+                .andExpect(jsonPath("$.statusDistribution[?(@.status == 'LOST')].percentage").value(50.0))
+                // Daily volume for registration day: completedDeliveries counts all completed parcels = 2
+                .andExpect(jsonPath("$.dailyVolume[?(@.date == '" + regDate.toLocalDate().toString() + "')].completedDeliveries").value(2))
+                .andExpect(jsonPath("$.dailyVolume[?(@.date == '" + regDate.toLocalDate().toString() + "')].parcelsCount").value(2));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testParcelTotalsAcrossDaysAndReversedRangePreserveLossRules() throws Exception {
+        Client client = createOrGetClient("CL-RPT-GROUP", "Grouped Parcel Client");
+        LocalDate start = LocalDate.of(2036, 10, 8);
+        LocalDate end = LocalDate.of(2036, 10, 16);
+
+        Shipment first = createShipment("SHP-RPT-G1", client, new BigDecimal("100.00"), start.atTime(12, 0));
+        createParcel("TRK-RPT-G1", first, 1, ParcelStatus.COMPLETED, true,
+                new BigDecimal("2.25"), new BigDecimal("0.1250"));
+
+        Shipment second = createShipment("SHP-RPT-G2", client, new BigDecimal("200.00"), start.plusDays(1).atTime(12, 0));
+        createParcel("TRK-RPT-G2A", second, 1, ParcelStatus.COMPLETED, false,
+                new BigDecimal("1.10"), new BigDecimal("0.2200"));
+        ParcelUnit lostWithoutMeasurements = createParcel("TRK-RPT-G2B", second, 2,
+                ParcelStatus.REGISTERED, true, BigDecimal.ONE, BigDecimal.ONE);
+        lostWithoutMeasurements.setWeightKg(null);
+        lostWithoutMeasurements.setVolumeCbm(null);
+        parcelUnitRepository.saveAndFlush(lostWithoutMeasurements);
+
+        Shipment last = createShipment("SHP-RPT-G3", client, new BigDecimal("300.00"), end.atTime(12, 0));
+        createParcel("TRK-RPT-G3A", last, 1, ParcelStatus.REGISTERED, false,
+                new BigDecimal("0.50"), new BigDecimal("0.0001"));
+        createParcel("TRK-RPT-G3B", last, 2, ParcelStatus.COMPLETED, false,
+                new BigDecimal("0.75"), new BigDecimal("0.1111"));
+
+        com.tnl.logistics.dto.ReportSummaryResponse report = reportService.getReportSummary(start, end);
+        assertEquals(3, report.getKpis().getTotalShipments());
+        assertEquals(0, new BigDecimal("600.00").compareTo(report.getKpis().getTotalBilledRevenue()));
+        assertEquals(5, report.getKpis().getTotalParcels());
+        assertEquals(60.0, report.getKpis().getDeliveryCompletionRate());
+        assertEquals(2, report.getStatusDistribution().stream()
+                .filter(row -> "COMPLETED".equals(row.getStatus())).findFirst().orElseThrow().getCount());
+        assertEquals(2, report.getStatusDistribution().stream()
+                .filter(row -> "LOST".equals(row.getStatus())).findFirst().orElseThrow().getCount());
+        assertEquals(1, report.getStatusDistribution().stream()
+                .filter(row -> "REGISTERED".equals(row.getStatus())).findFirst().orElseThrow().getCount());
+
+        var firstDay = report.getDailyVolume().stream()
+                .filter(row -> start.equals(row.getDate())).findFirst().orElseThrow();
+        assertEquals(1, firstDay.getParcelsCount());
+        assertEquals(new BigDecimal("2.25"), firstDay.getTotalWeightKg());
+        assertEquals(new BigDecimal("0.1250"), firstDay.getTotalVolumeCbm());
+        assertEquals(1, firstDay.getCompletedDeliveries());
+
+        var secondDay = report.getDailyVolume().stream()
+                .filter(row -> start.plusDays(1).equals(row.getDate())).findFirst().orElseThrow();
+        assertEquals(2, secondDay.getParcelsCount());
+        assertEquals(new BigDecimal("1.10"), secondDay.getTotalWeightKg());
+        assertEquals(new BigDecimal("0.2200"), secondDay.getTotalVolumeCbm());
+        assertEquals(1, secondDay.getCompletedDeliveries());
+
+        var emptyDay = report.getDailyVolume().stream()
+                .filter(row -> start.plusDays(2).equals(row.getDate())).findFirst().orElseThrow();
+        assertEquals(0, emptyDay.getParcelsCount());
+        assertEquals(BigDecimal.ZERO, emptyDay.getTotalWeightKg());
+        assertEquals(BigDecimal.ZERO, emptyDay.getTotalVolumeCbm());
+        assertEquals(0, emptyDay.getCompletedDeliveries());
+
+        var lastDay = report.getDailyVolume().stream()
+                .filter(row -> end.equals(row.getDate())).findFirst().orElseThrow();
+        assertEquals(2, lastDay.getParcelsCount());
+        assertEquals(new BigDecimal("1.25"), lastDay.getTotalWeightKg());
+        assertEquals(new BigDecimal("0.1112"), lastDay.getTotalVolumeCbm());
+        assertEquals(1, lastDay.getCompletedDeliveries());
+
+        var chronological = (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(
+                mockMvc.perform(get("/api/v1/reports/summary")
+                        .param("startDate", start.toString()).param("endDate", end.toString()))
+                        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        var reversed = (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(
+                mockMvc.perform(get("/api/v1/reports/summary")
+                        .param("startDate", end.toString()).param("endDate", start.toString()))
+                        .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        chronological.remove("generatedAt");
+        reversed.remove("generatedAt");
+        assertEquals(chronological, reversed);
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testBoundedLargeRangeAndMemoryStability() throws Exception {
+        Client client = createOrGetClient("CL-RPT-LARGE", "Large Range Client");
+        LocalDate today = LocalDate.now();
+
+        // Seed 12 shipments across past 360 days (one per month)
+        for (int i = 0; i < 12; i++) {
+            LocalDateTime regDate = today.minusDays(i * 30 + 1).atTime(10, 0);
+            Shipment s = createShipment("SHP-LRG-" + i, client, new BigDecimal("1000.00"), regDate);
+            createParcel("TRK-LRG-" + i + "-1", s, 1, ParcelStatus.COMPLETED, false, new BigDecimal("2.00"), new BigDecimal("0.0050"));
+            createParcel("TRK-LRG-" + i + "-2", s, 2, ParcelStatus.ARRIVED_AT_TNL, false, new BigDecimal("3.00"), new BigDecimal("0.0080"));
+            if (i % 2 == 0) {
+                recordPayment(s, new BigDecimal("500.00"), PaymentMethod.BANK, regDate.toLocalDate().plusDays(2));
+            }
+        }
+
+        LocalDate start = today.minusDays(365);
+        LocalDate end = today;
+
+        long memoryBefore = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
+
+        mockMvc.perform(get("/api/v1/reports/summary")
+                .param("startDate", start.toString())
+                .param("endDate", end.toString())
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.startDate").value(start.toString()))
+                .andExpect(jsonPath("$.endDate").value(end.toString()))
+                .andExpect(jsonPath("$.kpis.totalShipments").value(12))
+                .andExpect(jsonPath("$.kpis.totalBilledRevenue").value(12000.00))
+                .andExpect(jsonPath("$.kpis.totalParcels").value(24))
+                .andExpect(jsonPath("$.dailyVolume").isArray())
+                .andExpect(result -> {
+                    String json = result.getResponse().getContentAsString();
+                    com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(json);
+                    assertEquals(366, root.path("dailyVolume").size(), "Full year range should have 366 daily entries");
+                });
+
+        long memoryAfter = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
+        long retainedDelta = memoryAfter - memoryBefore;
+
+        assertTrue(retainedDelta < 50 * 1024 * 1024, "Retained heap delta must remain bounded");
     }
 }

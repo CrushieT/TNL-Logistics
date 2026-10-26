@@ -30,7 +30,7 @@ public class PrintAuditJob {
     @Column(name = "printer_id", length = 20)
     private String printerId;
 
-    @Column(name = "request_fingerprint", length = 64, nullable = false)
+    @Column(name = "request_fingerprint", length = 64, nullable = false, columnDefinition = "CHAR(64)")
     private String requestFingerprint;
 
     @CreationTimestamp

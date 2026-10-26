@@ -70,12 +70,12 @@ export default function TablePaginationFooter({
 
 const webSelectStyle = {
   fontFamily: fonts.mono,
-  fontSize: 11.5,
-  color: colors.ink,
+  fontSize: 12.5,
+  color: colors.inkSoft,
+  backgroundColor: '#FAF9F5',
   border: `1px solid ${colors.border}`,
-  backgroundColor: '#FFFFFF',
-  padding: '6px 8px',
-  borderRadius: 3,
+  borderRadius: 4,
+  padding: '6px 10px',
   outline: 'none',
   cursor: 'pointer',
 };
@@ -88,8 +88,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAF9F5',
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
     flexWrap: 'wrap',
     gap: spacing.md,
   },
@@ -98,8 +98,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   paginationText: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
+    fontFamily: fonts.mono,
+    fontSize: 12.5,
     color: colors.inkSoft,
   },
   paginationStrong: {
@@ -118,6 +118,5 @@ const styles = StyleSheet.create({
   pageBtn: {
     paddingVertical: 6,
     paddingHorizontal: 12,
-    minHeight: 32,
   },
 });

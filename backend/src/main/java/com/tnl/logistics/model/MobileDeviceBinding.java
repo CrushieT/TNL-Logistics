@@ -25,6 +25,13 @@ public class MobileDeviceBinding {
     @Column(name = "device_token_hash", length = 64, nullable = false)
     private String deviceTokenHash;
 
+    @Column(name = "binding_version", nullable = false)
+    private Long bindingVersion = 1L;
+
+    public Long getBindingVersion() { return bindingVersion; }
+
+    public void incrementBindingVersion() { bindingVersion = Math.addExact(bindingVersion, 1L); }
+
     @Column(name = "device_name", length = 100)
     private String deviceName;
 

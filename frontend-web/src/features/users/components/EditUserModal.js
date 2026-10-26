@@ -10,22 +10,12 @@ import {
   ScrollView,
 } from 'react-native';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
-
-const STAFF_ROLE_OPTIONS = [
-  { label: 'Office Staff', value: 'OFFICE_STAFF' },
-  { label: 'Field Staff', value: 'FIELD_STAFF' },
-];
-
-const STAFF_TYPE_OPTIONS = [
-  { label: 'Internal Truck', value: 'INTERNAL_TRUCK' },
-  { label: 'Hauler Staff', value: 'HAULER_STAFF' },
-];
+import { isSupportedUserRole, STAFF_ROLE_OPTIONS, USER_ROLES } from '../userRoles.mjs';
 
 export default function EditUserModal({ visible, userToEdit, onClose, onSaved, onRequestResetPassword, onRequestResetPin }) {
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
-  const [role, setRole] = useState('OFFICE_STAFF');
-  const [staffType, setStaffType] = useState('INTERNAL_TRUCK');
+  const [role, setRole] = useState(USER_ROLES.RECEIVING_STAFF);
   const [active, setActive] = useState(true);
 
   const [saving, setSaving] = useState(false);
@@ -35,8 +25,7 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
     if (userToEdit && visible) {
       setFullName(userToEdit.fullName || '');
       setUsername(userToEdit.username || '');
-      setRole(userToEdit.role || 'OFFICE_STAFF');
-      setStaffType(userToEdit.staffType || 'INTERNAL_TRUCK');
+      setRole(isSupportedUserRole(userToEdit.role) ? userToEdit.role : '');
       setActive(userToEdit.active !== false);
       setError(null);
     }
@@ -45,9 +34,30 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
   if (!visible || !userToEdit) return null;
 
   const handleSubmit = async () => {
-    if (!fullName.trim()) { setError('Full name is required.'); return; }
-    if (!username.trim()) { setError('Username is required.'); return; }
-    if (role === 'FIELD_STAFF' && !staffType) { setError('Staff type is required for Field Staff.'); return; }
+    if (!fullName.trim() || fullName.trim().length < 2) {
+      setError('Full name must be at least 2 characters.');
+      return;
+    }
+    if (fullName.trim().length > 150) {
+      setError('Full name cannot exceed 150 characters.');
+      return;
+    }
+    if (!username.trim() || username.trim().length < 3) {
+      setError('Username must be at least 3 characters.');
+      return;
+    }
+    if (username.trim().length > 50) {
+      setError('Username cannot exceed 50 characters.');
+      return;
+    }
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{2,49}$/.test(username.trim())) {
+      setError('Username must start with a letter or number and contain only letters, numbers, periods, underscores, or hyphens.');
+      return;
+    }
+    if (!isSupportedUserRole(role)) {
+      setError('Select a supported user role.');
+      return;
+    }
 
     try {
       setSaving(true);
@@ -56,7 +66,6 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
         fullName: fullName.trim(),
         username: username.trim(),
         role,
-        staffType: role === 'FIELD_STAFF' ? staffType : undefined,
         active: userToEdit.role === 'ADMIN' ? true : active,
       }, userToEdit.userId);
       onClose();
@@ -92,6 +101,7 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
                 value={fullName}
                 onChangeText={setFullName}
                 placeholderTextColor={colors.inkFaint}
+                maxLength={150}
               />
             </View>
 
@@ -103,6 +113,7 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
                 onChangeText={setUsername}
                 autoCapitalize="none"
                 placeholderTextColor={colors.inkFaint}
+                maxLength={50}
               />
             </View>
 
@@ -133,25 +144,6 @@ export default function EditUserModal({ visible, userToEdit, onClose, onSaved, o
                 </View>
               )}
             </View>
-
-            {role === 'FIELD_STAFF' ? (
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>STAFF TYPE *</Text>
-                <View style={styles.pillRow}>
-                  {STAFF_TYPE_OPTIONS.map((opt) => (
-                    <Pressable
-                      key={opt.value}
-                      style={[styles.pill, staffType === opt.value && styles.pillActive]}
-                      onPress={() => setStaffType(opt.value)}
-                    >
-                      <Text style={[styles.pillText, staffType === opt.value && styles.pillTextActive]}>
-                        {opt.label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            ) : null}
 
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>ACCOUNT STATUS</Text>

@@ -9,6 +9,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -18,7 +20,17 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface WaybillRepository extends JpaRepository<Waybill, String> {
 
-    Optional<Waybill> findByShipment_ShipmentId(String shipmentId);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT w FROM Waybill w WHERE w.waybillId = :waybillId")
+    Optional<Waybill> findByIdForUpdate(@Param("waybillId") String waybillId);
+
+    List<Waybill> findByShipment_ShipmentIdOrderByGeneratedAtDesc(String shipmentId);
+
+    default Optional<Waybill> findByShipment_ShipmentId(String shipmentId) {
+        return findByShipment_ShipmentIdOrderByGeneratedAtDesc(shipmentId).stream().findFirst();
+    }
+
+    Optional<Waybill> findByGenerationKey(String generationKey);
 
     @Query("SELECT w FROM Waybill w WHERE w.shipment.shipmentId IN :shipmentIds")
     List<Waybill> findByShipment_ShipmentIdIn(@Param("shipmentIds") Collection<String> shipmentIds);
@@ -30,7 +42,7 @@ public interface WaybillRepository extends JpaRepository<Waybill, String> {
            "LOWER(s.recipientName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
            "LOWER(w.haulerName) LIKE LOWER(CONCAT('%', :search, '%'))) AND " +
            "(:status IS NULL OR w.status = :status) AND " +
-           "(:hauler IS NULL OR LOWER(w.haulerName) = LOWER(:hauler))",
+           "(:client IS NULL OR LOWER(c.clientId) = LOWER(:client) OR LOWER(c.name) = LOWER(:client))",
            countQuery = "SELECT COUNT(w) FROM Waybill w JOIN w.shipment s LEFT JOIN s.client c WHERE " +
            "(:search IS NULL OR LOWER(w.waybillId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
            "LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
@@ -38,11 +50,21 @@ public interface WaybillRepository extends JpaRepository<Waybill, String> {
            "LOWER(s.recipientName) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
            "LOWER(w.haulerName) LIKE LOWER(CONCAT('%', :search, '%'))) AND " +
            "(:status IS NULL OR w.status = :status) AND " +
-           "(:hauler IS NULL OR LOWER(w.haulerName) = LOWER(:hauler))")
+           "(:client IS NULL OR LOWER(c.clientId) = LOWER(:client) OR LOWER(c.name) = LOWER(:client))")
     Page<Waybill> searchWaybills(@Param("search") String search,
                                  @Param("status") WaybillStatus status,
-                                 @Param("hauler") String hauler,
+                                 @Param("client") String client,
                                  Pageable pageable);
+
+    @Query(value = "SELECT w FROM Waybill w JOIN FETCH w.shipment s WHERE " +
+           "(:search IS NULL OR LOWER(w.waybillId) LIKE LOWER(CONCAT('%', :search, '%'))) AND " +
+           "(:status IS NULL OR w.status = :status)",
+           countQuery = "SELECT COUNT(w) FROM Waybill w WHERE " +
+           "(:search IS NULL OR LOWER(w.waybillId) LIKE LOWER(CONCAT('%', :search, '%'))) AND " +
+           "(:status IS NULL OR w.status = :status)")
+    Page<Waybill> findWaybillOptions(@Param("search") String search,
+                                     @Param("status") WaybillStatus status,
+                                     Pageable pageable);
 
     long countByStatus(WaybillStatus status);
 

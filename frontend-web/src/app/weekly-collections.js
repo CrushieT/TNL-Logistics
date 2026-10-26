@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useCachedPreview } from '../services/api/useCachedPreview';
+import PreviewStatus from '../components/common/PreviewStatus';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -24,6 +26,20 @@ import {
   BatchSoaModal,
 } from '../features/collections';
 import { subscribeRealtimeEvents } from '../features/shipments';
+import { useRequestCoordinator } from '../services/api/useRequestCoordinator';
+import { useVerifiedAdminSession, getVerifiedAdminSessionKey } from '../services/api/useVerifiedAdminSession';
+import {
+  CACHE_SLOTS,
+  getCacheEntry,
+  setCacheEntry,
+  isResponseAcceptable,
+} from '../services/api/responseCache.mjs';
+import { isCancellationError } from '../services/api/requestCoordinator.mjs';
+import {
+  getSessionAuthContext,
+  onSessionInvalidated,
+} from '../services/api/client';
+import { SkeletonBlock } from '../components/common/Skeleton';
 import { colors, fonts, spacing, radius, type } from '../theme';
 
 const STATUS_FILTERS = [
@@ -34,14 +50,18 @@ const STATUS_FILTERS = [
 ];
 
 export default function WeeklyCollectionsScreen() {
+  const sessionKey = useVerifiedAdminSession();
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isMobile = width < 900;
 
-  const [cycles, setCycles] = useState([]);
   const [selectedCycle, setSelectedCycle] = useState('');
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isPreview, setIsPreview] = useState(false);
+  const [initialLoadFailed, setInitialLoadFailed] = useState(false);
+  const [isStale, setIsStale] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [batchModalVisible, setBatchModalVisible] = useState(false);
@@ -49,67 +69,166 @@ export default function WeeklyCollectionsScreen() {
   const [errorBanner, setErrorBanner] = useState(null);
   const [infoBanner, setInfoBanner] = useState(null);
 
-  // Fetch only active cycles containing registered shipments
-  useEffect(() => {
-    let mounted = true;
-    async function loadCycles() {
-      const activeCycles = await getActiveCollectionCycles();
-      if (!mounted) return;
-      if (activeCycles.length > 0) {
-        setCycles(activeCycles);
-        setSelectedCycle((prev) => (prev && activeCycles.some((c) => c.isoDate === prev) ? prev : activeCycles[0].isoDate));
-      } else {
-        const fallback = getRecentThursdays(1);
-        setCycles(fallback);
-        setSelectedCycle(fallback[0]?.isoDate || '');
+  const activeCycleRef = useRef(selectedCycle);
+  activeCycleRef.current = selectedCycle;
+
+  const dashboardDataRef = useRef(dashboardData);
+  dashboardDataRef.current = dashboardData;
+
+  const { coordinator } = useRequestCoordinator({
+    scope: 'weekly-collections',
+    onInvalidated: () => setIsStale(true),
+    onSuccess: (data, meta) => {
+      const currentAuth = getSessionAuthContext();
+      const targetCycle = activeCycleRef.current;
+      if (!isResponseAcceptable({
+        requestAuth: meta?.requestAuth,
+        requestQuery: meta?.requestQuery,
+        currentAuth,
+        activeQuery: { cycle: targetCycle },
+      })) {
+        return;
       }
-    }
-    loadCycles();
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
-  // Load weekly collections data
-  const loadData = useCallback(async (showSpinner = true) => {
-    if (!selectedCycle) return;
-    try {
-      if (showSpinner) setLoading(true);
-      setErrorBanner(null);
-      const data = await getWeeklyCollections(selectedCycle);
+      setCacheEntry(CACHE_SLOTS.WEEKLY_COLLECTIONS, {
+        userId: currentAuth.userId,
+        sessionGeneration: currentAuth.sessionGeneration,
+        queryParams: { cycle: targetCycle },
+        data,
+      });
+
       setDashboardData(data);
-    } catch (err) {
-      console.warn('Failed to load weekly collections:', err);
-      setErrorBanner('Failed to load weekly collection data. Please check network connectivity.');
-    } finally {
-      if (showSpinner) setLoading(false);
-    }
-  }, [selectedCycle]);
+      setIsPreview(false);
+      setIsStale(false);
+      setInitialLoadFailed(false);
+      setErrorBanner(null);
+      setLastUpdated(new Date().toLocaleTimeString());
+      setLoading(false);
+    },
+    onError: (err, meta) => {
+      if (isCancellationError(err)) return;
+      const currentAuth = getSessionAuthContext();
+      const targetCycle = activeCycleRef.current;
+      if (!isResponseAcceptable({
+        requestAuth: meta?.requestAuth,
+        requestQuery: meta?.requestQuery,
+        currentAuth,
+        activeQuery: { cycle: targetCycle },
+      })) {
+        return;
+      }
+
+      const errorMsg = err?.response?.data?.message || err?.message || 'Failed to load weekly collection data. Please check network connectivity.';
+      setErrorBanner(errorMsg);
+      setIsPreview(false);
+      if (dashboardDataRef.current) {
+        setIsStale(true);
+      } else {
+        setInitialLoadFailed(true);
+        setDashboardData(null);
+      }
+      setLoading(false);
+    },
+    debounceMs: 300,
+  });
+
+  // Session reset listener
+  useEffect(() => {
+    const resetSession = () => {
+      coordinator.cancel();
+      cycleResource.cancel();
+      setDashboardData(null);
+      setBatchModalVisible(false);
+      setSelectedCycle('');
+      setIsStale(false);
+      setIsPreview(false);
+      setInitialLoadFailed(false);
+      setLastUpdated(null);
+      setErrorBanner(null);
+      setSuccessBanner(null);
+      setInfoBanner(null);
+      setLoading(true);
+    };
+    resetSession();
+    const unsubscribe = onSessionInvalidated(resetSession);
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [coordinator, sessionKey]);
+
+  const cycleResource = useCachedPreview({
+    slot: CACHE_SLOTS.COLLECTION_CYCLES,
+    debounceEntry: false,
+    fetcher: signal => getActiveCollectionCycles({ signal, strict: true }),
+  });
+  const cycles = cycleResource.data?.length ? cycleResource.data
+    : cycleResource.data !== null ? getRecentThursdays(1) : [];
+  const cyclesSessionKey = cycleResource.data !== null ? sessionKey : null;
 
   useEffect(() => {
-    if (selectedCycle) {
-      loadData(true);
+    if (cycleResource.data === null) return;
+    setSelectedCycle(previous => cycles.some(cycle => cycle.isoDate === previous) ? previous : cycles[0]?.isoDate || '');
+  }, [cycleResource.data]);
+
+  const loadData = useCallback((showSpinner = true, debounce = false) => {
+    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey() || cyclesSessionKey !== sessionKey || !selectedCycle) return;
+    if (showSpinner) {
+      setLoading(true);
+      setErrorBanner(null);
+    }
+    const key = coordinator.deriveKey({ cycle: selectedCycle });
+    const fetcher = (signal) => getWeeklyCollections(selectedCycle, { signal });
+    const requestAuth = getSessionAuthContext();
+    const requestQuery = { cycle: selectedCycle };
+    return coordinator.request(key, fetcher, {
+      isSilent: !showSpinner,
+      debounce,
+      requestAuth,
+      requestQuery,
+    });
+  }, [selectedCycle, coordinator, sessionKey, cyclesSessionKey]);
+
+  // Query key change with instant cached preview
+  useEffect(() => {
+    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey() || cyclesSessionKey !== sessionKey || !selectedCycle) return;
+
+    const auth = getSessionAuthContext();
+    const cached = getCacheEntry(CACHE_SLOTS.WEEKLY_COLLECTIONS, {
+      userId: auth.userId,
+      sessionGeneration: auth.sessionGeneration,
+      queryParams: { cycle: selectedCycle },
+    });
+
+    if (cached?.data) {
+      setDashboardData(cached.data);
+      setIsPreview(true);
+      setIsStale(false);
+      setInitialLoadFailed(false);
+      setErrorBanner(null);
+      setLastUpdated(new Date(cached.timestamp).toLocaleTimeString());
+      setLoading(true);
+      loadData(false, false);
+    } else {
+      // Clear previous cycle's data immediately to prevent showing wrong cycle under new filter
+      setDashboardData(null);
+      setIsPreview(false);
+      setIsStale(false);
+      setInitialLoadFailed(false);
+      setErrorBanner(null);
+      setLoading(true);
+      loadData(true, false);
     }
   }, [selectedCycle, loadData]);
 
-  // Real-time SSE refresh
+  // Real-time SSE refresh with 300ms debounce
   useEffect(() => {
-    const handleSilentRefresh = () => {
-      loadData(false);
-    };
-
     const unsubscribe = subscribeRealtimeEvents(() => {
-      handleSilentRefresh();
+      loadData(false, true);
     });
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', handleSilentRefresh);
-    }
-
     return () => {
-      unsubscribe();
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('focus', handleSilentRefresh);
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
       }
     };
   }, [loadData]);
@@ -155,8 +274,14 @@ export default function WeeklyCollectionsScreen() {
     );
   }, [allItems]);
 
+  // Actions requiring fresh collection data are disabled during loading, previewing, stale, or failed states
+  const actionsDisabled = !cycleResource.isFresh || loading || isPreview || isStale || !dashboardData || initialLoadFailed;
+
   // Handle clicking "Generate All SOAs" button
   const handleBatchClick = () => {
+    if (actionsDisabled) {
+      return;
+    }
     setErrorBanner(null);
     setSuccessBanner(null);
     setInfoBanner(null);
@@ -171,6 +296,9 @@ export default function WeeklyCollectionsScreen() {
 
   // Handle Generate SOA or View Statement
   const handleReviewClient = async (clientItem, action = 'GENERATE_SOA') => {
+    if (actionsDisabled) {
+      return;
+    }
     const id = clientItem.clientId || clientItem.clientCode;
     const isAlreadyGenerated = Boolean(clientItem.statementId);
 
@@ -194,6 +322,9 @@ export default function WeeklyCollectionsScreen() {
 
   // Handle Batch SOA Generation
   const handleConfirmBatch = async () => {
+    if (actionsDisabled) {
+      return;
+    }
     try {
       setErrorBanner(null);
       setSuccessBanner(null);
@@ -227,6 +358,13 @@ export default function WeeklyCollectionsScreen() {
 
   // Calculate summary statistics for the active view
   const summaryStats = useMemo(() => {
+    if (!dashboardData) {
+      return {
+        clientsCount: '—',
+        totalDue: null,
+        outstanding: null,
+      };
+    }
     const clientsCount = filteredItems.length;
     const totalDue = filteredItems.reduce(
       (sum, item) => sum + Number(item.currentCharges || item.totalCharges || 0) + Number(item.previousBalance || 0),
@@ -241,7 +379,7 @@ export default function WeeklyCollectionsScreen() {
       totalDue,
       outstanding,
     };
-  }, [filteredItems]);
+  }, [dashboardData, filteredItems]);
 
   return (
     <AppShell activeNav="Weekly Collections">
@@ -254,29 +392,51 @@ export default function WeeklyCollectionsScreen() {
             <View style={styles.topRightMetricsGroup}>
               <View style={styles.topRightMetricBox}>
                 <Text style={styles.topRightMetricLabel}>CLIENTS</Text>
-                <Text style={styles.topRightMetricValue}>
-                  {summaryStats.clientsCount}
-                </Text>
+                {loading && !dashboardData ? (
+                  <SkeletonBlock width={36} height={18} style={{ marginTop: 2 }} />
+                ) : (
+                  <Text style={styles.topRightMetricValue}>
+                    {summaryStats.clientsCount}
+                  </Text>
+                )}
               </View>
 
               <View style={styles.topRightMetricBox}>
                 <Text style={styles.topRightMetricLabel}>TOTAL DUE</Text>
-                <Text style={styles.topRightMetricValue}>
-                  {formatCurrency(summaryStats.totalDue)}
-                </Text>
+                {loading && !dashboardData ? (
+                  <SkeletonBlock width={70} height={18} style={{ marginTop: 2 }} />
+                ) : (
+                  <Text style={styles.topRightMetricValue}>
+                    {summaryStats.totalDue !== null ? formatCurrency(summaryStats.totalDue) : '—'}
+                  </Text>
+                )}
               </View>
 
               <View style={styles.topRightMetricBox}>
                 <Text style={styles.topRightMetricLabel}>OUTSTANDING</Text>
-                <Text style={[styles.topRightMetricValue, styles.outstandingValue]}>
-                  {formatCurrency(summaryStats.outstanding)}
-                </Text>
+                {loading && !dashboardData ? (
+                  <SkeletonBlock width={70} height={18} style={{ marginTop: 2 }} />
+                ) : (
+                  <Text style={[styles.topRightMetricValue, styles.outstandingValue]}>
+                    {summaryStats.outstanding !== null ? formatCurrency(summaryStats.outstanding) : '—'}
+                  </Text>
+                )}
               </View>
             </View>
           }
         />
 
+        <PreviewStatus resource={cycleResource} label="Collection cycles" />
+
         {/* Notifications & Alerts */}
+        {loading && isPreview ? (
+          <View style={styles.updatingAlert}>
+            <Text style={styles.updatingAlertText}>
+              Updating; last updated {lastUpdated || 'recently'}
+            </Text>
+          </View>
+        ) : null}
+
         {infoBanner ? (
           <View style={styles.infoAlert}>
             <Text style={styles.infoAlertText}>{infoBanner}</Text>
@@ -291,7 +451,17 @@ export default function WeeklyCollectionsScreen() {
 
         {errorBanner ? (
           <View style={styles.errorAlert}>
-            <Text style={styles.errorAlertText}>{errorBanner}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.errorAlertText}>{errorBanner}</Text>
+              {isStale && lastUpdated ? (
+                <Text style={styles.staleAlertSubtext}>
+                  Displaying last successful snapshot from {lastUpdated}. Financial actions are disabled until connection is restored.
+                </Text>
+              ) : null}
+            </View>
+            <Pressable onPress={() => loadData(true)} style={styles.retryBtn}>
+              <Text style={styles.retryBtnText}>Retry</Text>
+            </Pressable>
           </View>
         ) : null}
 
@@ -351,23 +521,40 @@ export default function WeeklyCollectionsScreen() {
           {/* Right: Batch SOA Action */}
           <Pressable
             onPress={handleBatchClick}
+            disabled={actionsDisabled}
             style={({ hovered }) => [
               styles.batchBtn,
-              hovered && styles.batchBtnHovered,
+              actionsDisabled && styles.batchBtnDisabled,
+              hovered && !actionsDisabled && styles.batchBtnHovered,
             ]}
           >
-            <Text style={styles.batchBtnText}>Generate All SOAs</Text>
+            <Text style={[styles.batchBtnText, actionsDisabled && styles.batchBtnTextDisabled]}>
+              Generate All SOAs
+            </Text>
           </Pressable>
         </View>
 
-        {/* Main Weekly Collections Directory Table */}
-        <WeeklyCollectionsTable
-          items={filteredItems}
-          loading={loading}
-          onReviewClient={handleReviewClient}
-          isCurrentCycle={selectedCycleObj?.isCurrent}
-          cycleLabel={selectedCycleObj?.label}
-        />
+        {/* Main Weekly Collections Directory Table or Initial Error State */}
+        {initialLoadFailed && !dashboardData ? (
+          <View style={styles.initialErrorCard}>
+            <Text style={styles.initialErrorTitle}>Collections Data Unavailable</Text>
+            <Text style={styles.initialErrorMessage}>
+              {errorBanner || 'Unable to retrieve collections data from server. Please verify network or database connectivity.'}
+            </Text>
+            <Pressable onPress={() => loadData(true)} style={styles.retryActionBtn}>
+              <Text style={styles.retryActionBtnText}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <WeeklyCollectionsTable
+            items={filteredItems}
+            loading={loading}
+            onReviewClient={handleReviewClient}
+            isCurrentCycle={selectedCycleObj?.isCurrent}
+            cycleLabel={selectedCycleObj?.label}
+            actionsDisabled={actionsDisabled}
+          />
+        )}
       </View>
 
       {/* Batch SOA Modal */}
@@ -475,6 +662,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
+  updatingAlert: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: radius.sm,
+    marginBottom: 16,
+  },
+  updatingAlertText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: colors.inkSoft,
+    fontWeight: '500',
+  },
   infoAlert: {
     backgroundColor: '#EFF6FF',
     borderWidth: 1,
@@ -503,6 +705,9 @@ const styles = StyleSheet.create({
     color: '#16A34A',
     fontWeight: '700',
   },
+  batchBtnTextDisabled: {
+    color: '#D1D5DB',
+  },
   errorAlert: {
     backgroundColor: '#FEF2F2',
     borderWidth: 1,
@@ -510,12 +715,72 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: radius.sm,
     marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   errorAlertText: {
     fontFamily: fonts.sans,
     fontSize: 13,
     color: '#DC2626',
     fontWeight: '600',
+  },
+  staleAlertSubtext: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    color: '#991B1B',
+    marginTop: 4,
+  },
+  retryBtn: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.xs,
+    marginLeft: 12,
+    alignSelf: 'center',
+  },
+  retryBtnText: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  initialErrorCard: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: radius.sm,
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 24,
+  },
+  initialErrorTitle: {
+    fontFamily: fonts.sans,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#991B1B',
+    marginBottom: 8,
+  },
+  initialErrorMessage: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    color: '#B91C1C',
+    textAlign: 'center',
+    marginBottom: 16,
+    maxWidth: 500,
+  },
+  retryActionBtn: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: radius.xs,
+  },
+  retryActionBtnText: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   toolbarRow: {
     flexDirection: 'row',

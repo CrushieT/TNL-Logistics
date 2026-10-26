@@ -17,6 +17,7 @@ export default function CompanyBrandingCard({
         value={form.companyName}
         onChangeText={(val) => onChangeField('companyName', val)}
         placeholder="TC & CT Integrated Logistics"
+        maxLength={50}
         error={errors.companyName}
         style={styles.field}
       />
@@ -26,6 +27,7 @@ export default function CompanyBrandingCard({
         value={form.companyAddress}
         onChangeText={(val) => onChangeField('companyAddress', val)}
         placeholder="Labo, Camarines Norte"
+        maxLength={100}
         error={errors.companyAddress}
         style={styles.field}
       />
@@ -33,8 +35,10 @@ export default function CompanyBrandingCard({
         label="CONTACT"
         required
         value={form.companyContact}
-        onChangeText={(val) => onChangeField('companyContact', val)}
-        placeholder="0917-555-0000"
+        onChangeText={(val) => onChangeField('companyContact', val.replace(/[^0-9]/g, ''))}
+        placeholder="09175550000"
+        maxLength={11}
+        keyboardType="phone-pad"
         error={errors.companyContact}
         style={styles.field}
       />
@@ -44,8 +48,40 @@ export default function CompanyBrandingCard({
         value={form.billingEmail}
         onChangeText={(val) => onChangeField('billingEmail', val)}
         placeholder="billing@tnllogistics.ph"
+        maxLength={50}
         keyboardType="email-address"
         error={errors.billingEmail}
+        style={styles.field}
+      />
+      <FormField
+        label="SOA BANK NAME"
+        required
+        value={form.soaBankName}
+        onChangeText={(val) => onChangeField('soaBankName', val)}
+        placeholder="Bank name"
+        maxLength={100}
+        error={errors.soaBankName}
+        style={styles.field}
+      />
+      <FormField
+        label="SOA ACCOUNT NAME"
+        required
+        value={form.soaAccountName}
+        onChangeText={(val) => onChangeField('soaAccountName', val)}
+        placeholder="Account name"
+        maxLength={150}
+        error={errors.soaAccountName}
+        style={styles.field}
+      />
+      <FormField
+        label="SOA ACCOUNT NUMBER"
+        required
+        value={form.soaAccountNumber}
+        onChangeText={(val) => onChangeField('soaAccountNumber', val)}
+        placeholder="6 to 20 digits"
+        maxLength={20}
+        keyboardType="number-pad"
+        error={errors.soaAccountNumber}
         style={styles.field}
       />
     </Card>

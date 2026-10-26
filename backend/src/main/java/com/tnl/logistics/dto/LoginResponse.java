@@ -56,6 +56,7 @@ public class LoginResponse {
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
 
+
     public boolean isMustChangePassword() { return mustChangePassword; }
     public void setMustChangePassword(boolean mustChangePassword) { this.mustChangePassword = mustChangePassword; }
 

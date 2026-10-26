@@ -1,6 +1,23 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, fonts, radius, statusStyles, paymentStyles, labelStyles, waybillStyles } from '../../theme';
+import {
+  colors,
+  fonts,
+  radius,
+  statusStyles,
+  paymentStyles,
+  labelStyles,
+  waybillStyles,
+  collectionStyles,
+} from '../../theme';
+
+function resolveStyle(map, key) {
+  if (!map || !key) return null;
+  if (map[key]) return map[key];
+  const upper = String(key).toUpperCase();
+  if (map[upper]) return map[upper];
+  return null;
+}
 
 export default function StatusBadge({ value, kind = 'status', style }) {
   if (!value) return null;
@@ -8,13 +25,15 @@ export default function StatusBadge({ value, kind = 'status', style }) {
   let cfg = { fg: colors.inkSoft, bg: colors.canvas, border: colors.border };
 
   if (kind === 'payment') {
-    cfg = paymentStyles[value] || cfg;
+    cfg = resolveStyle(paymentStyles, value) || cfg;
   } else if (kind === 'label') {
-    cfg = labelStyles[value] || cfg;
+    cfg = resolveStyle(labelStyles, value) || cfg;
   } else if (kind === 'waybill') {
-    cfg = waybillStyles[value] || cfg;
+    cfg = resolveStyle(waybillStyles, value) || cfg;
+  } else if (kind === 'collection') {
+    cfg = resolveStyle(collectionStyles, value) || cfg;
   } else {
-    cfg = statusStyles[value] || cfg;
+    cfg = resolveStyle(statusStyles, value) || (/^[0-9]+ Lost$/i.test(value) ? statusStyles.Lost : cfg);
   }
 
   return (

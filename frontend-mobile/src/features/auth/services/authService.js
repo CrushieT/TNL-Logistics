@@ -1,8 +1,11 @@
 import { apiClient } from '../../../services/api/client';
 import { getDeviceCredentials } from '../../../services/storage/secureStore';
+import { authSessionCoordinator } from './sessionCoordinator.mjs';
 
 async function requireDeviceHeaders() {
+  const generation = authSessionCoordinator.generation();
   const deviceCredentials = await getDeviceCredentials();
+  authSessionCoordinator.assertCurrent(generation);
   if (!deviceCredentials) {
     throw {
       status: null,
@@ -12,8 +15,11 @@ async function requireDeviceHeaders() {
     };
   }
   return {
-    'X-Device-Id': deviceCredentials.deviceId,
-    'X-Device-Token': deviceCredentials.deviceToken,
+    _sessionGeneration: generation,
+    headers: {
+      'X-Device-Id': deviceCredentials.deviceId,
+      'X-Device-Token': deviceCredentials.deviceToken,
+    },
   };
 }
 
@@ -22,13 +28,18 @@ export const authService = {
    * Authenticates staff using username & password (Stage 1 / Device Binding).
    * @param {string} username
    * @param {string} password
-   * @param {string} [deviceId] Existing device identifier when re-authenticating.
+   * @param {{ deviceId: string, deviceToken: string }} [deviceCredentials]
+   * @param {boolean} [confirmDeviceSwitch]
    * @returns {Promise<{ token: string, deviceId: string, deviceToken: string, userId: string, username: string, fullName: string, role: string, mustChangePassword: boolean, hasPinSet: boolean }>}
    */
-  async loginWithPassword(username, password, deviceId) {
-    const headers = deviceId ? { 'X-Device-Id': deviceId } : undefined;
-    const response = await apiClient.post('/auth/mobile-login', { username, password }, {
+  async loginWithPassword(username, password, deviceCredentials, confirmDeviceSwitch = false) {
+    const headers = deviceCredentials ? {
+      'X-Device-Id': deviceCredentials.deviceId,
+      'X-Device-Token': deviceCredentials.deviceToken,
+    } : undefined;
+    const response = await apiClient.post('/auth/mobile-login', { username, password, confirmDeviceSwitch }, {
       headers,
+      _sessionGeneration: authSessionCoordinator.generation(),
       skipAuth: true,
       sensitivePayload: true,
     });
@@ -48,7 +59,7 @@ export const authService = {
       pin,
       deviceId: deviceCredentials.deviceId,
       deviceToken: deviceCredentials.deviceToken,
-    }, { skipAuth: true, sensitivePayload: true });
+    }, { skipAuth: true, sensitivePayload: true, _sessionGeneration: authSessionCoordinator.generation() });
     return response.data;
   },
 
@@ -59,18 +70,18 @@ export const authService = {
    * @returns {Promise<{ token: string, message: string, hasPinSet: boolean }>}
    */
   async setupInitialPin(pin) {
-    const headers = await requireDeviceHeaders();
+    const options = await requireDeviceHeaders();
     const response = await apiClient.post('/auth/mobile-setup-pin', { pin }, {
-      headers,
+      ...options,
       sensitivePayload: true,
     });
     return response.data;
   },
 
   async rotatePin(pin, currentPassword) {
-    const headers = await requireDeviceHeaders();
+    const options = await requireDeviceHeaders();
     const response = await apiClient.post('/auth/mobile-setup-pin', { pin, currentPassword }, {
-      headers,
+      ...options,
       sensitivePayload: true,
     });
     return response.data;
@@ -84,6 +95,7 @@ export const authService = {
    */
   async changePassword(oldPassword, newPassword) {
     const response = await apiClient.post('/auth/password-change', { oldPassword, newPassword }, {
+      _sessionGeneration: authSessionCoordinator.generation(),
       sensitivePayload: true,
     });
     return response.data;
@@ -91,6 +103,7 @@ export const authService = {
 
   async verifyCurrentPassword(password) {
     const response = await apiClient.post('/auth/verify-password', { password }, {
+      _sessionGeneration: authSessionCoordinator.generation(),
       sensitivePayload: true,
     });
     return response.data;
@@ -100,15 +113,15 @@ export const authService = {
    * Fetches the current authenticated user's profile.
    */
   async fetchCurrentUser() {
-    const headers = await requireDeviceHeaders();
-    const response = await apiClient.get('/auth/me', { headers, sensitivePayload: true });
+    const options = await requireDeviceHeaders();
+    const response = await apiClient.get('/auth/me', { ...options, sensitivePayload: true });
     return response.data;
   },
 
   async unbindCurrentDevice() {
-    const headers = await requireDeviceHeaders();
+    const options = await requireDeviceHeaders();
     const response = await apiClient.post('/auth/mobile-unbind', null, {
-      headers,
+      ...options,
       sensitivePayload: true,
     });
     return response.data;
@@ -120,12 +133,15 @@ export const authService = {
    * @returns {Promise<{ username: string, hasPinSet: boolean }>}
    */
   async checkMobilePinStatus(username) {
+    const generation = authSessionCoordinator.generation();
     const deviceCredentials = await getDeviceCredentials();
+    authSessionCoordinator.assertCurrent(generation);
     if (!deviceCredentials) {
       return { username, hasPinSet: false };
     }
 
     const response = await apiClient.get(`/auth/mobile-pin-status?username=${encodeURIComponent(username)}`, {
+      _sessionGeneration: generation,
       skipAuth: true,
       sensitivePayload: true,
       headers: {

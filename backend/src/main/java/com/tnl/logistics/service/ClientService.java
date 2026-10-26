@@ -6,6 +6,7 @@ import com.tnl.logistics.dto.ClientSummaryResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 public interface ClientService {
@@ -19,6 +20,8 @@ public interface ClientService {
     ClientSummaryResponse createClient(ClientCreateRequest request);
 
     ClientSummaryResponse updateClient(String clientId, ClientCreateRequest request);
+
+    void updateRatePerKilo(String clientId, BigDecimal ratePerKilo);
 
     void deleteClient(String clientId);
 }

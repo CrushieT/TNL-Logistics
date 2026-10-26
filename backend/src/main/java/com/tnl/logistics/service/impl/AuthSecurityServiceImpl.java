@@ -27,6 +27,8 @@ import java.util.regex.Pattern;
 
 @Service
 public class AuthSecurityServiceImpl implements AuthSecurityService {
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
 
     private static final Logger securityAuditLog = LoggerFactory.getLogger("SECURITY_AUDIT");
     private static final Pattern DEVICE_ID_PATTERN = Pattern.compile("^[A-Za-z0-9._:-]{1,64}$");
@@ -78,7 +80,6 @@ public class AuthSecurityServiceImpl implements AuthSecurityService {
                 user.getUsername(),
                 user.getFullName(),
                 user.getRole().name(),
-                user.getStaffType() != null ? user.getStaffType().name() : null,
                 Boolean.TRUE.equals(user.getMustChangePassword()),
                 hasPinSet(user),
                 deviceBinding);
@@ -167,6 +168,7 @@ public class AuthSecurityServiceImpl implements AuthSecurityService {
         MobileDeviceBinding binding = mobileDeviceBindingRepository
                 .findByDeviceIdAndUserIdForUpdate(deviceId, user.getUserId())
                 .orElseThrow(this::invalidDeviceCredentials);
+        entityManager.refresh(binding, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         if (!Boolean.TRUE.equals(binding.getActive()) || !hasMatchingDeviceToken(binding, deviceToken)) {
             throw invalidDeviceCredentials();
         }
@@ -230,11 +232,13 @@ public class AuthSecurityServiceImpl implements AuthSecurityService {
         MobileDeviceBinding binding = mobileDeviceBindingRepository
                 .findByDeviceIdAndUserIdForUpdate(deviceId, user.getUserId())
                 .orElseThrow(this::invalidDeviceCredentials);
+        entityManager.refresh(binding, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         if (!Boolean.TRUE.equals(binding.getActive()) || !hasMatchingDeviceToken(binding, deviceToken)) {
             throw invalidDeviceCredentials();
         }
 
         binding.setActive(false);
+        binding.incrementBindingVersion();
         mobileDeviceBindingRepository.save(binding);
         user.incrementTokenVersion();
         appUserRepository.save(user);
@@ -280,7 +284,8 @@ public class AuthSecurityServiceImpl implements AuthSecurityService {
 
     private AppUser requireActiveUser(String userId) {
         AppUser user = appUserRepository.findById(userId).orElse(null);
-        if (user == null || !Boolean.TRUE.equals(user.getActive())) {
+        if (user == null || !Boolean.TRUE.equals(user.getActive())
+                || user.getRole() == null || !user.getRole().isTargetRole()) {
             throw invalidSession();
         }
         return user;
@@ -288,7 +293,9 @@ public class AuthSecurityServiceImpl implements AuthSecurityService {
 
     private AppUser requireLockedActiveUser(String userId) {
         AppUser user = appUserRepository.findByIdForUpdate(userId).orElse(null);
-        if (user == null || !Boolean.TRUE.equals(user.getActive())) {
+        if (user != null) entityManager.refresh(user, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (user == null || !Boolean.TRUE.equals(user.getActive())
+                || user.getRole() == null || !user.getRole().isTargetRole()) {
             throw invalidSession();
         }
         return user;
@@ -304,7 +311,7 @@ public class AuthSecurityServiceImpl implements AuthSecurityService {
     }
 
     private void requireMobileRole(AppUser user) {
-        if (user.getRole() != UserRole.FIELD_STAFF && user.getRole() != UserRole.OFFICE_STAFF) {
+        if (user.getRole() == null || !user.getRole().isMobileStaffRole()) {
             throw new AuthSecurityException(
                     HttpStatus.FORBIDDEN,
                     "MOBILE_ROLE_REQUIRED",

@@ -1,17 +1,19 @@
+import PreviewStatus from '../components/common/PreviewStatus';
+import { TableRowSkeleton } from '../components/common/Skeleton';
+import { useCachedPreview, requireDirectory } from '../services/api/useCachedPreview';
+import { CACHE_SLOTS } from '../services/api/responseCache.mjs';
 import CheckIcon from '../components/common/CheckIcon';
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
   TextInput,
   Pressable,
   StyleSheet,
-  ActivityIndicator,
   Platform,
 } from 'react-native';
 import AppShell from '../components/layout/AppShell';
 import PageHeader from '../components/layout/PageHeader';
-import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import StatusBadge from '../components/common/StatusBadge';
 import {
@@ -22,14 +24,15 @@ import {
   RegisterVehicleModal,
   DeactivateVehicleModal,
 } from '../features/vehicles';
-import { subscribeRealtimeEvents } from '../features/shipments';
 import { colors, fonts, spacing, radius, type } from '../theme';
 
 const STATUS_FILTERS = ['ALL', 'Active', 'In Maintenance', 'Inactive'];
 
 export default function VehiclesScreen() {
-  const [vehicles, setVehicles] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const resource = useCachedPreview({ slot: CACHE_SLOTS.VEHICLES, query: { all: true },
+    fetcher: async signal => requireDirectory(await listVehicles(true, { signal })) });
+  const vehicles = resource.data || [];
+  const loading = resource.loading;
   const [registerModalVisible, setRegisterModalVisible] = useState(false);
   const [vehicleToEdit, setVehicleToEdit] = useState(null);
   const [vehicleToDelete, setVehicleToDelete] = useState(null);
@@ -52,47 +55,8 @@ export default function VehiclesScreen() {
     }, 4500);
   };
 
-  const loadVehiclesData = useCallback(async (showSpinner = true) => {
-    try {
-      if (showSpinner) setLoading(true);
-      const data = await listVehicles(true);
-      if (Array.isArray(data)) {
-        setVehicles(data);
-      }
-    } catch (err) {
-      console.warn('Failed to fetch vehicles:', err?.message);
-    } finally {
-      if (showSpinner) setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadVehiclesData(true);
-  }, [loadVehiclesData]);
-
-  // Real-time SSE listener: auto-update ON TRUCK counts and vehicle statuses upon scan events
-  useEffect(() => {
-    const handleSilentRefresh = () => {
-      loadVehiclesData(false);
-    };
-
-    const unsubscribe = subscribeRealtimeEvents(() => {
-      handleSilentRefresh();
-    });
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', handleSilentRefresh);
-    }
-
-    return () => {
-      unsubscribe();
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('focus', handleSilentRefresh);
-      }
-    };
-  }, [loadVehiclesData]);
-
   const handleSaveVehicle = async (payload, vehicleId) => {
+    if (vehicleId && (!resource.isCurrent() || JSON.stringify(vehicles.find(vehicle => vehicle.vehicleId === vehicleId)) !== JSON.stringify(vehicleToEdit))) throw new Error('This record changed. Refresh and reopen it before editing.');
     if (vehicleId) {
       await updateVehicle(vehicleId, payload);
       showFeedback(`Vehicle ${vehicleId} (${payload.plateNumber}) updated successfully.`);
@@ -101,16 +65,17 @@ export default function VehiclesScreen() {
       const newId = created?.vehicleId || 'Vehicle';
       showFeedback(`Vehicle ${newId} (${payload.plateNumber}) registered successfully.`);
     }
-    await loadVehiclesData(false);
   };
 
   const handleDeactivateVehicle = async (vehicleId) => {
+    if (!resource.isCurrent() || JSON.stringify(vehicles.find(vehicle => vehicle.vehicleId === vehicleId)) !== JSON.stringify(vehicleToDelete)) throw new Error('This record changed. Refresh and reopen it before deactivating.');
     const target = vehicles.find((v) => v.vehicleId === vehicleId);
     const targetPlate = target?.plateNumber ? ` (${target.plateNumber})` : '';
     await deleteVehicle(vehicleId);
     showFeedback(`Vehicle ${vehicleId}${targetPlate} removed / deactivated successfully.`);
-    await loadVehiclesData(false);
   };
+
+  useEffect(() => () => { if (feedbackTimer.current) clearTimeout(feedbackTimer.current); }, []);
 
   // Status counts
   const counts = useMemo(() => {
@@ -194,6 +159,7 @@ export default function VehiclesScreen() {
         </View>
       ) : null}
 
+      <PreviewStatus resource={resource} label="Vehicles" />
       {/* Search & Filter Toolbar */}
       <View style={styles.toolbar}>
         {/* Status Filter Pills */}
@@ -232,119 +198,115 @@ export default function VehiclesScreen() {
         </View>
       </View>
 
-      {/* Vehicles Table Card */}
-      <Card style={styles.card}>
-        {loading && vehicles.length === 0 ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.ink} />
-            <Text style={styles.loadingText}>Loading fleet registry...</Text>
-          </View>
-        ) : filteredVehicles.length === 0 ? (
+      {/* Vehicles Table */}
+      <View style={styles.table}>
+        {/* Table Header */}
+        <View style={styles.tableHeaderRow}>
+          <Text style={[styles.headerCell, { flex: 1.1 }]}>VEHICLE ID</Text>
+          <Text style={[styles.headerCell, { flex: 1.3 }]}>PLATE / REGISTRATION</Text>
+          <Text style={[styles.headerCell, { flex: 1.6 }]}>TYPE</Text>
+          <Text style={[styles.headerCell, { flex: 2.2 }]}>DESCRIPTION</Text>
+          <Text style={[styles.headerCell, { flex: 1.3 }]}>STATUS</Text>
+          <Text style={[styles.headerCell, { flex: 0.9, textAlign: 'center' }]}>ON TRUCK</Text>
+          <Text style={[styles.headerCell, { flex: 1.5 }]}>REMARKS</Text>
+          <Text style={[styles.headerCell, { flex: 1.2, textAlign: 'right' }]}>ACTIONS</Text>
+        </View>
+
+        {loading ? (
+          <TableRowSkeleton />
+        ) : resource.data === null ? null : filteredVehicles.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>
               {vehicles.length === 0 ? 'No vehicles registered yet.' : 'No vehicles match your search or filter.'}
             </Text>
           </View>
         ) : (
-          <View style={styles.table}>
-            {/* Table Header */}
-            <View style={styles.tableHeaderRow}>
-              <Text style={[styles.headerCell, { flex: 1.1 }]}>VEHICLE ID</Text>
-              <Text style={[styles.headerCell, { flex: 1.3 }]}>PLATE / REGISTRATION</Text>
-              <Text style={[styles.headerCell, { flex: 1.6 }]}>TYPE</Text>
-              <Text style={[styles.headerCell, { flex: 2.2 }]}>DESCRIPTION</Text>
-              <Text style={[styles.headerCell, { flex: 1.3 }]}>STATUS</Text>
-              <Text style={[styles.headerCell, { flex: 0.9, textAlign: 'center' }]}>ON TRUCK</Text>
-              <Text style={[styles.headerCell, { flex: 1.5 }]}>REMARKS</Text>
-              <Text style={[styles.headerCell, { flex: 1.2, textAlign: 'right' }]}>ACTIONS</Text>
-            </View>
-
-            {/* Table Rows */}
-            {paginatedVehicles.map((v, idx) => (
-              <View
-                key={v.vehicleId}
-                style={[
-                  styles.tableRow,
-                  idx !== paginatedVehicles.length - 1 && styles.rowDivider,
-                  !v.active && styles.inactiveRow,
-                ]}
-              >
-                <Text style={[styles.cellMono, { flex: 1.1 }]}>{v.vehicleId}</Text>
-                <Text style={[styles.cellStrong, { flex: 1.3 }]}>{v.plateNumber}</Text>
-                <Text style={[styles.cell, { flex: 1.6 }]}>{v.vehicleType || '6-Wheeler Forward'}</Text>
-                <Text style={[styles.cell, { flex: 2.2 }]}>{v.description}</Text>
-                <View style={{ flex: 1.3 }}>
-                  <StatusBadge
-                    value={v.status || (v.active ? 'Active' : 'Inactive')}
-                    kind="status"
-                  />
-                </View>
-                <Text style={[styles.cellOnTruck, { flex: 0.9 }]}>{v.onTruckCount || 0}</Text>
-                <Text style={[styles.cellFaint, { flex: 1.5 }]}>{v.remarks || '-'}</Text>
-                <View style={[styles.actionsCell, { flex: 1.2 }]}>
-                  <Pressable
-                    onPress={() => {
-                      setVehicleToEdit(v);
-                      setRegisterModalVisible(true);
-                    }}
-                  >
-                    <Text style={styles.actionEdit}>Edit</Text>
-                  </Pressable>
-                  <Text style={styles.actionSep}>|</Text>
-                  <Pressable onPress={() => setVehicleToDelete(v)}>
-                    <Text style={styles.actionDelete}>Delete</Text>
-                  </Pressable>
-                </View>
-              </View>
-            ))}
-
-            {/* Pagination Footer matching Shipments format */}
-            <View style={styles.paginationFooter}>
-              <View style={styles.paginationInfo}>
-                <Text style={styles.paginationText}>
-                  Showing <Text style={styles.paginationTextStrong}>{paginatedVehicles.length}</Text> of{' '}
-                  <Text style={styles.paginationTextStrong}>{filteredVehicles.length}</Text> vehicles
-                  <Text style={styles.paginationDot}> | </Text>
-                  Page <Text style={styles.paginationTextStrong}>{currentPage}</Text> of{' '}
-                  <Text style={styles.paginationTextStrong}>{totalPages || 1}</Text>
-                </Text>
-              </View>
-
-              <View style={styles.paginationActions}>
-                {Platform.OS === 'web' ? (
-                  <View style={styles.pageSizeSelectWrap}>
-                    <select
-                      value={pageSize}
-                      onChange={(e) => setPageSize(Number(e.target.value))}
-                      style={webSelectStyle}
-                    >
-                      <option value={10}>10 / page</option>
-                      <option value={20}>20 / page</option>
-                      <option value={50}>50 / page</option>
-                    </select>
-                  </View>
-                ) : null}
-
-                <Button
-                  label="Previous"
-                  variant="secondary"
-                  disabled={currentPage <= 1 || loading}
-                  onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  style={styles.pageBtn}
-                />
-
-                <Button
-                  label="Next"
-                  variant="secondary"
-                  disabled={currentPage >= totalPages || loading}
-                  onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  style={styles.pageBtn}
+          paginatedVehicles.map((v, idx) => (
+            <View
+              key={v.vehicleId}
+              style={[
+                styles.tableRow,
+                idx !== paginatedVehicles.length - 1 && styles.rowDivider,
+                !v.active && styles.inactiveRow,
+              ]}
+            >
+              <Text style={[styles.cellMono, { flex: 1.1 }]}>{v.vehicleId}</Text>
+              <Text style={[styles.cellStrong, { flex: 1.3 }]}>{v.plateNumber}</Text>
+              <Text style={[styles.cell, { flex: 1.6 }]}>{v.vehicleType || '6-Wheeler Forward'}</Text>
+              <Text style={[styles.cell, { flex: 2.2 }]}>{v.description}</Text>
+              <View style={{ flex: 1.3 }}>
+                <StatusBadge
+                  value={v.status || (v.active ? 'Active' : 'Inactive')}
+                  kind="status"
                 />
               </View>
+              <Text style={[styles.cellOnTruck, { flex: 0.9 }]}>{v.onTruckCount || 0}</Text>
+              <Text style={[styles.cellFaint, { flex: 1.5 }]}>{v.remarks || '-'}</Text>
+              <View style={[styles.actionsCell, { flex: 1.2 }]}>
+                <Pressable
+                  disabled={!resource.isFresh}
+                  onPress={() => {
+                    if (!resource.isCurrent()) return;
+                    setVehicleToEdit(v);
+                    setRegisterModalVisible(true);
+                  }}
+                >
+                  <Text style={styles.actionEdit}>Edit</Text>
+                </Pressable>
+                <Text style={styles.actionSep}>|</Text>
+                <Pressable disabled={!resource.isFresh} onPress={() => setVehicleToDelete(v)}>
+                  <Text style={styles.actionDelete}>Delete</Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
+          ))
         )}
-      </Card>
+
+        {/* Pagination Footer matching Shipments format */}
+        <View style={styles.paginationFooter}>
+          <View style={styles.paginationInfo}>
+            <Text style={styles.paginationText}>
+              Showing <Text style={styles.paginationTextStrong}>{paginatedVehicles.length}</Text> of{' '}
+              <Text style={styles.paginationTextStrong}>{filteredVehicles.length}</Text> vehicles
+              <Text style={styles.paginationDot}> | </Text>
+              Page <Text style={styles.paginationTextStrong}>{currentPage}</Text> of{' '}
+              <Text style={styles.paginationTextStrong}>{totalPages || 1}</Text>
+            </Text>
+          </View>
+
+          <View style={styles.paginationActions}>
+            {Platform.OS === 'web' ? (
+              <View style={styles.pageSizeSelectWrap}>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  style={webSelectStyle}
+                >
+                  <option value={10}>10 / page</option>
+                  <option value={20}>20 / page</option>
+                  <option value={50}>50 / page</option>
+                </select>
+              </View>
+            ) : null}
+
+            <Button
+              label="Previous"
+              variant="secondary"
+              disabled={currentPage <= 1 || loading}
+              onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              style={styles.pageBtn}
+            />
+
+            <Button
+              label="Next"
+              variant="secondary"
+              disabled={currentPage >= totalPages || loading}
+              onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              style={styles.pageBtn}
+            />
+          </View>
+        </View>
+      </View>
 
       {/* Register / Edit Vehicle Modal */}
       <RegisterVehicleModal
@@ -370,12 +332,12 @@ export default function VehiclesScreen() {
 
 const webSelectStyle = {
   fontFamily: fonts.mono,
-  fontSize: 11.5,
-  color: colors.ink,
+  fontSize: 12.5,
+  color: colors.inkSoft,
+  backgroundColor: '#FAF9F5',
   border: `1px solid ${colors.border}`,
-  backgroundColor: '#FFFFFF',
-  padding: '6px 8px',
-  borderRadius: 3,
+  borderRadius: radius.sm,
+  padding: '6px 10px',
   outline: 'none',
   cursor: 'pointer',
 };
@@ -410,7 +372,7 @@ const styles = StyleSheet.create({
   },
   bannerText: {
     fontFamily: fonts.sans,
-    fontSize: 12.5,
+    fontSize: 13.5,
     color: colors.ink,
     lineHeight: 18,
   },
@@ -485,7 +447,7 @@ const styles = StyleSheet.create({
   },
   pillText: {
     fontFamily: fonts.sans,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.inkSoft,
   },
@@ -507,7 +469,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontFamily: fonts.sans,
-    fontSize: 12.5,
+    fontSize: 13.5,
     color: colors.ink,
     paddingVertical: 7,
   },
@@ -520,23 +482,21 @@ const styles = StyleSheet.create({
     color: colors.inkFaint,
     fontWeight: '700',
   },
-  card: {
-    padding: 0,
-    overflow: 'hidden',
-  },
   loadingContainer: {
-    padding: spacing.xxl,
+    paddingVertical: spacing.xxl,
     alignItems: 'center',
-    gap: spacing.md,
+    justifyContent: 'center',
+    gap: spacing.sm,
   },
   loadingText: {
     fontFamily: fonts.sans,
     fontSize: 13,
-    color: colors.inkFaint,
+    color: colors.inkSoft,
   },
   emptyContainer: {
-    padding: spacing.xxl,
+    paddingVertical: spacing.xxl,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyText: {
     fontFamily: fonts.sans,
@@ -544,64 +504,68 @@ const styles = StyleSheet.create({
     color: colors.inkFaint,
   },
   table: {
-    width: '100%',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
   },
   tableHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8F7F3',
+    backgroundColor: '#FAF9F5',
     paddingHorizontal: spacing.lg,
-    paddingVertical: 10,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   headerCell: {
-    ...type.label,
-    fontSize: 10,
+    fontFamily: fonts.mono,
+    fontSize: 11.5,
+    fontWeight: '700',
     color: colors.inkFaint,
     letterSpacing: 0.8,
-    fontWeight: '700',
+    textTransform: 'uppercase',
   },
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
+    paddingVertical: 14,
+    backgroundColor: colors.surface,
   },
   rowDivider: {
     borderBottomWidth: 1,
-    borderBottomColor: '#F0EFEA',
+    borderBottomColor: colors.border,
   },
   inactiveRow: {
     backgroundColor: '#FAF9F6',
   },
   cellMono: {
     fontFamily: fonts.mono,
-    fontSize: 12.5,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.ink,
   },
   cellStrong: {
     fontFamily: fonts.sans,
-    fontSize: 12.5,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.ink,
   },
   cell: {
     fontFamily: fonts.sans,
-    fontSize: 12.5,
+    fontSize: 14,
     color: colors.ink,
   },
   cellOnTruck: {
     fontFamily: fonts.mono,
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 14,
     color: colors.ink,
     textAlign: 'center',
   },
   cellFaint: {
-    fontFamily: fonts.sans,
+    fontFamily: fonts.mono,
     fontSize: 12,
     color: colors.inkFaint,
   },
@@ -613,19 +577,19 @@ const styles = StyleSheet.create({
   },
   actionEdit: {
     fontFamily: fonts.sans,
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.ink,
   },
   actionSep: {
     fontFamily: fonts.sans,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.inkFaint,
   },
   actionDelete: {
     fontFamily: fonts.sans,
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.danger,
   },
   paginationFooter: {
@@ -634,7 +598,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
-    backgroundColor: colors.canvas,
+    backgroundColor: '#FAF9F5',
     borderTopWidth: 1,
     borderTopColor: colors.border,
     flexWrap: 'wrap',
@@ -646,8 +610,8 @@ const styles = StyleSheet.create({
   },
   paginationText: {
     fontFamily: fonts.mono,
-    fontSize: 12,
-    color: colors.inkFaint,
+    fontSize: 12.5,
+    color: colors.inkSoft,
   },
   paginationTextStrong: {
     fontFamily: fonts.mono,

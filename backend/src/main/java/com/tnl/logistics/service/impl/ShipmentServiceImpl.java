@@ -4,6 +4,7 @@ import com.tnl.logistics.dto.*;
 import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.*;
 import com.tnl.logistics.service.ShipmentService;
+import com.tnl.logistics.service.PaymentCollectibility;
 import com.tnl.logistics.service.SseService;
 import com.tnl.logistics.service.IdentifierCounterService;
 import org.springframework.data.domain.Page;
@@ -33,11 +34,15 @@ public class ShipmentServiceImpl implements ShipmentService {
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("MMM d, yyyy");
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("h:mm a");
+    private static final BigDecimal MAX_DECIMAL_12_2 = new BigDecimal("9999999999.99");
+    private static final BigDecimal MAX_CBM_10_4 = new BigDecimal("999999.9999");
+    private static final BigDecimal ONE_MILLION = new BigDecimal("1000000");
 
     private final ShipmentRepository shipmentRepository;
     private final ParcelUnitRepository parcelUnitRepository;
     private final ClientRepository clientRepository;
     private final PaymentRepository paymentRepository;
+    private final SoaRepository soaRepository;
     private final AppUserRepository appUserRepository;
     private final TrackingEventRepository trackingEventRepository;
     private final WaybillRepository waybillRepository;
@@ -46,11 +51,13 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final PrintAuditJobRepository printAuditJobRepository;
     private final com.tnl.logistics.service.SystemSettingService systemSettingService;
     private final IdentifierCounterService identifierCounterService;
+    private final ParcelLossEventRepository lossEvents;
 
     public ShipmentServiceImpl(ShipmentRepository shipmentRepository,
                                ParcelUnitRepository parcelUnitRepository,
                                ClientRepository clientRepository,
                                PaymentRepository paymentRepository,
+                               SoaRepository soaRepository,
                                AppUserRepository appUserRepository,
                                TrackingEventRepository trackingEventRepository,
                                WaybillRepository waybillRepository,
@@ -58,11 +65,13 @@ public class ShipmentServiceImpl implements ShipmentService {
                                PrintEventRepository printEventRepository,
                                PrintAuditJobRepository printAuditJobRepository,
                                com.tnl.logistics.service.SystemSettingService systemSettingService,
-                               IdentifierCounterService identifierCounterService) {
+                               IdentifierCounterService identifierCounterService,
+                               ParcelLossEventRepository lossEvents) {
         this.shipmentRepository = shipmentRepository;
         this.parcelUnitRepository = parcelUnitRepository;
         this.clientRepository = clientRepository;
         this.paymentRepository = paymentRepository;
+        this.soaRepository = soaRepository;
         this.appUserRepository = appUserRepository;
         this.trackingEventRepository = trackingEventRepository;
         this.waybillRepository = waybillRepository;
@@ -71,6 +80,28 @@ public class ShipmentServiceImpl implements ShipmentService {
         this.printAuditJobRepository = printAuditJobRepository;
         this.systemSettingService = systemSettingService;
         this.identifierCounterService = identifierCounterService;
+        this.lossEvents = lossEvents;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ShipmentCalculationSettingsResponse getCalculationSettings(String clientId) {
+        Client client = clientRepository.findById(clientId)
+                .orElseThrow(() -> new IllegalArgumentException("Client not found with ID: " + clientId));
+        if (Boolean.FALSE.equals(client.getActive())) {
+            throw new IllegalArgumentException("Cannot calculate shipment charges for inactive client: " + client.getName());
+        }
+
+        Integer volumetricDivisor = systemSettingService.getVolumetricDivisor();
+        if (volumetricDivisor == null || volumetricDivisor <= 0) {
+            volumetricDivisor = 5000;
+        }
+
+        return new ShipmentCalculationSettingsResponse(
+                client.getClientId(),
+                resolveRatePerKilo(client),
+                volumetricDivisor
+        );
     }
 
     @Override
@@ -84,6 +115,27 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
                 .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
+
+        BigDecimal effectiveRatePerKilo = resolveRatePerKilo(client);
+        if (effectiveRatePerKilo == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "RATE_PER_KILO_NOT_CONFIGURED: Neither a client rate nor the global rate per kilo is configured.");
+        }
+
+        Integer configuredDivisor = systemSettingService.getVolumetricDivisor();
+        if (configuredDivisor == null || configuredDivisor <= 0) {
+            configuredDivisor = 5000;
+        }
+
+        // Stale-settings guards: reject if expected settings are missing or do not match active settings
+        if (request.getExpectedRatePerKilo() == null || request.getExpectedRatePerKilo().compareTo(effectiveRatePerKilo) != 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "STALE_SETTINGS: Calculation settings have changed. Please refresh and review the updated calculation before submitting.");
+        }
+        if (request.getExpectedVolumetricDivisor() == null || !request.getExpectedVolumetricDivisor().equals(configuredDivisor)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "STALE_SETTINGS: Calculation settings have changed. Please refresh and review the updated calculation before submitting.");
+        }
 
         // Validate parcel items count and contiguous sequence (Item 4)
         if (request.getParcels() == null || request.getParcels().isEmpty()) {
@@ -114,16 +166,44 @@ public class ShipmentServiceImpl implements ShipmentService {
             }
         }
 
-        // 1. Pricing Model Calculations
-        BigDecimal totalAmount;
-        BigDecimal otherCharges = request.getOtherCharges() != null ? request.getOtherCharges() : BigDecimal.ZERO;
+        // 1. Per-Unit Measurement & Rating Model Calculations
+        BigDecimal totalActualWeight = BigDecimal.ZERO;
+        BigDecimal totalVolumeCm3 = BigDecimal.ZERO;
 
-        if (request.getChargeModel() == ChargeModel.FLAT) {
-            totalAmount = request.getShippingFee().add(otherCharges);
-        } else {
-            totalAmount = request.getShippingFee()
-                    .multiply(new BigDecimal(request.getQuantity()))
-                    .add(otherCharges);
+        for (ParcelUnitRequest parcelReq : request.getParcels()) {
+            if (parcelReq.getWeightKg() == null || parcelReq.getLengthCm() == null
+                    || parcelReq.getHeightCm() == null || parcelReq.getWidthCm() == null) {
+                throw new IllegalArgumentException("Weight, length, width, and height are required for each parcel unit.");
+            }
+            BigDecimal unitVolume = parcelReq.getLengthCm()
+                    .multiply(parcelReq.getWidthCm())
+                    .multiply(parcelReq.getHeightCm());
+            BigDecimal unitVolumeCbm = unitVolume.divide(ONE_MILLION, 4, RoundingMode.HALF_UP);
+            if (unitVolumeCbm.compareTo(MAX_CBM_10_4) > 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        String.format("CALCULATION_OVERFLOW: Unit #%d volume (%s m³) exceeds maximum allowed storage capacity.", parcelReq.getSeq(), unitVolumeCbm));
+            }
+            totalActualWeight = totalActualWeight.add(parcelReq.getWeightKg());
+            totalVolumeCm3 = totalVolumeCm3.add(unitVolume);
+        }
+
+        BigDecimal divisorBd = new BigDecimal(String.valueOf(configuredDivisor));
+        BigDecimal roundedActualWeight = totalActualWeight.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalVolumetricWeight = totalVolumeCm3.divide(divisorBd, 2, RoundingMode.HALF_UP);
+        BigDecimal billableWeight = roundedActualWeight.max(totalVolumetricWeight);
+        BigDecimal shippingFee = billableWeight.multiply(effectiveRatePerKilo).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal otherCharges = request.getOtherCharges() != null ? request.getOtherCharges() : BigDecimal.ZERO;
+        BigDecimal totalAmount = shippingFee.add(otherCharges);
+
+        if (roundedActualWeight.compareTo(MAX_DECIMAL_12_2) > 0 ||
+                totalVolumetricWeight.compareTo(MAX_DECIMAL_12_2) > 0 ||
+                billableWeight.compareTo(MAX_DECIMAL_12_2) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "CALCULATION_OVERFLOW: Calculated shipment weight exceeds maximum allowed capacity.");
+        }
+        if (shippingFee.compareTo(MAX_DECIMAL_12_2) > 0 || totalAmount.compareTo(MAX_DECIMAL_12_2) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "CALCULATION_OVERFLOW: Calculated shipping fee or total amount exceeds maximum allowed capacity.");
         }
 
         // 2. Generate Sequential Shipment ID: SHP-YYYY-XXX
@@ -131,16 +211,17 @@ public class ShipmentServiceImpl implements ShipmentService {
         long nextShipmentSeq = identifierCounterService.next(IdentifierCounterService.IdentifierFamily.SHIPMENT, Integer.valueOf(currentYear));
         String shipmentId = String.format("SHP-%s-%03d", currentYear, nextShipmentSeq);
 
-        // 3. Save Shipment Entity
+        // 3. Save Shipment Entity with Snapshots (recipient name derived from client)
+        String canonicalRecipientName = client.getName();
         Shipment shipment = new Shipment(
                 shipmentId,
                 client,
-                request.getRecipientName(),
+                canonicalRecipientName,
                 request.getRecipientAddress(),
                 request.getRecipientContact(),
                 request.getQuantity(),
-                request.getChargeModel(),
-                request.getShippingFee(),
+                ChargeModel.PER_KILO,
+                shippingFee,
                 otherCharges,
                 totalAmount,
                 request.getPaidAtRegistration() != null ? request.getPaidAtRegistration() : false,
@@ -148,6 +229,11 @@ public class ShipmentServiceImpl implements ShipmentService {
         );
         shipment.setDescription(request.getDescription());
         shipment.setRoute(request.getRoute());
+        shipment.setAppliedRatePerKilo(effectiveRatePerKilo);
+        shipment.setAppliedVolumetricDivisor(configuredDivisor);
+        shipment.setTotalActualWeight(roundedActualWeight);
+        shipment.setTotalVolumetricWeight(totalVolumetricWeight);
+        shipment.setBillableWeight(billableWeight);
         shipmentRepository.save(shipment);
 
         // 4. Generate Sequential Tracking IDs (TRK-YYYY-XXXXXX) & Process Parcel Units
@@ -226,7 +312,14 @@ public class ShipmentServiceImpl implements ShipmentService {
                 shipment.getRecipientName(),
                 totalAmount,
                 shipment.getPaidAtRegistration(),
-                trackingIds
+                trackingIds,
+                effectiveRatePerKilo,
+                configuredDivisor,
+                roundedActualWeight,
+                totalVolumetricWeight,
+                billableWeight,
+                shippingFee,
+                otherCharges
         );
     }
 
@@ -239,7 +332,10 @@ public class ShipmentServiceImpl implements ShipmentService {
         String cleanVehicle = normalizeVehicle(vehicleId);
         String cleanLabel = normalizeLabel(labelStatus);
 
-        Page<Shipment> shipmentsPage = shipmentRepository.searchShipmentsWithFilters(cleanSearch, cleanStatus, cleanPayment, cleanVehicle, cleanLabel, pageable);
+        boolean isUnfiltered = (cleanSearch == null && cleanStatus == null && cleanPayment == null && cleanVehicle == null && cleanLabel == null);
+        Page<Shipment> shipmentsPage = isUnfiltered
+                ? shipmentRepository.findAllShipmentsWithClient(pageable)
+                : shipmentRepository.searchShipmentsWithFilters(cleanSearch, cleanStatus, cleanPayment, cleanVehicle, cleanLabel, pageable);
         List<Shipment> shipments = shipmentsPage.getContent();
         if (shipments.isEmpty()) {
             return new PageImpl<>(Collections.emptyList(), pageable, shipmentsPage.getTotalElements());
@@ -258,6 +354,16 @@ public class ShipmentServiceImpl implements ShipmentService {
         Map<String, List<Payment>> paymentsByShipment = allPayments.stream()
                 .filter(p -> p.getShipment() != null)
                 .collect(Collectors.groupingBy(p -> p.getShipment().getShipmentId()));
+
+        Set<String> statementIds = shipments.stream()
+                .map(Shipment::getStatementId)
+                .filter(Objects::nonNull)
+                .filter(statementId -> !statementId.isBlank())
+                .collect(Collectors.toSet());
+        Map<String, Soa> statementsById = statementIds.isEmpty()
+                ? Collections.emptyMap()
+                : soaRepository.findAllById(statementIds).stream()
+                        .collect(Collectors.toMap(Soa::getSoaNo, statement -> statement));
 
         // Check if any parcels need vehicle fallback from tracking events
         List<String> trackingIdsNeedingVehicle = allParcels.stream()
@@ -281,7 +387,8 @@ public class ShipmentServiceImpl implements ShipmentService {
                         s,
                         parcelsByShipment.getOrDefault(s.getShipmentId(), Collections.emptyList()),
                         paymentsByShipment.getOrDefault(s.getShipmentId(), Collections.emptyList()),
-                        latestEventWithVehicleByTrackingId
+                        latestEventWithVehicleByTrackingId,
+                        statementsById.get(s.getStatementId())
                 ))
                 .collect(Collectors.toList());
 
@@ -333,7 +440,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         Shipment shipment = shipmentRepository.findById(shipmentId)
                 .orElseThrow(() -> new IllegalArgumentException("Shipment not found: " + shipmentId));
 
-        List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
+        List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdInOrderBySeqAsc(List.of(shipmentId));
         List<Payment> payments = paymentRepository.findByShipment_ShipmentId(shipmentId);
 
         BigDecimal totalPaid = payments.stream()
@@ -367,7 +474,13 @@ public class ShipmentServiceImpl implements ShipmentService {
         resp.setStatus(rollup.overallStatus);
         resp.setStatusRollup(rollup.statusRollup);
         resp.setPayment(paymentStr);
-        resp.setChargeModel(shipment.getChargeModel() == ChargeModel.PER_PARCEL ? "Per unit" : "Flat");
+        String chargeModelLabel = "Flat";
+        if (shipment.getChargeModel() == ChargeModel.PER_KILO) {
+            chargeModelLabel = "Per kilo";
+        } else if (shipment.getChargeModel() == ChargeModel.PER_PARCEL) {
+            chargeModelLabel = "Per unit";
+        }
+        resp.setChargeModel(chargeModelLabel);
         resp.setShippingFee(shipment.getShippingFee());
         resp.setOtherCharges(shipment.getOtherCharges());
         resp.setTotalAmount(shipment.getTotalAmount());
@@ -377,11 +490,19 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         resp.setDestination(extractDestination(shipment.getRoute()));
 
+        // Calculation snapshots
+        resp.setAppliedRatePerKilo(shipment.getAppliedRatePerKilo());
+        resp.setAppliedVolumetricDivisor(shipment.getAppliedVolumetricDivisor());
+        resp.setTotalActualWeight(shipment.getTotalActualWeight());
+        resp.setTotalVolumetricWeight(shipment.getTotalVolumetricWeight());
+        resp.setBillableWeight(shipment.getBillableWeight());
+
         // Dimensions and Weight calculation
         BigDecimal actualWeight = BigDecimal.ZERO;
         BigDecimal length = new BigDecimal("50");
         BigDecimal width = new BigDecimal("40");
         BigDecimal height = new BigDecimal("35");
+        BigDecimal totalVolumeCm3 = BigDecimal.ZERO;
 
         if (!parcels.isEmpty()) {
             ParcelUnit first = parcels.get(0);
@@ -393,40 +514,59 @@ public class ShipmentServiceImpl implements ShipmentService {
                 if (p.getWeightKg() != null) {
                     actualWeight = actualWeight.add(p.getWeightKg());
                 }
+                if (p.getLengthCm() != null && p.getWidthCm() != null && p.getHeightCm() != null) {
+                    totalVolumeCm3 = totalVolumeCm3.add(p.getLengthCm().multiply(p.getWidthCm()).multiply(p.getHeightCm()));
+                }
             }
         }
-        if (actualWeight.compareTo(BigDecimal.ZERO) == 0) {
+        if (actualWeight.compareTo(BigDecimal.ZERO) == 0 && shipment.getTotalActualWeight() == null) {
             actualWeight = new BigDecimal("2.5");
         }
 
-        // Volume in cm3: L x W x H per unit * quantity
-        BigDecimal unitVolumeCm3 = length.multiply(width).multiply(height);
-        BigDecimal totalVolumeCm3 = unitVolumeCm3.multiply(new BigDecimal(shipment.getQuantity()));
+        if (totalVolumeCm3.compareTo(BigDecimal.ZERO) == 0) {
+            BigDecimal unitVolumeCm3 = length.multiply(width).multiply(height);
+            totalVolumeCm3 = unitVolumeCm3.multiply(new BigDecimal(shipment.getQuantity()));
+        }
 
-        // Volumetric weight: totalVolumeCm3 / divisor
-        int divisor = (systemSettingService != null && systemSettingService.getVolumetricDivisor() != null)
+        int divisor = shipment.getAppliedVolumetricDivisor() != null
+                ? shipment.getAppliedVolumetricDivisor()
+                : ((systemSettingService != null && systemSettingService.getVolumetricDivisor() != null)
                 ? systemSettingService.getVolumetricDivisor()
-                : 5000;
-        BigDecimal volumetricWeight = totalVolumeCm3.divide(new BigDecimal(String.valueOf(divisor)), 2, RoundingMode.HALF_UP);
+                : 5000);
 
-        // Billable weight: max(actualWeight, volumetricWeight)
-        BigDecimal billableWeight = actualWeight.max(volumetricWeight);
+        BigDecimal volumetricWeight = shipment.getTotalVolumetricWeight() != null
+                ? shipment.getTotalVolumetricWeight()
+                : totalVolumeCm3.divide(new BigDecimal(String.valueOf(divisor)), 2, RoundingMode.HALF_UP);
+
+        BigDecimal effectiveActualWeight = shipment.getTotalActualWeight() != null
+                ? shipment.getTotalActualWeight()
+                : actualWeight;
+
+        BigDecimal billableWeight = shipment.getBillableWeight() != null
+                ? shipment.getBillableWeight()
+                : effectiveActualWeight.max(volumetricWeight);
 
         resp.setLengthCm(length);
         resp.setWidthCm(width);
         resp.setHeightCm(height);
-        resp.setWeightKg(actualWeight);
+        resp.setWeightKg(effectiveActualWeight);
         resp.setVolumeCm3(totalVolumeCm3);
         resp.setVolumetricWeightKg(volumetricWeight);
         resp.setBillableWeightKg(billableWeight);
 
         // Waybill summary
-        Waybill waybill = waybillRepository.findByShipment_ShipmentId(shipment.getShipmentId()).orElse(null);
+        List<Waybill> shipmentWaybills = waybillRepository.findByShipment_ShipmentIdOrderByGeneratedAtDesc(shipment.getShipmentId());
+        Waybill waybill = shipmentWaybills.isEmpty() ? null : shipmentWaybills.get(0);
         if (waybill != null) {
             String wbStatusLabel = waybill.getStatus() == com.tnl.logistics.model.WaybillStatus.SIGNED_COMPLETED
-                    ? "Waybill: Signed / Completed"
+                    ? ("ALL_LOST".equals(waybill.getReconciliationOutcome()) ? "Waybill: Closed as All Lost"
+                    : "WITH_LOSS".equals(waybill.getReconciliationOutcome()) ? "Waybill: Closed with Loss" : "Waybill: Signed / Completed")
                     : (waybill.getStatus() == com.tnl.logistics.model.WaybillStatus.SENT_TO_HAULER ? "Waybill: Sent to Hauler" : "Waybill: Generated");
-            resp.setWaybillStatus(wbStatusLabel);
+            long completedCount = parcels.stream().filter(parcel -> parcel.getCurrentStatus() == ParcelStatus.COMPLETED).count();
+            boolean hasClosedWithLoss = "WITH_LOSS".equals(waybill.getReconciliationOutcome())
+                    || "ALL_LOST".equals(waybill.getReconciliationOutcome());
+            resp.setWaybillStatus(!hasClosedWithLoss && completedCount > 0 && completedCount < parcels.size()
+                    ? "Waybills: " + completedCount + " of " + parcels.size() + " completed" : wbStatusLabel);
             resp.setHauler(waybill.getHaulerName());
             resp.setWaybillGeneratedDate(waybill.getGeneratedAt() != null ? waybill.getGeneratedAt().format(DATE_FORMATTER) : "—");
             resp.setSignedBy(waybill.getSignedBy());
@@ -452,6 +592,24 @@ public class ShipmentServiceImpl implements ShipmentService {
         )).collect(Collectors.toList());
 
         resp.setUnits(unitResponses);
+        Map<String, ParcelUnit> parcelsById = parcels.stream().collect(Collectors.toMap(ParcelUnit::getTrackingId, parcel -> parcel));
+        for (ParcelUnitResponse unit : unitResponses) {
+            ParcelUnit parcel = parcelsById.get(unit.getTrackingId());
+            unit.setLost(parcel.isLost());
+            unit.setRevision(parcel.getRevision());
+            if (!parcel.isLost() && parcel.getCurrentVehicle() != null) {
+                unit.setCurrentVehicleId(parcel.getCurrentVehicle().getVehicleId());
+                unit.setCurrentVehiclePlate(parcel.getCurrentVehicle().getPlateNumber());
+            }
+        }
+        long lostCount = parcels.stream().filter(ParcelUnit::isLost).count();
+        long deliveredCount = parcels.stream().filter(parcel -> !parcel.isLost() && parcel.getCurrentStatus() == ParcelStatus.COMPLETED).count();
+        resp.setLostCount(lostCount);
+        resp.setDeliveredCount(deliveredCount);
+        if (lostCount > 0) {
+            resp.setStatusRollup(deliveredCount + " / " + parcels.size() + " Delivered; " + lostCount + " Lost");
+            resp.setStatus("With Loss");
+        }
         return resp;
     }
 
@@ -466,6 +624,17 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         ParcelUnitDetailResponse resp = new ParcelUnitDetailResponse();
         resp.setTrackingId(parcel.getTrackingId());
+        resp.setLost(parcel.isLost());
+        resp.setRevision(parcel.getRevision());
+        resp.setLossHistory(lossEvents.findByTrackingIdOrderByEventIdAsc(trackingId).stream().map(event -> {
+            String actorName = appUserRepository.findById(event.getActorId()).map(AppUser::getFullName).orElse(event.getActorId());
+            String formattedPrevStatus = event.getPreviousStatus();
+            try {
+                formattedPrevStatus = formatStatus(ParcelStatus.valueOf(event.getPreviousStatus()));
+            } catch (Exception ignored) {}
+            return ParcelLossEventResponse.from(event, actorName, formattedPrevStatus);
+        }).toList());
+        resp.setWaybillId(parcel.getWaybill() == null ? null : parcel.getWaybill().getWaybillId());
         resp.setPackageIndex(parcel.getSeq());
         resp.setPackageCount(shipment.getQuantity());
         resp.setRecipientName(shipment.getRecipientName());
@@ -635,6 +804,12 @@ public class ShipmentServiceImpl implements ShipmentService {
         return parcels;
     }
 
+    private BigDecimal resolveRatePerKilo(Client client) {
+        return client.getRatePerKilo() != null
+                ? client.getRatePerKilo()
+                : systemSettingService.getRatePerKilo();
+    }
+
     private String normalizePrinterId(String printerId) {
         if (printerId == null || printerId.isBlank()) {
             return null;
@@ -663,7 +838,8 @@ public class ShipmentServiceImpl implements ShipmentService {
             Shipment s,
             List<ParcelUnit> parcels,
             List<Payment> payments,
-            Map<String, TrackingEvent> latestEventWithVehicleByTrackingId
+            Map<String, TrackingEvent> latestEventWithVehicleByTrackingId,
+            Soa statement
     ) {
         if (parcels == null) parcels = Collections.emptyList();
         if (payments == null) payments = Collections.emptyList();
@@ -677,6 +853,13 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         String paymentStr = totalPaid.compareTo(s.getTotalAmount()) >= 0 ? "Paid"
                 : (totalPaid.compareTo(BigDecimal.ZERO) > 0 ? "Partial" : "Unpaid");
+        boolean isPaid = "Paid".equals(paymentStr);
+        boolean isStatementSettled = !isPaid
+                && statement != null
+                && statement.getOutstandingBalance() != null
+                && statement.getOutstandingBalance().compareTo(BigDecimal.ZERO) <= 0;
+        String financialStatus = isStatementSettled ? "Settled" : paymentStr;
+        BigDecimal collectibleBalance = PaymentCollectibility.calculate(balance, statement);
 
         RollupStatus rollup = computeRollupStatus(parcels);
 
@@ -687,6 +870,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         String vehicleId = null;
         String vehiclePlate = null;
         for (ParcelUnit p : parcels) {
+            if (p.isLost()) continue;
             if (p.getCurrentVehicle() != null) {
                 vehicleId = p.getCurrentVehicle().getVehicleId();
                 vehiclePlate = p.getCurrentVehicle().getPlateNumber();
@@ -695,6 +879,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
         if (vehicleId == null && !parcels.isEmpty() && latestEventWithVehicleByTrackingId != null) {
             for (ParcelUnit p : parcels) {
+                if (p.isLost()) continue;
                 TrackingEvent ev = latestEventWithVehicleByTrackingId.get(p.getTrackingId());
                 if (ev != null && ev.getVehicle() != null) {
                     vehicleId = ev.getVehicle().getVehicleId();
@@ -710,7 +895,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         boolean allLabelsPrinted = !parcels.isEmpty() && parcels.stream().allMatch(p -> p.getLabelStatus() == LabelStatus.PRINTED);
         String registeredVia = s.getRegisteredVia() != null ? s.getRegisteredVia().name() : null;
 
-        return new ShipmentSummaryResponse(
+        ShipmentSummaryResponse response = new ShipmentSummaryResponse(
                 s.getShipmentId(),
                 clientId,
                 clientName,
@@ -731,6 +916,25 @@ public class ShipmentServiceImpl implements ShipmentService {
                 registeredVia,
                 allLabelsPrinted
         );
+        response.setFinancialStatus(financialStatus);
+        Map<String, Vehicle> currentVehicles = new HashMap<>();
+        for (ParcelUnit parcel : parcels) {
+            if (!parcel.isLost() && parcel.getCurrentVehicle() != null) {
+                Vehicle vehicle = parcel.getCurrentVehicle();
+                currentVehicles.putIfAbsent(vehicle.getVehicleId(), vehicle);
+            }
+        }
+        response.setCurrentVehicleCount(currentVehicles.size());
+        if (currentVehicles.size() == 1) {
+            Vehicle currentVehicle = currentVehicles.values().iterator().next();
+            response.setCurrentVehicleId(currentVehicle.getVehicleId());
+            response.setCurrentVehiclePlate(currentVehicle.getPlateNumber());
+        }
+        response.setCollectibleBalance(collectibleBalance);
+        response.setStatementId(s.getStatementId());
+        response.setLostCount(parcels.stream().filter(ParcelUnit::isLost).count());
+        response.setDeliveredCount(parcels.stream().filter(parcel -> !parcel.isLost() && parcel.getCurrentStatus() == ParcelStatus.COMPLETED).count());
+        return response;
     }
 
     private ShipmentSummaryResponse mapToSummaryResponse(Shipment s) {
@@ -746,7 +950,10 @@ public class ShipmentServiceImpl implements ShipmentService {
                 }
             }
         }
-        return mapToSummaryResponse(s, parcels, payments, eventMap);
+        Soa statement = s.getStatementId() != null && !s.getStatementId().isBlank()
+                ? soaRepository.findById(s.getStatementId()).orElse(null)
+                : null;
+        return mapToSummaryResponse(s, parcels, payments, eventMap, statement);
     }
 
     private static class RollupStatus {
@@ -764,12 +971,17 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
 
         int total = parcels.size();
+        long lost = parcels.stream().filter(ParcelUnit::isLost).count();
+        if (lost > 0) {
+            long delivered = parcels.stream().filter(parcel -> !parcel.isLost() && parcel.getCurrentStatus() == ParcelStatus.COMPLETED).count();
+            return new RollupStatus("With Loss", delivered + " / " + total + " Delivered; " + lost + " Lost");
+        }
         Map<ParcelStatus, Long> counts = parcels.stream()
                 .collect(Collectors.groupingBy(ParcelUnit::getCurrentStatus, Collectors.counting()));
 
         if (counts.containsKey(ParcelStatus.COMPLETED)) {
             long c = counts.get(ParcelStatus.COMPLETED);
-            return new RollupStatus("Completed", c + " / " + total + " Completed");
+            return new RollupStatus(c == total ? "Completed" : "Partially Completed", c + " / " + total + " Completed");
         }
         if (counts.containsKey(ParcelStatus.LOADED_TO_HAULER)) {
             long c = counts.get(ParcelStatus.LOADED_TO_HAULER);

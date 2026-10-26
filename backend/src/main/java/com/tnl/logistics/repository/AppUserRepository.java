@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.persistence.LockModeType;
 
@@ -29,6 +30,7 @@ public interface AppUserRepository extends JpaRepository<AppUser, String> {
 
     Optional<AppUser> findByUsername(String username);
 
+    @Transactional(readOnly = true)
     @Query("select user.active as active, user.role as role, user.tokenVersion as tokenVersion "
             + "from AppUser user where user.userId = :userId")
     Optional<SseAuthorizationState> findSseAuthorizationState(@Param("userId") String userId);
@@ -36,8 +38,6 @@ public interface AppUserRepository extends JpaRepository<AppUser, String> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select user from AppUser user where user.userId = :userId")
     Optional<AppUser> findByIdForUpdate(@Param("userId") String userId);
-
-    List<AppUser> findByStaffTypeAndActiveTrue(com.tnl.logistics.model.StaffType staffType);
 
     List<AppUser> findByRoleAndActiveTrue(UserRole role);
 
@@ -50,19 +50,19 @@ public interface AppUserRepository extends JpaRepository<AppUser, String> {
     // Paginated list — filtered by role and active status
     Page<AppUser> findByActiveAndRoleInOrderByUserIdAsc(Boolean active, List<UserRole> roles, Pageable pageable);
 
-    // Smart-delete data checks
-    @Query("SELECT COUNT(t) FROM TrackingEvent t WHERE t.staff.userId = :userId")
-    long countTrackingEventsByStaff(@Param("userId") String userId);
-
-    @Query("SELECT COUNT(p) FROM Payment p WHERE p.staff.userId = :userId")
-    long countPaymentsByStaff(@Param("userId") String userId);
-
-    @Query("SELECT COUNT(w) FROM Waybill w WHERE w.generatedBy.userId = :userId")
-    long countWaybillsByStaff(@Param("userId") String userId);
-
-    @Query("SELECT COUNT(b) FROM SoaBatch b WHERE b.generatedBy.userId = :userId")
-    long countSoaBatchesByStaff(@Param("userId") String userId);
-
-    @Query("SELECT COUNT(p) FROM PrintEvent p WHERE p.staff.userId = :userId")
-    long countPrintEventsByStaff(@Param("userId") String userId);
+    @Query(value = """
+            SELECT EXISTS(SELECT 1 FROM tracking_event WHERE staff_id = :userId)
+                OR EXISTS(SELECT 1 FROM payment WHERE staff_id = :userId)
+                OR EXISTS(SELECT 1 FROM waybill WHERE generated_by = :userId)
+                OR EXISTS(SELECT 1 FROM waybill WHERE sent_by = :userId)
+                OR EXISTS(SELECT 1 FROM waybill WHERE completed_by = :userId)
+                OR EXISTS(SELECT 1 FROM soa_batch WHERE generated_by = :userId)
+                OR EXISTS(SELECT 1 FROM print_event WHERE staff_id = :userId)
+                OR EXISTS(SELECT 1 FROM print_audit_job WHERE staff_id = :userId)
+                OR EXISTS(SELECT 1 FROM waybill_return_scan WHERE scanned_by = :userId)
+                OR EXISTS(SELECT 1 FROM parcel_loss_event WHERE actor_id = :userId)
+                OR EXISTS(SELECT 1 FROM parcel_exception_command WHERE actor_id = :userId)
+                OR EXISTS(SELECT 1 FROM waybill_reconciliation_event WHERE actor_id = :userId)
+            """, nativeQuery = true)
+    long countAuditReferencePresence(@Param("userId") String userId);
 }

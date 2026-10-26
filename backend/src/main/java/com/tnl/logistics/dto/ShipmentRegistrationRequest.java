@@ -4,8 +4,10 @@ import com.tnl.logistics.model.ChargeModel;
 import com.tnl.logistics.model.RegisteredVia;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
@@ -20,35 +22,49 @@ public class ShipmentRegistrationRequest {
     @NotBlank(message = "Client ID is required")
     private String clientId;
 
-    @NotBlank(message = "Recipient name is required")
+    @Size(max = 150, message = "Recipient name cannot exceed 150 characters")
     private String recipientName;
 
     @NotBlank(message = "Recipient address is required")
+    @Size(max = 80, message = "Recipient address cannot exceed 80 characters")
     private String recipientAddress;
 
     @NotBlank(message = "Recipient contact is required")
+    @Size(max = 11, message = "Recipient contact cannot exceed 11 characters")
+    @Pattern(regexp = "^[0-9]+$", message = "Recipient contact must contain digits only")
     private String recipientContact;
 
+    @Size(max = 120, message = "Description cannot exceed 120 characters")
     private String description;
 
     @NotNull(message = "Quantity is required")
     @Positive(message = "Quantity must be greater than zero")
+    @Max(value = 1000, message = "Quantity cannot exceed 1000")
     private Integer quantity;
 
-    @NotNull(message = "Charge model is required")
     private ChargeModel chargeModel;
 
-    @NotNull(message = "Shipping fee is required")
     @PositiveOrZero(message = "Shipping fee must be zero or positive")
     @Digits(integer = 10, fraction = 2, message = "Shipping fee must have up to 10 integer digits and 2 decimal places")
     private BigDecimal shippingFee;
 
-    @PositiveOrZero(message = "Other charges must be zero or positive")
-    @Digits(integer = 10, fraction = 2, message = "Other charges must have up to 10 integer digits and 2 decimal places")
+    @PositiveOrZero(message = "Charges must be zero or positive")
+    @Digits(integer = 10, fraction = 2, message = "Charges must have up to 10 integer digits and 2 decimal places")
     private BigDecimal otherCharges = BigDecimal.ZERO;
 
     private Boolean paidAtRegistration = false;
 
+    @NotNull(message = "Expected rate per kilo is required")
+    @jakarta.validation.constraints.DecimalMin(value = "0.01", message = "Expected rate per kilo must be positive")
+    @Digits(integer = 10, fraction = 2, message = "Expected rate per kilo must have up to 10 integer digits and 2 decimal places")
+    private BigDecimal expectedRatePerKilo;
+
+    @NotNull(message = "Expected volumetric divisor is required")
+    @jakarta.validation.constraints.Min(value = 1000, message = "Expected volumetric divisor must be at least 1000")
+    @jakarta.validation.constraints.Max(value = 10000, message = "Expected volumetric divisor must not exceed 10000")
+    private Integer expectedVolumetricDivisor;
+
+    @Size(max = 150, message = "Route cannot exceed 150 characters")
     private String route;
 
     @NotNull(message = "Registration source is required")
@@ -98,4 +114,10 @@ public class ShipmentRegistrationRequest {
 
     public List<ParcelUnitRequest> getParcels() { return parcels; }
     public void setParcels(List<ParcelUnitRequest> parcels) { this.parcels = parcels; }
+
+    public BigDecimal getExpectedRatePerKilo() { return expectedRatePerKilo; }
+    public void setExpectedRatePerKilo(BigDecimal expectedRatePerKilo) { this.expectedRatePerKilo = expectedRatePerKilo; }
+
+    public Integer getExpectedVolumetricDivisor() { return expectedVolumetricDivisor; }
+    public void setExpectedVolumetricDivisor(Integer expectedVolumetricDivisor) { this.expectedVolumetricDivisor = expectedVolumetricDivisor; }
 }

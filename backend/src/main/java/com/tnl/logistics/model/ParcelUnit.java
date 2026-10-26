@@ -12,6 +12,17 @@ import org.springframework.data.domain.Persistable;
 @Table(name = "parcel_unit")
 public class ParcelUnit implements Persistable<String> {
 
+    @Column(name = "is_lost", nullable = false)
+    private boolean lost;
+
+    @Version
+    @Column(name = "revision", nullable = false)
+    private long revision;
+
+    public boolean isLost() { return lost; }
+    public void setLost(boolean lost) { this.lost = lost; }
+    public long getRevision() { return revision; }
+
     @Id
     @Column(name = "tracking_id", length = 30)
     private String trackingId;
@@ -19,6 +30,10 @@ public class ParcelUnit implements Persistable<String> {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "shipment_id", nullable = false)
     private Shipment shipment;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "waybill_id")
+    private Waybill waybill;
 
     @Column(name = "seq", nullable = false)
     private Integer seq;
@@ -92,6 +107,8 @@ public class ParcelUnit implements Persistable<String> {
 
     public Shipment getShipment() { return shipment; }
     public void setShipment(Shipment shipment) { this.shipment = shipment; }
+    public Waybill getWaybill() { return waybill; }
+    public void setWaybill(Waybill waybill) { this.waybill = waybill; }
 
     public Integer getSeq() { return seq; }
     public void setSeq(Integer seq) { this.seq = seq; }

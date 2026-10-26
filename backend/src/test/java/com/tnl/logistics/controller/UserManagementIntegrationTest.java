@@ -5,7 +5,6 @@ import com.tnl.logistics.dto.AdminPasswordResetRequest;
 import com.tnl.logistics.dto.AdminPinResetRequest;
 import com.tnl.logistics.dto.UserCreateRequest;
 import com.tnl.logistics.dto.UserUpdateRequest;
-import com.tnl.logistics.model.StaffType;
 import com.tnl.logistics.model.UserRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +28,144 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @Transactional
 public class UserManagementIntegrationTest {
+
+    @Autowired
+    private jakarta.persistence.EntityManager entityManager;
+
+    @Autowired
+    private com.tnl.logistics.service.WaybillService waybillService;
+
+    @Autowired
+    private com.tnl.logistics.service.UserService userService;
+
+    @Autowired
+    private org.springframework.transaction.PlatformTransactionManager transactionManager;
+
+    @Test
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    void concurrentAuditCreationPreventsHardDeletionOfItsActor() throws Exception {
+        String suffix = java.util.UUID.randomUUID().toString().substring(0, 8);
+        var actor = appUserRepository.save(new com.tnl.logistics.model.AppUser("USR-RACE-" + suffix,
+                "race-" + suffix, "unused-test-hash", "Historical actor", UserRole.DISPATCH_STAFF));
+        String requestId = java.util.UUID.randomUUID().toString();
+        var auditWritten = new java.util.concurrent.CountDownLatch(1);
+        var releaseAudit = new java.util.concurrent.CountDownLatch(1);
+        var deletionStarted = new java.util.concurrent.CountDownLatch(1);
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var audit = executor.submit(() -> new org.springframework.transaction.support.TransactionTemplate(transactionManager)
+                    .executeWithoutResult(status -> {
+                        entityManager.persist(new com.tnl.logistics.model.ParcelExceptionCommand(requestId,
+                                "LOST", "TRK-HISTORICAL", actor.getUserId(), "Historical audit", 0));
+                        entityManager.flush();
+                        auditWritten.countDown();
+                        try {
+                            org.junit.jupiter.api.Assertions.assertTrue(releaseAudit.await(10, java.util.concurrent.TimeUnit.SECONDS));
+                        } catch (InterruptedException exception) {
+                            Thread.currentThread().interrupt();
+                            throw new AssertionError(exception);
+                        }
+                    }));
+            org.junit.jupiter.api.Assertions.assertTrue(auditWritten.await(10, java.util.concurrent.TimeUnit.SECONDS));
+            var deletion = executor.submit(() -> {
+                deletionStarted.countDown();
+                userService.deleteUser(actor.getUserId(), "USR-ADMIN");
+            });
+            org.junit.jupiter.api.Assertions.assertTrue(deletionStarted.await(10, java.util.concurrent.TimeUnit.SECONDS));
+            releaseAudit.countDown();
+            audit.get(15, java.util.concurrent.TimeUnit.SECONDS);
+            deletion.get(15, java.util.concurrent.TimeUnit.SECONDS);
+            org.junit.jupiter.api.Assertions.assertFalse(appUserRepository.findById(actor.getUserId()).orElseThrow().getActive());
+            org.junit.jupiter.api.Assertions.assertEquals(1, appUserRepository.countAuditReferencePresence(actor.getUserId()));
+        } finally {
+            releaseAudit.countDown();
+            executor.shutdownNow();
+            org.junit.jupiter.api.Assertions.assertTrue(executor.awaitTermination(20, java.util.concurrent.TimeUnit.SECONDS));
+            new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                entityManager.createQuery("DELETE FROM ParcelExceptionCommand c WHERE c.requestId = :id")
+                        .setParameter("id", requestId).executeUpdate();
+                appUserRepository.findById(actor.getUserId()).ifPresent(appUserRepository::delete);
+            });
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "TRACKING", "PAYMENT", "GENERATED", "SENT", "COMPLETED", "SOA_BATCH", "PRINT_EVENT",
+            "PRINT_JOB", "RETURN_SCAN", "LOSS", "EXCEPTION_COMMAND", "RECONCILIATION"
+    })
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void eachAuditReferenceRetainsItsActor(String reference) throws Exception {
+        String suffix = java.util.UUID.randomUUID().toString().substring(0, 8);
+        var actor = new com.tnl.logistics.model.AppUser("USR-RET-" + suffix, "retain-" + suffix,
+                "unused-test-hash", "Retained staff", UserRole.DISPATCH_STAFF);
+        entityManager.persist(actor);
+        int originalVersion = actor.getTokenVersion();
+        var admin = appUserRepository.findByRoleAndActiveTrue(UserRole.ADMIN).getFirst();
+        var client = clientRepository.findById("CL-001").orElseThrow();
+        var shipment = new com.tnl.logistics.model.Shipment("SHP-RET-" + suffix, client, "Recipient", "Address", "09170000000", 1,
+                com.tnl.logistics.model.ChargeModel.FLAT, java.math.BigDecimal.TEN, java.math.BigDecimal.ZERO,
+                java.math.BigDecimal.TEN, false, com.tnl.logistics.model.RegisteredVia.DESKTOP_OFFICE);
+        entityManager.persist(shipment);
+        var parcel = new com.tnl.logistics.model.ParcelUnit("TRK-RET-" + suffix, shipment, 1,
+                java.math.BigDecimal.ONE, java.math.BigDecimal.ONE, java.math.BigDecimal.ONE,
+                java.math.BigDecimal.ONE, java.math.BigDecimal.ONE);
+        parcel.setCurrentStatus(com.tnl.logistics.model.ParcelStatus.LOADED_TO_HAULER);
+        entityManager.persist(parcel);
+        var waybill = new com.tnl.logistics.model.Waybill("WYB-RET-" + suffix, shipment,
+                reference.equals("GENERATED") ? actor : admin, "Hauler");
+        entityManager.persist(waybill);
+        parcel.setWaybill(waybill);
+        String requestId = java.util.UUID.randomUUID().toString();
+        switch (reference) {
+            case "TRACKING" -> entityManager.persist(new com.tnl.logistics.model.TrackingEvent(parcel,
+                    com.tnl.logistics.model.ParcelStatus.LOADED_TO_HAULER, actor, "Audit fixture"));
+            case "PAYMENT" -> entityManager.persist(new com.tnl.logistics.model.Payment(shipment,
+                    java.math.BigDecimal.ONE, com.tnl.logistics.model.PaymentMethod.CASH, java.time.LocalDate.now(), actor, null));
+            case "GENERATED" -> { }
+            case "SENT" -> {
+                entityManager.flush();
+                waybillService.sendToHauler(waybill.getWaybillId(), actor.getUserId());
+            }
+            case "COMPLETED" -> waybill.setCompletedBy(actor);
+            case "SOA_BATCH" -> {
+                var collection = new com.tnl.logistics.model.WeeklyCollection("COL-RET-" + suffix, client,
+                        java.time.LocalDate.now(), java.time.LocalDate.now(), java.math.BigDecimal.TEN,
+                        java.math.BigDecimal.ZERO, java.math.BigDecimal.TEN, "FOR_COLLECTION");
+                entityManager.persist(collection);
+                entityManager.persist(new com.tnl.logistics.model.SoaBatch("BAT-RET-" + suffix, collection, "SELECTED", 1, actor));
+            }
+            case "PRINT_EVENT" -> entityManager.persist(new com.tnl.logistics.model.PrintEvent(parcel,
+                    com.tnl.logistics.model.PrintKind.PRINT, 1, actor, null, null));
+            case "PRINT_JOB" -> entityManager.persist(new com.tnl.logistics.model.PrintAuditJob(requestId,
+                    shipment, actor, null, "0".repeat(64)));
+            case "RETURN_SCAN" -> entityManager.persist(new com.tnl.logistics.model.WaybillReturnScan(waybill, parcel, actor));
+            case "LOSS" -> entityManager.persist(new com.tnl.logistics.model.ParcelLossEvent(parcel,
+                    "LOST", "Historical loss", actor.getUserId(), requestId, 0));
+            case "EXCEPTION_COMMAND" -> entityManager.persist(new com.tnl.logistics.model.ParcelExceptionCommand(requestId,
+                    "LOST", parcel.getTrackingId(), actor.getUserId(), "Historical command", 0));
+            case "RECONCILIATION" -> entityManager.persist(new com.tnl.logistics.model.WaybillReconciliationEvent(waybill,
+                    "CLOSED", "Historical reconciliation", actor.getUserId(), requestId, 0L));
+            default -> throw new IllegalArgumentException(reference);
+        }
+        entityManager.flush();
+        entityManager.clear();
+        org.junit.jupiter.api.Assertions.assertEquals(1, appUserRepository.countAuditReferencePresence(actor.getUserId()));
+        mockMvc.perform(delete("/api/v1/users/" + actor.getUserId())).andExpect(status().isOk());
+        entityManager.flush();
+        entityManager.clear();
+        var retained = appUserRepository.findById(actor.getUserId()).orElseThrow();
+        org.junit.jupiter.api.Assertions.assertFalse(retained.getActive());
+        org.junit.jupiter.api.Assertions.assertEquals(originalVersion + 1, retained.getTokenVersion());
+        org.junit.jupiter.api.Assertions.assertEquals(1, appUserRepository.countAuditReferencePresence(actor.getUserId()));
+        if (reference.equals("SENT")) {
+            org.junit.jupiter.api.Assertions.assertEquals(actor.getUserId(),
+                    waybillRepository.findById(waybill.getWaybillId()).orElseThrow().getSentBy().getUserId());
+        }
+    }
+
+    @Autowired
+    private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
 
     @Autowired
     private MockMvc mockMvc;
@@ -61,7 +198,7 @@ public class UserManagementIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "USR-RECEIVING", roles = {"RECEIVING_STAFF"})
     void testListUsersAsOfficeStaffReturns403() throws Exception {
         mockMvc.perform(get("/api/v1/users").contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden());
@@ -80,8 +217,7 @@ public class UserManagementIntegrationTest {
         request.setFullName("Test Field Agent");
         request.setUsername("testagent001");
         request.setPassword("pass123");
-        request.setRole(UserRole.FIELD_STAFF);
-        request.setStaffType(StaffType.INTERNAL_TRUCK);
+        request.setRole(UserRole.COURIER_STAFF);
 
         mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -89,7 +225,7 @@ public class UserManagementIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.userId").value(org.hamcrest.Matchers.matchesPattern("U-\\d{3}")))
                 .andExpect(jsonPath("$.username").value("testagent001"))
-                .andExpect(jsonPath("$.role").value("FIELD_STAFF"))
+                .andExpect(jsonPath("$.role").value("COURIER_STAFF"))
                 .andExpect(jsonPath("$.mustChangePassword").value(true))
                 .andExpect(jsonPath("$.hasPinSet").value(false));
     }
@@ -101,7 +237,7 @@ public class UserManagementIntegrationTest {
         request.setFullName("Pinned Office Staff");
         request.setUsername("pinoffice001");
         request.setPassword("pass123");
-        request.setRole(UserRole.OFFICE_STAFF);
+        request.setRole(UserRole.RECEIVING_STAFF);
         request.setPin("1234");
 
         mockMvc.perform(post("/api/v1/users")
@@ -143,6 +279,82 @@ public class UserManagementIntegrationTest {
 
     @Test
     @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testUserCreateBoundaryValidation() throws Exception {
+        UserCreateRequest request = new UserCreateRequest();
+        request.setPassword("pass123");
+        request.setRole(UserRole.RECEIVING_STAFF);
+
+        // Full name > 150 chars
+        request.setFullName("A".repeat(151));
+        request.setUsername("validuser01");
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.fullName").exists());
+
+        // Full name < 2 chars
+        request.setFullName("A");
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.fullName").exists());
+
+        // Username > 50 chars
+        request.setFullName("Valid Full Name");
+        request.setUsername("u".repeat(51));
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.username").exists());
+
+        // Username < 3 chars
+        request.setUsername("ab");
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.username").exists());
+
+        // Username invalid pattern (starts with special char or contains invalid symbol)
+        request.setUsername("-invalid_user");
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.username").exists());
+    }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testUserUpdateBoundaryValidation() throws Exception {
+        UserUpdateRequest updateReq = new UserUpdateRequest();
+        updateReq.setRole(UserRole.RECEIVING_STAFF);
+        updateReq.setActive(true);
+
+        // Full name > 150 chars
+        updateReq.setFullName("B".repeat(151));
+        updateReq.setUsername("validuser02");
+        mockMvc.perform(put("/api/v1/users/USR-OFFICE")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateReq)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.fullName").exists());
+
+        // Username > 50 chars
+        updateReq.setFullName("Valid Staff");
+        updateReq.setUsername("u".repeat(51));
+        mockMvc.perform(put("/api/v1/users/USR-OFFICE")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateReq)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.username").exists());
+    }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testDeleteAdminUserBySelfReturnsForbidden() throws Exception {
         mockMvc.perform(delete("/api/v1/users/USR-ADMIN")
                         .contentType(MediaType.APPLICATION_JSON))
@@ -159,18 +371,19 @@ public class UserManagementIntegrationTest {
 
     @Test
     @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
-    void testCreateFieldStaffWithoutStaffTypeReturns400() throws Exception {
+    void testCreateCourierReturnsRoleOnlyIdentity() throws Exception {
         UserCreateRequest request = new UserCreateRequest();
-        request.setFullName("Incomplete Field Staff");
+        request.setFullName("Courier Staff");
         request.setUsername("incomplete001");
         request.setPassword("pass123");
-        request.setRole(UserRole.FIELD_STAFF);
-        // staffType intentionally omitted
+        request.setRole(UserRole.COURIER_STAFF);
 
         mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.role").value("COURIER_STAFF"))
+                .andExpect(jsonPath("$.staffType").doesNotExist());
     }
 
     @Test
@@ -237,7 +450,7 @@ public class UserManagementIntegrationTest {
     void testAdminResetPasswordInvalidatesExistingToken() throws Exception {
         var user = appUserRepository.findById("USR-OFFICE").orElseThrow();
         int initialVersion = user.getTokenVersion() != null ? user.getTokenVersion() : 1;
-        String oldToken = com.tnl.logistics.config.JwtTokenProvider.generateToken(user.getUserId(), user.getRole().name(), initialVersion);
+        String oldToken = sessionTokens.generateToken(user.getUserId(), user.getRole().name(), initialVersion);
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + oldToken))
@@ -246,7 +459,7 @@ public class UserManagementIntegrationTest {
         AdminPasswordResetRequest resetReq = new AdminPasswordResetRequest();
         resetReq.setNewPassword("TempPass123");
 
-        String adminToken = com.tnl.logistics.config.JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN", 1);
+        String adminToken = sessionTokens.generateToken("USR-ADMIN", "ADMIN", 1);
         mockMvc.perform(put("/api/v1/users/USR-OFFICE/reset-password")
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -263,14 +476,14 @@ public class UserManagementIntegrationTest {
     void testAdminResetPinInvalidatesExistingToken() throws Exception {
         var user = appUserRepository.findById("USR-FIELD").orElseThrow();
         int initialVersion = user.getTokenVersion() != null ? user.getTokenVersion() : 1;
-        String oldToken = com.tnl.logistics.config.JwtTokenProvider.generateToken(user.getUserId(), user.getRole().name(), initialVersion);
+        String oldToken = sessionTokens.generateToken(user.getUserId(), user.getRole().name(), initialVersion);
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + oldToken))
                 .andExpect(status().isOk());
 
         AdminPinResetRequest clearReq = new AdminPinResetRequest(true);
-        String adminToken = com.tnl.logistics.config.JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN", 1);
+        String adminToken = sessionTokens.generateToken("USR-ADMIN", "ADMIN", 1);
         mockMvc.perform(put("/api/v1/users/USR-FIELD/reset-pin")
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -322,7 +535,7 @@ public class UserManagementIntegrationTest {
         createReq.setFullName("Ephemeral Staff");
         createReq.setUsername("ephemeral001");
         createReq.setPassword("pass123");
-        createReq.setRole(UserRole.OFFICE_STAFF);
+        createReq.setRole(UserRole.RECEIVING_STAFF);
 
         String body = mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -343,14 +556,14 @@ public class UserManagementIntegrationTest {
     @Test
     void testDeletedAndRecreatedUsernameRejectsOriginalToken() throws Exception {
         var adminUser = appUserRepository.findById("USR-ADMIN").orElseThrow();
-        String adminToken = "Bearer " + com.tnl.logistics.config.JwtTokenProvider.generateToken(
+        String adminToken = "Bearer " + sessionTokens.generateToken(
                 adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion());
 
         UserCreateRequest originalRequest = new UserCreateRequest();
         originalRequest.setFullName("Original Session Owner");
         originalRequest.setUsername("reusedsession001");
         originalRequest.setPassword("pass123");
-        originalRequest.setRole(UserRole.OFFICE_STAFF);
+        originalRequest.setRole(UserRole.RECEIVING_STAFF);
 
         String originalResponse = mockMvc.perform(post("/api/v1/users")
                         .header("Authorization", adminToken)
@@ -361,7 +574,7 @@ public class UserManagementIntegrationTest {
 
         String originalUserId = objectMapper.readTree(originalResponse).get("userId").asText();
         var originalUser = appUserRepository.findById(originalUserId).orElseThrow();
-        String originalToken = "Bearer " + com.tnl.logistics.config.JwtTokenProvider.generateToken(
+        String originalToken = "Bearer " + sessionTokens.generateToken(
                 originalUser.getUserId(), originalUser.getRole().name(), originalUser.getTokenVersion());
 
         mockMvc.perform(get("/api/v1/auth/me")
@@ -389,7 +602,7 @@ public class UserManagementIntegrationTest {
                 .andExpect(jsonPath("$.code").value("SESSION_REAUTH_REQUIRED"));
 
         var replacementUser = appUserRepository.findById(replacementUserId).orElseThrow();
-        String replacementToken = "Bearer " + com.tnl.logistics.config.JwtTokenProvider.generateToken(
+        String replacementToken = "Bearer " + sessionTokens.generateToken(
                 replacementUser.getUserId(), replacementUser.getRole().name(), replacementUser.getTokenVersion());
 
         mockMvc.perform(get("/api/v1/auth/me")
@@ -406,7 +619,7 @@ public class UserManagementIntegrationTest {
         createReq.setFullName("Waybill Generator Staff");
         createReq.setUsername("waybillstaff001");
         createReq.setPassword("pass123");
-        createReq.setRole(UserRole.OFFICE_STAFF);
+        createReq.setRole(UserRole.RECEIVING_STAFF);
 
         String body = mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -449,7 +662,7 @@ public class UserManagementIntegrationTest {
         request.setFullName("Normalized Staff");
         request.setUsername("  PaddedUsername01  ");
         request.setPassword("pass123");
-        request.setRole(UserRole.OFFICE_STAFF);
+        request.setRole(UserRole.RECEIVING_STAFF);
 
         mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -462,7 +675,7 @@ public class UserManagementIntegrationTest {
         duplicateReq.setFullName("Duplicate Staff");
         duplicateReq.setUsername("PADDEDUSERNAME01");
         duplicateReq.setPassword("pass123");
-        duplicateReq.setRole(UserRole.OFFICE_STAFF);
+        duplicateReq.setRole(UserRole.RECEIVING_STAFF);
 
         mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -477,7 +690,7 @@ public class UserManagementIntegrationTest {
         createReq.setFullName("Staff To Update");
         createReq.setUsername("updatable001");
         createReq.setPassword("pass123");
-        createReq.setRole(UserRole.OFFICE_STAFF);
+        createReq.setRole(UserRole.RECEIVING_STAFF);
 
         String body = mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -490,7 +703,7 @@ public class UserManagementIntegrationTest {
         UserUpdateRequest updateReq = new UserUpdateRequest();
         updateReq.setFullName("Staff With Padded Name");
         updateReq.setUsername("  RenamedStaff001  ");
-        updateReq.setRole(UserRole.OFFICE_STAFF);
+        updateReq.setRole(UserRole.RECEIVING_STAFF);
         updateReq.setActive(true);
 
         mockMvc.perform(put("/api/v1/users/" + newUserId)
@@ -504,16 +717,15 @@ public class UserManagementIntegrationTest {
     void testRoleChangeInvalidatesExistingToken() throws Exception {
         var officeUser = appUserRepository.findById("USR-OFFICE").orElseThrow();
         var adminUser = appUserRepository.findById("USR-ADMIN").orElseThrow();
-        String officeToken = com.tnl.logistics.config.JwtTokenProvider.generateToken(
+        String officeToken = sessionTokens.generateToken(
                 officeUser.getUserId(), officeUser.getRole().name(), officeUser.getTokenVersion());
-        String adminToken = com.tnl.logistics.config.JwtTokenProvider.generateToken(
+        String adminToken = sessionTokens.generateToken(
                 adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion());
 
         UserUpdateRequest updateRequest = new UserUpdateRequest();
         updateRequest.setFullName(officeUser.getFullName());
         updateRequest.setUsername(officeUser.getUsername());
-        updateRequest.setRole(UserRole.FIELD_STAFF);
-        updateRequest.setStaffType(StaffType.INTERNAL_TRUCK);
+        updateRequest.setRole(UserRole.COURIER_STAFF);
         updateRequest.setActive(true);
 
         mockMvc.perform(put("/api/v1/users/USR-OFFICE")
@@ -532,9 +744,9 @@ public class UserManagementIntegrationTest {
     void testDeactivationInvalidatesExistingToken() throws Exception {
         var officeUser = appUserRepository.findById("USR-OFFICE").orElseThrow();
         var adminUser = appUserRepository.findById("USR-ADMIN").orElseThrow();
-        String officeToken = com.tnl.logistics.config.JwtTokenProvider.generateToken(
+        String officeToken = sessionTokens.generateToken(
                 officeUser.getUserId(), officeUser.getRole().name(), officeUser.getTokenVersion());
-        String adminToken = com.tnl.logistics.config.JwtTokenProvider.generateToken(
+        String adminToken = sessionTokens.generateToken(
                 adminUser.getUserId(), adminUser.getRole().name(), adminUser.getTokenVersion());
 
         UserUpdateRequest updateRequest = new UserUpdateRequest();
@@ -562,7 +774,7 @@ public class UserManagementIntegrationTest {
         request.setFullName("Invalid Username");
         request.setUsername("not valid");
         request.setPassword("pass123");
-        request.setRole(UserRole.OFFICE_STAFF);
+        request.setRole(UserRole.RECEIVING_STAFF);
 
         mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)

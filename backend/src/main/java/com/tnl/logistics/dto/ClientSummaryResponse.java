@@ -15,6 +15,7 @@ public class ClientSummaryResponse {
     private String contactNumber;
     private String email;
     private ChargeModel defaultRateType;
+    private BigDecimal ratePerKilo;
     private Boolean active;
     private LocalDateTime dateRegistered;
 
@@ -30,12 +31,21 @@ public class ClientSummaryResponse {
                                  String email, ChargeModel defaultRateType, Boolean active,
                                  LocalDateTime dateRegistered, Long totalShipments, Long totalParcels,
                                  BigDecimal totalCharges, BigDecimal totalPaid, BigDecimal outstandingBalance) {
+        this(clientId, name, address, contactNumber, email, defaultRateType, null, active,
+                dateRegistered, totalShipments, totalParcels, totalCharges, totalPaid, outstandingBalance);
+    }
+
+    public ClientSummaryResponse(String clientId, String name, String address, String contactNumber,
+                                 String email, ChargeModel defaultRateType, BigDecimal ratePerKilo, Boolean active,
+                                 LocalDateTime dateRegistered, Long totalShipments, Long totalParcels,
+                                 BigDecimal totalCharges, BigDecimal totalPaid, BigDecimal outstandingBalance) {
         this.clientId = clientId;
         this.name = name;
         this.address = address;
         this.contactNumber = contactNumber;
         this.email = email;
         this.defaultRateType = defaultRateType;
+        this.ratePerKilo = ratePerKilo;
         this.active = active;
         this.dateRegistered = dateRegistered;
         this.totalShipments = totalShipments != null ? totalShipments : 0L;
@@ -62,6 +72,9 @@ public class ClientSummaryResponse {
 
     public ChargeModel getDefaultRateType() { return defaultRateType; }
     public void setDefaultRateType(ChargeModel defaultRateType) { this.defaultRateType = defaultRateType; }
+
+    public BigDecimal getRatePerKilo() { return ratePerKilo; }
+    public void setRatePerKilo(BigDecimal ratePerKilo) { this.ratePerKilo = ratePerKilo; }
 
     public Boolean getActive() { return active; }
     public void setActive(Boolean active) { this.active = active; }

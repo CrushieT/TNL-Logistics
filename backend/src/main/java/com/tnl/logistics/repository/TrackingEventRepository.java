@@ -12,15 +12,12 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Spring Data Repository for TrackingEvent entity.
  */
 @Repository
-public interface TrackingEventRepository extends JpaRepository<TrackingEvent, Long> {
-
-    Optional<TrackingEvent> findByClientEventId(String clientEventId);
+public interface TrackingEventRepository extends JpaRepository<TrackingEvent, Long>, PersonalTrackingEventRepository, AdminTrackingEventRepository {
 
     List<TrackingEvent> findByParcelUnit_TrackingIdOrderByEventTimestampAsc(String trackingId);
 
@@ -36,37 +33,19 @@ public interface TrackingEventRepository extends JpaRepository<TrackingEvent, Lo
            "ORDER BY e.eventTimestamp DESC")
     List<TrackingEvent> findRecentEvents(Pageable pageable);
 
-    @Query(value = "SELECT e FROM TrackingEvent e " +
-           "JOIN FETCH e.parcelUnit pu " +
-           "JOIN FETCH pu.shipment s " +
-           "LEFT JOIN FETCH e.staff u " +
-           "LEFT JOIN FETCH e.vehicle v " +
-           "WHERE (:search IS NULL OR LOWER(pu.trackingId) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "   OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "   OR LOWER(u.fullName) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "   OR LOWER(u.username) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "   OR (v IS NOT NULL AND (LOWER(v.vehicleId) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(v.plateNumber) LIKE LOWER(CONCAT('%', :search, '%'))))) " +
-           "AND (:status IS NULL OR e.status = :status) " +
-           "AND (:startDateTime IS NULL OR e.eventTimestamp >= :startDateTime) " +
-           "AND (:endDateTime IS NULL OR e.eventTimestamp <= :endDateTime)",
-           countQuery = "SELECT COUNT(e) FROM TrackingEvent e " +
-           "JOIN e.parcelUnit pu " +
-           "JOIN pu.shipment s " +
-           "LEFT JOIN e.staff u " +
-           "LEFT JOIN e.vehicle v " +
-           "WHERE (:search IS NULL OR LOWER(pu.trackingId) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "   OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "   OR LOWER(u.fullName) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "   OR LOWER(u.username) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "   OR (v IS NOT NULL AND (LOWER(v.vehicleId) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(v.plateNumber) LIKE LOWER(CONCAT('%', :search, '%'))))) " +
-           "AND (:status IS NULL OR e.status = :status) " +
-           "AND (:startDateTime IS NULL OR e.eventTimestamp >= :startDateTime) " +
-           "AND (:endDateTime IS NULL OR e.eventTimestamp <= :endDateTime)")
-    Page<TrackingEvent> searchTrackingEvents(@Param("search") String search,
-                                             @Param("status") ParcelStatus status,
-                                             @Param("startDateTime") LocalDateTime startDateTime,
-                                             @Param("endDateTime") LocalDateTime endDateTime,
-                                             Pageable pageable);
+    @Query(value = """
+            SELECT
+                COALESCE(SUM(CASE WHEN e.status NOT IN ('REGISTERED', 'QR_GENERATED') THEN 1 ELSE 0 END), 0) AS todayTotalScans,
+                COALESCE(COUNT(DISTINCT CASE WHEN u.role IN ('COURIER_STAFF', 'DISPATCH_STAFF') THEN e.staff_id ELSE NULL END), 0) AS activeCouriersCount,
+                COALESCE(SUM(CASE WHEN e.status = 'LOADED_ON_TRUCK' THEN 1 ELSE 0 END), 0) AS loadedOnTruckToday,
+                COALESCE(SUM(CASE WHEN e.status = 'LOADED_TO_HAULER' THEN 1 ELSE 0 END), 0) AS handedToHaulerToday
+            FROM tracking_event e
+            LEFT JOIN app_user u ON u.user_id = e.staff_id
+            WHERE e.event_timestamp >= :startDateTime AND e.event_timestamp <= :endDateTime
+            """, nativeQuery = true)
+    TodayTrackingMetricsSummary getTodayTrackingMetricsSummary(
+            @Param("startDateTime") LocalDateTime startDateTime,
+            @Param("endDateTime") LocalDateTime endDateTime);
 
     @Query("SELECT COUNT(e) FROM TrackingEvent e " +
            "WHERE e.status NOT IN (com.tnl.logistics.model.ParcelStatus.REGISTERED, com.tnl.logistics.model.ParcelStatus.QR_GENERATED) " +
@@ -75,35 +54,16 @@ public interface TrackingEventRepository extends JpaRepository<TrackingEvent, Lo
                                       @Param("endDateTime") LocalDateTime endDateTime);
 
     @Query("SELECT COUNT(DISTINCT e.staff.userId) FROM TrackingEvent e " +
-           "WHERE e.staff.role = com.tnl.logistics.model.UserRole.FIELD_STAFF " +
+           "WHERE e.staff.role IN (com.tnl.logistics.model.UserRole.COURIER_STAFF, " +
+           "com.tnl.logistics.model.UserRole.DISPATCH_STAFF) " +
            "AND e.eventTimestamp >= :startDateTime AND e.eventTimestamp <= :endDateTime")
-    long countDistinctCouriersBetween(@Param("startDateTime") LocalDateTime startDateTime,
-                                      @Param("endDateTime") LocalDateTime endDateTime);
+    long countDistinctOperationalStaffBetween(@Param("startDateTime") LocalDateTime startDateTime,
+                                              @Param("endDateTime") LocalDateTime endDateTime);
 
     @Query("SELECT COUNT(e) FROM TrackingEvent e WHERE e.status = :status AND e.eventTimestamp >= :startDateTime AND e.eventTimestamp <= :endDateTime")
     long countStatusBetween(@Param("status") ParcelStatus status,
                             @Param("startDateTime") LocalDateTime startDateTime,
                             @Param("endDateTime") LocalDateTime endDateTime);
-
-    @Query(value = "SELECT e FROM TrackingEvent e " +
-           "JOIN FETCH e.parcelUnit pu " +
-           "JOIN FETCH pu.shipment s " +
-           "LEFT JOIN FETCH e.vehicle v " +
-           "WHERE e.staff.userId = :staffId " +
-           "AND (:search IS NULL OR LOWER(pu.trackingId) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "   OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-           "AND (:status IS NULL OR e.status = :status)",
-           countQuery = "SELECT COUNT(e) FROM TrackingEvent e " +
-           "JOIN e.parcelUnit pu " +
-           "JOIN pu.shipment s " +
-           "WHERE e.staff.userId = :staffId " +
-           "AND (:search IS NULL OR LOWER(pu.trackingId) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "   OR LOWER(s.shipmentId) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-           "AND (:status IS NULL OR e.status = :status)")
-    Page<TrackingEvent> findPersonalEvents(@Param("staffId") String staffId,
-                                          @Param("search") String search,
-                                          @Param("status") ParcelStatus status,
-                                          Pageable pageable);
 
     @Query("SELECT e.status, COUNT(e) FROM TrackingEvent e " +
            "WHERE e.staff.userId = :staffId " +

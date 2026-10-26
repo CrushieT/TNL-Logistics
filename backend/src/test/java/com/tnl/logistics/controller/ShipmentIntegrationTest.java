@@ -11,6 +11,7 @@ import com.tnl.logistics.dto.ShipmentRegistrationRequest;
 import com.tnl.logistics.dto.ShipmentResponse;
 import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.*;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,11 +35,160 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
-@SpringBootTest
+@SpringBootTest(properties = "spring.jpa.properties.hibernate.session_factory.statement_inspector=com.tnl.logistics.controller.ShipmentIntegrationTest$SqlCapture")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
 public class ShipmentIntegrationTest {
+
+    public static class SqlCapture implements org.hibernate.resource.jdbc.spi.StatementInspector {
+        static final ThreadLocal<List<String>> statements = ThreadLocal.withInitial(java.util.ArrayList::new);
+
+        @Override
+        public String inspect(String sql) {
+            statements.get().add(sql);
+            return sql;
+        }
+    }
+
+    @Autowired
+    private jakarta.persistence.EntityManager entityManager;
+
+    @Autowired
+    private com.tnl.logistics.service.ShipmentService shipmentService;
+
+    @Test
+    void currentVehicleReadsPreserveBoundedSql() throws Exception {
+        for (int shipmentNumber = 0; shipmentNumber < 3; shipmentNumber++) {
+            ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+            request.setRecipientName("Vehicle SQL " + shipmentNumber);
+            mockMvc.perform(post("/api/v1/shipments").header("Authorization", officeToken)
+                    .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isCreated());
+        }
+        Vehicle vehicle = vehicleRepository.save(new Vehicle("SQL-TRUCK", "SQL-PLATE", "SQL fixture"));
+        List<ParcelUnit> parcels = parcelUnitRepository.findAll();
+        parcels.forEach(parcel -> parcel.setCurrentVehicle(vehicle));
+        parcelUnitRepository.saveAll(parcels);
+        entityManager.flush();
+        entityManager.clear();
+        SqlCapture.statements.get().clear();
+        var page = shipmentService.getShipments(null, null, null, null, null,
+                org.springframework.data.domain.PageRequest.of(0, 2));
+        List<String> listSql = List.copyOf(SqlCapture.statements.get());
+        assertEquals(4, listSql.size(), listSql.toString());
+        assertTrue(listSql.get(0).contains("limit ?"));
+        assertFalse(listSql.get(0).contains("join vehicle"));
+        assertEquals("select count(s1_0.shipment_id) from shipment s1_0", listSql.get(1));
+        assertTrue(listSql.get(2).contains("left join vehicle"));
+        assertTrue(listSql.get(2).contains("shipment_id in (?,?)"));
+        var returnedShipmentIds = page.getContent().stream().map(summary -> summary.getShipmentId())
+                .collect(java.util.stream.Collectors.toSet());
+        var loadedParcels = entityManager.unwrap(org.hibernate.engine.spi.SessionImplementor.class)
+                .getPersistenceContextInternal().getEntitiesByKey().values().stream()
+                .filter(ParcelUnit.class::isInstance).map(ParcelUnit.class::cast).toList();
+        assertEquals(4, loadedParcels.size());
+        assertTrue(loadedParcels.stream().allMatch(parcel -> returnedShipmentIds.contains(parcel.getShipment().getShipmentId())));
+        assertEquals(2, page.getNumberOfElements());
+        assertEquals(3, page.getTotalElements());
+        String shipmentId = page.getContent().get(0).getShipmentId();
+        entityManager.clear();
+        SqlCapture.statements.get().clear();
+        assertEquals(2, shipmentService.getShipmentById(shipmentId).getUnits().size());
+        List<String> detailSql = List.copyOf(SqlCapture.statements.get());
+        assertEquals(5, detailSql.size(), detailSql.toString());
+        assertTrue(detailSql.stream().anyMatch(sql -> sql.contains("left join vehicle") && sql.contains("shipment_id in (?)")));
+        assertFalse(detailSql.stream().anyMatch(sql -> sql.contains(" from vehicle ")));
+        System.out.println("VEHICLE_LIST_SQL " + listSql.size() + " " + listSql);
+        System.out.println("VEHICLE_DETAIL_SQL " + detailSql.size() + " " + detailSql);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "NONE", "SINGLE", "REPEATED", "MULTIPLE", "PARTIAL", "LOST", "LOST_ONLY", "CLEARED", "BLANK_PLATE"
+    })
+    void currentVehicleAssignmentsRemainSeparateFromHistory(String scenario) throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        if (scenario.equals("SINGLE")) {
+            request.setQuantity(1);
+            request.setParcels(request.getParcels().subList(0, 1));
+        }
+        MvcResult created = mockMvc.perform(post("/api/v1/shipments").header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated()).andReturn();
+        String shipmentId = objectMapper.readTree(created.getResponse().getContentAsString()).get("shipmentId").asText();
+        List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
+        String firstPlate = scenario.equals("BLANK_PLATE") ? " " : "PLATE-A";
+        Vehicle firstVehicle = vehicleRepository.save(new Vehicle("CURRENT-A", firstPlate, "Current fixture"));
+        Vehicle secondVehicle = vehicleRepository.save(new Vehicle("CURRENT-B", "PLATE-B", "Current fixture"));
+        boolean hasFirstAssignment = !scenario.equals("NONE") && !scenario.equals("CLEARED");
+        if (hasFirstAssignment) {
+            parcels.get(0).setCurrentVehicle(firstVehicle);
+            parcels.get(0).setCurrentStatus(ParcelStatus.LOADED_ON_TRUCK);
+        }
+        if (scenario.equals("REPEATED")) parcels.get(1).setCurrentVehicle(firstVehicle);
+        if (List.of("MULTIPLE", "LOST").contains(scenario)) {
+            parcels.get(1).setCurrentVehicle(secondVehicle);
+        }
+        if (scenario.equals("LOST")) parcels.get(1).setLost(true);
+        if (scenario.equals("LOST_ONLY")) parcels.get(0).setLost(true);
+        if (scenario.equals("CLEARED")) {
+            parcels.forEach(parcel -> parcel.setCurrentStatus(ParcelStatus.ARRIVED_AT_TNL));
+            AppUser staff = entityManager.find(AppUser.class, "USR-OFFICE");
+            trackingEventRepository.save(new TrackingEvent(parcels.get(0), ParcelStatus.LOADED_ON_TRUCK,
+                    firstVehicle, staff, "Retained previous assignment"));
+        }
+        parcelUnitRepository.saveAllAndFlush(parcels);
+        entityManager.clear();
+        SqlCapture.statements.get().clear();
+        var page = shipmentService.getShipments(null, null, null, null, null,
+                org.springframework.data.domain.PageRequest.of(0, 10));
+        var summary = page.getContent().get(0);
+        int expectedCount = List.of("NONE", "LOST_ONLY", "CLEARED").contains(scenario) ? 0
+                : scenario.equals("MULTIPLE") ? 2 : 1;
+        assertEquals(expectedCount, summary.getCurrentVehicleCount());
+        assertEquals(expectedCount == 1 ? "CURRENT-A" : null, summary.getCurrentVehicleId());
+        assertEquals(expectedCount == 1 ? firstPlate : null, summary.getCurrentVehiclePlate());
+        if (scenario.equals("CLEARED")) assertEquals("CURRENT-A", summary.getVehicleId());
+        assertTrue(SqlCapture.statements.get().stream().allMatch(sql -> sql.startsWith("select ")),
+                "Read-only list must not modify business records");
+        entityManager.clear();
+        SqlCapture.statements.get().clear();
+        var detail = shipmentService.getShipmentById(shipmentId);
+        assertEquals(5, SqlCapture.statements.get().size(), SqlCapture.statements.get().toString());
+        assertFalse(SqlCapture.statements.get().stream().anyMatch(sql -> sql.contains(" from vehicle ")));
+        assertEquals(parcels.stream().map(ParcelUnit::getSeq).toList(),
+                detail.getUnits().stream().map(unit -> unit.getPackageIndex()).toList());
+        for (int parcelIndex = 0; parcelIndex < parcels.size(); parcelIndex++) {
+            ParcelUnit fixture = parcels.get(parcelIndex);
+            var unit = detail.getUnits().get(parcelIndex);
+            Vehicle expectedVehicle = fixture.isLost() ? null : fixture.getCurrentVehicle();
+            assertEquals(expectedVehicle == null ? null : expectedVehicle.getVehicleId(), unit.getCurrentVehicleId());
+            assertEquals(expectedVehicle == null ? null : expectedVehicle.getPlateNumber(), unit.getCurrentVehiclePlate());
+        }
+        assertTrue(SqlCapture.statements.get().stream().allMatch(sql -> sql.startsWith("select ")),
+                "Read-only list and detail must not modify business records");
+        MvcResult detailResult = mockMvc.perform(get("/api/v1/shipments/" + shipmentId).header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode detailJson = objectMapper.readTree(detailResult.getResponse().getContentAsString());
+        assertTrue(detailJson.get("units").get(0).has("currentVehicleId"));
+        assertTrue(detailJson.get("units").get(0).has("currentVehiclePlate"));
+        MvcResult listResult = mockMvc.perform(get("/api/v1/shipments").header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        assertEquals(expectedCount, objectMapper.readTree(listResult.getResponse().getContentAsString())
+                .get("content").get(0).get("currentVehicleCount").asInt());
+        if (scenario.equals("CLEARED")) {
+            var filtered = shipmentService.getShipments(null, null, null, "CURRENT-A", null,
+                    org.springframework.data.domain.PageRequest.of(0, 10));
+            assertEquals(1, filtered.getTotalElements());
+            assertEquals(0, filtered.getContent().get(0).getCurrentVehicleCount());
+            assertEquals(1, trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(
+                    parcels.get(0).getTrackingId()).stream().filter(event -> event.getVehicle() != null).count());
+        }
+    }
+
+    @Autowired
+    private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
 
     @Autowired
     private MockMvc mockMvc;
@@ -71,12 +221,18 @@ public class ShipmentIntegrationTest {
     private com.tnl.logistics.repository.VehicleRepository vehicleRepository;
 
     @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
+    @Autowired
+    private com.tnl.logistics.repository.SystemSettingRepository systemSettingRepository;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    private String officeToken;
+    private String officeToken; private String adminToken;
     private String fieldToken;
     private String currentYear;
 
@@ -94,18 +250,67 @@ public class ShipmentIntegrationTest {
                 "SHIPMENT:" + LocalDate.now().getYear(),
                 "TRACKING:" + LocalDate.now().getYear());
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
-        fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
+        officeToken = "Bearer " + sessionTokens.generateToken("USR-OFFICE", "RECEIVING_STAFF");
+        adminToken = "Bearer " + sessionTokens.generateToken("USR-ADMIN", "ADMIN");
+        fieldToken = "Bearer " + sessionTokens.generateToken("USR-FIELD", "COURIER_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {
             clientRepository.save(new Client("CL-001", "Acme Logistics Client", "Manila", "09170000000", "client@acme.com", ChargeModel.FLAT, true));
-        } else if (!Boolean.TRUE.equals(client.getActive())) {
+        } else {
             client.setActive(true);
+            client.setRatePerKilo(null);
             clientRepository.save(client);
         }
 
         currentYear = String.valueOf(LocalDate.now().getYear());
+    }
+
+    @AfterEach
+    public void tearDown() {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+    }
+
+    @Test
+    public void testHalfCentPricingMatchesFrontendPreviewAndPersistsTotals() throws Exception {
+        Client client = clientRepository.findById("CL-001").orElseThrow();
+        client.setRatePerKilo(new BigDecimal("34.25"));
+        clientRepository.saveAndFlush(client);
+        ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
+        request.setClientId("CL-001");
+        request.setRecipientAddress("Delivery street");
+        request.setRecipientContact("09170000000");
+        request.setQuantity(1);
+        request.setChargeModel(ChargeModel.PER_KILO);
+        request.setOtherCharges(new BigDecimal("0.29"));
+        request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        request.setExpectedRatePerKilo(new BigDecimal("34.25"));
+        request.setExpectedVolumetricDivisor(5000);
+        request.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("0.06"),
+                new BigDecimal("0.1"), new BigDecimal("0.1"), new BigDecimal("0.1"))));
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.shippingFee").value(2.06))
+                .andExpect(jsonPath("$.totalAmount").value(2.35))
+                .andReturn();
+        ShipmentResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), ShipmentResponse.class);
+        JsonNode responseJson = objectMapper.readTree(result.getResponse().getContentAsString());
+        java.util.Set<String> responseFields = new java.util.HashSet<>();
+        responseJson.fieldNames().forEachRemaining(responseFields::add);
+        assertEquals(java.util.Set.of("shipmentId", "clientId", "recipientName", "totalAmount",
+                "paidAtRegistration", "trackingIds", "appliedRatePerKilo", "appliedVolumetricDivisor",
+                "totalActualWeight", "totalVolumetricWeight", "billableWeight", "shippingFee", "otherCharges"), responseFields);
+        Shipment persisted = shipmentRepository.findById(response.getShipmentId()).orElseThrow();
+        assertEquals(0, new BigDecimal("2.06").compareTo(persisted.getShippingFee()));
+        assertEquals(0, new BigDecimal("2.35").compareTo(persisted.getTotalAmount()));
     }
 
     @Test
@@ -124,6 +329,8 @@ public class ShipmentIntegrationTest {
         request.setOtherCharges(new BigDecimal("50.00"));
         request.setPaidAtRegistration(false);
         request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        request.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        request.setExpectedVolumetricDivisor(5000);
         request.setParcels(List.of(p1, p2));
 
         MvcResult result = mockMvc.perform(post("/api/v1/shipments")
@@ -139,7 +346,14 @@ public class ShipmentIntegrationTest {
         assertEquals(2, response.getTrackingIds().size());
         assertTrue(response.getTrackingIds().get(0).startsWith("TRK-" + currentYear + "-"));
         assertTrue(response.getTrackingIds().get(1).startsWith("TRK-" + currentYear + "-"));
-        assertEquals(new BigDecimal("200.00"), response.getTotalAmount());
+        assertEquals(new BigDecimal("600.00"), response.getTotalAmount());
+        assertEquals(new BigDecimal("100.00"), response.getAppliedRatePerKilo());
+        assertEquals(5000, response.getAppliedVolumetricDivisor());
+        assertEquals(new BigDecimal("5.50"), response.getTotalActualWeight());
+        assertEquals(new BigDecimal("2.40"), response.getTotalVolumetricWeight());
+        assertEquals(new BigDecimal("5.50"), response.getBillableWeight());
+        assertEquals(new BigDecimal("550.00"), response.getShippingFee());
+        assertEquals(new BigDecimal("50.00"), response.getOtherCharges());
     }
 
     @Test
@@ -155,9 +369,14 @@ public class ShipmentIntegrationTest {
             JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
             java.util.Set<String> fields = new java.util.HashSet<>();
             body.fieldNames().forEachRemaining(fields::add);
-            assertEquals(java.util.Set.of("shipmentId", "clientId", "recipientName", "totalAmount", "paidAtRegistration", "trackingIds"), fields);
+            assertEquals(java.util.Set.of(
+                    "shipmentId", "clientId", "recipientName", "totalAmount", "paidAtRegistration", "trackingIds",
+                    "appliedRatePerKilo", "appliedVolumetricDivisor", "totalActualWeight", "totalVolumetricWeight",
+                    "billableWeight", "shippingFee", "otherCharges"
+            ), fields);
             ShipmentResponse response = objectMapper.treeToValue(body, ShipmentResponse.class);
-            assertEquals(0, new BigDecimal(isPaid ? "220.20" : "120.10").compareTo(response.getTotalAmount()));
+            // Billable weight is 12.00 kg. With rate 100.00: shipping fee = 1200.00, other charges = 20.00 -> total 1220.00
+            assertEquals(0, new BigDecimal("1220.00").compareTo(response.getTotalAmount()));
             assertEquals(isPaid, response.getPaidAtRegistration());
             assertEquals(2, response.getTrackingIds().size());
             assertEquals(RegisteredVia.MOBILE_FIELD, shipmentRepository.findById(response.getShipmentId()).orElseThrow().getRegisteredVia());
@@ -223,10 +442,73 @@ public class ShipmentIntegrationTest {
         request.setOtherCharges(new BigDecimal("20.00"));
         request.setRegisteredVia(RegisteredVia.MOBILE_FIELD);
         request.setRoute("Manila to TNL Baguio");
+        request.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        request.setExpectedVolumetricDivisor(5000);
         request.setParcels(List.of(
                 new ParcelUnitRequest(1, new BigDecimal("1.25"), new BigDecimal("40"), new BigDecimal("25"), new BigDecimal("30")),
                 new ParcelUnitRequest(2, new BigDecimal("1.25"), new BigDecimal("40"), new BigDecimal("25"), new BigDecimal("30"))));
         return request;
+    }
+
+    @Test
+    public void testRegistrationRejectsOversizedFieldsAndExcessiveQuantityWithoutWrites() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setRecipientName("A".repeat(151));
+        request.setRecipientAddress("B".repeat(256));
+        request.setRecipientContact("0".repeat(12));
+        request.setDescription("D".repeat(256));
+        request.setRoute("R".repeat(151));
+        request.setQuantity(1001);
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments").header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest()).andReturn();
+
+        JsonNode errors = objectMapper.readTree(result.getResponse().getContentAsString()).get("fieldErrors");
+        assertTrue(errors.has("recipientName"));
+        assertTrue(errors.has("recipientAddress"));
+        assertTrue(errors.has("recipientContact"));
+        assertTrue(errors.has("description"));
+        assertTrue(errors.has("route"));
+        assertTrue(errors.has("quantity"));
+        assertEquals(0, shipmentRepository.count());
+        assertEquals(0, parcelUnitRepository.count());
+        assertEquals(0, paymentRepository.count());
+    }
+
+    @Test
+    public void testRegistrationAcceptsLabelTextAtCharacterLimits() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setRecipientAddress("A".repeat(80));
+        request.setDescription("D".repeat(120));
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments").header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated()).andReturn();
+        String shipmentId = objectMapper.readTree(result.getResponse().getContentAsString()).get("shipmentId").asText();
+        Shipment shipment = shipmentRepository.findById(shipmentId).orElseThrow();
+        assertEquals(request.getRecipientAddress(), shipment.getRecipientAddress());
+        assertEquals(request.getDescription(), shipment.getDescription());
+    }
+
+    @Test
+    public void testRegistrationRejectsLabelTextOneCharacterOverLimitWithoutWrites() throws Exception {
+        for (String field : List.of("recipientAddress", "description")) {
+            ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+            if (field.equals("recipientAddress")) {
+                request.setRecipientAddress("A".repeat(81));
+            } else {
+                request.setDescription("D".repeat(121));
+            }
+            MvcResult result = mockMvc.perform(post("/api/v1/shipments").header("Authorization", officeToken)
+                            .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest()).andReturn();
+            JsonNode errors = objectMapper.readTree(result.getResponse().getContentAsString()).get("fieldErrors");
+            assertTrue(errors.has(field));
+            assertEquals(0, shipmentRepository.count());
+            assertEquals(0, parcelUnitRepository.count());
+            assertEquals(0, paymentRepository.count());
+        }
     }
 
     @Test
@@ -289,7 +571,7 @@ public class ShipmentIntegrationTest {
         ShipmentResponse created = objectMapper.readValue(regResult.getResponse().getContentAsString(), ShipmentResponse.class);
         String trackingId0 = created.getTrackingIds().getFirst();
 
-        // 2. Role gating: FIELD_STAFF cannot access GET /api/v1/shipments or GET /api/v1/shipments/{id}
+    // 2. Role gating: COURIER_STAFF cannot access GET /api/v1/shipments or GET /api/v1/shipments/{id}
         mockMvc.perform(get("/api/v1/shipments").header("Authorization", fieldToken))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/shipments/" + created.getShipmentId()).header("Authorization", fieldToken))
@@ -376,7 +658,9 @@ public class ShipmentIntegrationTest {
         request.setOtherCharges(BigDecimal.ZERO);
         request.setPaidAtRegistration(false);
         request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
-        request.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2.5"), null, null, null)));
+        request.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        request.setExpectedVolumetricDivisor(5000);
+        request.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2.5"), new BigDecimal("10"), new BigDecimal("20"), new BigDecimal("30"))));
 
         MvcResult result = mockMvc.perform(post("/api/v1/shipments")
                         .header("Authorization", officeToken)
@@ -407,6 +691,8 @@ public class ShipmentIntegrationTest {
         request.setOtherCharges(new BigDecimal("20.00"));
         request.setPaidAtRegistration(true);
         request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        request.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        request.setExpectedVolumetricDivisor(5000);
         request.setParcels(List.of(p1, p2));
 
         MvcResult result = mockMvc.perform(post("/api/v1/shipments")
@@ -434,17 +720,21 @@ public class ShipmentIntegrationTest {
     @Test
     public void testPaginatedShipmentListingAndSearch() throws Exception {
         // Register 2 shipments
+        Client alphaClient = clientRepository.findById("CL-ALPHA").orElseGet(() ->
+                clientRepository.save(new Client("CL-ALPHA", "Alpha Logistics Client", "Manila", "09111111111", "alpha@client.com", ChargeModel.FLAT, true)));
+
         ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("1.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"));
 
         ShipmentRegistrationRequest req1 = new ShipmentRegistrationRequest();
-        req1.setClientId("CL-001");
-        req1.setRecipientName("Alpha Recipient");
+        req1.setClientId(alphaClient.getClientId());
         req1.setRecipientAddress("Manila");
         req1.setRecipientContact("09111111111");
         req1.setQuantity(1);
         req1.setChargeModel(ChargeModel.FLAT);
         req1.setShippingFee(new BigDecimal("100.00"));
         req1.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        req1.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        req1.setExpectedVolumetricDivisor(5000);
         req1.setParcels(List.of(p1));
 
         mockMvc.perform(post("/api/v1/shipments")
@@ -461,6 +751,8 @@ public class ShipmentIntegrationTest {
         req2.setChargeModel(ChargeModel.FLAT);
         req2.setShippingFee(new BigDecimal("150.00"));
         req2.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        req2.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        req2.setExpectedVolumetricDivisor(5000);
         req2.setParcels(List.of(p1));
 
         mockMvc.perform(post("/api/v1/shipments")
@@ -476,7 +768,7 @@ public class ShipmentIntegrationTest {
 
         JsonNode jsonNode = objectMapper.readTree(searchResult.getResponse().getContentAsString());
         assertEquals(1, jsonNode.get("content").size());
-        assertEquals("Alpha Recipient", jsonNode.get("content").get(0).get("recipientName").asText());
+        assertEquals("Alpha Logistics Client", jsonNode.get("content").get(0).get("recipientName").asText());
 
         // 2. Fetch all paginated
         MvcResult allResult = mockMvc.perform(get("/api/v1/shipments?page=0&size=10")
@@ -501,6 +793,8 @@ public class ShipmentIntegrationTest {
         req.setChargeModel(ChargeModel.FLAT);
         req.setShippingFee(new BigDecimal("250.00"));
         req.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        req.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        req.setExpectedVolumetricDivisor(5000);
         req.setParcels(List.of(p1));
 
         MvcResult createResult = mockMvc.perform(post("/api/v1/shipments")
@@ -522,7 +816,7 @@ public class ShipmentIntegrationTest {
 
         ShipmentDetailResponse detail = objectMapper.readValue(detailResult.getResponse().getContentAsString(), ShipmentDetailResponse.class);
         assertEquals(shipmentId, detail.getShipmentId());
-        assertEquals("Target Detail Recipient", detail.getRecipient());
+        assertEquals("Acme Logistics Client", detail.getRecipient());
         assertEquals(1, detail.getUnits().size());
         assertEquals(trackingId, detail.getUnits().get(0).getTrackingId());
 
@@ -534,7 +828,7 @@ public class ShipmentIntegrationTest {
 
         ParcelUnitDetailResponse unitDetail = objectMapper.readValue(unitResult.getResponse().getContentAsString(), ParcelUnitDetailResponse.class);
         assertEquals(trackingId, unitDetail.getTrackingId());
-        assertEquals("Target Detail Recipient", unitDetail.getRecipientName());
+        assertEquals("Acme Logistics Client", unitDetail.getRecipientName());
         assertFalse(unitDetail.getHistory().isEmpty());
 
         // 3. Print Label
@@ -570,6 +864,8 @@ public class ShipmentIntegrationTest {
         request.setChargeModel(ChargeModel.FLAT);
         request.setShippingFee(new BigDecimal("100.00"));
         request.setRegisteredVia(RegisteredVia.MOBILE_FIELD);
+        request.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        request.setExpectedVolumetricDivisor(5000);
         request.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
         mockMvc.perform(post("/api/v1/shipments")
@@ -594,6 +890,8 @@ public class ShipmentIntegrationTest {
         request.setChargeModel(ChargeModel.FLAT);
         request.setShippingFee(new BigDecimal("200.00"));
         request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        request.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        request.setExpectedVolumetricDivisor(5000);
         request.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
         mockMvc.perform(post("/api/v1/shipments")
@@ -616,6 +914,8 @@ public class ShipmentIntegrationTest {
         req1.setShippingFee(new BigDecimal("100.00"));
         req1.setPaidAtRegistration(true);
         req1.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        req1.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        req1.setExpectedVolumetricDivisor(5000);
         req1.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
         MvcResult res1 = mockMvc.perform(post("/api/v1/shipments")
@@ -637,6 +937,8 @@ public class ShipmentIntegrationTest {
         req2.setShippingFee(new BigDecimal("200.00"));
         req2.setPaidAtRegistration(false);
         req2.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        req2.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        req2.setExpectedVolumetricDivisor(5000);
         req2.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
         MvcResult res2 = mockMvc.perform(post("/api/v1/shipments")
@@ -662,6 +964,8 @@ public class ShipmentIntegrationTest {
         req3.setShippingFee(new BigDecimal("300.00"));
         req3.setPaidAtRegistration(false);
         req3.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        req3.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        req3.setExpectedVolumetricDivisor(5000);
         req3.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
         MvcResult res3 = mockMvc.perform(post("/api/v1/shipments")
@@ -771,6 +1075,8 @@ public class ShipmentIntegrationTest {
         req1.setShippingFee(new BigDecimal("250.00"));
         req1.setPaidAtRegistration(false);
         req1.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        req1.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        req1.setExpectedVolumetricDivisor(5000);
         req1.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
         MvcResult res1 = mockMvc.perform(post("/api/v1/shipments")
@@ -797,6 +1103,8 @@ public class ShipmentIntegrationTest {
         req2.setShippingFee(new BigDecimal("350.00"));
         req2.setPaidAtRegistration(false);
         req2.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        req2.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        req2.setExpectedVolumetricDivisor(5000);
         req2.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
         MvcResult res2 = mockMvc.perform(post("/api/v1/shipments")
@@ -869,6 +1177,8 @@ public class ShipmentIntegrationTest {
         underbilledRequest.setChargeModel(ChargeModel.PER_PARCEL);
         underbilledRequest.setShippingFee(new BigDecimal("100.00"));
         underbilledRequest.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        underbilledRequest.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        underbilledRequest.setExpectedVolumetricDivisor(5000);
         underbilledRequest.setParcels(List.of(p1, p2));
 
         MvcResult result1 = mockMvc.perform(post("/api/v1/shipments")
@@ -896,9 +1206,10 @@ public class ShipmentIntegrationTest {
 
     @Test
     public void testRegisterShipmentFailsWhenParcelSequenceHasDuplicatesOrGaps() throws Exception {
+        BigDecimal dim = new BigDecimal("10");
         // Gap in sequence: [1, 3]
-        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.5"), null, null, null);
-        ParcelUnitRequest p3 = new ParcelUnitRequest(3, new BigDecimal("3.0"), null, null, null);
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.5"), dim, dim, dim);
+        ParcelUnitRequest p3 = new ParcelUnitRequest(3, new BigDecimal("3.0"), dim, dim, dim);
 
         ShipmentRegistrationRequest gapRequest = new ShipmentRegistrationRequest();
         gapRequest.setClientId("CL-001");
@@ -909,6 +1220,8 @@ public class ShipmentIntegrationTest {
         gapRequest.setChargeModel(ChargeModel.FLAT);
         gapRequest.setShippingFee(new BigDecimal("100.00"));
         gapRequest.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        gapRequest.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        gapRequest.setExpectedVolumetricDivisor(5000);
         gapRequest.setParcels(List.of(p1, p3));
 
         MvcResult gapResult = mockMvc.perform(post("/api/v1/shipments")
@@ -922,7 +1235,7 @@ public class ShipmentIntegrationTest {
         assertTrue(gapJson.get("message").asText().contains("contiguous sequence from 1 to 2"));
 
         // Duplicate sequence: [1, 1]
-        ParcelUnitRequest pDup = new ParcelUnitRequest(1, new BigDecimal("4.0"), null, null, null);
+        ParcelUnitRequest pDup = new ParcelUnitRequest(1, new BigDecimal("4.0"), dim, dim, dim);
         gapRequest.setParcels(List.of(p1, pDup));
 
         MvcResult dupResult = mockMvc.perform(post("/api/v1/shipments")
@@ -936,7 +1249,7 @@ public class ShipmentIntegrationTest {
         assertTrue(dupJson.get("message").asText().contains("contiguous sequence from 1 to 2"));
 
         // Starting offset error: [2, 3]
-        ParcelUnitRequest p2 = new ParcelUnitRequest(2, new BigDecimal("2.5"), null, null, null);
+        ParcelUnitRequest p2 = new ParcelUnitRequest(2, new BigDecimal("2.5"), dim, dim, dim);
         gapRequest.setParcels(List.of(p2, p3));
 
         MvcResult offsetResult = mockMvc.perform(post("/api/v1/shipments")
@@ -965,6 +1278,8 @@ public class ShipmentIntegrationTest {
         unorderedRequest.setChargeModel(ChargeModel.PER_PARCEL);
         unorderedRequest.setShippingFee(new BigDecimal("100.00"));
         unorderedRequest.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        unorderedRequest.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        unorderedRequest.setExpectedVolumetricDivisor(5000);
         unorderedRequest.setParcels(List.of(p2, p1));
 
         mockMvc.perform(post("/api/v1/shipments")
@@ -972,5 +1287,646 @@ public class ShipmentIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(unorderedRequest)))
                 .andExpect(status().isCreated());
+    }
+
+    @Test
+    public void testRegistrationFailsWhenRatePerKiloNotConfigured() throws Exception {
+        try {
+            SystemSetting setting = systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID).orElseThrow();
+            setting.setRatePerKilo(null);
+            systemSettingRepository.saveAndFlush(setting);
+            systemSettingService.refreshCachedSettings();
+
+            ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"));
+            ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
+            request.setClientId("CL-001");
+            request.setRecipientAddress("Manila");
+            request.setRecipientContact("09180001111");
+            request.setQuantity(1);
+            request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+            request.setExpectedRatePerKilo(new BigDecimal("100.00"));
+            request.setExpectedVolumetricDivisor(5000);
+            request.setParcels(List.of(p1));
+
+            MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                            .header("Authorization", officeToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isConflict())
+                    .andReturn();
+
+            JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
+            assertEquals("RATE_PER_KILO_NOT_CONFIGURED", json.get("code").asText());
+        } finally {
+            jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+            systemSettingService.refreshCachedSettings();
+        }
+    }
+
+    @Test
+    public void testRegistrationFailsWhenExpectedRatePerKiloMissing() throws Exception {
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"));
+        ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
+        request.setClientId("CL-001");
+        request.setRecipientAddress("Manila");
+        request.setRecipientContact("09180001111");
+        request.setQuantity(1);
+        request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        request.setExpectedVolumetricDivisor(5000);
+        request.setParcels(List.of(p1));
+        // expectedRatePerKilo omitted
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+
+        JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertTrue(json.has("fieldErrors") && json.get("fieldErrors").has("expectedRatePerKilo"));
+    }
+
+    @Test
+    public void testRegistrationFailsWhenExpectedVolumetricDivisorMissing() throws Exception {
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"));
+        ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
+        request.setClientId("CL-001");
+        request.setRecipientAddress("Manila");
+        request.setRecipientContact("09180001111");
+        request.setQuantity(1);
+        request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        request.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        request.setParcels(List.of(p1));
+        // expectedVolumetricDivisor omitted
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+
+        JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertTrue(json.has("fieldErrors") && json.get("fieldErrors").has("expectedVolumetricDivisor"));
+    }
+
+    @Test
+    public void testRegistrationFailsWhenExpectedRatePerKiloStale() throws Exception {
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"));
+        ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
+        request.setClientId("CL-001");
+        request.setRecipientAddress("Manila");
+        request.setRecipientContact("09180001111");
+        request.setQuantity(1);
+        request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        request.setParcels(List.of(p1));
+        request.setExpectedRatePerKilo(new BigDecimal("50.00")); // Configured is 100.00
+        request.setExpectedVolumetricDivisor(5000);
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andReturn();
+
+        JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertEquals("STALE_SETTINGS", json.get("code").asText());
+    }
+
+    @Test
+    public void testRegistrationFailsWhenExpectedVolumetricDivisorStale() throws Exception {
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"));
+        ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
+        request.setClientId("CL-001");
+        request.setRecipientAddress("Manila");
+        request.setRecipientContact("09180001111");
+        request.setQuantity(1);
+        request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        request.setParcels(List.of(p1));
+        request.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        request.setExpectedVolumetricDivisor(6000); // Configured is 5000
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andReturn();
+
+        JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
+        assertEquals("STALE_SETTINGS", json.get("code").asText());
+    }
+
+    @Test
+    public void testRegistrationFailsWhenCalculationExceedsStorageBounds() throws Exception {
+        // 1000 units of 3000 x 1000 x 1000 cm = 3 billion cm3 per unit = 600,000 kg vol each.
+        // Total volumetric weight = 600,000,000 kg. At rate 100.00 -> 60 billion PHP, exceeding DECIMAL(12,2) limit.
+        List<ParcelUnitRequest> largeParcels = new java.util.ArrayList<>();
+        for (int i = 1; i <= 1000; i++) {
+            largeParcels.add(new ParcelUnitRequest(i, new BigDecimal("10.00"), new BigDecimal("3000"), new BigDecimal("1000"), new BigDecimal("1000")));
+        }
+
+        ShipmentRegistrationRequest overflowRequest = new ShipmentRegistrationRequest();
+        overflowRequest.setClientId("CL-001");
+        overflowRequest.setRecipientAddress("Manila");
+        overflowRequest.setRecipientContact("09180001111");
+        overflowRequest.setQuantity(1000);
+        overflowRequest.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        overflowRequest.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        overflowRequest.setExpectedVolumetricDivisor(5000);
+        overflowRequest.setParcels(largeParcels);
+
+        long shipmentsBefore = shipmentRepository.count();
+
+        mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(overflowRequest)))
+                .andExpect(status().isBadRequest());
+
+        assertEquals(shipmentsBefore, shipmentRepository.count());
+    }
+
+    @Test
+    public void testRecipientNameDerivedFromClientRecord() throws Exception {
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"));
+        ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
+        request.setClientId("CL-001"); // Client name is "Acme Logistics Client"
+        request.setRecipientName("Different Name Should Be Overridden");
+        request.setRecipientAddress("Manila");
+        request.setRecipientContact("09180001111");
+        request.setQuantity(1);
+        request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        request.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        request.setExpectedVolumetricDivisor(5000);
+        request.setParcels(List.of(p1));
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), ShipmentResponse.class);
+        assertEquals("Acme Logistics Client", response.getRecipientName());
+
+        Shipment persisted = shipmentRepository.findById(response.getShipmentId()).orElseThrow();
+        assertEquals("Acme Logistics Client", persisted.getRecipientName());
+    }
+
+    @Test
+    public void testBillableWeightCalculationActualVsVolumetric() throws Exception {
+        // Case A: Actual Weight dominates (15 kg actual vs 0.20 kg volumetric)
+        ParcelUnitRequest pActual = new ParcelUnitRequest(1, new BigDecimal("15.00"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"));
+        ShipmentRegistrationRequest reqActual = new ShipmentRegistrationRequest();
+        reqActual.setClientId("CL-001");
+        reqActual.setRecipientAddress("Manila");
+        reqActual.setRecipientContact("09180001111");
+        reqActual.setQuantity(1);
+        reqActual.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        reqActual.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        reqActual.setExpectedVolumetricDivisor(5000);
+        reqActual.setParcels(List.of(pActual));
+
+        MvcResult resActual = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reqActual)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse actualResp = objectMapper.readValue(resActual.getResponse().getContentAsString(), ShipmentResponse.class);
+        assertEquals(new BigDecimal("15.00"), actualResp.getTotalActualWeight());
+        assertEquals(new BigDecimal("0.20"), actualResp.getTotalVolumetricWeight());
+        assertEquals(new BigDecimal("15.00"), actualResp.getBillableWeight());
+        assertEquals(new BigDecimal("1500.00"), actualResp.getShippingFee());
+
+        // Case B: Volumetric Weight dominates (1 kg actual vs 20.00 kg volumetric: 50x50x40 / 5000 = 20)
+        ParcelUnitRequest pVol = new ParcelUnitRequest(1, new BigDecimal("1.00"), new BigDecimal("50"), new BigDecimal("50"), new BigDecimal("40"));
+        ShipmentRegistrationRequest reqVol = new ShipmentRegistrationRequest();
+        reqVol.setClientId("CL-001");
+        reqVol.setRecipientAddress("Manila");
+        reqVol.setRecipientContact("09180001111");
+        reqVol.setQuantity(1);
+        reqVol.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        reqVol.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        reqVol.setExpectedVolumetricDivisor(5000);
+        reqVol.setParcels(List.of(pVol));
+
+        MvcResult resVol = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reqVol)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse volResp = objectMapper.readValue(resVol.getResponse().getContentAsString(), ShipmentResponse.class);
+        assertEquals(new BigDecimal("1.00"), volResp.getTotalActualWeight());
+        assertEquals(new BigDecimal("20.00"), volResp.getTotalVolumetricWeight());
+        assertEquals(new BigDecimal("20.00"), volResp.getBillableWeight());
+        assertEquals(new BigDecimal("2000.00"), volResp.getShippingFee());
+    }
+
+    @Test
+    public void testSettingChangeDoesNotAffectExistingShipmentSnapshot() throws Exception {
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("10.00"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"));
+        ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
+        request.setClientId("CL-001");
+        request.setRecipientAddress("Manila");
+        request.setRecipientContact("09180001111");
+        request.setQuantity(1);
+        request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        request.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        request.setExpectedVolumetricDivisor(5000);
+        request.setParcels(List.of(p1));
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), ShipmentResponse.class);
+        String shipmentId = response.getShipmentId();
+        assertEquals(new BigDecimal("100.00"), response.getAppliedRatePerKilo());
+        assertEquals(new BigDecimal("1000.00"), response.getTotalAmount());
+
+        try {
+            // Later settings change rate to 350.00
+            jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 350.00 WHERE setting_id = 1");
+            systemSettingService.refreshCachedSettings();
+
+            // Existing shipment detail must retain snapshot rate 100.00 and original total 1000.00
+            MvcResult detailResult = mockMvc.perform(get("/api/v1/shipments/" + shipmentId)
+                            .header("Authorization", officeToken))
+                    .andExpect(status().isOk())
+                    .andReturn();
+
+            com.tnl.logistics.dto.ShipmentDetailResponse detail = objectMapper.readValue(
+                    detailResult.getResponse().getContentAsString(), com.tnl.logistics.dto.ShipmentDetailResponse.class);
+            assertEquals(new BigDecimal("100.00"), detail.getAppliedRatePerKilo());
+            assertEquals(new BigDecimal("1000.00"), detail.getTotalAmount());
+        } finally {
+            jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+            systemSettingService.refreshCachedSettings();
+        }
+    }
+
+    @Test
+    public void testClientRateOverridesGlobalAndExistingShipmentKeepsSnapshot() throws Exception {
+        Client client = clientRepository.findById("CL-001").orElseThrow();
+        client.setRatePerKilo(new BigDecimal("75.00"));
+        clientRepository.saveAndFlush(client);
+
+        mockMvc.perform(get("/api/v1/shipments/calculation-settings")
+                        .header("Authorization", officeToken)
+                        .param("clientId", "CL-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ratePerKilo").value(75.00));
+
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setQuantity(1);
+        request.setParcels(List.of(new ParcelUnitRequest(
+                1,
+                new BigDecimal("10.00"),
+                new BigDecimal("10"),
+                new BigDecimal("10"),
+                new BigDecimal("10")
+        )));
+        request.setOtherCharges(BigDecimal.ZERO);
+        request.setPaidAtRegistration(false);
+        request.setExpectedRatePerKilo(new BigDecimal("75.00"));
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse response = objectMapper.readValue(
+                result.getResponse().getContentAsString(), ShipmentResponse.class);
+        assertEquals(0, new BigDecimal("75.00").compareTo(response.getAppliedRatePerKilo()));
+        assertEquals(0, new BigDecimal("750.00").compareTo(response.getShippingFee()));
+        assertEquals(0, new BigDecimal("750.00").compareTo(response.getTotalAmount()));
+
+        client.setRatePerKilo(new BigDecimal("60.00"));
+        clientRepository.saveAndFlush(client);
+
+        mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("STALE_SETTINGS"));
+        assertEquals(1, shipmentRepository.count());
+
+        MvcResult detailResult = mockMvc.perform(get("/api/v1/shipments/" + response.getShipmentId())
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        ShipmentDetailResponse detail = objectMapper.readValue(
+                detailResult.getResponse().getContentAsString(), ShipmentDetailResponse.class);
+        assertEquals(0, new BigDecimal("75.00").compareTo(detail.getAppliedRatePerKilo()));
+        assertEquals(0, new BigDecimal("750.00").compareTo(detail.getTotalAmount()));
+    }
+
+    @Test
+    public void testClientRateWorksWhenGlobalRateIsNotConfigured() throws Exception {
+        Client client = clientRepository.findById("CL-001").orElseThrow();
+        client.setRatePerKilo(new BigDecimal("80.00"));
+        clientRepository.saveAndFlush(client);
+
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = NULL WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setExpectedRatePerKilo(new BigDecimal("80.00"));
+
+        mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.appliedRatePerKilo").value(80.00));
+    }
+    @Test
+    public void testAdminCanRegisterAndQueryShipments() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse created = objectMapper.readValue(
+                result.getResponse().getContentAsString(), ShipmentResponse.class);
+
+        mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", adminToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/shipments/" + created.getShipmentId())
+                        .header("Authorization", adminToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/parcel-units/" + created.getTrackingIds().get(0))
+                        .header("Authorization", adminToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/shipments/calculation-settings")
+                        .header("Authorization", adminToken)
+                        .param("clientId", "CL-001"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    public void testUnfilteredShipmentListingFastPathSelectionAndEquivalence() throws Exception {
+        for (int i = 1; i <= 3; i++) {
+            ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+            request.setRecipientAddress("Baguio Street " + i);
+            mockMvc.perform(post("/api/v1/shipments")
+                            .header("Authorization", officeToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isCreated());
+            Thread.sleep(5);
+        }
+
+        // 1. Fast path with completely absent/null query parameters
+        MvcResult nullParamsResult = mockMvc.perform(get("/api/v1/shipments?page=0&size=10")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode nullParamsJson = objectMapper.readTree(nullParamsResult.getResponse().getContentAsString());
+        assertEquals(3, getTotalElements(nullParamsJson));
+        assertEquals(3, nullParamsJson.get("content").size());
+
+        JsonNode firstShipment = nullParamsJson.get("content").get(0);
+        assertTrue(firstShipment.has("shipmentId"));
+        assertTrue(firstShipment.has("clientName"));
+        assertEquals("Acme Logistics Client", firstShipment.get("clientName").asText());
+        assertTrue(firstShipment.has("quantity"));
+        assertEquals(2, firstShipment.get("quantity").asInt());
+
+        // 2. Fast path with legitimately normalized-empty filters
+        MvcResult normalizedEmptyResult = mockMvc.perform(get("/api/v1/shipments?page=0&size=10&search=   &status=ALL&paymentStatus=ALL&vehicleId=ALL&labelStatus=ALL")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode normalizedEmptyJson = objectMapper.readTree(normalizedEmptyResult.getResponse().getContentAsString());
+        assertEquals(3, getTotalElements(normalizedEmptyJson));
+        assertEquals(3, normalizedEmptyJson.get("content").size());
+
+        // 3. Fast path with empty string parameters
+        MvcResult emptyStringsResult = mockMvc.perform(get("/api/v1/shipments?page=0&size=10&search=&status=&paymentStatus=&vehicleId=&labelStatus=")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode emptyStringsJson = objectMapper.readTree(emptyStringsResult.getResponse().getContentAsString());
+        assertEquals(3, getTotalElements(emptyStringsJson));
+        assertEquals(3, emptyStringsJson.get("content").size());
+
+        // 4. Exact equivalence between specialized query and filtered query in repository
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
+                0, 10, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "dateRegistered"));
+        org.springframework.data.domain.Page<Shipment> fastPage = shipmentRepository.findAllShipmentsWithClient(pageable);
+        org.springframework.data.domain.Page<Shipment> filterPage = shipmentRepository.searchShipmentsWithFilters(null, null, null, null, null, pageable);
+
+        assertEquals(fastPage.getTotalElements(), filterPage.getTotalElements());
+        assertEquals(fastPage.getContent().size(), filterPage.getContent().size());
+        for (int i = 0; i < fastPage.getContent().size(); i++) {
+            assertEquals(fastPage.getContent().get(i).getShipmentId(), filterPage.getContent().get(i).getShipmentId());
+            assertEquals(fastPage.getContent().get(i).getClient().getName(), filterPage.getContent().get(i).getClient().getName());
+        }
+    }
+
+    @Test
+    public void testFilteredPathRetentionForIndividualAndCombinedFilters() throws Exception {
+        Client alphaClient = clientRepository.findById("CL-ALPHA").orElseGet(() ->
+                clientRepository.save(new Client("CL-ALPHA", "Alpha Logistics Client", "Manila", "09111111111", "alpha@client.com", ChargeModel.FLAT, true)));
+        Client betaClient = clientRepository.findById("CL-BETA").orElseGet(() ->
+                clientRepository.save(new Client("CL-BETA", "Beta Logistics Client", "Cebu", "09222222222", "beta@client.com", ChargeModel.FLAT, true)));
+
+        ShipmentRegistrationRequest unpaidReq = createMobileRegistrationRequest();
+        unpaidReq.setClientId(alphaClient.getClientId());
+        unpaidReq.setPaidAtRegistration(false);
+        mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(unpaidReq)))
+                .andExpect(status().isCreated());
+
+        ShipmentRegistrationRequest paidReq = createMobileRegistrationRequest();
+        paidReq.setClientId(betaClient.getClientId());
+        paidReq.setPaidAtRegistration(true);
+        paidReq.setChargeModel(ChargeModel.PER_PARCEL);
+        mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(paidReq)))
+                .andExpect(status().isCreated());
+
+        // Individual search filter
+        MvcResult searchRes = mockMvc.perform(get("/api/v1/shipments?search=Alpha")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode searchJson = objectMapper.readTree(searchRes.getResponse().getContentAsString());
+        assertEquals(1, getTotalElements(searchJson));
+        assertEquals("Alpha Logistics Client", searchJson.get("content").get(0).get("recipientName").asText());
+
+        // Individual status filter
+        MvcResult statusRes = mockMvc.perform(get("/api/v1/shipments?status=QR_GENERATED")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode statusJson = objectMapper.readTree(statusRes.getResponse().getContentAsString());
+        assertEquals(2, getTotalElements(statusJson));
+
+        // Individual payment filter
+        MvcResult paymentRes = mockMvc.perform(get("/api/v1/shipments?paymentStatus=PAID")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode paymentJson = objectMapper.readTree(paymentRes.getResponse().getContentAsString());
+        assertEquals(1, getTotalElements(paymentJson));
+        assertEquals("Beta Logistics Client", paymentJson.get("content").get(0).get("recipientName").asText());
+
+        // Individual label filter
+        MvcResult labelRes = mockMvc.perform(get("/api/v1/shipments?labelStatus=NEEDS_LABEL")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode labelJson = objectMapper.readTree(labelRes.getResponse().getContentAsString());
+        assertEquals(2, getTotalElements(labelJson));
+
+        // Combined filters
+        MvcResult combinedRes = mockMvc.perform(get("/api/v1/shipments?search=Beta&paymentStatus=PAID")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode combinedJson = objectMapper.readTree(combinedRes.getResponse().getContentAsString());
+        assertEquals(1, getTotalElements(combinedJson));
+        assertEquals("Beta Logistics Client", combinedJson.get("content").get(0).get("recipientName").asText());
+
+        // Non-matching filter combination
+        MvcResult noMatchRes = mockMvc.perform(get("/api/v1/shipments?search=Beta&paymentStatus=UNPAID")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode noMatchJson = objectMapper.readTree(noMatchRes.getResponse().getContentAsString());
+        assertEquals(0, getTotalElements(noMatchJson));
+        assertEquals(0, noMatchJson.get("content").size());
+
+        // Invalid filter value
+        MvcResult invalidRes = mockMvc.perform(get("/api/v1/shipments?status=NON_EXISTENT_STATUS")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode invalidJson = objectMapper.readTree(invalidRes.getResponse().getContentAsString());
+        assertEquals(0, getTotalElements(invalidJson));
+        assertEquals(0, invalidJson.get("content").size());
+    }
+
+    @Test
+    public void testUnfilteredShipmentPaginationEdgeCasesAndClamping() throws Exception {
+        for (int i = 1; i <= 5; i++) {
+            ShipmentRegistrationRequest req = createMobileRegistrationRequest();
+            req.setRecipientAddress("Edge Case Street " + i);
+            mockMvc.perform(post("/api/v1/shipments")
+                            .header("Authorization", officeToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isCreated());
+            Thread.sleep(5);
+        }
+
+        // Page 0 (size 2) -> first page
+        MvcResult p0Res = mockMvc.perform(get("/api/v1/shipments?page=0&size=2")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode p0Json = objectMapper.readTree(p0Res.getResponse().getContentAsString());
+        assertEquals(5, getTotalElements(p0Json));
+        assertEquals(2, p0Json.get("content").size());
+        int p0Number = p0Json.has("page") ? p0Json.get("page").get("number").asInt() : p0Json.get("number").asInt();
+        int p0TotalPages = p0Json.has("page") ? p0Json.get("page").get("totalPages").asInt() : p0Json.get("totalPages").asInt();
+        assertEquals(0, p0Number);
+        assertEquals(3, p0TotalPages);
+
+        // Page 1 (size 2) -> adjacent page
+        MvcResult p1Res = mockMvc.perform(get("/api/v1/shipments?page=1&size=2")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode p1Json = objectMapper.readTree(p1Res.getResponse().getContentAsString());
+        assertEquals(2, p1Json.get("content").size());
+        int p1Number = p1Json.has("page") ? p1Json.get("page").get("number").asInt() : p1Json.get("number").asInt();
+        assertEquals(1, p1Number);
+
+        // Page 2 (size 2) -> final page with remainder 1
+        MvcResult p2Res = mockMvc.perform(get("/api/v1/shipments?page=2&size=2")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode p2Json = objectMapper.readTree(p2Res.getResponse().getContentAsString());
+        assertEquals(1, p2Json.get("content").size());
+        int p2Number = p2Json.has("page") ? p2Json.get("page").get("number").asInt() : p2Json.get("number").asInt();
+        assertEquals(2, p2Number);
+
+        // Beyond-last page (page 10)
+        MvcResult pBeyondRes = mockMvc.perform(get("/api/v1/shipments?page=10&size=2")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode pBeyondJson = objectMapper.readTree(pBeyondRes.getResponse().getContentAsString());
+        assertEquals(5, getTotalElements(pBeyondJson));
+        assertEquals(0, pBeyondJson.get("content").size());
+        int pBeyondNumber = pBeyondJson.has("page") ? pBeyondJson.get("page").get("number").asInt() : pBeyondJson.get("number").asInt();
+        assertEquals(10, pBeyondNumber);
+
+        // Negative page clamped to 0
+        MvcResult negPageRes = mockMvc.perform(get("/api/v1/shipments?page=-5&size=2")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode negPageJson = objectMapper.readTree(negPageRes.getResponse().getContentAsString());
+        int negNumber = negPageJson.has("page") ? negPageJson.get("page").get("number").asInt() : negPageJson.get("number").asInt();
+        assertEquals(0, negNumber);
+        assertEquals(2, negPageJson.get("content").size());
+
+        // Size clamping: size=0 clamped to 1
+        MvcResult zeroSizeRes = mockMvc.perform(get("/api/v1/shipments?page=0&size=0")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode zeroSizeJson = objectMapper.readTree(zeroSizeRes.getResponse().getContentAsString());
+        assertEquals(1, zeroSizeJson.get("content").size());
+        int zeroSize = zeroSizeJson.has("page") ? zeroSizeJson.get("page").get("size").asInt() : zeroSizeJson.get("size").asInt();
+        assertEquals(1, zeroSize);
+
+        // Size clamping: size=500 clamped to MAX_PAGE_SIZE (100)
+        MvcResult largeSizeRes = mockMvc.perform(get("/api/v1/shipments?page=0&size=500")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk()).andReturn();
+        JsonNode largeSizeJson = objectMapper.readTree(largeSizeRes.getResponse().getContentAsString());
+        int largeSize = largeSizeJson.has("page") ? largeSizeJson.get("page").get("size").asInt() : largeSizeJson.get("size").asInt();
+        assertEquals(100, largeSize);
+        assertEquals(5, largeSizeJson.get("content").size());
+    }
+
+    @Test
+    public void testShipmentListingRoleAccessAndAuthorization() throws Exception {
+        // ADMIN -> 200 OK
+        mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", adminToken))
+                .andExpect(status().isOk());
+
+        // RECEIVING_STAFF -> 200 OK
+        mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk());
+
+        // COURIER_STAFF -> 403 Forbidden
+        mockMvc.perform(get("/api/v1/shipments")
+                        .header("Authorization", fieldToken))
+                .andExpect(status().isForbidden());
+
+        // Unauthenticated -> 401 Unauthorized
+        mockMvc.perform(get("/api/v1/shipments"))
+                .andExpect(status().isUnauthorized());
     }
 }

@@ -8,6 +8,7 @@ import com.tnl.logistics.model.*;
 import com.tnl.logistics.repository.*;
 import com.tnl.logistics.service.CollectionsService;
 import com.tnl.logistics.service.SoaService;
+import com.tnl.logistics.service.SseService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +26,9 @@ import java.util.stream.Collectors;
 @Service
 public class SoaServiceImpl implements SoaService {
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     private static final DateTimeFormatter MONTH_DAY_YEAR = DateTimeFormatter.ofPattern("MMM d, yyyy");
 
     private final ClientRepository clientRepository;
@@ -34,7 +38,9 @@ public class SoaServiceImpl implements SoaService {
     private final WeeklyCollectionRepository weeklyCollectionRepository;
     private final SoaBatchRepository soaBatchRepository;
     private final AppUserRepository appUserRepository;
+    private final SystemSettingRepository systemSettingRepository;
     private final CollectionsService collectionsService;
+    private final SseService sseService;
 
     public SoaServiceImpl(ClientRepository clientRepository,
                           ShipmentRepository shipmentRepository,
@@ -43,7 +49,9 @@ public class SoaServiceImpl implements SoaService {
                           WeeklyCollectionRepository weeklyCollectionRepository,
                           SoaBatchRepository soaBatchRepository,
                           AppUserRepository appUserRepository,
-                          CollectionsService collectionsService) {
+                          SystemSettingRepository systemSettingRepository,
+                          CollectionsService collectionsService,
+                          SseService sseService) {
         this.clientRepository = clientRepository;
         this.shipmentRepository = shipmentRepository;
         this.paymentRepository = paymentRepository;
@@ -51,7 +59,9 @@ public class SoaServiceImpl implements SoaService {
         this.weeklyCollectionRepository = weeklyCollectionRepository;
         this.soaBatchRepository = soaBatchRepository;
         this.appUserRepository = appUserRepository;
+        this.systemSettingRepository = systemSettingRepository;
         this.collectionsService = collectionsService;
+        this.sseService = sseService;
     }
 
     @Override
@@ -165,6 +175,16 @@ public class SoaServiceImpl implements SoaService {
         response.setClientContact(client.getContactNumber());
         response.setClientEmail(client.getEmail());
 
+        SystemSetting settings = systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID)
+                .orElseGet(SystemSetting::new);
+        response.setCompanyName(settings.getCompanyName());
+        response.setCompanyAddress(settings.getCompanyAddress());
+        response.setCompanyContact(settings.getCompanyContact());
+        response.setBillingEmail(settings.getBillingEmail());
+        response.setSoaBankName(settings.getSoaBankName());
+        response.setSoaAccountName(settings.getSoaAccountName());
+        response.setSoaAccountNumber(settings.getSoaAccountNumber());
+
         response.setCycleThursday(targetThursday);
         response.setCycleRangeLabel(cycleRangeLabel);
         response.setWeekNumber(weekNumber);
@@ -182,13 +202,16 @@ public class SoaServiceImpl implements SoaService {
         response.setTotalCharges(totalCharges);
         response.setTotalPaid(totalPaid);
         response.setAmountDue(amountDue);
+        response.setStatus(existingSoa.isPresent() && amountDue.compareTo(BigDecimal.ZERO) == 0
+                ? "SETTLED"
+                : "FOR_COLLECTION");
 
         response.setItems(items);
         return response;
     }
 
     @Override
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public StatementPreviewResponse saveStatement(SaveStatementRequest request, String actingUserId) {
         if (request.getClientId() == null || request.getClientId().trim().isEmpty()) {
             throw new IllegalArgumentException("Client ID is required");
@@ -205,9 +228,19 @@ public class SoaServiceImpl implements SoaService {
         LocalDateTime cycleStart = cycleStartLocalDate.atStartOfDay();
         LocalDateTime cycleEnd = targetThursday.atTime(23, 59, 59, 999999999);
 
+        // Match payment lock order: shipments, statement, collection, then payments.
+        List<Shipment> rawShipments = shipmentRepository.findByClientAndCycleForUpdate(client.getClientId(), cycleStart, cycleEnd);
+        rawShipments.forEach(shipment -> entityManager.refresh(shipment, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE));
+        Optional<Soa> existingOpt = soaRepository.findByClientAndStatementDateForUpdate(client.getClientId(), targetThursday);
+        existingOpt.ifPresent(statement -> entityManager.refresh(statement, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE));
+
         // 1. Ensure WeeklyCollection record exists
         String collectionId = "COL-" + client.getClientId() + "-" + targetThursday;
-        WeeklyCollection collection = weeklyCollectionRepository.findByClient_ClientIdAndCollectionDate(client.getClientId(), targetThursday)
+        WeeklyCollection collection = weeklyCollectionRepository.findByClientAndCollectionDateForUpdate(client.getClientId(), targetThursday)
+                .map(existingCollection -> {
+                    entityManager.refresh(existingCollection, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+                    return existingCollection;
+                })
                 .orElseGet(() -> {
                     WeeklyCollection newCol = new WeeklyCollection(
                             collectionId,
@@ -241,8 +274,6 @@ public class SoaServiceImpl implements SoaService {
                 });
 
         // 3. Compute charges and payments for cycle shipments
-        Optional<Soa> existingOpt = soaRepository.findByClient_ClientIdAndStatementDate(client.getClientId(), targetThursday);
-        List<Shipment> rawShipments = shipmentRepository.findByClient_ClientIdAndDateRegisteredBetween(client.getClientId(), cycleStart, cycleEnd);
         List<Shipment> shipments = rawShipments.stream()
                 .filter(s -> {
                     if (s.getStatementId() != null && !s.getStatementId().trim().isEmpty()) {
@@ -261,9 +292,10 @@ public class SoaServiceImpl implements SoaService {
                 .collect(Collectors.toList());
 
         BigDecimal totalPaid = BigDecimal.ZERO;
+        List<Payment> scopedPayments = shipmentIds.isEmpty() ? List.of() : paymentRepository.findByShipmentIdsForUpdate(shipmentIds);
+        scopedPayments.forEach(payment -> entityManager.refresh(payment, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE));
         if (!shipmentIds.isEmpty()) {
-            List<Payment> payments = paymentRepository.findByShipment_ShipmentIdIn(shipmentIds);
-            for (Payment p : payments) {
+            for (Payment p : scopedPayments) {
                 if (p.getAmountPaid() != null) {
                     totalPaid = totalPaid.add(p.getAmountPaid());
                 }
@@ -271,18 +303,19 @@ public class SoaServiceImpl implements SoaService {
         }
 
         BigDecimal deduction = request.getDeductionAmount() != null ? request.getDeductionAmount() : BigDecimal.ZERO;
-        if (deduction.compareTo(currentCharges) > 0) {
+        BigDecimal previousBalance = BigDecimal.ZERO;
+        BigDecimal remainingBeforeDeduction = currentCharges.add(previousBalance).subtract(totalPaid);
+        if (remainingBeforeDeduction.compareTo(BigDecimal.ZERO) < 0) {
+            remainingBeforeDeduction = BigDecimal.ZERO;
+        }
+        if (deduction.compareTo(remainingBeforeDeduction) > 0) {
             throw new IllegalArgumentException(String.format(
-                    "Deduction amount (₱%s) cannot exceed total charges (₱%s)",
+                    "Deduction amount (₱%s) cannot exceed remaining statement balance (₱%s)",
                     deduction.toPlainString(),
-                    currentCharges.toPlainString()
+                    remainingBeforeDeduction.toPlainString()
             ));
         }
-        BigDecimal previousBalance = BigDecimal.ZERO;
-        BigDecimal outstandingBalance = currentCharges.add(previousBalance).subtract(totalPaid).subtract(deduction);
-        if (outstandingBalance.compareTo(BigDecimal.ZERO) < 0) {
-            outstandingBalance = BigDecimal.ZERO;
-        }
+        BigDecimal outstandingBalance = remainingBeforeDeduction.subtract(deduction).max(BigDecimal.ZERO);
 
         int weekNumber = targetThursday.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR);
         String soaNo = formatPreviewSoaNo(client.getClientId(), targetThursday, weekNumber);
@@ -325,8 +358,7 @@ public class SoaServiceImpl implements SoaService {
             }
         }
         if (!shipmentIds.isEmpty()) {
-            List<Payment> unlinkedPayments = paymentRepository.findByShipment_ShipmentIdIn(shipmentIds);
-            for (Payment p : unlinkedPayments) {
+            for (Payment p : scopedPayments) {
                 if (p.getStatementId() == null || p.getStatementId().trim().isEmpty()) {
                     p.setStatementId(soa.getSoaNo());
                     paymentRepository.save(p);
@@ -340,6 +372,8 @@ public class SoaServiceImpl implements SoaService {
         collection.setBalance(outstandingBalance);
         collection.setStatus(outstandingBalance.compareTo(BigDecimal.ZERO) == 0 ? "PAID" : "FOR_COLLECTION");
         weeklyCollectionRepository.save(collection);
+
+        sseService.broadcastSoaUpdated(soa.getSoaNo(), client.getClientId(), shipmentIds);
 
         return getStatementPreview(client.getClientId(), targetThursday);
     }

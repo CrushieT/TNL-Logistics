@@ -114,7 +114,6 @@ export default function PrintLabelsModal({
     : brandingLoading
     ? 'LOADING BRANDING...'
     : 'BRANDING UNAVAILABLE';
-  const brandBadge = branding?.companyName ? brandTitle.trim().charAt(0) || 'T' : '?';
 
   const handlePrint = async (scope = 'ALL') => {
     if (!branding?.companyName || brandingLoading || brandingError) {
@@ -200,9 +199,6 @@ export default function PrintLabelsModal({
       {/* Brand Header */}
       <View style={styles.labelHeader}>
         <View style={styles.brandRow}>
-          <View style={styles.brandBadge}>
-            <Text style={styles.brandBadgeText}>{brandBadge}</Text>
-          </View>
           <Text style={styles.brandTitle} numberOfLines={1} ellipsizeMode="tail">{brandTitle}</Text>
         </View>
         <View style={styles.headerRight}>
@@ -535,21 +531,6 @@ const styles = StyleSheet.create({
     gap: 8,
     marginRight: 10,
     minWidth: 0,
-  },
-  brandBadge: {
-    width: 20,
-    height: 20,
-    backgroundColor: '#000000',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 2,
-    flexShrink: 0,
-  },
-  brandBadgeText: {
-    color: '#FFFFFF',
-    fontFamily: fonts.sans,
-    fontSize: 12,
-    fontWeight: '900',
   },
   brandTitle: {
     flex: 1,

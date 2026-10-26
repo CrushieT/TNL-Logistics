@@ -17,6 +17,7 @@ import { PersonalParcelSummary } from '../../../features/tracking-history/compon
 import { PersonalTrackingTimeline } from '../../../features/tracking-history/components/PersonalTrackingTimeline';
 import { trackingHistoryApi } from '../../../features/tracking-history/services/trackingHistoryApi';
 import { formatPackageDisplay } from '../../../features/tracking-history/trackingHistoryFlow.mjs';
+import { canAccessMobileRoute, MOBILE_ROUTES } from '../../../features/auth/services/roleAccess.mjs';
 
 export default function SelectedParcelHistoryScreen() {
   const router = useRouter();
@@ -32,9 +33,8 @@ export default function SelectedParcelHistoryScreen() {
   const activeControllerRef = useRef(null);
   const hasLoadedRef = useRef(false);
 
-  // Role Guard: Restrict strictly to FIELD_STAFF
   useEffect(() => {
-    if (!authLoading && user && user.role !== 'FIELD_STAFF') {
+    if (!authLoading && user && !canAccessMobileRoute(user.role, MOBILE_ROUTES.TRACKING_HISTORY)) {
       router.replace('/(main)');
     }
   }, [user, authLoading, router]);
@@ -101,7 +101,7 @@ export default function SelectedParcelHistoryScreen() {
     }, [fetchParcelHistory])
   );
 
-  if (authLoading || !user || user.role !== 'FIELD_STAFF') {
+  if (authLoading || !user || !canAccessMobileRoute(user.role, MOBILE_ROUTES.TRACKING_HISTORY)) {
     return null;
   }
 

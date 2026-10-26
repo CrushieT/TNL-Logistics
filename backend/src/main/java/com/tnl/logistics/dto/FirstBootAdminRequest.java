@@ -3,6 +3,11 @@ package com.tnl.logistics.dto;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
+import java.math.BigDecimal;
 
 /**
  * Request payload for registering the primary system administrator and configuring
@@ -36,6 +41,37 @@ public class FirstBootAdminRequest {
     @NotBlank(message = "Billing email is required")
     @Email(message = "Invalid billing email format")
     private String billingEmail;
+
+    @NotBlank(message = "SOA bank name is required")
+    @Size(max = 100, message = "SOA bank name must not exceed 100 characters")
+    @Pattern(regexp = "^[^\\p{Cc}\\p{Zl}\\p{Zp}]*$", message = "SOA bank name must be a single line without control characters")
+    private String soaBankName;
+
+    @NotBlank(message = "SOA account name is required")
+    @Size(max = 150, message = "SOA account name must not exceed 150 characters")
+    @Pattern(regexp = "^[^\\p{Cc}\\p{Zl}\\p{Zp}]*$", message = "SOA account name must be a single line without control characters")
+    private String soaAccountName;
+
+    @NotBlank(message = "SOA account number is required")
+    @Pattern(regexp = "^[0-9]{6,20}$", message = "SOA account number must contain 6 to 20 digits")
+    private String soaAccountNumber;
+
+    @NotNull(message = "Rate per kilo is required")
+    @DecimalMin(value = "0.01", message = "Rate per kilo must be at least 0.01")
+    @Digits(integer = 10, fraction = 2, message = "Rate per kilo must have at most 10 integer digits and 2 decimal places")
+    private BigDecimal ratePerKilo;
+
+    public String getSoaBankName() { return soaBankName; }
+    public void setSoaBankName(String soaBankName) { this.soaBankName = soaBankName == null ? null : soaBankName.trim(); }
+
+    public String getSoaAccountName() { return soaAccountName; }
+    public void setSoaAccountName(String soaAccountName) { this.soaAccountName = soaAccountName == null ? null : soaAccountName.trim(); }
+
+    public String getSoaAccountNumber() { return soaAccountNumber; }
+    public void setSoaAccountNumber(String soaAccountNumber) { this.soaAccountNumber = soaAccountNumber == null ? null : soaAccountNumber.trim(); }
+
+    public BigDecimal getRatePerKilo() { return ratePerKilo; }
+    public void setRatePerKilo(BigDecimal ratePerKilo) { this.ratePerKilo = ratePerKilo; }
 
     public FirstBootAdminRequest() {}
 

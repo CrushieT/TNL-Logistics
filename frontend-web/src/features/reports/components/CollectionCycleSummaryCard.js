@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors, fonts } from '../../../theme';
 
@@ -14,12 +14,12 @@ export default function CollectionCycleSummaryCard({ collectionSummary }) {
 
   // Filter or show clients with active shipments or outstanding balance
   const activeClients = items.filter(
-    (item) => (item.shipmentsCount || 0) > 0 || Number(item.balance || item.currentCharges || 0) > 0
+    (item) => (item.shipmentsCount || 0) > 0 || Number(item.balance ?? item.currentCharges ?? 0) > 0
   );
 
   const totalShipments = activeClients.reduce((sum, item) => sum + (item.shipmentsCount || 0), 0);
   const totalOutstanding = activeClients.reduce(
-    (sum, item) => sum + Number(item.balance || item.currentCharges || 0),
+    (sum, item) => sum + Number(item.balance ?? item.currentCharges ?? 0),
     0
   );
 
@@ -48,26 +48,32 @@ export default function CollectionCycleSummaryCard({ collectionSummary }) {
           <Text style={[styles.headerCell, styles.outstandingCol]}>OUTSTANDING</Text>
         </View>
 
-        {/* Table Body */}
-        {activeClients.length === 0 ? (
-          <View style={styles.emptyRow}>
-            <Text style={styles.emptyText}>No active collections for the current cycle</Text>
-          </View>
-        ) : (
-          activeClients.map((item, idx) => (
-            <View key={item.clientId || idx} style={styles.tableRow}>
-              <Text style={[styles.cellText, styles.clientCol, styles.clientName]} numberOfLines={1}>
-                {item.clientName || 'Unknown Client'}
-              </Text>
-              <Text style={[styles.cellText, styles.shipmentsCol, styles.shipmentsText]}>
-                {item.shipmentsCount || 0}
-              </Text>
-              <Text style={[styles.cellText, styles.outstandingCol, styles.outstandingText]}>
-                {formatCurrency(item.balance || item.currentCharges)}
-              </Text>
+        {/* Bounded Table Body */}
+        <ScrollView
+          style={styles.tableBody}
+          showsVerticalScrollIndicator
+          nestedScrollEnabled
+        >
+          {activeClients.length === 0 ? (
+            <View style={styles.emptyRow}>
+              <Text style={styles.emptyText}>No active collections for the current cycle</Text>
             </View>
-          ))
-        )}
+          ) : (
+            activeClients.map((item, idx) => (
+              <View key={item.clientId || idx} style={styles.tableRow}>
+                <Text style={[styles.cellText, styles.clientCol, styles.clientName]} numberOfLines={1}>
+                  {item.clientName || 'Unknown Client'}
+                </Text>
+                <Text style={[styles.cellText, styles.shipmentsCol, styles.shipmentsText]}>
+                  {item.shipmentsCount || 0}
+                </Text>
+                <Text style={[styles.cellText, styles.outstandingCol, styles.outstandingText]}>
+                  {formatCurrency(item.balance ?? item.currentCharges)}
+                </Text>
+              </View>
+            ))
+          )}
+        </ScrollView>
 
         {/* Total Footer Row */}
         {activeClients.length > 0 && (
@@ -124,6 +130,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#EEEEEE',
+  },
+  tableBody: {
+    maxHeight: 280,
+    overflowY: 'auto',
   },
   headerCell: {
     fontFamily: fonts.mono,

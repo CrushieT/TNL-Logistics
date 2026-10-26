@@ -10,8 +10,8 @@ const COLUMNS = [
   { key: 'qty', label: 'QTY', flex: 0.5, align: 'center' },
   { key: 'amountDue', label: 'AMOUNT DUE', flex: 1.0, align: 'flex-end' },
   { key: 'paid', label: 'PAID', flex: 1.0, align: 'flex-end' },
-  { key: 'balance', label: 'BALANCE', flex: 1.0, align: 'flex-end' },
-  { key: 'status', label: 'STATUS', flex: 1.0 },
+  { key: 'balance', label: 'BALANCE', flex: 1.0, align: 'flex-end', paddingRight: spacing.lg },
+  { key: 'status', label: 'STATUS', flex: 1.0, paddingLeft: spacing.lg },
   { key: 'action', label: '', flex: 1.4, align: 'flex-end' },
 ];
 
@@ -24,6 +24,7 @@ export default function PaymentsTable({
   pageSize = 20,
   onPageChange,
   onPageSizeChange,
+  canRecordPayment = true,
   onRecordPayment,
   onViewHistory,
 }) {
@@ -44,6 +45,8 @@ export default function PaymentsTable({
               { flex: col.flex },
               col.align === 'center' && styles.alignCenter,
               col.align === 'flex-end' && styles.alignRight,
+              col.paddingRight ? { paddingRight: col.paddingRight } : null,
+              col.paddingLeft ? { paddingLeft: col.paddingLeft } : null,
             ]}
           >
             {col.label}
@@ -68,10 +71,13 @@ export default function PaymentsTable({
         shipments.map((s, idx) => {
           const totalAmountNum = Number(s.totalAmount ?? s.amountDue ?? 0);
           const paidNum = Number(s.amountPaid ?? s.paid ?? 0);
-          const balanceNum = s.balance !== undefined && s.balance !== null
+          const balanceNum = s.collectibleBalance !== undefined && s.collectibleBalance !== null
+            ? Number(s.collectibleBalance)
+            : s.balance !== undefined && s.balance !== null
             ? Number(s.balance)
             : Math.max(0, totalAmountNum - paidNum);
-          const isSettled = balanceNum <= 0 || (s.payment && s.payment.toLowerCase() === 'paid');
+          const financialStatus = s.financialStatus || s.payment || 'Unpaid';
+          const isSettled = financialStatus === 'Settled' || financialStatus === 'Paid';
 
           return (
             <View
@@ -107,13 +113,30 @@ export default function PaymentsTable({
               </View>
 
               {/* Balance */}
-              <View style={[styles.cell, { flex: COLUMNS[5].flex, alignItems: 'flex-end' }]}>
+              <View
+                style={[
+                  styles.cell,
+                  {
+                    flex: COLUMNS[5].flex,
+                    alignItems: 'flex-end',
+                    paddingRight: COLUMNS[5].paddingRight,
+                  },
+                ]}
+              >
                 <Text style={styles.balanceText}>{formatCurrency(balanceNum)}</Text>
               </View>
 
               {/* Payment Status Badge */}
-              <View style={[styles.cell, { flex: COLUMNS[6].flex }]}>
-                <StatusBadge value={s.payment || 'Unpaid'} kind="payment" />
+              <View
+                style={[
+                  styles.cell,
+                  {
+                    flex: COLUMNS[6].flex,
+                    paddingLeft: COLUMNS[6].paddingLeft,
+                  },
+                ]}
+              >
+                <StatusBadge value={financialStatus} kind="payment" />
               </View>
 
               {/* Action Column */}
@@ -138,6 +161,7 @@ export default function PaymentsTable({
                       </View>
                     ) : (
                       <Pressable
+                        disabled={!canRecordPayment}
                         onPress={() => onRecordPayment?.(s)}
                         style={({ hovered }) => [
                           styles.recordActionBtn,
@@ -205,12 +229,12 @@ export default function PaymentsTable({
 
 const webPageSizeStyle = {
   fontFamily: fonts.mono,
-  fontSize: 11.5,
+  fontSize: 12.5,
   color: colors.inkSoft,
   backgroundColor: '#FAF9F5',
   border: `1px solid ${colors.border}`,
   borderRadius: radius.sm,
-  padding: '5px 8px',
+  padding: '6px 10px',
   outline: 'none',
   cursor: 'pointer',
 };
@@ -234,7 +258,7 @@ const styles = StyleSheet.create({
   },
   headerCell: {
     fontFamily: fonts.mono,
-    fontSize: 10.5,
+    fontSize: 11.5,
     fontWeight: '700',
     color: colors.inkFaint,
     letterSpacing: 0.8,
@@ -262,35 +286,35 @@ const styles = StyleSheet.create({
   },
   shipmentId: {
     fontFamily: fonts.mono,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.ink,
   },
   clientName: {
     fontFamily: fonts.sans,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.ink,
   },
   qtyText: {
     fontFamily: fonts.mono,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.ink,
   },
   amountDueText: {
     fontFamily: fonts.mono,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.ink,
   },
   paidText: {
     fontFamily: fonts.mono,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.inkSoft,
   },
   balanceText: {
     fontFamily: fonts.mono,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.ink,
   },
@@ -302,7 +326,7 @@ const styles = StyleSheet.create({
   },
   settledText: {
     fontFamily: fonts.sans,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.inkFaint,
     fontWeight: '500',
   },
@@ -340,7 +364,7 @@ const styles = StyleSheet.create({
   },
   viewActionText: {
     fontFamily: fonts.sans,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.ink,
   },
@@ -361,7 +385,7 @@ const styles = StyleSheet.create({
   },
   recordActionText: {
     fontFamily: fonts.sans,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: '#C2410C',
   },
@@ -409,7 +433,7 @@ const styles = StyleSheet.create({
   },
   paginationText: {
     fontFamily: fonts.mono,
-    fontSize: 11.5,
+    fontSize: 12.5,
     color: colors.inkSoft,
   },
   paginationStrong: {

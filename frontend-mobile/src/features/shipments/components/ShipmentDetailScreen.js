@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { colors, spacing, typography } from '../../../theme';
+import { colors, getParcelStatusColor, spacing, typography } from '../../../theme';
 import { shipmentApi } from '../services/shipmentApi';
 import { StatusModal } from '../../../components/common/StatusModal';
 import { BackButton } from '../../../components/common/BackButton';
@@ -271,10 +271,19 @@ export function ShipmentDetailScreen({ shipmentId }) {
               </View>
 
               <View style={styles.unitRight}>
-                <View style={styles.unitBadge}>
-                  <View style={styles.unitBadgeDot} />
-                  <Text style={styles.unitBadgeText}>{item.currentStatus || item.status || 'QR Generated'}</Text>
-                </View>
+                {(() => {
+                  const unitStatus = item.currentStatus || item.status || 'QR Generated';
+                  const statusColor = getParcelStatusColor(unitStatus, item.lost);
+                  return (
+                    <View style={[styles.unitBadge, item.lost ? styles.lossBadge : { borderColor: statusColor }]}>
+                      <View style={[styles.unitBadgeDot, item.lost ? styles.lossBadgeDot : { backgroundColor: statusColor }]} />
+                      <Text style={[styles.unitBadgeText, item.lost ? styles.lossBadgeText : { color: statusColor }]}>
+                        {item.lost ? 'Lost' : unitStatus}
+                      </Text>
+                    </View>
+                  );
+                })()}
+                {item.lost && <Text style={styles.lastConfirmedStatus}>Last confirmed: {item.status}</Text>}
 
                 <View style={[styles.unitBadge, isPrinted ? styles.badgePrinted : styles.badgeNotPrinted]}>
                   <View style={[styles.unitBadgeDot, isPrinted ? styles.dotPrinted : styles.dotNotPrinted]} />
@@ -479,6 +488,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 6,
   },
+  lastConfirmedStatus: { ...typography.mono, color: colors.inkSoft, textAlign: 'right' },
+  lossBadge: { borderColor: colors.danger, backgroundColor: colors.dangerSoft },
+  lossBadgeDot: { backgroundColor: colors.danger },
+  lossBadgeText: { color: colors.danger, fontWeight: '800' },
   unitBadge: {
     flexDirection: 'row',
     alignItems: 'center',

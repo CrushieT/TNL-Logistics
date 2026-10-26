@@ -17,7 +17,7 @@ export function OfficeDashboard({ user, onAccount, onLock }) {
       <View style={styles.brandCard}>
         <Image source={require('../../../../assets/tracking-logo.png')} style={styles.brandLogo} resizeMode="contain" />
         <Text style={styles.brandTitle}>TNL LOGISTICS</Text>
-        <Text style={styles.brandSubtitle}>Office Intake & Dispatch Console</Text>
+        <Text style={styles.brandSubtitle}>Receiving Intake & Dispatch Console</Text>
         <View style={styles.divider} />
         <PressableScale contentStyle={styles.statusRow} onPress={() => router.push('/(main)/printer')} activeScale={0.98} accessibilityRole="button" accessibilityLabel="Thermal printer setup">
           <View style={[styles.statusDot, { backgroundColor: isConnected ? colors.success : colors.danger }]} />
@@ -33,7 +33,7 @@ export function OfficeDashboard({ user, onAccount, onLock }) {
         <View style={styles.accountInfo}><Text style={styles.accountTitle}>ACCOUNT & SHIFT</Text><Text style={styles.accountSubtitle}>Profile, device access and security</Text></View>
         <Icon source="chevron-right" size={20} color={colors.inkFaint} />
       </PressableScale>
-      <View style={styles.footer}><Text style={styles.footerText}>TNL MOBILE · AUTHENTICATED OFFICE ACCESS</Text></View>
+      <View style={styles.footer}><Text style={styles.footerText}>TNL MOBILE · AUTHENTICATED RECEIVING ACCESS</Text></View>
     </ScrollView>
   );
 }

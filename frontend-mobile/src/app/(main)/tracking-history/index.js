@@ -23,16 +23,14 @@ import {
   encodeTrackingId,
   HISTORY_PAGE_SIZE,
   replacePageZeroEvents,
+  normalizeHistoryPage,
 } from '../../../features/tracking-history/trackingHistoryFlow.mjs';
 import { createTrackingHistoryRequestCoordinator } from '../../../features/tracking-history/trackingHistoryRequestCoordinator.mjs';
-import { useOfflineSync } from '../../../features/offline-sync/context/OfflineSyncContext';
-import { summarizeOfflineQueue } from '../../../features/offline-sync/offlineQueueFlow.mjs';
+import { canAccessMobileRoute, MOBILE_ROUTES } from '../../../features/auth/services/roleAccess.mjs';
 
 export default function TrackingHistoryScreen() {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
-  const { rows: offlineRows, syncRevision, otherOwnerCount } = useOfflineSync();
-  const offlineCounts = summarizeOfflineQueue(offlineRows);
 
   const [metrics, setMetrics] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
@@ -48,8 +46,7 @@ export default function TrackingHistoryScreen() {
   const [activeSearch, setActiveSearch] = useState('');
 
   const [currentPage, setCurrentPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalElements, setTotalElements] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [appendError, setAppendError] = useState(null);
 
@@ -63,9 +60,8 @@ export default function TrackingHistoryScreen() {
   }
   const requestCoordinator = requestCoordinatorRef.current;
 
-  // Role Guard: Restrict strictly to FIELD_STAFF
   useEffect(() => {
-    if (!authLoading && user && user.role !== 'FIELD_STAFF') {
+    if (!authLoading && user && !canAccessMobileRoute(user.role, MOBILE_ROUTES.TRACKING_HISTORY)) {
       router.replace('/(main)');
     }
   }, [user, authLoading, router]);
@@ -116,11 +112,10 @@ export default function TrackingHistoryScreen() {
 
       if (!requestCoordinator.isCurrent(requestToken)) return;
 
-      const incoming = data?.content || [];
-      setEvents(replacePageZeroEvents(incoming));
-      setCurrentPage(data?.page?.number ?? data?.number ?? 0);
-      setTotalPages(data?.page?.totalPages ?? data?.totalPages ?? 0);
-      setTotalElements(data?.page?.totalElements ?? data?.totalElements ?? 0);
+      const acceptedPage = normalizeHistoryPage(data, 0);
+      setEvents(replacePageZeroEvents(acceptedPage.content));
+      setCurrentPage(acceptedPage.number);
+      setHasNext(acceptedPage.hasNext);
       setActiveSearch(search);
       activeSearchRef.current = search;
       setRefreshError(null);
@@ -145,7 +140,7 @@ export default function TrackingHistoryScreen() {
   const loadMoreEvents = useCallback(async () => {
     if (searchDebounceTimerRef.current) return;
     if (searchQueryRef.current !== activeSearchRef.current) return;
-    if (currentPage >= totalPages - 1) return;
+    if (!hasNext) return;
 
     const requestToken = requestCoordinator.beginPagination();
     if (!requestToken) return;
@@ -167,11 +162,10 @@ export default function TrackingHistoryScreen() {
 
       if (!requestCoordinator.isCurrent(requestToken)) return;
 
-      const incoming = data?.content || [];
-      setEvents((prev) => appendUniqueEvents(prev, incoming));
-      setCurrentPage(data?.page?.number ?? data?.number ?? nextPage);
-      setTotalPages(data?.page?.totalPages ?? data?.totalPages ?? totalPages);
-      setTotalElements(data?.page?.totalElements ?? data?.totalElements ?? totalElements);
+      const acceptedPage = normalizeHistoryPage(data, nextPage);
+      setEvents((prev) => appendUniqueEvents(prev, acceptedPage.content));
+      setCurrentPage(acceptedPage.number);
+      setHasNext(acceptedPage.hasNext);
     } catch (err) {
       if (err.name === 'CanceledError' || err.name === 'AbortError') return;
       if (!requestCoordinator.isCurrent(requestToken)) return;
@@ -181,7 +175,7 @@ export default function TrackingHistoryScreen() {
         setLoadingMore(false);
       }
     }
-  }, [currentPage, requestCoordinator, totalElements, totalPages]);
+  }, [currentPage, requestCoordinator, hasNext]);
 
   // Refresh data on screen focus
   useFocusEffect(
@@ -199,7 +193,7 @@ export default function TrackingHistoryScreen() {
         metricsControllerRef.current = null;
         setLoadingMore(false);
       };
-    }, [fetchMetrics, fetchPageZero, requestCoordinator, syncRevision])
+    }, [fetchMetrics, fetchPageZero, requestCoordinator])
   );
 
   // Debounced search effect
@@ -233,22 +227,12 @@ export default function TrackingHistoryScreen() {
     router.push(`/(main)/tracking-history/${encoded}`);
   };
 
-  if (authLoading || !user || user.role !== 'FIELD_STAFF') {
+  if (authLoading || !user || !canAccessMobileRoute(user.role, MOBILE_ROUTES.TRACKING_HISTORY)) {
     return null;
   }
 
   const renderHeader = () => (
     <View>
-      {offlineRows.length > 0 && (
-        <TouchableOpacity style={styles.offlineBanner} onPress={() => router.push('/(main)/offline-queue')}>
-          <Text style={styles.offlineBannerText}>{offlineCounts.pending + offlineCounts.retryable} PENDING | {offlineCounts.terminal} NEED REVIEW</Text>
-          <Text style={styles.offlineBannerAction}>VIEW QUEUE</Text>
-        </TouchableOpacity>
-      )}
-      {otherOwnerCount > 0 && <TouchableOpacity style={styles.offlineBanner} onPress={() => router.push('/(main)/offline-queue')}>
-        <Text style={styles.offlineBannerText}>{otherOwnerCount} SCAN{otherOwnerCount === 1 ? '' : 'S'} FROM ANOTHER ACCOUNT ON THIS DEVICE</Text>
-        <Text style={styles.offlineBannerAction}>VIEW QUEUE</Text>
-      </TouchableOpacity>}
       <PersonalScanMetrics
         metrics={metrics}
         isLoading={metricsLoading}
@@ -424,19 +408,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
-  offlineBanner: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 4,
-    backgroundColor: colors.warningSoft,
-    borderWidth: 1,
-    borderColor: colors.warning,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  offlineBannerText: { color: colors.warning, fontWeight: '800', fontSize: 11 },
-  offlineBannerAction: { color: colors.warning, fontWeight: '800', fontSize: 11 },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',

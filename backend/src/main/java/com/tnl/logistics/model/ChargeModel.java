@@ -5,5 +5,6 @@ package com.tnl.logistics.model;
  */
 public enum ChargeModel {
     FLAT,
-    PER_PARCEL
+    PER_PARCEL,
+    PER_KILO
 }

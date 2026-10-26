@@ -1,6 +1,7 @@
 package com.tnl.logistics.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tnl.logistics.model.UserRole;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import javax.crypto.Mac;
@@ -147,8 +148,43 @@ public class JwtTokenProvider {
     }
 
     public static String generateToken(String userId, String role, Integer tokenVersion, long iatSeconds, long expSeconds, Long authTimeSeconds) {
+        return generateClaimsToken(userId, role, tokenVersion, iatSeconds, expSeconds, authTimeSeconds, Map.of());
+    }
+
+    public static String generateMobileToken(String userId, String role, Integer tokenVersion, Long bindingId, Long bindingVersion) {
+        long nowSeconds = System.currentTimeMillis() / 1000;
+        return generateMobileToken(userId, role, tokenVersion, bindingId, bindingVersion,
+                nowSeconds, nowSeconds + staffExpirationMs / 1000);
+    }
+
+    public static String generateMobileToken(String userId, String role, Integer tokenVersion, Long bindingId,
+            Long bindingVersion, long issuedAt, long expiresAt) {
+        return generateClaimsToken(userId, role, tokenVersion, issuedAt, expiresAt, null,
+                Map.of("purpose", "MOBILE", "bid", bindingId, "bver", bindingVersion));
+    }
+
+    public static String generatePasswordChangeToken(String userId, String role, Integer tokenVersion) {
+        long nowSeconds = System.currentTimeMillis() / 1000;
+        return generateClaimsToken(userId, role, tokenVersion, nowSeconds,
+                nowSeconds + staffExpirationMs / 1000, null, Map.of("purpose", "PASSWORD_CHANGE"));
+    }
+
+    public static String replaceSessionToken(String previousToken, String userId, String role, Integer tokenVersion) {
+        if (isAdminRole(role)) return generateToken(userId, role, tokenVersion);
+        if ("PASSWORD_CHANGE".equals(getSessionPurpose(previousToken))) {
+            return generatePasswordChangeToken(userId, role, tokenVersion);
+        }
+        return generateMobileToken(userId, role, tokenVersion,
+                getBindingId(previousToken), getBindingVersion(previousToken));
+    }
+
+    private static String generateClaimsToken(String userId, String role, Integer tokenVersion, long iatSeconds,
+            long expSeconds, Long authTimeSeconds, Map<String, Object> sessionClaims) {
         if (secret == null) {
             throw new IllegalStateException("JWT secret has not been configured. Ensure jwt.secret is provided.");
+        }
+        if (!isSupportedRole(role)) {
+            throw new IllegalArgumentException("JWT role is not supported.");
         }
         try {
             Map<String, Object> header = new HashMap<>();
@@ -162,6 +198,7 @@ public class JwtTokenProvider {
             payload.put("ver", tokenVersion != null ? tokenVersion : 1);
             payload.put("iat", iatSeconds);
             payload.put("exp", expSeconds);
+            payload.putAll(sessionClaims);
             if (authTimeSeconds != null) {
                 payload.put("auth_time", authTimeSeconds);
             } else if (isAdminRole(role)) {
@@ -216,6 +253,9 @@ public class JwtTokenProvider {
                 return false;
             }
             if (iat == null) {
+                return false;
+            }
+            if (!isSupportedRole(role)) {
                 return false;
             }
 
@@ -281,6 +321,17 @@ public class JwtTokenProvider {
 
             return true;
         } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean isSupportedRole(String role) {
+        if (role == null || role.isBlank()) {
+            return false;
+        }
+        try {
+            return UserRole.valueOf(role).isTargetRole();
+        } catch (IllegalArgumentException exception) {
             return false;
         }
     }
@@ -369,6 +420,31 @@ public class JwtTokenProvider {
             Number authTime = (Number) claims.get("auth_time");
             return authTime != null ? authTime.longValue() : null;
         } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public static String getSessionPurpose(String token) {
+        Object purpose = readSessionClaim(token, "purpose");
+        return purpose instanceof String ? (String) purpose : null;
+    }
+
+    public static Long getBindingId(String token) { return readPositiveLongClaim(token, "bid"); }
+
+    public static Long getBindingVersion(String token) { return readPositiveLongClaim(token, "bver"); }
+
+    private static Long readPositiveLongClaim(String token, String name) {
+        Object value = readSessionClaim(token, name);
+        if (!(value instanceof Integer) && !(value instanceof Long)) return null;
+        long numericValue = ((Number) value).longValue();
+        return numericValue > 0 ? numericValue : null;
+    }
+
+    private static Object readSessionClaim(String token, String name) {
+        try {
+            String payload = new String(Base64.getUrlDecoder().decode(token.split("\\.")[1]), StandardCharsets.UTF_8);
+            return objectMapper.readValue(payload, Map.class).get(name);
+        } catch (Exception exception) {
             return null;
         }
     }

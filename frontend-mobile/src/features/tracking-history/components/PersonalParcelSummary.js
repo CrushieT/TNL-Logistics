@@ -1,19 +1,22 @@
 import React from 'react';
 import { StyleSheet, View, Text, Platform } from 'react-native';
 import { colors, typography } from '../../../theme';
-import { SyncStatusBadge } from './SyncStatusBadge';
 import { formatPackageDisplay, resolveTrackingStatusDisplay } from '../trackingHistoryFlow.mjs';
 
 function getStatusBadgeStyle(statusCode) {
   switch (statusCode) {
     case 'REGISTERED':
-      return { borderColor: '#2563EB', textColor: '#2563EB', dotColor: '#2563EB' };
-    case 'ARRIVED_AT_TNL':
-      return { borderColor: '#16A34A', textColor: '#16A34A', dotColor: '#16A34A' };
+      return { borderColor: '#CBD5E1', textColor: '#475569', dotColor: '#64748B' };
     case 'QR_GENERATED':
+      return { borderColor: '#BFDBFE', textColor: colors.info, dotColor: colors.info };
     case 'LOADED_ON_TRUCK':
+      return { borderColor: '#FDE68A', textColor: colors.amber, dotColor: colors.amber };
+    case 'ARRIVED_AT_TNL':
+      return { borderColor: '#99F6E4', textColor: colors.teal, dotColor: colors.teal };
     case 'LOADED_TO_HAULER':
+      return { borderColor: '#DDD6FE', textColor: colors.purple, dotColor: colors.purple };
     case 'COMPLETED':
+      return { borderColor: '#B8E2C8', textColor: colors.success, dotColor: colors.success };
     default:
       return { borderColor: colors.borderStrong, textColor: colors.ink, dotColor: null };
   }
@@ -38,7 +41,9 @@ export function PersonalParcelSummary({ parcel }) {
       : parcel.currentVehicleId
     : null;
 
-  const statusBadgeStyle = getStatusBadgeStyle(parcel.currentStatusCode);
+  const statusBadgeStyle = parcel.lost
+    ? { borderColor: colors.danger, textColor: colors.danger, dotColor: colors.danger }
+    : getStatusBadgeStyle(parcel.currentStatusCode);
   const isLabelPrinted = parcel.labelStatusCode === 'PRINTED' || parcel.labelStatusCode === 'REPRINTED';
 
   return (
@@ -68,13 +73,17 @@ export function PersonalParcelSummary({ parcel }) {
 
       <View style={styles.statusRow}>
         <Text style={styles.statusFieldLabel}>Current Status</Text>
-        <View style={[styles.statusBadge, { borderColor: statusBadgeStyle.borderColor }]}>
-          {statusBadgeStyle.dotColor && (
-            <View style={[styles.statusDot, { backgroundColor: statusBadgeStyle.dotColor }]} />
-          )}
-          <Text style={[styles.statusBadgeText, { color: statusBadgeStyle.textColor }]}>
-            {currentStatusDisplay}
-          </Text>
+        <View style={styles.statusStack}>
+          <View style={[styles.statusBadge, { borderColor: statusBadgeStyle.borderColor },
+            parcel.lost && styles.lostBadge]}>
+            {statusBadgeStyle.dotColor && (
+              <View style={[styles.statusDot, { backgroundColor: statusBadgeStyle.dotColor }]} />
+            )}
+            <Text style={[styles.statusBadgeText, { color: statusBadgeStyle.textColor }]}>
+              {parcel.lost ? 'Lost' : currentStatusDisplay}
+            </Text>
+          </View>
+          {parcel.lost && <Text style={styles.lastConfirmedStatus}>Last confirmed: {currentStatusDisplay}</Text>}
         </View>
       </View>
 
@@ -98,11 +107,6 @@ export function PersonalParcelSummary({ parcel }) {
             {`Label: ${labelStatusDisplay}`}
           </Text>
         </View>
-      </View>
-
-      <View style={styles.statusRow}>
-        <Text style={styles.statusFieldLabel}>Sync Status</Text>
-        <SyncStatusBadge syncStatus="SYNCED" />
       </View>
     </View>
   );
@@ -179,6 +183,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 6,
   },
+  statusStack: { alignItems: 'flex-end', gap: 4, flexShrink: 1 },
+  lostBadge: { backgroundColor: colors.dangerSoft },
+  lastConfirmedStatus: { ...typography.mono, color: colors.inkSoft, textAlign: 'right' },
   statusFieldLabel: {
     fontSize: 13,
     color: colors.inkSoft,

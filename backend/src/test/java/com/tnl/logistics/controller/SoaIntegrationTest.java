@@ -3,6 +3,7 @@ package com.tnl.logistics.controller;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -57,8 +58,17 @@ public class SoaIntegrationTest {
     @Autowired
     private SoaRepository soaRepository;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
     @BeforeEach
     void setUp() {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client != null) {
             client.setActive(true);
@@ -76,6 +86,52 @@ public class SoaIntegrationTest {
         if (!clientRepository.existsById("CL-SOA-001")) {
             clientRepository.save(new Client("CL-SOA-001", "SOA Test Client", "Baguio", "09170000099", "soa@test.com", ChargeModel.FLAT, true));
         }
+    }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void partialDeductionCapsPaymentAndBothSummaryEndpoints() throws Exception {
+        ShipmentRegistrationRequest request = new ShipmentRegistrationRequest();
+        request.setClientId("CL-SOA-001");
+        request.setRecipientAddress("Baguio City Center");
+        request.setRecipientContact("09173334444");
+        request.setQuantity(1);
+        request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        request.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        request.setExpectedVolumetricDivisor(5000);
+        request.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("5.00"),
+                BigDecimal.TEN, BigDecimal.TEN, BigDecimal.TEN)));
+        var result = mockMvc.perform(post("/api/v1/shipments").contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request))).andExpect(status().isCreated()).andReturn();
+        String shipmentId = objectMapper.readTree(result.getResponse().getContentAsString()).get("shipmentId").asText();
+        mockMvc.perform(post("/api/v1/soa/save").contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new SaveStatementRequest("CL-SOA-001", LocalDate.now(),
+                        new BigDecimal("300.00"), "Approved adjustment", "Collector"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.amountDue").value(200.00));
+        mockMvc.perform(get("/api/v1/payments/shipment/" + shipmentId)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.collectibleBalance").value(200.00))
+                .andExpect(jsonPath("$.balance").value(500.00))
+                .andExpect(jsonPath("$.paymentStatus").value("Unpaid"));
+        mockMvc.perform(get("/api/v1/shipments").param("search", shipmentId)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].collectibleBalance").value(200.00));
+        mockMvc.perform(post("/api/v1/payments").contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new PaymentRecordRequest(shipmentId,
+                        new BigDecimal("500.00"), PaymentMethod.CASH, null, LocalDate.now(), null))))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/payments/shipment/" + shipmentId)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.payments").isEmpty()).andExpect(jsonPath("$.collectibleBalance").value(200.00));
+        for (int paymentNumber = 0; paymentNumber < 2; paymentNumber++) {
+            mockMvc.perform(post("/api/v1/payments").contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(new PaymentRecordRequest(shipmentId,
+                            new BigDecimal("100.00"), PaymentMethod.CASH, null, LocalDate.now(), null))))
+                    .andExpect(status().isCreated());
+        }
+        mockMvc.perform(get("/api/v1/payments/shipment/" + shipmentId)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.collectibleBalance").value(0.00))
+                .andExpect(jsonPath("$.balance").value(300.00))
+                .andExpect(jsonPath("$.paymentStatus").value("Partial"))
+                .andExpect(jsonPath("$.financialStatus").value("Settled"))
+                .andExpect(jsonPath("$.payments.length()").value(2));
     }
 
     @Test
@@ -100,7 +156,7 @@ public class SoaIntegrationTest {
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
         shipmentReq.setClientId("CL-001");
         shipmentReq.setRecipientName("SOA Test Consignee");
-        shipmentReq.setRecipientContact("0917-888-0001");
+        shipmentReq.setRecipientContact("09178880001");
         shipmentReq.setRecipientAddress("Baguio City Center");
         shipmentReq.setRoute("Manila -> Baguio");
         shipmentReq.setDescription("Textile Goods");
@@ -110,11 +166,14 @@ public class SoaIntegrationTest {
         shipmentReq.setOtherCharges(BigDecimal.ZERO);
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipmentReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipmentReq.setExpectedVolumetricDivisor(5000);
         shipmentReq.setParcels(List.of(
-                new ParcelUnitRequest(1, new BigDecimal("3.0"), new BigDecimal("20"), new BigDecimal("20"), new BigDecimal("20"))
+                new ParcelUnitRequest(1, new BigDecimal("12.0"), new BigDecimal("20"), new BigDecimal("20"), new BigDecimal("20"))
         ));
 
         mockMvc.perform(post("/api/v1/shipments")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(shipmentReq)))
                 .andExpect(status().isCreated());
@@ -156,15 +215,26 @@ public class SoaIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "USR-FIELD", roles = {"FIELD_STAFF"})
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
     void testAuthorizedCollectorsEndpoint() throws Exception {
         mockMvc.perform(get("/api/v1/soa/collectors"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray());
+        mockMvc.perform(get("/api/v1/soa/collectors")
+                        .with(user("USR-FIELD").roles("COURIER_STAFF")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+        mockMvc.perform(get("/api/v1/soa/collectors")
+                        .with(user("USR-HAULER").roles("DISPATCH_STAFF")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+        mockMvc.perform(get("/api/v1/soa/collectors")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
+                .andExpect(status().isForbidden());
     }
 
     @Test
-    @WithMockUser(username = "USR-FIELD", roles = {"FIELD_STAFF"})
+    @WithMockUser(username = "USR-COURIER", roles = {"COURIER_STAFF"})
     void testFieldStaffForbiddenFromSoaManagement() throws Exception {
         SaveStatementRequest saveReq = new SaveStatementRequest(
                 "CL-001",
@@ -185,7 +255,7 @@ public class SoaIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "USR-OFFICE", roles = {"OFFICE_STAFF"})
+    @WithMockUser(username = "USR-RECEIVING", roles = {"RECEIVING_STAFF"})
     void testSaveStatementValidationConstraints() throws Exception {
         // 1. Negative deduction amount
         SaveStatementRequest negativeDeduction = new SaveStatementRequest(
@@ -280,12 +350,12 @@ public class SoaIntegrationTest {
 
     @Test
     @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
-    void testSaveStatementDeductionExceedingTotalChargesRejected() throws Exception {
+    void testSaveStatementDeductionExceedingRemainingBalanceRejected() throws Exception {
         // Register a shipment with 1200.00 total charges
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
         shipmentReq.setClientId("CL-SOA-001");
         shipmentReq.setRecipientName("Consignee Limit Test");
-        shipmentReq.setRecipientContact("0917-111-2233");
+        shipmentReq.setRecipientContact("09171112233");
         shipmentReq.setRecipientAddress("Baguio City Center");
         shipmentReq.setRoute("Manila -> Baguio");
         shipmentReq.setDescription("Textile Goods");
@@ -295,16 +365,19 @@ public class SoaIntegrationTest {
         shipmentReq.setOtherCharges(BigDecimal.ZERO);
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipmentReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipmentReq.setExpectedVolumetricDivisor(5000);
         shipmentReq.setParcels(List.of(
-                new ParcelUnitRequest(1, new BigDecimal("2.5"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))
+                new ParcelUnitRequest(1, new BigDecimal("12.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))
         ));
 
         mockMvc.perform(post("/api/v1/shipments")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(shipmentReq)))
                 .andExpect(status().isCreated());
 
-        // Attempt to save deduction of 1500.00 (which exceeds 1200.00 total charges)
+        // Attempt to save deduction of 1500.00 (which exceeds 1200.00 remaining balance)
         SaveStatementRequest excessiveDeduction = new SaveStatementRequest(
                 "CL-SOA-001",
                 LocalDate.now(),
@@ -318,7 +391,114 @@ public class SoaIntegrationTest {
                         .content(objectMapper.writeValueAsString(excessiveDeduction)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("Bad Request"))
-                .andExpect(jsonPath("$.message", containsString("cannot exceed total charges")));
+                .andExpect(jsonPath("$.message", containsString("cannot exceed remaining statement balance")));
+    }
+
+    @Test
+    @WithMockUser(username = "USR-ADMIN", roles = {"ADMIN"})
+    void testZeroBalanceDeductionSettlesWithoutCreatingPaymentAndCanReopen() throws Exception {
+        ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
+        shipmentReq.setClientId("CL-SOA-001");
+        shipmentReq.setRecipientName("Settlement Test Consignee");
+        shipmentReq.setRecipientContact("09173334444");
+        shipmentReq.setRecipientAddress("Baguio City Center");
+        shipmentReq.setRoute("Manila -> Baguio");
+        shipmentReq.setDescription("Settlement Test");
+        shipmentReq.setQuantity(1);
+        shipmentReq.setChargeModel(ChargeModel.FLAT);
+        shipmentReq.setShippingFee(new BigDecimal("500.00"));
+        shipmentReq.setOtherCharges(BigDecimal.ZERO);
+        shipmentReq.setPaidAtRegistration(false);
+        shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipmentReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipmentReq.setExpectedVolumetricDivisor(5000);
+        shipmentReq.setParcels(List.of(
+                new ParcelUnitRequest(1, new BigDecimal("5.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))
+        ));
+
+        var registration = mockMvc.perform(post("/api/v1/shipments")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(shipmentReq)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String shipmentId = objectMapper.readTree(registration.getResponse().getContentAsString())
+                .get("shipmentId").asText();
+
+        SaveStatementRequest settleRequest = new SaveStatementRequest(
+                "CL-SOA-001",
+                LocalDate.now(),
+                new BigDecimal("500.00"),
+                "Approved full statement adjustment",
+                "Carlos Mendoza"
+        );
+
+        mockMvc.perform(post("/api/v1/soa/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(settleRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amountDue").value(0.00))
+                .andExpect(jsonPath("$.status").value("SETTLED"));
+
+        mockMvc.perform(get("/api/v1/shipments")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF"))
+                        .param("search", shipmentId)
+                        .param("paymentStatus", "Settled"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].shipmentId").value(shipmentId))
+                .andExpect(jsonPath("$.content[0].payment").value("Unpaid"))
+                .andExpect(jsonPath("$.content[0].financialStatus").value("Settled"))
+                .andExpect(jsonPath("$.content[0].collectibleBalance").value(0.00));
+
+        mockMvc.perform(get("/api/v1/payments/shipment/{shipmentId}", shipmentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paymentStatus").value("Unpaid"))
+                .andExpect(jsonPath("$.financialStatus").value("Settled"))
+                .andExpect(jsonPath("$.collectibleBalance").value(0.00))
+                .andExpect(jsonPath("$.statementAdjustment.amount").value(500.00))
+                .andExpect(jsonPath("$.statementAdjustment.status").value("SETTLED"))
+                .andExpect(jsonPath("$.payments").isEmpty());
+
+        PaymentRecordRequest blockedPayment = new PaymentRecordRequest(
+                shipmentId,
+                new BigDecimal("100.00"),
+                PaymentMethod.CASH,
+                "CASH-BLOCKED-001",
+                LocalDate.now(),
+                "Must be rejected while SOA is settled"
+        );
+        mockMvc.perform(post("/api/v1/payments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(blockedPayment)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message", containsString("belongs to settled statement")));
+
+        SaveStatementRequest reopenRequest = new SaveStatementRequest(
+                "CL-SOA-001",
+                LocalDate.now(),
+                new BigDecimal("300.00"),
+                "Reduced statement adjustment",
+                "Carlos Mendoza"
+        );
+        mockMvc.perform(post("/api/v1/soa/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reopenRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amountDue").value(200.00))
+                .andExpect(jsonPath("$.status").value("FOR_COLLECTION"));
+
+        PaymentRecordRequest reopenedPayment = new PaymentRecordRequest(
+                shipmentId,
+                new BigDecimal("200.00"),
+                PaymentMethod.CASH,
+                "CASH-REOPENED-001",
+                LocalDate.now(),
+                "Payment after adjustment was reduced"
+        );
+        mockMvc.perform(post("/api/v1/payments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reopenedPayment)))
+                .andExpect(status().isCreated());
     }
 
     @Test
@@ -364,7 +544,7 @@ public class SoaIntegrationTest {
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
         shipmentReq.setClientId("CL-SOA-001");
         shipmentReq.setRecipientName("Payment Sync Consignee");
-        shipmentReq.setRecipientContact("0917-222-3333");
+        shipmentReq.setRecipientContact("09172223333");
         shipmentReq.setRecipientAddress("Baguio City Center");
         shipmentReq.setRoute("Manila -> Baguio");
         shipmentReq.setDescription("Payment Sync Test");
@@ -374,11 +554,14 @@ public class SoaIntegrationTest {
         shipmentReq.setOtherCharges(BigDecimal.ZERO);
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipmentReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipmentReq.setExpectedVolumetricDivisor(5000);
         shipmentReq.setParcels(List.of(
-                new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("15"), new BigDecimal("15"), new BigDecimal("15"))
+                new ParcelUnitRequest(1, new BigDecimal("10.0"), new BigDecimal("15"), new BigDecimal("15"), new BigDecimal("15"))
         ));
 
         var regRes = mockMvc.perform(post("/api/v1/shipments")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(shipmentReq)))
                 .andExpect(status().isCreated())

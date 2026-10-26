@@ -1,31 +1,8 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
-import { colors, fonts, spacing, radius } from '../../../theme';
+import { colors, fonts, spacing, radius, collectionStyles } from '../../../theme';
 import { formatCurrency } from '../utils/collectionsUtils';
-
-const COLLECTION_STATUS_STYLES = {
-  READY_FOR_SOA: {
-    fg: '#B45309',
-    bg: '#FFFBEB',
-    border: '#FDE68A',
-    dot: '#D97706',
-    label: 'Ready for SOA',
-  },
-  SOA_GENERATED: {
-    fg: '#1D4ED8',
-    bg: '#EFF6FF',
-    border: '#BFDBFE',
-    dot: '#2563EB',
-    label: 'SOA Generated',
-  },
-  SETTLED: {
-    fg: '#15803D',
-    bg: '#F0FDF4',
-    border: '#86EFAC',
-    dot: '#16A34A',
-    label: 'Settled',
-  },
-};
+import { TableRowSkeleton } from '../../../components/common/Skeleton';
 
 export default function WeeklyCollectionsTable({
   items = [],
@@ -34,8 +11,9 @@ export default function WeeklyCollectionsTable({
   onGenerateClientSoa,
   isCurrentCycle = false,
   cycleLabel = '',
+  actionsDisabled = false,
 }) {
-  if (loading) {
+  if (loading && items.length === 0) {
     return (
       <View style={styles.card}>
         <View style={styles.tableHeader}>
@@ -48,10 +26,7 @@ export default function WeeklyCollectionsTable({
           <Text style={[styles.thCell, { flex: 1.3, textAlign: 'center' }]}>STATUS</Text>
           <Text style={[styles.thCell, { width: 170, textAlign: 'right', paddingRight: 10 }]}>ACTION</Text>
         </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color={colors.ink} style={{ marginBottom: 10 }} />
-          <Text style={styles.loadingText}>Loading collection data...</Text>
-        </View>
+        <TableRowSkeleton rows={6} columns={8} height={52} />
       </View>
     );
   }
@@ -104,7 +79,7 @@ export default function WeeklyCollectionsTable({
       {/* Table Rows */}
       {items.map((item, idx) => {
         const statusKey = item.status || (item.unbilledShipmentsCount > 0 ? 'READY_FOR_SOA' : 'SETTLED');
-        const statusConfig = COLLECTION_STATUS_STYLES[statusKey] || COLLECTION_STATUS_STYLES.READY_FOR_SOA;
+        const statusConfig = collectionStyles[statusKey] || collectionStyles.READY_FOR_SOA;
         const currentCharges = Number(item.currentCharges || item.totalCharges || 0);
         const paidAmount = Number(item.paid ?? item.totalPaid ?? item.amountPaid ?? 0);
         const balance = Number(item.balance ?? item.netAmountDue ?? 0);
@@ -212,23 +187,27 @@ export default function WeeklyCollectionsTable({
             <View style={styles.actionGroup}>
               {item.statementId || statusKey === 'SOA_GENERATED' ? (
                 <Pressable
-                  onPress={() => onReviewClient?.(item, 'VIEW_SOA')}
+                  disabled={actionsDisabled}
+                  onPress={() => !actionsDisabled && onReviewClient?.(item, 'VIEW_SOA')}
                   style={({ hovered }) => [
                     styles.viewSoaBtn,
-                    hovered && styles.viewSoaBtnHovered,
+                    actionsDisabled && styles.btnDisabled,
+                    hovered && !actionsDisabled && styles.viewSoaBtnHovered,
                   ]}
                 >
-                  <Text style={styles.viewSoaBtnText}>View SOA</Text>
+                  <Text style={[styles.viewSoaBtnText, actionsDisabled && styles.btnTextDisabled]}>View SOA</Text>
                 </Pressable>
               ) : (
                 <Pressable
-                  onPress={() => onReviewClient?.(item, 'GENERATE_SOA')}
+                  disabled={actionsDisabled}
+                  onPress={() => !actionsDisabled && onReviewClient?.(item, 'GENERATE_SOA')}
                   style={({ hovered }) => [
                     styles.reviewBtn,
-                    hovered && styles.reviewBtnHovered,
+                    actionsDisabled && styles.btnDisabled,
+                    hovered && !actionsDisabled && styles.reviewBtnHovered,
                   ]}
                 >
-                  <Text style={styles.reviewBtnText}>Generate SOA</Text>
+                  <Text style={[styles.reviewBtnText, actionsDisabled && styles.btnTextDisabled]}>Generate SOA</Text>
                 </Pressable>
               )}
             </View>
@@ -285,23 +264,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 18,
-    paddingVertical: 11,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    backgroundColor: '#FCFBFA',
+    backgroundColor: '#FAF9F5',
   },
   thCell: {
     fontFamily: fonts.mono,
-    fontSize: 10,
+    fontSize: 11.5,
     fontWeight: '700',
     color: colors.inkFaint,
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 18,
-    paddingVertical: 12,
+    paddingVertical: 14,
+    backgroundColor: colors.surface,
   },
   rowDivider: {
     borderBottomWidth: 1,
@@ -314,8 +295,8 @@ const styles = StyleSheet.create({
   },
   clientNameText: {
     fontFamily: fonts.sans,
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.ink,
   },
   codeBadge: {
@@ -328,13 +309,13 @@ const styles = StyleSheet.create({
   },
   codeBadgeText: {
     fontFamily: fonts.mono,
-    fontSize: 10.5,
+    fontSize: 11.5,
     fontWeight: '700',
     color: colors.inkSoft,
   },
   clientContactText: {
-    fontFamily: fonts.sans,
-    fontSize: 11,
+    fontFamily: fonts.mono,
+    fontSize: 12,
     color: colors.inkFaint,
     marginTop: 2,
   },
@@ -348,13 +329,14 @@ const styles = StyleSheet.create({
   },
   unbilledBadgeText: {
     fontFamily: fonts.mono,
-    fontSize: 11.5,
+    fontSize: 13,
     fontWeight: '700',
     color: colors.ink,
   },
   tdCell: {
-    fontFamily: fonts.sans,
-    fontSize: 12.5,
+    fontFamily: fonts.mono,
+    fontSize: 14,
+    fontWeight: '700',
     color: colors.ink,
   },
   monoCell: {
@@ -379,12 +361,12 @@ const styles = StyleSheet.create({
   },
   statusPillText: {
     fontFamily: fonts.sans,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
   },
   statementTag: {
     fontFamily: fonts.mono,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#1D4ED8',
     marginTop: 2,
@@ -396,7 +378,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   reviewBtn: {
-    paddingVertical: 5,
+    paddingVertical: 4,
     paddingHorizontal: 10,
     borderRadius: radius.sm,
     borderWidth: 1,
@@ -409,12 +391,12 @@ const styles = StyleSheet.create({
   },
   reviewBtnText: {
     fontFamily: fonts.sans,
-    fontSize: 11.5,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.ink,
   },
   viewSoaBtn: {
-    paddingVertical: 5,
+    paddingVertical: 4,
     paddingHorizontal: 12,
     borderRadius: radius.sm,
     borderWidth: 1,
@@ -427,8 +409,16 @@ const styles = StyleSheet.create({
   },
   viewSoaBtnText: {
     fontFamily: fonts.sans,
-    fontSize: 11.5,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: '#1D4ED8',
+  },
+  btnDisabled: {
+    opacity: 0.45,
+    borderColor: colors.border,
+    backgroundColor: '#F3F4F6',
+  },
+  btnTextDisabled: {
+    color: colors.inkFaint,
   },
 });

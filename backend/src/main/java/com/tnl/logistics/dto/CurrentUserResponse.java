@@ -5,7 +5,6 @@ public record CurrentUserResponse(
         String username,
         String fullName,
         String role,
-        String staffType,
         boolean mustChangePassword,
         boolean hasPinSet,
         MobileDeviceBindingSummary deviceBinding) {

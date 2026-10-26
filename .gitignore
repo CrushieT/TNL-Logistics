@@ -26,6 +26,8 @@ bin/
 .env.local
 .env.*.local
 *.env
+.env.loadtest
+load-tests/results/
 
 # --- Backend (Maven / Java) exclusions ---
 backend/target/
@@ -72,3 +74,9 @@ frontend-mobile/credentials.json
 frontend-mobile/*.jks
 frontend-mobile/*.keystore
 frontend-mobile/credentials
+
+# --- Simulation & Heavy Benchmark Artifacts ---
+docker-compose.sim.yml
+docker-compose.sim-seed.yml
+load-tests/heavy-simulation.js
+load-tests/breakpoint-simulation.js

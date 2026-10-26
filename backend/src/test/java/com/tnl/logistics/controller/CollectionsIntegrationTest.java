@@ -40,7 +40,7 @@ public class CollectionsIntegrationTest {
     @Autowired
     private CollectionsService collectionsService;
 
-    @Autowired
+    @org.springframework.boot.test.mock.mockito.SpyBean
     private ShipmentRepository shipmentRepository;
 
     @Autowired
@@ -215,5 +215,41 @@ public class CollectionsIntegrationTest {
 
         LocalDate start = collectionsService.calculateCycleStartDate(cycleEnd);
         assertEquals(LocalDate.of(2026, 8, 26), start, "Start date should anchor to preceding cycle + 1 day");
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testWeeklyCollectionsFailureReturnsHttp503AndStructuredErrorViaMockMvc() throws Exception {
+        org.mockito.Mockito.doThrow(new org.springframework.dao.DataAccessResourceFailureException("Simulated DB connection failure"))
+                .when(shipmentRepository).aggregateCollectionsByClient(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+
+        try {
+            mockMvc.perform(get("/api/v1/collections/weekly")
+                    .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.status").value(503))
+                    .andExpect(jsonPath("$.code").value("COLLECTIONS_UNAVAILABLE"))
+                    .andExpect(jsonPath("$.message").value("Weekly collections calculation is temporarily unavailable"));
+        } finally {
+            org.mockito.Mockito.reset(shipmentRepository);
+        }
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testCollectionCyclesFailureReturnsHttp503AndStructuredErrorViaMockMvc() throws Exception {
+        org.mockito.Mockito.doThrow(new org.springframework.dao.DataAccessResourceFailureException("Simulated DB connection failure"))
+                .when(shipmentRepository).findDistinctUnbilledRegistrationDates();
+
+        try {
+            mockMvc.perform(get("/api/v1/collections/cycles")
+                    .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.status").value(503))
+                    .andExpect(jsonPath("$.code").value("CYCLES_UNAVAILABLE"))
+                    .andExpect(jsonPath("$.message").value("Collection cycle dates are temporarily unavailable"));
+        } finally {
+            org.mockito.Mockito.reset(shipmentRepository);
+        }
     }
 }

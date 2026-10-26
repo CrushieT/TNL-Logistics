@@ -8,15 +8,27 @@ import org.springframework.data.domain.Pageable;
 
 public interface WaybillService {
 
+    void assertViewer(String actingUserId);
+
     List<WaybillShipmentOptionResponse> getShipmentOptions();
+
+    Page<WaybillShipmentOptionResponse> getShipmentOptions(String search, Pageable pageable);
+
+    Page<WaybillOptionResponse> getWaybillOptions(String search, WaybillStatus status, Pageable pageable);
 
     List<HaulerStaffOptionResponse> getHaulerStaffOptions();
 
-    WaybillManifestResponse getManifestByShipmentId(String shipmentId);
+    WaybillManifestResponse getManifestById(String waybillId);
 
-    WaybillManifestResponse sendToHauler(WaybillCreateRequest request, String actingStaffUserId);
+    List<WaybillManifestResponse> getByShipmentId(String shipmentId);
 
-    WaybillManifestResponse markSignedCompleted(String shipmentId, WaybillStatusUpdateRequest request, String actingStaffUserId);
+    List<ParcelUnitResponse> getAvailableUnits(String shipmentId);
 
-    Page<WaybillSummaryResponse> getWaybills(String search, WaybillStatus status, String hauler, Pageable pageable);
+    WaybillManifestResponse generate(WaybillGenerationRequest request, String actingStaffUserId);
+
+    WaybillManifestResponse sendToHauler(String waybillId, String actingStaffUserId);
+
+    WaybillManifestResponse markSignedCompleted(String waybillId, WaybillStatusUpdateRequest request, String actingStaffUserId);
+
+    Page<WaybillSummaryResponse> getWaybills(String search, WaybillStatus status, String client, Pageable pageable);
 }

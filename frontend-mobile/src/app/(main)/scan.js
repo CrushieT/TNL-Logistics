@@ -1,5 +1,6 @@
-import React, { useReducer, useState, useEffect, useRef, useCallback } from 'react';
+import React, { useReducer, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
+  Animated,
   StyleSheet,
   View,
   Text,
@@ -7,6 +8,8 @@ import {
   TouchableOpacity,
   Modal,
   KeyboardAvoidingView,
+  Keyboard,
+  PanResponder,
   Platform,
   ActivityIndicator
 } from 'react-native';
@@ -14,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon } from 'react-native-paper';
 import { useRouter, useNavigation, useFocusEffect } from 'expo-router';
 import { useCameraPermissions } from 'expo-camera';
+import { useNetInfo } from '@react-native-community/netinfo';
 import { useAuth } from '../../features/auth/context/AuthContext';
 import { colors, typography, spacing, radius } from '../../theme';
 import {
@@ -25,48 +29,184 @@ import {
   normalizeTrackingId,
   buildSingleScanRequest,
   buildBatchScanRequest,
-  canActivateCamera
+  canActivateCamera,
+  getScannerConnectivity,
+  isRoleTransitionAllowed,
+  validateBatchCandidate
 } from '../../features/scanner/scannerFlow.mjs';
+import {
+  createVehicleOptionRequestCoordinator,
+  appendUniqueVehicleOptions,
+  hasNextVehicleOptionPage,
+  normalizeVehicleSearch,
+  VEHICLE_OPTION_PAGE_SIZE,
+  VEHICLE_RECOMMENDATION_SIZE,
+  VEHICLE_SEARCH_DEBOUNCE_MS,
+  VEHICLE_SEARCH_MIN_LENGTH
+} from '../../features/scanner/vehicleOptionsFlow.mjs';
 import { trackingScanApi } from '../../features/scanner/services/trackingScanApi';
 import { safeHaptics } from '../../features/scanner/utils/haptics';
-import { useOfflineSync } from '../../features/offline-sync/context/OfflineSyncContext';
-import { cacheVehicles, getCachedVehicles } from '../../features/offline-sync/services/offlineQueueStore';
-import { isOfflineSingleScanBlocked } from '../../features/offline-sync/offlineQueueFlow.mjs';
 import ScanViewfinder from '../../features/scanner/components/ScanViewfinder';
 import SingleScanReview from '../../features/scanner/components/SingleScanReview';
 import BatchScanPanel from '../../features/scanner/components/BatchScanPanel';
 import ScanResultPanel from '../../features/scanner/components/ScanResultPanel';
 
+const CAMERA_HEIGHTS = [0, 160, 280];
+const CAMERA_HEIGHT_LABELS = ['Collapsed', 'Compact', 'Expanded'];
+const CAMERA_TAP_THRESHOLD = 8;
+const DEFAULT_CAMERA_HEIGHT_INDEX = CAMERA_HEIGHTS.length - 1;
+
+function findNearestCameraHeightIndex(height) {
+  return CAMERA_HEIGHTS.reduce((nearestIndex, cameraHeight, index) => (
+    Math.abs(cameraHeight - height) < Math.abs(CAMERA_HEIGHTS[nearestIndex] - height)
+      ? index
+      : nearestIndex
+  ), 0);
+}
+
 export default function ScanScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { user, isLoading: authLoading } = useAuth();
-  const { isOnline, enqueue: enqueueOfflineScan, isNativeOfflineSupported } = useOfflineSync();
+  const netInfo = useNetInfo();
+  const connectivity = getScannerConnectivity(netInfo.isConnected, netInfo.isInternetReachable);
   const [permission, requestPermission] = useCameraPermissions();
 
   const [state, dispatch] = useReducer(scannerReducer, initialScannerState);
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [isScreenFocused, setIsScreenFocused] = useState(true);
   const [cameraMountKey, setCameraMountKey] = useState(0);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [cameraHeightIndex, setCameraHeightIndex] = useState(DEFAULT_CAMERA_HEIGHT_INDEX);
 
-  // Vehicles state
+  // Vehicles state & pagination
   const [vehicles, setVehicles] = useState([]);
   const [loadingVehicles, setLoadingVehicles] = useState(false);
+  const [hasLoadedVehicleOptions, setHasLoadedVehicleOptions] = useState(false);
+  const [vehiclePage, setVehiclePage] = useState(0);
+  const [hasMoreVehicles, setHasMoreVehicles] = useState(false);
+  const [isLoadingMoreVehicles, setIsLoadingMoreVehicles] = useState(false);
+  const [vehicleLoadError, setVehicleLoadError] = useState('');
+  const [vehiclePageError, setVehiclePageError] = useState('');
+  const [vehicleSearchInput, setVehicleSearchInput] = useState('');
+  const [vehicleRecommendations, setVehicleRecommendations] = useState([]);
+  const [isLoadingVehicleRecommendations, setIsLoadingVehicleRecommendations] = useState(false);
+  const [vehicleRecommendationError, setVehicleRecommendationError] = useState('');
+  const [recommendationRetryVersion, setRecommendationRetryVersion] = useState(0);
+  const vehicleOptionCoordinatorRef = useRef(createVehicleOptionRequestCoordinator());
 
   // Synchronous guards to prevent rapid double-tap race conditions
   const scanLockRef = useRef(false);
   const submitLockRef = useRef(false);
   const cooldownTimerRef = useRef(null);
+  const cameraHeightIndexRef = useRef(DEFAULT_CAMERA_HEIGHT_INDEX);
+  const cameraDragStartHeightRef = useRef(CAMERA_HEIGHTS[DEFAULT_CAMERA_HEIGHT_INDEX]);
+  const animatedCameraHeight = useRef(
+    new Animated.Value(CAMERA_HEIGHTS[DEFAULT_CAMERA_HEIGHT_INDEX])
+  ).current;
 
   // Navigation protection refs
   const pendingNavigationActionRef = useRef(null);
   const allowLeaveRef = useRef(false);
   const abortControllerRef = useRef(null);
 
-  // Restrict screen strictly to FIELD_STAFF
+  const animateCameraToIndex = useCallback((nextIndex) => {
+    const boundedIndex = Math.max(0, Math.min(CAMERA_HEIGHTS.length - 1, nextIndex));
+    cameraHeightIndexRef.current = boundedIndex;
+    setCameraHeightIndex(boundedIndex);
+    animatedCameraHeight.stopAnimation();
+    Animated.spring(animatedCameraHeight, {
+      toValue: CAMERA_HEIGHTS[boundedIndex],
+      stiffness: 260,
+      damping: 28,
+      mass: 0.7,
+      useNativeDriver: false
+    }).start();
+  }, [animatedCameraHeight]);
+
+  const resizeCamera = useCallback((indexDelta) => {
+    animateCameraToIndex(cameraHeightIndexRef.current + indexDelta);
+  }, [animateCameraToIndex]);
+
+  const toggleCameraHeight = useCallback(() => {
+    const currentIndex = cameraHeightIndexRef.current;
+    if (currentIndex === DEFAULT_CAMERA_HEIGHT_INDEX) {
+      animateCameraToIndex(DEFAULT_CAMERA_HEIGHT_INDEX - 1);
+    } else if (currentIndex === 0) {
+      animateCameraToIndex(1);
+    } else {
+      animateCameraToIndex(DEFAULT_CAMERA_HEIGHT_INDEX);
+    }
+  }, [animateCameraToIndex]);
+
+  const cameraDividerPanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => !isKeyboardVisible,
+    onMoveShouldSetPanResponder: (_, gestureState) => (
+      !isKeyboardVisible
+      && Math.abs(gestureState.dy) >= 8
+      && Math.abs(gestureState.dy) > Math.abs(gestureState.dx)
+    ),
+    onPanResponderGrant: () => {
+      animatedCameraHeight.stopAnimation((currentHeight) => {
+        cameraDragStartHeightRef.current = currentHeight;
+      });
+    },
+    onPanResponderMove: (_, gestureState) => {
+      const nextHeight = Math.max(
+        CAMERA_HEIGHTS[0],
+        Math.min(
+          CAMERA_HEIGHTS[DEFAULT_CAMERA_HEIGHT_INDEX],
+          cameraDragStartHeightRef.current + gestureState.dy
+        )
+      );
+      animatedCameraHeight.setValue(nextHeight);
+    },
+    onPanResponderRelease: (_, gestureState) => {
+      if (Math.abs(gestureState.dy) < CAMERA_TAP_THRESHOLD) {
+        toggleCameraHeight();
+      } else {
+        const releasedHeight = Math.max(
+          CAMERA_HEIGHTS[0],
+          Math.min(
+            CAMERA_HEIGHTS[DEFAULT_CAMERA_HEIGHT_INDEX],
+            cameraDragStartHeightRef.current + gestureState.dy
+          )
+        );
+        animateCameraToIndex(findNearestCameraHeightIndex(releasedHeight));
+      }
+    },
+    onPanResponderTerminate: () => {
+      animatedCameraHeight.stopAnimation((currentHeight) => {
+        animateCameraToIndex(findNearestCameraHeightIndex(currentHeight));
+      });
+    }
+  }), [animatedCameraHeight, animateCameraToIndex, isKeyboardVisible, toggleCameraHeight]);
+
+  const handleManualInputFocus = useCallback(() => {
+    animatedCameraHeight.stopAnimation();
+    animatedCameraHeight.setValue(0);
+    setIsKeyboardVisible(true);
+  }, [animatedCameraHeight]);
+
+  const handleCameraAccessibilityAction = useCallback((event) => {
+    if (isKeyboardVisible) return;
+    if (event.nativeEvent.actionName === 'increment') {
+      resizeCamera(1);
+    } else if (event.nativeEvent.actionName === 'decrement') {
+      resizeCamera(-1);
+    } else if (event.nativeEvent.actionName === 'activate') {
+      toggleCameraHeight();
+    }
+  }, [isKeyboardVisible, resizeCamera, toggleCameraHeight]);
+
+  // Restrict screen strictly to COURIER_STAFF
   useEffect(() => {
-    if (!authLoading && user && user.role !== 'FIELD_STAFF') {
-      router.replace('/(main)');
+    if (!authLoading && user) {
+      if (user.role === 'DISPATCH_STAFF') {
+        router.replace('/(main)/waybills');
+      } else if (user.role !== 'COURIER_STAFF') {
+        router.replace('/(main)');
+      }
     }
   }, [user, authLoading, router]);
 
@@ -74,14 +214,29 @@ export default function ScanScreen() {
   useFocusEffect(
     useCallback(() => {
       setIsScreenFocused(true);
+      const keyboardShowSubscription = Keyboard.addListener('keyboardDidShow', () => {
+        animatedCameraHeight.stopAnimation();
+        animatedCameraHeight.setValue(0);
+        setIsKeyboardVisible(true);
+      });
+      const keyboardHideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+        setIsKeyboardVisible(false);
+        animateCameraToIndex(cameraHeightIndexRef.current);
+      });
+
       return () => {
+        keyboardShowSubscription.remove();
+        keyboardHideSubscription.remove();
+        animatedCameraHeight.stopAnimation();
+        animatedCameraHeight.setValue(CAMERA_HEIGHTS[cameraHeightIndexRef.current]);
         setIsScreenFocused(false);
+        setIsKeyboardVisible(false);
         setTorchEnabled(false);
         if (abortControllerRef.current) {
           abortControllerRef.current.abort();
         }
       };
-    }, [])
+    }, [animatedCameraHeight, animateCameraToIndex])
   );
 
   // Clear cooldown timer on unmount
@@ -111,25 +266,200 @@ export default function ScanScreen() {
     return unsubscribe;
   }, [navigation, state.mode, state.batchQueue.length]);
 
-  const loadVehicles = useCallback(async () => {
-    setLoadingVehicles(true);
-    try {
-      const data = await trackingScanApi.getActiveVehicles();
-      setVehicles(Array.isArray(data) ? data : []);
-      if (Array.isArray(data)) await cacheVehicles(data);
-    } catch {
-      setVehicles(await getCachedVehicles());
-    } finally {
-      setLoadingVehicles(false);
+  useEffect(() => {
+    const role = user?.role;
+    dispatch({ type: 'RECONCILE_ROLE_PERMISSIONS', payload: role });
+    if (!isRoleTransitionAllowed(role, 'LOADED_ON_TRUCK')) {
+      vehicleOptionCoordinatorRef.current.cancelAll();
+      setVehicles([]);
+      setHasLoadedVehicleOptions(false);
+      setVehiclePage(0);
+      setHasMoreVehicles(false);
+      setVehicleSearchInput('');
+      setVehicleRecommendations([]);
     }
+  }, [user?.role]);
+
+  const loadRecentVehicleOptions = useCallback(async () => {
+    if (!connectivity.isOnline) {
+      setVehicles([]);
+      setLoadingVehicles(false);
+      return;
+    }
+    if (!isRoleTransitionAllowed(user?.role, 'LOADED_ON_TRUCK')) {
+      setVehicles([]);
+      setLoadingVehicles(false);
+      return;
+    }
+    const coordinator = vehicleOptionCoordinatorRef.current;
+    const requestToken = coordinator.beginFirstPage();
+    setLoadingVehicles(true);
+    setVehicleLoadError('');
+    setVehiclePageError('');
+    try {
+      const page = await trackingScanApi.listVehicleOptions({
+        page: 0,
+        size: VEHICLE_OPTION_PAGE_SIZE,
+        signal: requestToken.signal
+      });
+      if (!coordinator.isCurrent(requestToken)) return;
+      const incoming = Array.isArray(page?.content) ? page.content : [];
+      setVehicles(appendUniqueVehicleOptions([], incoming));
+      setVehiclePage(Number.isInteger(page?.number) ? page.number : 0);
+      setHasMoreVehicles(hasNextVehicleOptionPage(page));
+      setHasLoadedVehicleOptions(true);
+    } catch {
+      if (!coordinator.isCurrent(requestToken)) return;
+      setVehicleLoadError('Unable to load active vehicles.');
+    } finally {
+      if (coordinator.finish(requestToken)) {
+        setLoadingVehicles(false);
+      }
+    }
+  }, [connectivity.isOnline, user?.role]);
+
+  const loadNextVehicleOptions = useCallback(async () => {
+    if (!connectivity.isOnline || !hasMoreVehicles) return;
+    const coordinator = vehicleOptionCoordinatorRef.current;
+    const requestToken = coordinator.beginNextPage();
+    if (!requestToken) return;
+    const nextPage = vehiclePage + 1;
+    setIsLoadingMoreVehicles(true);
+    setVehiclePageError('');
+    try {
+      const page = await trackingScanApi.listVehicleOptions({
+        page: nextPage,
+        size: VEHICLE_OPTION_PAGE_SIZE,
+        signal: requestToken.signal
+      });
+      if (!coordinator.isCurrent(requestToken)) return;
+      const incoming = Array.isArray(page?.content) ? page.content : [];
+      setVehicles((current) => appendUniqueVehicleOptions(current, incoming));
+      setVehiclePage(Number.isInteger(page?.number) ? page.number : nextPage);
+      setHasMoreVehicles(hasNextVehicleOptionPage(page));
+    } catch {
+      if (!coordinator.isCurrent(requestToken)) return;
+      setVehiclePageError('Could not load more vehicles.');
+    } finally {
+      if (coordinator.finish(requestToken)) {
+        setIsLoadingMoreVehicles(false);
+      }
+    }
+  }, [connectivity.isOnline, hasMoreVehicles, vehiclePage]);
+
+  const handleVehicleSearchChange = useCallback((text) => {
+    setVehicleSearchInput(text);
+  }, []);
+
+  const handleRetryVehicleRecommendation = useCallback(() => {
+    setRecommendationRetryVersion((v) => v + 1);
+  }, []);
+
+  const handleSelectVehicle = useCallback((vehicleId) => {
+    dispatch({ type: 'SET_VEHICLE', payload: vehicleId });
+    if (vehicleId) {
+      const foundInRecs = vehicleRecommendations.find((v) => v.vehicleId === vehicleId);
+      if (foundInRecs) {
+        setVehicles((current) => appendUniqueVehicleOptions(current, [foundInRecs]));
+      }
+    }
+  }, [vehicleRecommendations]);
+
+  const normalizedVehicleSearch = normalizeVehicleSearch(vehicleSearchInput);
+  const isVehicleRecommendationActive = normalizedVehicleSearch.length >= VEHICLE_SEARCH_MIN_LENGTH;
+
+  useEffect(() => {
+    const coordinator = vehicleOptionCoordinatorRef.current;
+    if (!connectivity.isOnline || !isVehicleRecommendationActive) {
+      coordinator.cancelRecommendations();
+      setVehicleRecommendations([]);
+      setVehicleRecommendationError('');
+      setIsLoadingVehicleRecommendations(false);
+      return undefined;
+    }
+
+    const debounceTimer = setTimeout(async () => {
+      const requestToken = coordinator.beginRecommendation(normalizedVehicleSearch);
+      setVehicleRecommendations([]);
+      setVehicleRecommendationError('');
+      setIsLoadingVehicleRecommendations(true);
+      try {
+        const page = await trackingScanApi.listVehicleOptions({
+          page: 0,
+          size: VEHICLE_RECOMMENDATION_SIZE,
+          search: normalizedVehicleSearch,
+          signal: requestToken.signal
+        });
+        if (!coordinator.isCurrent(requestToken)) return;
+        const content = Array.isArray(page?.content) ? page.content : [];
+        setVehicleRecommendations(content.slice(0, VEHICLE_RECOMMENDATION_SIZE));
+      } catch {
+        if (!coordinator.isCurrent(requestToken)) return;
+        setVehicleRecommendationError('Unable to search vehicles.');
+      } finally {
+        if (coordinator.finish(requestToken)) {
+          setIsLoadingVehicleRecommendations(false);
+        }
+      }
+    }, VEHICLE_SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(debounceTimer);
+      coordinator.cancelRecommendations();
+    };
+  }, [
+    connectivity.isOnline,
+    isVehicleRecommendationActive,
+    normalizedVehicleSearch,
+    recommendationRetryVersion
+  ]);
+
+  useEffect(() => {
+    if (connectivity.isOnline) return;
+    vehicleOptionCoordinatorRef.current.cancelAll();
+    setLoadingVehicles(false);
+    setIsLoadingMoreVehicles(false);
+    setIsLoadingVehicleRecommendations(false);
+  }, [connectivity.isOnline]);
+
+  useEffect(() => () => {
+    vehicleOptionCoordinatorRef.current.cancelAll();
   }, []);
 
   // When switching to BATCH with LOADED_ON_TRUCK, load vehicles
   useEffect(() => {
-    if (state.mode === SCANNER_MODES.BATCH && state.batchOperation === 'LOADED_ON_TRUCK' && vehicles.length === 0) {
-      loadVehicles();
+    if (state.mode === SCANNER_MODES.BATCH
+      && state.batchOperation === 'LOADED_ON_TRUCK'
+      && isRoleTransitionAllowed(user?.role, state.batchOperation)
+      && vehicles.length === 0) {
+      loadRecentVehicleOptions();
     }
-  }, [state.mode, state.batchOperation, vehicles.length, loadVehicles]);
+  }, [state.mode, state.batchOperation, vehicles.length, loadRecentVehicleOptions, user?.role]);
+
+  // When in SINGLE review requiring vehicle, ensure vehicles are loaded
+  useEffect(() => {
+    if (state.mode === SCANNER_MODES.SINGLE
+      && state.phase === SCANNER_PHASES.SINGLE_REVIEW
+      && state.currentContext?.requiresVehicle
+      && isRoleTransitionAllowed(user?.role, state.currentContext?.nextStatusCode)
+      && vehicles.length === 0
+      && !hasLoadedVehicleOptions
+      && !loadingVehicles
+      && !vehicleLoadError) {
+      loadRecentVehicleOptions();
+    }
+  }, [
+    state.mode,
+    state.phase,
+    state.currentContext?.requiresVehicle,
+    state.currentContext?.nextStatusCode,
+    vehicles.length,
+    hasLoadedVehicleOptions,
+    loadingVehicles,
+    vehicleLoadError,
+    loadRecentVehicleOptions,
+    user?.role
+  ]);
 
   const handleToggleTorch = () => {
     setTorchEnabled((prev) => !prev);
@@ -138,13 +468,14 @@ export default function ScanScreen() {
   const handleScanCandidate = async (rawValue) => {
     if (!rawValue || scanLockRef.current) return;
 
+    if (!connectivity.isOnline) {
+      void safeHaptics.warning();
+      dispatch({ type: 'SET_ERROR', payload: 'Internet connection required to scan parcels.' });
+      return;
+    }
+
     if (state.mode === SCANNER_MODES.SINGLE) {
       if (state.phase !== SCANNER_PHASES.SCANNING && state.phase !== SCANNER_PHASES.RESULT) {
-        return;
-      }
-      if (isOfflineSingleScanBlocked(state.mode, isOnline, isNativeOfflineSupported)) {
-        void safeHaptics.warning();
-        dispatch({ type: 'SET_ERROR', payload: 'Single Scan requires a connection. Use Rapid Batch to queue offline scans.' });
         return;
       }
       scanLockRef.current = true;
@@ -169,8 +500,10 @@ export default function ScanScreen() {
       try {
         const context = await trackingScanApi.getScanContext(normalized.trackingId, controller.signal);
         dispatch({ type: 'SET_CONTEXT', payload: context });
-        if (context.requiresVehicle && vehicles.length === 0) {
-          loadVehicles();
+        if (context.requiresVehicle
+          && isRoleTransitionAllowed(user?.role, context.nextStatusCode)
+          && vehicles.length === 0) {
+          loadRecentVehicleOptions();
         }
       } catch (err) {
         if (err.name === 'CanceledError' || err.name === 'AbortError') return;
@@ -190,6 +523,11 @@ export default function ScanScreen() {
       if (!state.batchOperation) {
         void safeHaptics.warning();
         dispatch({ type: 'SET_ERROR', payload: 'Please select a target operation before scanning parcels.' });
+        return;
+      }
+      if (!isRoleTransitionAllowed(user?.role, state.batchOperation)) {
+        void safeHaptics.warning();
+        dispatch({ type: 'RECONCILE_ROLE_PERMISSIONS', payload: user?.role });
         return;
       }
       if (state.batchOperation === 'LOADED_ON_TRUCK' && !state.batchVehicleId) {
@@ -215,24 +553,6 @@ export default function ScanScreen() {
         return;
       }
 
-      if (!isOnline && isNativeOfflineSupported) {
-        try {
-          await enqueueOfflineScan({
-            trackingId: normalized.trackingId,
-            targetStatus: state.batchOperation,
-            vehicleId: state.batchOperation === 'LOADED_ON_TRUCK' ? state.batchVehicleId : null,
-          });
-          void safeHaptics.success();
-          dispatch({ type: 'SET_ERROR', payload: `${normalized.trackingId} queued for synchronization.` });
-        } catch (error) {
-          void safeHaptics.error();
-          dispatch({ type: 'SET_ERROR', payload: error?.message || 'Unable to save offline scan.' });
-        } finally {
-          cooldownTimerRef.current = setTimeout(() => { scanLockRef.current = false; }, 750);
-        }
-        return;
-      }
-
       if (state.batchQueue.length >= MAX_BATCH_SIZE) {
         void safeHaptics.error();
         dispatch({ type: 'SET_ERROR', payload: `Batch queue limit reached (${MAX_BATCH_SIZE} parcels).` });
@@ -240,13 +560,37 @@ export default function ScanScreen() {
         return;
       }
 
-      void safeHaptics.selection();
-      dispatch({ type: 'ADD_TO_BATCH', payload: normalized.trackingId });
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
-      // 750ms cooldown before accepting next scan
-      cooldownTimerRef.current = setTimeout(() => {
-        scanLockRef.current = false;
-      }, 750);
+      try {
+        const context = await trackingScanApi.getScanContext(normalized.trackingId, controller.signal);
+        const validation = validateBatchCandidate(context, state.batchOperation, user?.role);
+
+        if (!validation.isValid) {
+          void safeHaptics.warning();
+          dispatch({ type: 'SET_ERROR', payload: validation.error });
+          cooldownTimerRef.current = setTimeout(() => { scanLockRef.current = false; }, 750);
+          return;
+        }
+
+        void safeHaptics.selection();
+        dispatch({ type: 'ADD_TO_BATCH', payload: normalized.trackingId });
+
+        // 750ms cooldown before accepting next scan
+        cooldownTimerRef.current = setTimeout(() => {
+          scanLockRef.current = false;
+        }, 750);
+      } catch (err) {
+        if (err.name === 'CanceledError' || err.name === 'AbortError') return;
+        void safeHaptics.error();
+        const msg = err.response?.data?.message || err.message || 'Failed to verify parcel status.';
+        dispatch({ type: 'SET_ERROR', payload: msg });
+        cooldownTimerRef.current = setTimeout(() => { scanLockRef.current = false; }, 750);
+      }
     }
   };
 
@@ -256,21 +600,26 @@ export default function ScanScreen() {
   };
 
   const handleManualSubmit = () => {
+    if (scanLockRef.current) return;
     if (!state.manualInput || !state.manualInput.trim()) return;
     handleScanCandidate(state.manualInput.trim());
   };
 
   const handleSingleConfirm = async () => {
     if (submitLockRef.current) return;
-    if (isOfflineSingleScanBlocked(state.mode, isOnline, isNativeOfflineSupported)) {
+    if (!connectivity.isOnline) {
       void safeHaptics.warning();
-      dispatch({ type: 'SUBMISSION_FAILED', payload: 'Single Scan requires a connection. Use Rapid Batch to queue offline scans.' });
+      dispatch({ type: 'SUBMISSION_FAILED', payload: 'Internet connection required to update this parcel.' });
       return;
     }
     submitLockRef.current = true;
     dispatch({ type: 'SET_SUBMITTING', payload: true });
     try {
-      const payload = buildSingleScanRequest(state.currentContext, state.selectedVehicleId);
+      const payload = buildSingleScanRequest(
+        state.currentContext,
+        state.selectedVehicleId,
+        user?.role
+      );
       const res = await trackingScanApi.submitSingleScan(payload);
       void safeHaptics.success();
       dispatch({ type: 'SET_SINGLE_RESULT', payload: res });
@@ -285,10 +634,20 @@ export default function ScanScreen() {
 
   const handleBatchSubmit = async () => {
     if (submitLockRef.current) return;
+    if (!connectivity.isOnline) {
+      void safeHaptics.warning();
+      dispatch({ type: 'SUBMISSION_FAILED', payload: 'Internet connection required to submit this batch.' });
+      return;
+    }
     submitLockRef.current = true;
     dispatch({ type: 'SET_SUBMITTING', payload: true });
     try {
-      const payload = buildBatchScanRequest(state.batchQueue, state.batchOperation, state.batchVehicleId);
+      const payload = buildBatchScanRequest(
+        state.batchQueue,
+        state.batchOperation,
+        state.batchVehicleId,
+        user?.role
+      );
       const responses = await trackingScanApi.submitBatchScan(payload);
       void safeHaptics.success();
       const transitionedCount = responses.filter((r) => r.transitionApplied).length;
@@ -346,14 +705,16 @@ export default function ScanScreen() {
   };
 
   // Compute camera eligibility using pure selector
-  const cameraActive = canActivateCamera({
+  const viewfinderHeight = CAMERA_HEIGHTS[cameraHeightIndex] || CAMERA_HEIGHTS[1];
+  const cameraActive = !isKeyboardVisible && cameraHeightIndex > 0 && connectivity.isOnline && canActivateCamera({
     permissionGranted: Boolean(permission?.granted),
     isScreenFocused,
     cameraError: state.cameraError,
     phase: state.phase,
     mode: state.mode,
     batchOperation: state.batchOperation,
-    batchVehicleId: state.batchVehicleId
+    batchVehicleId: state.batchVehicleId,
+    role: user?.role
   });
 
   const getModalCopy = () => {
@@ -381,7 +742,7 @@ export default function ScanScreen() {
     );
   }
 
-  if (!user || user.role !== 'FIELD_STAFF') {
+  if (!user || user.role !== 'COURIER_STAFF') {
     return null;
   }
 
@@ -389,7 +750,7 @@ export default function ScanScreen() {
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
       >
         {/* 1. White Safe-Area Header */}
         <View style={styles.header}>
@@ -397,9 +758,7 @@ export default function ScanScreen() {
             <Icon source="arrow-left" size={24} color={colors.ink} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>SCAN QR</Text>
-          <TouchableOpacity onPress={() => router.push('/(main)/offline-queue')} style={styles.queueButton} accessibilityRole="button" accessibilityLabel="Open offline scan queue">
-            <Icon source="cloud-sync-outline" size={22} color={colors.accent} />
-          </TouchableOpacity>
+          <View style={styles.headerSpacer} />
         </View>
 
         {/* 2. Dark Camera Region */}
@@ -426,13 +785,52 @@ export default function ScanScreen() {
               : `Batch Mode: ${state.batchQueue.length} / ${MAX_BATCH_SIZE} items scanned`
           }
           pausedText={
-            state.mode === SCANNER_MODES.BATCH &&
+            !connectivity.isOnline
+              ? 'Internet connection required to scan parcels'
+              : state.mode === SCANNER_MODES.BATCH &&
             state.batchOperation === 'LOADED_ON_TRUCK' &&
             !state.batchVehicleId
               ? 'Please select an active vehicle below to start scanning'
               : 'Camera preview paused'
           }
+          viewfinderHeight={viewfinderHeight}
+          animatedHeight={animatedCameraHeight}
         />
+
+        <View
+          {...cameraDividerPanResponder.panHandlers}
+          style={[styles.cameraDivider, isKeyboardVisible && styles.cameraDividerDisabled]}
+          accessible
+          accessibilityRole="adjustable"
+          accessibilityLabel="Camera panel height"
+          accessibilityHint="Swipe up to reduce the camera, swipe down to enlarge it, or tap to toggle its height"
+          accessibilityValue={{
+            min: 0,
+            max: CAMERA_HEIGHTS.length - 1,
+            now: isKeyboardVisible ? 0 : cameraHeightIndex,
+            text: isKeyboardVisible ? 'Collapsed while typing' : CAMERA_HEIGHT_LABELS[cameraHeightIndex]
+          }}
+          accessibilityState={{ disabled: isKeyboardVisible }}
+          accessibilityActions={[
+            { name: 'increment', label: 'Increase camera height' },
+            { name: 'decrement', label: 'Decrease camera height' },
+            { name: 'activate', label: 'Toggle camera height' }
+          ]}
+          onAccessibilityAction={handleCameraAccessibilityAction}
+        >
+          <View style={styles.cameraDividerHandle} />
+        </View>
+
+        {!connectivity.isOnline && (
+          <View style={styles.networkBanner}>
+            <Icon source="wifi-off" size={18} color={colors.danger} />
+            <Text style={styles.networkBannerText}>
+              {connectivity.isKnown
+                ? 'No internet connection. Scanning and submission are unavailable.'
+                : 'Checking internet connection. Scanning and submission are unavailable.'}
+            </Text>
+          </View>
+        )}
 
         {/* Error Notification Banner (non-lookup errors) */}
         {state.error && !state.failedLookupTrackingId && (
@@ -529,12 +927,25 @@ export default function ScanScreen() {
               context={state.currentContext}
               vehicles={vehicles}
               selectedVehicleId={state.selectedVehicleId}
-              onSelectVehicle={(vId) => dispatch({ type: 'SET_VEHICLE', payload: vId })}
+              onSelectVehicle={handleSelectVehicle}
               loadingVehicles={loadingVehicles}
-              onRetryVehicles={loadVehicles}
+              onRetryVehicles={loadRecentVehicleOptions}
+              isLoadingMoreVehicles={isLoadingMoreVehicles}
+              hasMoreVehicles={hasMoreVehicles}
+              vehicleLoadError={vehicleLoadError}
+              vehiclePageError={vehiclePageError}
+              onLoadNextVehicles={loadNextVehicleOptions}
+              vehicleSearchValue={vehicleSearchInput}
+              onVehicleSearchChange={handleVehicleSearchChange}
+              vehicleRecommendations={vehicleRecommendations}
+              isLoadingVehicleRecommendations={isLoadingVehicleRecommendations}
+              vehicleRecommendationError={vehicleRecommendationError}
+              onRetryVehicleRecommendation={handleRetryVehicleRecommendation}
               onConfirm={handleSingleConfirm}
               onCancel={handleScanNext}
               isSubmitting={state.isSubmitting}
+              isOnline={connectivity.isOnline}
+              role={user?.role}
             />
           )}
 
@@ -546,14 +957,27 @@ export default function ScanScreen() {
                 onSelectOperation={(op) => dispatch({ type: 'SET_BATCH_OPERATION', payload: op })}
                 vehicles={vehicles}
                 selectedVehicleId={state.batchVehicleId}
-                onSelectVehicle={(vId) => dispatch({ type: 'SET_VEHICLE', payload: vId })}
+                onSelectVehicle={handleSelectVehicle}
                 loadingVehicles={loadingVehicles}
-                onRetryVehicles={loadVehicles}
+                onRetryVehicles={loadRecentVehicleOptions}
+                isLoadingMoreVehicles={isLoadingMoreVehicles}
+                hasMoreVehicles={hasMoreVehicles}
+                vehicleLoadError={vehicleLoadError}
+                vehiclePageError={vehiclePageError}
+                onLoadNextVehicles={loadNextVehicleOptions}
+                vehicleSearchValue={vehicleSearchInput}
+                onVehicleSearchChange={handleVehicleSearchChange}
+                vehicleRecommendations={vehicleRecommendations}
+                isLoadingVehicleRecommendations={isLoadingVehicleRecommendations}
+                vehicleRecommendationError={vehicleRecommendationError}
+                onRetryVehicleRecommendation={handleRetryVehicleRecommendation}
                 queue={state.batchQueue}
                 onRemoveItem={(id) => dispatch({ type: 'REMOVE_FROM_BATCH', payload: id })}
                 onClearBatch={() => dispatch({ type: 'CLEAR_BATCH' })}
                 onSubmit={handleBatchSubmit}
                 isSubmitting={state.isSubmitting}
+                isOnline={connectivity.isOnline}
+                role={user?.role}
               />
             )}
 
@@ -579,15 +1003,17 @@ export default function ScanScreen() {
                   placeholderTextColor={colors.inkFaint}
                   value={state.manualInput}
                   onChangeText={(val) => dispatch({ type: 'SET_MANUAL_INPUT', payload: val })}
+                  onFocus={handleManualInputFocus}
                   autoCapitalize="characters"
                   maxLength={15}
                   returnKeyType="go"
                   onSubmitEditing={handleManualSubmit}
+                  editable={connectivity.isOnline}
                 />
                 <TouchableOpacity
-                  style={[styles.goButton, (!state.manualInput || !state.manualInput.trim()) && styles.goButtonDisabled]}
+                  style={[styles.goButton, (!connectivity.isOnline || !state.manualInput || !state.manualInput.trim()) && styles.goButtonDisabled]}
                   onPress={handleManualSubmit}
-                  disabled={!state.manualInput || !state.manualInput.trim()}
+                  disabled={!connectivity.isOnline || !state.manualInput || !state.manualInput.trim()}
                 >
                   <Text style={styles.goButtonText}>GO</Text>
                 </TouchableOpacity>
@@ -651,11 +1077,9 @@ const styles = StyleSheet.create({
   backButton: {
     padding: spacing.xs
   },
-  queueButton: {
+  headerSpacer: {
     minWidth: 40,
-    minHeight: 40,
-    alignItems: 'center',
-    justifyContent: 'center'
+    minHeight: 40
   },
   headerTitle: {
     ...typography.eyebrow,
@@ -678,6 +1102,39 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.danger,
     fontWeight: '600'
+  },
+  networkBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.dangerSoft,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  networkBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: colors.danger,
+    fontWeight: '600'
+  },
+  cameraDivider: {
+    height: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  cameraDividerDisabled: {
+    opacity: 0.55
+  },
+  cameraDividerHandle: {
+    width: 56,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.borderStrong
   },
   lookupRecoveryCard: {
     margin: spacing.md,

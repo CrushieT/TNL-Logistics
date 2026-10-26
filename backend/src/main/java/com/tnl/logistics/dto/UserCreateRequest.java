@@ -1,7 +1,7 @@
 package com.tnl.logistics.dto;
 
-import com.tnl.logistics.model.StaffType;
 import com.tnl.logistics.model.UserRole;
+import com.fasterxml.jackson.annotation.JsonAnySetter;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -13,9 +13,11 @@ import jakarta.validation.constraints.Size;
 public class UserCreateRequest {
 
     @NotBlank(message = "Full name is required")
+    @Size(min = 2, max = 150, message = "Full name must be between 2 and 150 characters")
     private String fullName;
 
     @NotBlank(message = "Username is required")
+    @Pattern(regexp = "^\\s*[a-zA-Z0-9][a-zA-Z0-9._-]{2,49}\\s*$", message = "Username must be 3 to 50 characters and use only letters, numbers, periods, underscores, or hyphens")
     private String username;
 
     @NotBlank(message = "Password is required")
@@ -25,14 +27,19 @@ public class UserCreateRequest {
     @NotNull(message = "Role is required")
     private UserRole role;
 
-    // Required when role is FIELD_STAFF
-    private StaffType staffType;
 
     // Optional 4-digit numeric PIN for mobile login
     @Pattern(regexp = "^\\d{4}$", message = "PIN must be exactly 4 digits")
     private String pin;
 
     public UserCreateRequest() {}
+
+    @JsonAnySetter
+    public void rejectRetiredIdentityField(String fieldName, Object value) {
+        if ("staffType".equals(fieldName) || "staff_type".equals(fieldName)) {
+            throw new IllegalArgumentException("Staff subtype input is no longer supported.");
+        }
+    }
 
     public String getFullName() { return fullName; }
     public void setFullName(String fullName) { this.fullName = fullName; }
@@ -46,8 +53,6 @@ public class UserCreateRequest {
     public UserRole getRole() { return role; }
     public void setRole(UserRole role) { this.role = role; }
 
-    public StaffType getStaffType() { return staffType; }
-    public void setStaffType(StaffType staffType) { this.staffType = staffType; }
 
     public String getPin() { return pin; }
     public void setPin(String pin) { this.pin = pin; }

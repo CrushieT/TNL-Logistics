@@ -68,8 +68,16 @@ export default function RegisterVehicleModal({ visible, vehicleToEdit, onClose, 
       setError('Plate number is required.');
       return;
     }
+    if (plateNumber.trim().length > 20) {
+      setError('Plate number cannot exceed 20 characters.');
+      return;
+    }
     if (!description.trim()) {
       setError('Description is required.');
+      return;
+    }
+    if (description.trim().length > 100) {
+      setError('Description cannot exceed 100 characters.');
       return;
     }
 
@@ -77,6 +85,16 @@ export default function RegisterVehicleModal({ visible, vehicleToEdit, onClose, 
       vehicleTypeSelect === 'Other'
         ? (customVehicleType.trim() || 'Other')
         : vehicleTypeSelect;
+
+    if (finalVehicleType.length > 50) {
+      setError('Vehicle type cannot exceed 50 characters.');
+      return;
+    }
+
+    if (remarks.trim().length > 255) {
+      setError('Remarks cannot exceed 255 characters.');
+      return;
+    }
 
     try {
       setSaving(true);
@@ -132,6 +150,7 @@ export default function RegisterVehicleModal({ visible, vehicleToEdit, onClose, 
                 value={plateNumber}
                 onChangeText={setPlateNumber}
                 autoCapitalize="characters"
+                maxLength={20}
               />
             </View>
 
@@ -179,6 +198,7 @@ export default function RegisterVehicleModal({ visible, vehicleToEdit, onClose, 
                     style={styles.input}
                     value={status}
                     onChangeText={setStatus}
+                    maxLength={30}
                   />
                 )}
               </View>
@@ -194,6 +214,7 @@ export default function RegisterVehicleModal({ visible, vehicleToEdit, onClose, 
                   placeholderTextColor={colors.inkFaint}
                   value={customVehicleType}
                   onChangeText={setCustomVehicleType}
+                  maxLength={50}
                 />
               </View>
             )}
@@ -207,6 +228,7 @@ export default function RegisterVehicleModal({ visible, vehicleToEdit, onClose, 
                 placeholderTextColor={colors.inkFaint}
                 value={description}
                 onChangeText={setDescription}
+                maxLength={100}
               />
             </View>
 
@@ -219,6 +241,7 @@ export default function RegisterVehicleModal({ visible, vehicleToEdit, onClose, 
                 placeholderTextColor={colors.inkFaint}
                 value={remarks}
                 onChangeText={setRemarks}
+                maxLength={255}
               />
             </View>
           </View>

@@ -1,17 +1,21 @@
 package com.tnl.logistics.service.impl;
 
+import com.tnl.logistics.dto.CollectionTotals;
 import com.tnl.logistics.dto.DashboardSummaryResponse;
-import com.tnl.logistics.dto.WeeklyCollectionsResponse;
 import com.tnl.logistics.model.ParcelStatus;
 import com.tnl.logistics.model.TrackingEvent;
+import com.tnl.logistics.repository.CycleShipmentSummary;
 import com.tnl.logistics.repository.ParcelUnitRepository;
 import com.tnl.logistics.repository.ShipmentRepository;
 import com.tnl.logistics.repository.TrackingEventRepository;
 import com.tnl.logistics.service.CollectionsService;
 import com.tnl.logistics.service.DashboardService;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
@@ -24,7 +28,7 @@ import java.util.stream.Collectors;
 
 /**
  * Service implementation for live operations dashboard aggregations.
- * Executes database-level SQL/JPQL aggregate queries for sub-15ms performance.
+ * Executes database-level SQL/JPQL aggregates for live totals.
  */
 @Service
 @Transactional(readOnly = true)
@@ -56,139 +60,155 @@ public class DashboardServiceImpl implements DashboardService {
 
     @Override
     public DashboardSummaryResponse getDashboardSummary(LocalDate targetCycleDate) {
-        LocalDate today = LocalDate.now();
-        LocalDate activeCycleEnd = (targetCycleDate != null)
-                ? targetCycleDate
-                : collectionsService.calculateActiveCycleDate(today);
-
-        LocalDate cycleStartLocalDate = collectionsService.calculateCycleStartDate(activeCycleEnd);
-        LocalDateTime cycleStart = cycleStartLocalDate.atStartOfDay();
-        LocalDateTime cycleEnd = activeCycleEnd.atTime(23, 59, 59, 999999999);
-
-        // 1. Cycle-scoped counts
-        long shipmentCount = shipmentRepository.countShipmentsRegisteredBetween(cycleStart, cycleEnd);
-        long parcelCount = shipmentRepository.countParcelsRegisteredBetween(cycleStart, cycleEnd);
-
-        // 2. Today's shipments
-        LocalDateTime todayStart = today.atStartOfDay();
-        LocalDateTime todayEnd = today.atTime(23, 59, 59, 999999999);
-        long todayShipmentCount = shipmentRepository.countShipmentsRegisteredBetween(todayStart, todayEnd);
-        String todayDateFormatted = today.format(DATE_FORMATTER);
-
-        // 3. Cycle-scoped unpaid transactions count
-        long unpaidTransactionCount = shipmentRepository.countUnpaidShipmentsBetween(cycleStart, cycleEnd);
-
-        // 4. Weekly collection metrics aligned to active billing cycle
-        DayOfWeek collectionDay = collectionsService.getCollectionDayOfWeek();
-        String collectionDayShort = collectionDay != null
-                ? collectionDay.getDisplayName(TextStyle.SHORT, Locale.ENGLISH)
-                : "Thu";
-        DashboardSummaryResponse.ForCollectionDto forCollection;
         try {
-            WeeklyCollectionsResponse weeklyResponse = collectionsService.getWeeklyCollections(activeCycleEnd);
-            BigDecimal amount = (weeklyResponse != null && weeklyResponse.getOutstandingBalance() != null)
-                    ? weeklyResponse.getOutstandingBalance()
+            LocalDate today = LocalDate.now();
+            LocalDate activeCycleEnd = (targetCycleDate != null)
+                    ? targetCycleDate
+                    : collectionsService.calculateActiveCycleDate(today);
+
+            LocalDate cycleStartLocalDate = collectionsService.calculateCycleStartDate(activeCycleEnd);
+            LocalDateTime cycleStart = cycleStartLocalDate.atStartOfDay();
+            LocalDateTime cycleEnd = activeCycleEnd.atTime(23, 59, 59, 999999999);
+
+            // 1. Cycle-scoped counts and charges consolidated into single aggregate
+            CycleShipmentSummary cycleSummary = shipmentRepository.getCycleShipmentSummary(cycleStart, cycleEnd);
+            long shipmentCount = (cycleSummary != null && cycleSummary.getShipmentCount() != null)
+                    ? cycleSummary.getShipmentCount() : 0L;
+            long parcelCount = (cycleSummary != null && cycleSummary.getParcelCount() != null)
+                    ? cycleSummary.getParcelCount() : 0L;
+            BigDecimal totalCharges = (cycleSummary != null && cycleSummary.getTotalCharges() != null)
+                    ? cycleSummary.getTotalCharges() : BigDecimal.ZERO;
+
+            // 2. Today's shipments
+            LocalDateTime todayStart = today.atStartOfDay();
+            LocalDateTime todayEnd = today.atTime(23, 59, 59, 999999999);
+            long todayShipmentCount = shipmentRepository.countShipmentsRegisteredBetween(todayStart, todayEnd);
+            String todayDateFormatted = today.format(DATE_FORMATTER);
+
+            // 3. Cycle-scoped unpaid transactions count
+            long unpaidTransactionCount = (cycleSummary != null && cycleSummary.getUnpaidShipmentCount() != null)
+                    ? cycleSummary.getUnpaidShipmentCount() : 0L;
+
+            // 4. Weekly collection metrics aligned to active billing cycle using internal totals read
+            DayOfWeek collectionDay = collectionsService.getCollectionDayOfWeek();
+            String collectionDayShort = collectionDay != null
+                    ? collectionDay.getDisplayName(TextStyle.SHORT, Locale.ENGLISH)
+                    : "Thu";
+            CollectionTotals totals = collectionsService.getCollectionTotals(activeCycleEnd, cycleStartLocalDate);
+            BigDecimal amount = (totals != null && totals.outstandingBalance() != null)
+                    ? totals.outstandingBalance()
                     : BigDecimal.ZERO;
-            int clientCount = weeklyResponse != null ? weeklyResponse.getActiveClientsCount() : 0;
-            forCollection = new DashboardSummaryResponse.ForCollectionDto(amount, clientCount, collectionDayShort);
-        } catch (Exception e) {
-            forCollection = new DashboardSummaryResponse.ForCollectionDto(BigDecimal.ZERO, 0, collectionDayShort);
-        }
+            int clientCount = totals != null ? totals.activeClientsCount() : 0;
+            DashboardSummaryResponse.ForCollectionDto forCollection =
+                    new DashboardSummaryResponse.ForCollectionDto(amount, clientCount, collectionDayShort);
 
-        // 5. Parcel units status breakdown for this cycle
-        List<Object[]> statusRows = parcelUnitRepository.countParcelsGroupedByStatusBetween(cycleStart, cycleEnd);
-        Map<ParcelStatus, Long> statusCounts = new EnumMap<>(ParcelStatus.class);
-        for (Object[] row : statusRows) {
-            if (row[0] instanceof ParcelStatus) {
-                statusCounts.put((ParcelStatus) row[0], ((Number) row[1]).longValue());
+            // 5. Parcel units status breakdown for this cycle
+            List<Object[]> statusRows = parcelUnitRepository.countParcelsGroupedByLossAndStatusBetween(cycleStart, cycleEnd);
+            Map<ParcelStatus, Long> statusCounts = new EnumMap<>(ParcelStatus.class);
+            long lostCount = 0L;
+            for (Object[] row : statusRows) {
+                long count = ((Number) row[2]).longValue();
+                if (Boolean.TRUE.equals(row[0])) {
+                    lostCount += count;
+                } else if (row[1] instanceof ParcelStatus parcelStatus) {
+                    statusCounts.put(parcelStatus, count);
+                }
             }
-        }
-        List<DashboardSummaryResponse.StatusSegmentDto> parcelUnitsByStatus = new ArrayList<>();
-        parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto(
-                "Registered", statusCounts.getOrDefault(ParcelStatus.REGISTERED, 0L), "#2563EB"));
-        parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto(
-                "QR Generated", statusCounts.getOrDefault(ParcelStatus.QR_GENERATED, 0L), "#0D9488"));
-        parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto(
-                "Loaded on Truck", statusCounts.getOrDefault(ParcelStatus.LOADED_ON_TRUCK, 0L), "#D97706"));
-        parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto(
-                "Outload / Arrive TNL", statusCounts.getOrDefault(ParcelStatus.ARRIVED_AT_TNL, 0L), "#16A34A"));
-        parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto(
-                "Loaded to Hauler", statusCounts.getOrDefault(ParcelStatus.LOADED_TO_HAULER, 0L), "#7C3AED"));
-        if (statusCounts.getOrDefault(ParcelStatus.COMPLETED, 0L) > 0) {
+            List<DashboardSummaryResponse.StatusSegmentDto> parcelUnitsByStatus = new ArrayList<>();
             parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto(
-                    "Completed", statusCounts.get(ParcelStatus.COMPLETED), "#059669"));
-        }
-
-        // 6. Weekly shipment volume aligned to active 7-day billing cycle
-        List<Object[]> dailyRows = shipmentRepository.countDailyShipmentsBetween(cycleStart, cycleEnd);
-        Map<LocalDate, Long> dailyMap = new HashMap<>();
-        for (Object[] row : dailyRows) {
-            LocalDate date = null;
-            if (row[0] instanceof java.sql.Date) {
-                date = ((java.sql.Date) row[0]).toLocalDate();
-            } else if (row[0] instanceof LocalDate) {
-                date = (LocalDate) row[0];
-            } else if (row[0] != null) {
-                try {
-                    date = LocalDate.parse(row[0].toString());
-                } catch (Exception ignored) {}
+                    "Registered", statusCounts.getOrDefault(ParcelStatus.REGISTERED, 0L), "#2563EB"));
+            parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto(
+                    "QR Generated", statusCounts.getOrDefault(ParcelStatus.QR_GENERATED, 0L), "#0D9488"));
+            parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto(
+                    "Loaded on Truck", statusCounts.getOrDefault(ParcelStatus.LOADED_ON_TRUCK, 0L), "#D97706"));
+            parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto(
+                    "Outload / Arrive TNL", statusCounts.getOrDefault(ParcelStatus.ARRIVED_AT_TNL, 0L), "#16A34A"));
+            parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto(
+                    "Loaded to Hauler", statusCounts.getOrDefault(ParcelStatus.LOADED_TO_HAULER, 0L), "#7C3AED"));
+            if (statusCounts.getOrDefault(ParcelStatus.COMPLETED, 0L) > 0) {
+                parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto(
+                        "Completed", statusCounts.get(ParcelStatus.COMPLETED), "#059669"));
             }
-            if (date != null) {
-                dailyMap.put(date, ((Number) row[1]).longValue());
+            if (lostCount > 0) {
+                parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto("Lost", lostCount, "#B91C1C"));
             }
+
+            // 6. Weekly shipment volume aligned to active 7-day billing cycle
+            List<Object[]> dailyRows = shipmentRepository.countDailyShipmentsBetween(cycleStart, cycleEnd);
+            Map<LocalDate, Long> dailyMap = new HashMap<>();
+            for (Object[] row : dailyRows) {
+                LocalDate date = null;
+                if (row[0] instanceof java.sql.Date) {
+                    date = ((java.sql.Date) row[0]).toLocalDate();
+                } else if (row[0] instanceof LocalDate) {
+                    date = (LocalDate) row[0];
+                } else if (row[0] != null) {
+                    try {
+                        date = LocalDate.parse(row[0].toString());
+                    } catch (Exception ignored) {}
+                }
+                if (date != null) {
+                    dailyMap.put(date, ((Number) row[1]).longValue());
+                }
+            }
+            List<DashboardSummaryResponse.VolumePointDto> weeklyShipmentVolume = new ArrayList<>();
+            for (int i = 0; i < 7; i++) {
+                LocalDate dayDate = cycleStart.toLocalDate().plusDays(i);
+                String dayLabel = dayDate.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.ENGLISH);
+                long volume = dailyMap.getOrDefault(dayDate, 0L);
+                weeklyShipmentVolume.add(new DashboardSummaryResponse.VolumePointDto(dayLabel, volume));
+            }
+
+            // 7. Financial comparison (Outstanding vs Collected) for this cycle
+            BigDecimal totalCollected = (cycleSummary != null && cycleSummary.getCollectedPayments() != null)
+                    ? cycleSummary.getCollectedPayments() : BigDecimal.ZERO;
+            BigDecimal outstanding = totalCharges.subtract(totalCollected);
+            if (outstanding.compareTo(BigDecimal.ZERO) < 0) {
+                outstanding = BigDecimal.ZERO;
+            }
+            List<DashboardSummaryResponse.ComparisonRowDto> outstandingVsCollected = new ArrayList<>();
+            outstandingVsCollected.add(new DashboardSummaryResponse.ComparisonRowDto("Outstanding", outstanding, "#DC2626"));
+            outstandingVsCollected.add(new DashboardSummaryResponse.ComparisonRowDto("Collected", totalCollected, "#16A34A"));
+
+            // 8. Recent tracking events stream
+            List<TrackingEvent> recentEvents = trackingEventRepository.findRecentEvents(PageRequest.of(0, 5));
+            List<DashboardSummaryResponse.RecentActivityDto> recentActivity = recentEvents.stream().map(event -> {
+                String dateStr = event.getEventTimestamp() != null ? event.getEventTimestamp().format(DATE_FORMATTER) : "—";
+                String timeStr = event.getEventTimestamp() != null ? event.getEventTimestamp().format(TIME_FORMATTER) : "—";
+                String actionStr = formatStatus(event.getStatus());
+                String trackingId = event.getParcelUnit() != null ? event.getParcelUnit().getTrackingId() : "—";
+
+                int seq = (event.getParcelUnit() != null && event.getParcelUnit().getSeq() != null)
+                        ? event.getParcelUnit().getSeq() : 1;
+                int totalQty = (event.getParcelUnit() != null && event.getParcelUnit().getShipment() != null
+                        && event.getParcelUnit().getShipment().getQuantity() != null)
+                        ? event.getParcelUnit().getShipment().getQuantity() : 1;
+                String staffName = (event.getStaff() != null && event.getStaff().getFullName() != null)
+                        ? event.getStaff().getFullName() : "Office Staff";
+
+                String meta = String.format("Pkg %d/%d — by %s", seq, totalQty, staffName);
+
+                return new DashboardSummaryResponse.RecentActivityDto(dateStr, timeStr, actionStr, trackingId, meta);
+            }).collect(Collectors.toList());
+
+            return new DashboardSummaryResponse(
+                    shipmentCount,
+                    parcelCount,
+                    todayShipmentCount,
+                    todayDateFormatted,
+                    unpaidTransactionCount,
+                    forCollection,
+                    parcelUnitsByStatus,
+                    weeklyShipmentVolume,
+                    outstandingVsCollected,
+                    recentActivity
+            );
+        } catch (DataAccessException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "DASHBOARD_UNAVAILABLE: Dashboard data is temporarily unavailable due to a database error",
+                    ex);
         }
-        List<DashboardSummaryResponse.VolumePointDto> weeklyShipmentVolume = new ArrayList<>();
-        for (int i = 0; i < 7; i++) {
-            LocalDate dayDate = cycleStart.toLocalDate().plusDays(i);
-            String dayLabel = dayDate.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.ENGLISH);
-            long volume = dailyMap.getOrDefault(dayDate, 0L);
-            weeklyShipmentVolume.add(new DashboardSummaryResponse.VolumePointDto(dayLabel, volume));
-        }
-
-        // 7. Financial comparison (Outstanding vs Collected) for this cycle
-        BigDecimal totalCharges = shipmentRepository.sumTotalShipmentChargesBetween(cycleStart, cycleEnd);
-        BigDecimal totalCollected = shipmentRepository.sumTotalPaymentsBetween(cycleStart, cycleEnd);
-        BigDecimal outstanding = totalCharges.subtract(totalCollected);
-        if (outstanding.compareTo(BigDecimal.ZERO) < 0) {
-            outstanding = BigDecimal.ZERO;
-        }
-        List<DashboardSummaryResponse.ComparisonRowDto> outstandingVsCollected = new ArrayList<>();
-        outstandingVsCollected.add(new DashboardSummaryResponse.ComparisonRowDto("Outstanding", outstanding, "#DC2626"));
-        outstandingVsCollected.add(new DashboardSummaryResponse.ComparisonRowDto("Collected", totalCollected, "#16A34A"));
-
-        // 8. Recent tracking events stream
-        List<TrackingEvent> recentEvents = trackingEventRepository.findRecentEvents(PageRequest.of(0, 5));
-        List<DashboardSummaryResponse.RecentActivityDto> recentActivity = recentEvents.stream().map(event -> {
-            String dateStr = event.getEventTimestamp() != null ? event.getEventTimestamp().format(DATE_FORMATTER) : "—";
-            String timeStr = event.getEventTimestamp() != null ? event.getEventTimestamp().format(TIME_FORMATTER) : "—";
-            String actionStr = formatStatus(event.getStatus());
-            String trackingId = event.getParcelUnit() != null ? event.getParcelUnit().getTrackingId() : "—";
-
-            int seq = (event.getParcelUnit() != null && event.getParcelUnit().getSeq() != null)
-                    ? event.getParcelUnit().getSeq() : 1;
-            int totalQty = (event.getParcelUnit() != null && event.getParcelUnit().getShipment() != null
-                    && event.getParcelUnit().getShipment().getQuantity() != null)
-                    ? event.getParcelUnit().getShipment().getQuantity() : 1;
-            String staffName = (event.getStaff() != null && event.getStaff().getFullName() != null)
-                    ? event.getStaff().getFullName() : "Office Staff";
-
-            String meta = String.format("Pkg %d/%d — by %s", seq, totalQty, staffName);
-
-            return new DashboardSummaryResponse.RecentActivityDto(dateStr, timeStr, actionStr, trackingId, meta);
-        }).collect(Collectors.toList());
-
-        return new DashboardSummaryResponse(
-                shipmentCount,
-                parcelCount,
-                todayShipmentCount,
-                todayDateFormatted,
-                unpaidTransactionCount,
-                forCollection,
-                parcelUnitsByStatus,
-                weeklyShipmentVolume,
-                outstandingVsCollected,
-                recentActivity
-        );
     }
 
     private String formatStatus(ParcelStatus status) {

@@ -23,6 +23,10 @@ public interface MobileDeviceBindingRepository extends JpaRepository<MobileDevic
     Optional<MobileDeviceBinding> findByDeviceId(String deviceId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select binding from MobileDeviceBinding binding where binding.deviceId = :deviceId")
+    Optional<MobileDeviceBinding> findByDeviceIdForUpdate(@Param("deviceId") String deviceId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select binding from MobileDeviceBinding binding
             where binding.deviceId = :deviceId

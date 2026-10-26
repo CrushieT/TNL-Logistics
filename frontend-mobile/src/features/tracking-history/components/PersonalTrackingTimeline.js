@@ -1,7 +1,6 @@
 import React from 'react';
 import { StyleSheet, View, Text } from 'react-native';
 import { colors } from '../../../theme';
-import { SyncStatusBadge } from './SyncStatusBadge';
 import { formatHistoryTimestamp, resolveTrackingStatusDisplay } from '../trackingHistoryFlow.mjs';
 
 export function PersonalTrackingTimeline({ events = [] }) {
@@ -44,10 +43,6 @@ export function PersonalTrackingTimeline({ events = [] }) {
                   <Text style={styles.vehicleValue}>{vehicleDisplay}</Text>
                 </View>
               )}
-
-              <View style={styles.syncRow}>
-                <SyncStatusBadge syncStatus={event.syncStatus || 'SYNCED'} />
-              </View>
             </View>
           </View>
         );
@@ -125,8 +120,5 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.ink,
     fontWeight: '700',
-  },
-  syncRow: {
-    marginTop: 4,
   },
 });

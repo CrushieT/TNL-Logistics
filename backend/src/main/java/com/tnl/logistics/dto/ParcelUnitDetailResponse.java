@@ -5,6 +5,19 @@ import java.util.List;
 
 public class ParcelUnitDetailResponse {
 
+    private boolean lost;
+    private long revision;
+    private String waybillId;
+    private List<ParcelLossEventResponse> lossHistory;
+    public boolean isLost() { return lost; }
+    public void setLost(boolean lost) { this.lost = lost; }
+    public long getRevision() { return revision; }
+    public void setRevision(long revision) { this.revision = revision; }
+    public String getWaybillId() { return waybillId; }
+    public void setWaybillId(String waybillId) { this.waybillId = waybillId; }
+    public List<ParcelLossEventResponse> getLossHistory() { return lossHistory; }
+    public void setLossHistory(List<ParcelLossEventResponse> history) { this.lossHistory = history; }
+
     private String trackingId;
     private Integer packageIndex;
     private Integer packageCount;

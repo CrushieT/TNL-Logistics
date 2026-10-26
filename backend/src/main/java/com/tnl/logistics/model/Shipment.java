@@ -42,6 +42,21 @@ public class Shipment implements Persistable<String> {
     @Column(name = "charge_model", nullable = false)
     private ChargeModel chargeModel;
 
+    @Column(name = "applied_rate_per_kilo", precision = 12, scale = 2)
+    private BigDecimal appliedRatePerKilo;
+
+    @Column(name = "applied_volumetric_divisor")
+    private Integer appliedVolumetricDivisor;
+
+    @Column(name = "total_actual_weight", precision = 12, scale = 2)
+    private BigDecimal totalActualWeight;
+
+    @Column(name = "total_volumetric_weight", precision = 12, scale = 2)
+    private BigDecimal totalVolumetricWeight;
+
+    @Column(name = "billable_weight", precision = 12, scale = 2)
+    private BigDecimal billableWeight;
+
     @Column(name = "shipping_fee", precision = 12, scale = 2, nullable = false)
     private BigDecimal shippingFee;
 
@@ -137,6 +152,21 @@ public class Shipment implements Persistable<String> {
 
     public ChargeModel getChargeModel() { return chargeModel; }
     public void setChargeModel(ChargeModel chargeModel) { this.chargeModel = chargeModel; }
+
+    public BigDecimal getAppliedRatePerKilo() { return appliedRatePerKilo; }
+    public void setAppliedRatePerKilo(BigDecimal appliedRatePerKilo) { this.appliedRatePerKilo = appliedRatePerKilo; }
+
+    public Integer getAppliedVolumetricDivisor() { return appliedVolumetricDivisor; }
+    public void setAppliedVolumetricDivisor(Integer appliedVolumetricDivisor) { this.appliedVolumetricDivisor = appliedVolumetricDivisor; }
+
+    public BigDecimal getTotalActualWeight() { return totalActualWeight; }
+    public void setTotalActualWeight(BigDecimal totalActualWeight) { this.totalActualWeight = totalActualWeight; }
+
+    public BigDecimal getTotalVolumetricWeight() { return totalVolumetricWeight; }
+    public void setTotalVolumetricWeight(BigDecimal totalVolumetricWeight) { this.totalVolumetricWeight = totalVolumetricWeight; }
+
+    public BigDecimal getBillableWeight() { return billableWeight; }
+    public void setBillableWeight(BigDecimal billableWeight) { this.billableWeight = billableWeight; }
 
     public BigDecimal getShippingFee() { return shippingFee; }
     public void setShippingFee(BigDecimal shippingFee) { this.shippingFee = shippingFee; }

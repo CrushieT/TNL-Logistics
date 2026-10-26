@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState, useRef, useLayoutEffect, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet, Image, ScrollView } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { colors, fonts, spacing, radius, type } from '../../theme';
 import { getCurrentUser, logout } from '../../services/api/client';
+import { getSavedNavScrollY, saveNavScrollY, resetNavScrollPosition } from './navScrollPosition.mjs';
+import SignOutModal from './SignOutModal';
 
 const NAV_SECTIONS = [
   {
@@ -41,6 +43,8 @@ const NAV_SECTIONS = [
 export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } }) {
   const router = useRouter();
   const pathname = usePathname();
+  const navScrollViewRef = useRef(null);
+  const [signOutModalVisible, setSignOutModalVisible] = useState(false);
 
   const currentUser = getCurrentUser();
   const displayName = currentUser?.username || user?.name || 'Administrator';
@@ -54,7 +58,82 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
     .slice(0, 2)
     .toUpperCase();
 
-  const handleSignOut = () => {
+  // Restore navigation scroll position on mount so navigation does not scroll back up
+  useLayoutEffect(() => {
+    const savedY = getSavedNavScrollY();
+    if (savedY <= 0) return;
+
+    const restoreScroll = () => {
+      const scrollInstance = navScrollViewRef.current;
+      if (!scrollInstance) return;
+
+      if (typeof scrollInstance.scrollTo === 'function') {
+        scrollInstance.scrollTo({ y: savedY, animated: false });
+      }
+      if (typeof scrollInstance.getScrollableNode === 'function') {
+        const domNode = scrollInstance.getScrollableNode();
+        if (domNode && typeof domNode.scrollTop === 'number') {
+          domNode.scrollTop = savedY;
+        }
+      } else if (typeof scrollInstance.scrollTop === 'number') {
+        scrollInstance.scrollTop = savedY;
+      }
+    };
+
+    restoreScroll();
+    const rafId = typeof requestAnimationFrame !== 'undefined'
+      ? requestAnimationFrame(restoreScroll)
+      : null;
+    const timerId = setTimeout(restoreScroll, 50);
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      clearTimeout(timerId);
+    };
+  }, []);
+
+  // Save latest scroll position on unmount
+  useEffect(() => {
+    return () => {
+      try {
+        const scrollInstance = navScrollViewRef.current;
+        const domNode = scrollInstance?.getScrollableNode?.() || scrollInstance;
+        if (domNode && typeof domNode.scrollTop === 'number' && Number.isFinite(domNode.scrollTop)) {
+          saveNavScrollY(domNode.scrollTop);
+        }
+      } catch (_) {}
+    };
+  }, []);
+
+  const handleScroll = (event) => {
+    const offsetY = event?.nativeEvent?.contentOffset?.y;
+    if (typeof offsetY === 'number' && Number.isFinite(offsetY)) {
+      saveNavScrollY(offsetY);
+    }
+  };
+
+  const handleNavigate = (href) => {
+    try {
+      const scrollInstance = navScrollViewRef.current;
+      const domNode = scrollInstance?.getScrollableNode?.() || scrollInstance;
+      if (domNode && typeof domNode.scrollTop === 'number' && Number.isFinite(domNode.scrollTop)) {
+        saveNavScrollY(domNode.scrollTop);
+      }
+    } catch (_) {}
+    router.push(href);
+  };
+
+  const handleOpenSignOutModal = () => {
+    setSignOutModalVisible(true);
+  };
+
+  const handleCloseSignOutModal = () => {
+    setSignOutModalVisible(false);
+  };
+
+  const handleConfirmSignOut = () => {
+    setSignOutModalVisible(false);
+    resetNavScrollPosition();
     logout();
   };
 
@@ -66,7 +145,7 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
     <View style={styles.sidebar}>
       {/* Brand Header with Clean Separator */}
       <Pressable
-        onPress={() => router.push('/')}
+        onPress={() => handleNavigate('/')}
         style={({ hovered }) => [
           styles.brandRow,
           hovered && styles.brandRowHovered,
@@ -84,9 +163,12 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
 
       {/* Scrollable Navigation Sections */}
       <ScrollView
+        ref={navScrollViewRef}
         style={styles.navScrollView}
         contentContainerStyle={styles.navScrollContent}
         showsVerticalScrollIndicator={true}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
       >
         {visibleSections.map((section, sIdx) => (
           <View
@@ -106,8 +188,12 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
                 return (
                   <Pressable
                     key={item.href}
-                    onPress={() => router.push(item.href)}
-                    style={[styles.navItem, active && styles.navItemActive]}
+                    onPress={() => handleNavigate(item.href)}
+                    style={({ hovered }) => [
+                      styles.navItem,
+                      hovered && !active && styles.navItemHovered,
+                      active && styles.navItemActive,
+                    ]}
                   >
                     {active ? <View style={styles.activeBar} /> : null}
                     <Text style={[styles.navLabel, active && styles.navLabelActive]}>
@@ -132,10 +218,29 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
             <Text style={styles.userRole}>{displayRole}</Text>
           </View>
         </View>
-        <Pressable style={styles.signOutBtn} onPress={handleSignOut}>
+        <Pressable
+          style={({ hovered }) => [
+            styles.signOutBtn,
+            hovered && styles.signOutBtnHovered,
+          ]}
+          onPress={handleOpenSignOutModal}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out of Admin Console"
+        >
           <Text style={styles.signOutBtnText}>SIGN OUT</Text>
         </Pressable>
       </View>
+
+      <SignOutModal
+        visible={signOutModalVisible}
+        user={{
+          name: displayName,
+          role: displayRole,
+          initials,
+        }}
+        onConfirm={handleConfirmSignOut}
+        onClose={handleCloseSignOutModal}
+      />
     </View>
   );
 }
@@ -177,17 +282,19 @@ const styles = StyleSheet.create({
   },
   badgeWrap: {
     paddingHorizontal: 8,
-    paddingVertical: 2.5,
-    backgroundColor: '#EBE9E0',
+    paddingVertical: 3,
+    backgroundColor: '#FAF9F5',
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: radius.sm,
     alignSelf: 'flex-start',
   },
   brandBadge: {
     fontFamily: fonts.mono,
-    fontSize: 9.5,
+    fontSize: 10,
     fontWeight: '700',
-    color: colors.inkSoft,
-    letterSpacing: 1.1,
+    color: colors.inkFaint,
+    letterSpacing: 1.0,
     textTransform: 'uppercase',
   },
   section: {
@@ -195,7 +302,7 @@ const styles = StyleSheet.create({
   },
   sectionDivider: {
     borderTopWidth: 1,
-    borderTopColor: '#E4E2D8',
+    borderTopColor: '#EBE9E0',
     paddingTop: spacing.md + 4,
     marginTop: spacing.xs + 2,
   },
@@ -208,7 +315,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#6E6C65',
-    letterSpacing: 1.2,
+    letterSpacing: 1.1,
     textTransform: 'uppercase',
   },
   navGroup: {
@@ -217,14 +324,17 @@ const styles = StyleSheet.create({
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 9.5,
-    paddingHorizontal: spacing.md + 2,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md + 3,
     position: 'relative',
     borderRadius: radius.sm,
-    marginVertical: 1,
+    marginVertical: 1.5,
+  },
+  navItemHovered: {
+    backgroundColor: '#FAF9F5',
   },
   navItemActive: {
-    backgroundColor: '#EBE9E0',
+    backgroundColor: '#FAF9F5',
   },
   activeBar: {
     position: 'absolute',
@@ -237,10 +347,10 @@ const styles = StyleSheet.create({
   },
   navLabel: {
     fontFamily: fonts.sans,
-    fontSize: 13.5,
+    fontSize: 14.5,
     color: '#3F3D38',
     fontWeight: '600',
-    letterSpacing: 0.1,
+    letterSpacing: 0,
   },
   navLabelActive: {
     color: colors.ink,
@@ -248,7 +358,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     borderTopWidth: 1,
-    borderTopColor: '#E2E0D6',
+    borderTopColor: '#EBE9E0',
     paddingTop: spacing.lg,
     paddingHorizontal: spacing.xl,
   },
@@ -259,8 +369,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   avatar: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     borderRadius: radius.pill,
     backgroundColor: colors.accentSoft,
     alignItems: 'center',
@@ -268,30 +378,37 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     fontFamily: fonts.sans,
-    fontSize: 12.5,
+    fontSize: 13,
     fontWeight: '800',
     color: colors.accent,
   },
   userName: {
     fontFamily: fonts.sans,
-    fontSize: 13.5,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.ink,
   },
   userRole: {
-    fontFamily: fonts.sans,
-    fontSize: 11.5,
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    fontWeight: '600',
     color: colors.inkFaint,
     marginTop: 1,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   signOutBtn: {
     borderWidth: 1,
-    borderColor: colors.borderStrong,
+    borderColor: colors.border,
     borderRadius: radius.sm,
     paddingVertical: 8,
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FAF9F5',
     cursor: 'pointer',
+  },
+  signOutBtnHovered: {
+    backgroundColor: '#F0EFE8',
+    borderColor: '#D4D2C7',
   },
   signOutBtnText: {
     fontFamily: fonts.mono,

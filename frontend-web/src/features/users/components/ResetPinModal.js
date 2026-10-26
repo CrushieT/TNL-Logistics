@@ -9,12 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
-
-const ROLE_LABELS = {
-  ADMIN: 'Administrator',
-  OFFICE_STAFF: 'Office Staff',
-  FIELD_STAFF: 'Field Staff',
-};
+import { getRoleLabel } from '../userRoles.mjs';
 
 export default function ResetPinModal({ visible, user, onClose, onRequestConfirm, onConfirm }) {
   const [showManualOverride, setShowManualOverride] = useState(false);
@@ -115,7 +110,7 @@ export default function ResetPinModal({ visible, user, onClose, onRequestConfirm
               <Text style={styles.userMeta}>@{user.username}</Text>
             </View>
             <View style={styles.roleBadge}>
-              <Text style={styles.roleBadgeText}>{ROLE_LABELS[user.role] || user.role}</Text>
+              <Text style={styles.roleBadgeText}>{getRoleLabel(user.role)}</Text>
             </View>
           </View>
 
@@ -144,7 +139,7 @@ export default function ResetPinModal({ visible, user, onClose, onRequestConfirm
               </View>
               <Text style={styles.statusDescription}>
                 {user.hasPinSet
-                  ? 'Courier currently has a 4-digit PIN configured for mobile terminal operations.'
+                  ? 'Staff member currently has a 4-digit PIN configured for mobile terminal operations.'
                   : 'No mobile PIN is currently enrolled for this staff account.'}
               </Text>
             </View>
@@ -155,7 +150,7 @@ export default function ResetPinModal({ visible, user, onClose, onRequestConfirm
                 RECOMMENDED: CLEAR PIN & REQUIRE SETUP
               </Text>
               <Text style={styles.actionCardDescription}>
-                For courier accountability and security, administrators should not know staff PINs.
+                For staff accountability and security, administrators should not know staff PINs.
                 Clearing the PIN requires the staff member to configure their own secret 4-digit PIN
                 upon next mobile login. Active mobile sessions will be revoked immediately.
               </Text>
@@ -188,7 +183,7 @@ export default function ResetPinModal({ visible, user, onClose, onRequestConfirm
               {showManualOverride ? (
                 <View style={styles.overridePanel}>
                   <Text style={styles.overrideNote}>
-                    Only use this override if the courier cannot complete initial setup on their terminal.
+                    Only use this override if the staff member cannot complete initial setup on their terminal.
                   </Text>
                   <View style={styles.pinRow}>
                     {pinDigits.map((digit, index) => (

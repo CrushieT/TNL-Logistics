@@ -16,8 +16,6 @@ public interface TrackingService {
 
     List<TrackingScanResponse> processBatchScan(BatchTrackingScanRequest request, String actingStaffUserId);
 
-    OfflineTrackingSyncResponse processOfflineSync(OfflineTrackingSyncRequest request, String actingStaffUserId);
-
     Page<TrackingLogEntryResponse> getTrackingLogs(String search, ParcelStatus status,
                                                   LocalDate startDate, LocalDate endDate,
                                                   Pageable pageable);
@@ -30,6 +28,9 @@ public interface TrackingService {
             ParcelStatus status,
             Pageable pageable
     );
+
+    org.springframework.data.domain.Slice<PersonalTrackingEventResponse> getPersonalTrackingEventSlice(
+            String actingStaffUserId, String search, ParcelStatus status, Pageable pageable);
 
     PersonalScanMetricsResponse getPersonalScanMetrics(String actingStaffUserId);
 

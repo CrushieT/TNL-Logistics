@@ -2,7 +2,8 @@ import React from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { colors, typography, spacing, radius } from '../../../theme';
-import { BATCH_OPERATIONS, formatStatusLabel, canSubmitBatch, MAX_BATCH_SIZE } from '../scannerFlow.mjs';
+import { getAllowedBatchOperations, formatStatusLabel, canSubmitBatch, MAX_BATCH_SIZE } from '../scannerFlow.mjs';
+import VehiclePicker from './VehiclePicker';
 
 export default function BatchScanPanel({
   operation,
@@ -12,14 +13,28 @@ export default function BatchScanPanel({
   onSelectVehicle,
   loadingVehicles,
   onRetryVehicles,
+  isLoadingMoreVehicles = false,
+  hasMoreVehicles = false,
+  vehicleLoadError = '',
+  vehiclePageError = '',
+  onLoadNextVehicles,
+  vehicleSearchValue = '',
+  onVehicleSearchChange,
+  vehicleRecommendations = [],
+  isLoadingVehicleRecommendations = false,
+  vehicleRecommendationError = '',
+  onRetryVehicleRecommendation,
   queue,
   onRemoveItem,
   onClearBatch,
   onSubmit,
-  isSubmitting
+  isSubmitting,
+  isOnline,
+  role
 }) {
+  const allowedOperations = getAllowedBatchOperations(role);
   const isVehicleRequired = operation === 'LOADED_ON_TRUCK';
-  const canSubmit = canSubmitBatch(queue, operation, selectedVehicleId) && !isSubmitting;
+  const canSubmit = canSubmitBatch(queue, operation, selectedVehicleId, role) && !isSubmitting && isOnline;
 
   const renderQueueItem = ({ item, index }) => (
     <View style={styles.queueItemRow}>
@@ -42,14 +57,14 @@ export default function BatchScanPanel({
       <View style={styles.operationSection}>
         <Text style={styles.sectionEyebrow}>TARGET OPERATION *</Text>
         <View style={styles.operationButtonsRow}>
-          {BATCH_OPERATIONS.map((op) => {
+          {allowedOperations.map((op) => {
             const isSelected = operation === op;
             return (
               <TouchableOpacity
                 key={op}
                 style={[styles.opButton, isSelected && styles.opButtonSelected]}
                 onPress={() => onSelectOperation(op)}
-                disabled={isSubmitting}
+                disabled={isSubmitting || !isOnline}
               >
                 <Text style={[styles.opButtonText, isSelected && styles.opButtonTextSelected]}>
                   {formatStatusLabel(op)}
@@ -58,42 +73,33 @@ export default function BatchScanPanel({
             );
           })}
         </View>
+        {allowedOperations.length === 0 && (
+          <Text style={styles.permissionMessage}>No Rapid Batch operations are permitted for this role.</Text>
+        )}
       </View>
 
       {/* Vehicle Selection when LOADED_ON_TRUCK is chosen */}
       {isVehicleRequired && (
-        <View style={styles.vehicleSection}>
-          <View style={styles.vehicleHeader}>
-            <Text style={styles.sectionEyebrow}>ASSIGN VEHICLE *</Text>
-            {loadingVehicles && <ActivityIndicator size="small" color={colors.accent} />}
-          </View>
-          {vehicles.length === 0 && !loadingVehicles ? (
-            <View style={styles.vehicleErrorBox}>
-              <Text style={styles.vehicleErrorText}>No active vehicles found.</Text>
-              <TouchableOpacity onPress={onRetryVehicles} style={styles.retryLink}>
-                <Text style={styles.retryLinkText}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.vehicleChipsRow}>
-              {vehicles.map((v) => {
-                const isSelected = selectedVehicleId === v.vehicleId;
-                return (
-                  <TouchableOpacity
-                    key={v.vehicleId}
-                    style={[styles.vehicleChip, isSelected && styles.vehicleChipSelected]}
-                    onPress={() => onSelectVehicle(v.vehicleId)}
-                    disabled={isSubmitting}
-                  >
-                    <Text style={[styles.vehicleChipPlate, isSelected && styles.vehicleChipPlateSelected]}>
-                      {v.plateNumber}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
-        </View>
+        <VehiclePicker
+          vehicles={vehicles}
+          selectedVehicleId={selectedVehicleId}
+          onSelectVehicle={onSelectVehicle}
+          isLoadingVehicles={loadingVehicles}
+          isLoadingMoreVehicles={isLoadingMoreVehicles}
+          hasMoreVehicles={hasMoreVehicles}
+          vehicleLoadError={vehicleLoadError}
+          vehiclePageError={vehiclePageError}
+          onLoadRecentVehicles={onRetryVehicles}
+          onLoadNextVehicles={onLoadNextVehicles}
+          searchValue={vehicleSearchValue}
+          onSearchChange={onVehicleSearchChange}
+          recommendations={vehicleRecommendations}
+          isLoadingRecommendations={isLoadingVehicleRecommendations}
+          recommendationError={vehicleRecommendationError}
+          onRetryRecommendation={onRetryVehicleRecommendation}
+          isOnline={isOnline}
+          disabled={isSubmitting}
+        />
       )}
 
       {/* Queue Header & Counter */}
@@ -174,6 +180,11 @@ const styles = StyleSheet.create({
   operationButtonsRow: {
     flexDirection: 'row',
     gap: spacing.xs
+  },
+  permissionMessage: {
+    fontSize: 12,
+    color: colors.inkSoft,
+    marginTop: spacing.xs
   },
   opButton: {
     flex: 1,

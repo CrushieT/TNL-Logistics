@@ -2,7 +2,6 @@ package com.tnl.logistics.service.impl;
 
 import com.tnl.logistics.dto.*;
 import com.tnl.logistics.model.AppUser;
-import com.tnl.logistics.model.StaffType;
 import com.tnl.logistics.model.UserRole;
 import com.tnl.logistics.repository.AppUserRepository;
 import com.tnl.logistics.service.UserService;
@@ -22,6 +21,9 @@ import java.util.List;
 @Service
 @Transactional
 public class UserServiceImpl implements UserService {
+
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
 
     private static final String USER_ID_PREFIX = "U-";
 
@@ -70,6 +72,7 @@ public class UserServiceImpl implements UserService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Administrator account creation is not permitted. Only one system administrator account is allowed.");
         }
+        requireAssignableRole(request.getRole());
 
         String normalizedUsername = UsernameNormalizer.normalize(request.getUsername());
         if (appUserRepository.findByUsername(normalizedUsername).isPresent()) {
@@ -77,10 +80,6 @@ public class UserServiceImpl implements UserService {
                     "Username '" + normalizedUsername + "' is already taken.");
         }
 
-        if (request.getRole() == UserRole.FIELD_STAFF && request.getStaffType() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Staff type is required for Field Staff accounts.");
-        }
 
         String userId = generateNextUserId();
 
@@ -93,9 +92,6 @@ public class UserServiceImpl implements UserService {
         );
         user.setMustChangePassword(true);
 
-        if (request.getRole() == UserRole.FIELD_STAFF) {
-            user.setStaffType(request.getStaffType());
-        }
 
         if (request.getPin() != null && !request.getPin().isBlank()) {
             user.setPinHash(passwordEncoder.encode(request.getPin()));
@@ -109,6 +105,7 @@ public class UserServiceImpl implements UserService {
     public UserResponse updateUser(String userId, UserUpdateRequest request, String requestingUserId) {
         guardSelfModification(userId, requestingUserId);
         AppUser user = findUserOrThrow(userId);
+        requireTargetRole(request.getRole());
 
         if (user.getRole() != UserRole.ADMIN && request.getRole() == UserRole.ADMIN) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -128,10 +125,6 @@ public class UserServiceImpl implements UserService {
             }
         });
 
-        if (request.getRole() == UserRole.FIELD_STAFF && request.getStaffType() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Staff type is required for Field Staff accounts.");
-        }
 
         boolean hasSecurityRelevantChange = user.getRole() != request.getRole()
                 || !java.util.Objects.equals(user.getActive(), request.getActive());
@@ -141,11 +134,6 @@ public class UserServiceImpl implements UserService {
         user.setRole(request.getRole());
         user.setActive(request.getActive());
 
-        if (request.getRole() == UserRole.FIELD_STAFF) {
-            user.setStaffType(request.getStaffType());
-        } else {
-            user.setStaffType(null);
-        }
 
         if (hasSecurityRelevantChange) {
             user.incrementTokenVersion();
@@ -161,20 +149,16 @@ public class UserServiceImpl implements UserService {
     @Override
     public void deleteUser(String userId, String requestingUserId) {
         guardSelfModification(userId, requestingUserId);
-        AppUser user = findUserOrThrow(userId);
+        AppUser user = appUserRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + userId));
+        entityManager.refresh(user, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
 
         if (user.getRole() == UserRole.ADMIN) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "The system administrator account cannot be deleted or deactivated.");
         }
 
-        long linkedRecords = appUserRepository.countTrackingEventsByStaff(userId)
-                + appUserRepository.countPaymentsByStaff(userId)
-                + appUserRepository.countWaybillsByStaff(userId)
-                + appUserRepository.countSoaBatchesByStaff(userId)
-                + appUserRepository.countPrintEventsByStaff(userId);
-
-        if (linkedRecords > 0) {
+        if (appUserRepository.countAuditReferencePresence(userId) > 0) {
             // Soft deactivate — preserves audit trail
             user.setActive(false);
             user.incrementTokenVersion();
@@ -230,12 +214,27 @@ public class UserServiceImpl implements UserService {
 
     private List<UserRole> resolveRoleFilter(String roleFilter) {
         if (roleFilter == null || roleFilter.isBlank() || roleFilter.equalsIgnoreCase("all")) {
-            return List.of(UserRole.ADMIN, UserRole.OFFICE_STAFF, UserRole.FIELD_STAFF);
+            return List.of(UserRole.ADMIN, UserRole.RECEIVING_STAFF, UserRole.COURIER_STAFF, UserRole.DISPATCH_STAFF);
         }
         try {
-            return List.of(UserRole.valueOf(roleFilter.toUpperCase()));
+            UserRole role = UserRole.valueOf(roleFilter.toUpperCase());
+            requireTargetRole(role);
+            return List.of(role);
         } catch (IllegalArgumentException e) {
-            return List.of(UserRole.ADMIN, UserRole.OFFICE_STAFF, UserRole.FIELD_STAFF);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported role filter.");
         }
     }
+
+    private void requireAssignableRole(UserRole role) {
+        if (role == null || !role.isAssignableStaffRole()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported staff role.");
+        }
+    }
+
+    private void requireTargetRole(UserRole role) {
+        if (role == null || !role.isTargetRole()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported role.");
+        }
+    }
+
 }

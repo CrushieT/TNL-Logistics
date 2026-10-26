@@ -58,18 +58,429 @@ index d86e4f5..7f57dfe 100644
 +    implementation 'androidx.core:core:1.13.1'
      implementation "com.google.zxing:core:3.3.0"
  }
+diff --git a/node_modules/react-native-bluetooth-escpos-printer/android/src/main/AndroidManifest.xml b/node_modules/react-native-bluetooth-escpos-printer/android/src/main/AndroidManifest.xml
+index b646487..84a7ab9 100644
+--- a/node_modules/react-native-bluetooth-escpos-printer/android/src/main/AndroidManifest.xml
++++ b/node_modules/react-native-bluetooth-escpos-printer/android/src/main/AndroidManifest.xml
+@@ -1,10 +1,10 @@
+ 
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+           package="cn.jystudio.bluetooth">
+-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+-    <uses-permission android:name="android.permission.BLUETOOTH" />
+-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
++    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
++    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
++    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="30"/>
++    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30"/>
+ 
+ </manifest>
+   
+diff --git a/node_modules/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/BluetoothService.java b/node_modules/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/BluetoothService.java
+index d048d04..e0d6e79 100644
+--- a/node_modules/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/BluetoothService.java
++++ b/node_modules/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/BluetoothService.java
+@@ -205,7 +205,12 @@ public class BluetoothService {
+             Map<String, Object> bundle = new HashMap<String, Object>();
+ 
+             // Always cancel discovery because it will slow down a connection
+-            mAdapter.cancelDiscovery();
++            // Connecting to a paired device does not require Scan permission.
++            try {
++                mAdapter.cancelDiscovery();
++            } catch (SecurityException exception) {
++                Log.d(TAG, "Discovery cancellation unavailable; continuing paired connection.");
++            }
+ 
+             BluetoothSocket tmp = null;
+ 
 diff --git a/node_modules/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/RNBluetoothManagerModule.java b/node_modules/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/RNBluetoothManagerModule.java
-index dd5d33e..bcdf209 100644
+index dd5d33e..ef83455 100644
 --- a/node_modules/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/RNBluetoothManagerModule.java
 +++ b/node_modules/react-native-bluetooth-escpos-printer/android/src/main/java/cn/jystudio/bluetooth/RNBluetoothManagerModule.java
-@@ -10,8 +10,8 @@ import android.content.Intent;
+@@ -10,8 +10,10 @@ import android.content.Intent;
  import android.content.IntentFilter;
  import android.content.pm.PackageManager;
  import android.os.Bundle;
 -import android.support.v4.app.ActivityCompat;
 -import android.support.v4.content.ContextCompat;
-+import androidx.core.app.ActivityCompat;
++import android.os.Build;
++import android.os.Handler;
++import android.os.Looper;
 +import androidx.core.content.ContextCompat;
  import android.util.Log;
  import android.widget.Toast;
  import com.facebook.react.bridge.*;
+@@ -60,13 +62,17 @@ public class RNBluetoothManagerModule extends ReactContextBaseJavaModule
+     // Return Intent extra
+     public static String EXTRA_DEVICE_ADDRESS = "device_address";
+ 
+-    private static final Map<String, Promise> promiseMap = Collections.synchronizedMap(new HashMap<String, Promise>());
++    private final Map<String, Promise> promiseMap = Collections.synchronizedMap(new HashMap<String, Promise>());
+     private static final String PROMISE_ENABLE_BT = "ENABLE_BT";
+     private static final String PROMISE_SCAN = "SCAN";
+     private static final String PROMISE_CONNECT = "CONNECT";
+ 
+     private JSONArray pairedDeivce = new JSONArray();
+     private JSONArray foundDevice = new JSONArray();
++    private boolean scanDiscoveryStarted = false;
++    private static final long SCAN_TIMEOUT_MS = 45000;
++    private final Handler scanDeadlineHandler = new Handler(Looper.getMainLooper());
++    private Runnable scanDeadline;
+     // Name of the connected device
+     private String mConnectedDeviceName = null;
+     // Local Bluetooth adapter
+@@ -82,7 +88,9 @@ public class RNBluetoothManagerModule extends ReactContextBaseJavaModule
+         this.mService.addStateObserver(this);
+         // Register for broadcasts when a device is discovered
+         IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
++        filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_STARTED);
+         filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
++        filter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
+         this.reactContext.registerReceiver(discoverReceiver, filter);
+     }
+ 
+@@ -165,59 +173,187 @@ public class RNBluetoothManagerModule extends ReactContextBaseJavaModule
+         promise.resolve(adapter!=null && adapter.isEnabled());
+     }
+ 
+-    @ReactMethod
+-    public void scanDevices(final Promise promise) {
+-        BluetoothAdapter adapter = this.getBluetoothAdapter();
+-        if(adapter == null){
+-            promise.reject(EVENT_BLUETOOTH_NOT_SUPPORT);
+-        }else {
+-            cancelDisCovery();
+-            int permissionChecked = ContextCompat.checkSelfPermission(reactContext, android.Manifest.permission.ACCESS_COARSE_LOCATION);
+-            if (permissionChecked == PackageManager.PERMISSION_DENIED) {
+-                // // TODO: 2018/9/21
+-                ActivityCompat.requestPermissions(reactContext.getCurrentActivity(),
+-                        new String[]{android.Manifest.permission.ACCESS_COARSE_LOCATION},
+-                        1);
++    private void requireBluetoothPermissions(boolean discovery) {
++        String[] permissions;
++        if (Build.VERSION.SDK_INT >= 31) {
++            permissions = discovery
++                    ? new String[]{"android.permission.BLUETOOTH_SCAN", "android.permission.BLUETOOTH_CONNECT"}
++                    : new String[]{"android.permission.BLUETOOTH_CONNECT"};
++        } else {
++            permissions = discovery
++                    ? new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}
++                    : new String[]{};
++        }
++        for (String permission : permissions) {
++            if (ContextCompat.checkSelfPermission(reactContext, permission) != PackageManager.PERMISSION_GRANTED) {
++                throw new SecurityException("Bluetooth permission required: " + permission);
+             }
++        }
++    }
++
++    private Promise takeScanPromise() {
++        Promise promise = promiseMap.remove(PROMISE_SCAN);
++        scanDiscoveryStarted = false;
++        if (scanDeadline != null) {
++            scanDeadlineHandler.removeCallbacks(scanDeadline);
++            scanDeadline = null;
++        }
++        return promise;
++    }
++
++    private void resolveScan(boolean discoveryStarted) {
++        Promise promise = takeScanPromise();
++        if (promise == null) return;
++        String resultString;
++        try {
++            JSONObject result = new JSONObject();
++            result.put("paired", pairedDeivce);
++            result.put("found", foundDevice);
++            result.put("discoveryStarted", discoveryStarted);
++            resultString = result.toString();
++        } catch (Exception exception) {
++            promise.reject("DISCOVER", "Unable to serialize Bluetooth devices.", exception);
++            return;
++        }
++        promise.resolve(resultString);
++    }
+ 
++    private void rejectScan(String code, String message, Throwable exception) {
++        Promise promise = takeScanPromise();
++        if (promise != null) promise.reject(code, message, exception);
++    }
++
++    private synchronized void expireScan(Promise expectedPromise) {
++        if (promiseMap.get(PROMISE_SCAN) != expectedPromise) return;
++        String code = "DISCOVER";
++        String message = "Discovery timed out. Check Bluetooth and try again.";
++        try {
++            requireBluetoothPermissions(true);
++            BluetoothAdapter adapter = this.getBluetoothAdapter();
++            if (adapter == null) {
++                code = EVENT_BLUETOOTH_NOT_SUPPORT;
++                message = "Bluetooth is not supported.";
++            } else if (!adapter.isEnabled()) {
++                code = "BT NOT ENABLED";
++                message = "Turn on Bluetooth before scanning for printers.";
++            } else if (adapter.isDiscovering()) {
++                adapter.cancelDiscovery();
++            }
++        } catch (SecurityException exception) {
++            code = "PERMISSION_DENIED";
++            message = "Bluetooth discovery permission is required.";
++        } catch (Exception exception) {
++            message = "Unable to finish Bluetooth discovery. Try again.";
++        }
++        rejectScan(code, message, null);
++    }
+ 
++    @ReactMethod
++    public synchronized void scanDevices(final Promise promise) {
++        if (promiseMap.containsKey(PROMISE_SCAN)) {
++            promise.reject("SCAN_IN_PROGRESS", "A Bluetooth scan is already in progress.");
++            return;
++        }
++        try {
++            requireBluetoothPermissions(true);
++            BluetoothAdapter adapter = this.getBluetoothAdapter();
++            if (adapter == null) {
++                promise.reject(EVENT_BLUETOOTH_NOT_SUPPORT, "Bluetooth is not supported.");
++                return;
++            }
++            if (!adapter.isEnabled()) {
++                promise.reject("BT NOT ENABLED", "Turn on Bluetooth before scanning for printers.");
++                return;
++            }
++            if (adapter.isDiscovering()) {
++                promise.reject("SCAN_IN_PROGRESS", "Bluetooth discovery is already in progress.");
++                return;
++            }
+             pairedDeivce = new JSONArray();
+             foundDevice = new JSONArray();
+-            Set<BluetoothDevice> boundDevices = adapter.getBondedDevices();
+-            for (BluetoothDevice d : boundDevices) {
+-                try {
+-                    JSONObject obj = new JSONObject();
+-                    obj.put("name", d.getName());
+-                    obj.put("address", d.getAddress());
+-                    pairedDeivce.put(obj);
+-                } catch (Exception e) {
+-                    //ignore.
+-                }
++            for (BluetoothDevice device : adapter.getBondedDevices()) {
++                JSONObject pairedDevice = new JSONObject();
++                pairedDevice.put("name", device.getName());
++                pairedDevice.put("address", device.getAddress());
++                pairedDeivce.put(pairedDevice);
+             }
+-
+             WritableMap params = Arguments.createMap();
+             params.putString("devices", pairedDeivce.toString());
+             emitRNEvent(EVENT_DEVICE_ALREADY_PAIRED, params);
++            scanDiscoveryStarted = false;
++            promiseMap.put(PROMISE_SCAN, promise);
+             if (!adapter.startDiscovery()) {
+-                promise.reject("DISCOVER", "NOT_STARTED");
+-                cancelDisCovery();
++                requireBluetoothPermissions(true);
++                if (!adapter.isEnabled()) {
++                    rejectScan("BT NOT ENABLED", "Turn on Bluetooth before scanning for printers.", null);
++                } else if (pairedDeivce.length() > 0) {
++                    resolveScan(false);
++                } else {
++                    rejectScan("DISCOVER", "NOT_STARTED: Check Bluetooth and pair the printer in Android Settings.", null);
++                }
+             } else {
+-                promiseMap.put(PROMISE_SCAN, promise);
++                scanDeadline = () -> expireScan(promise);
++                if (!scanDeadlineHandler.postDelayed(scanDeadline, SCAN_TIMEOUT_MS)) {
++                    rejectScan("DISCOVER", "Unable to start the Bluetooth scan deadline.", null);
++                }
++            }
++        } catch (SecurityException exception) {
++            if (promiseMap.containsKey(PROMISE_SCAN)) {
++                rejectScan("PERMISSION_DENIED", "Bluetooth discovery permission is required.", exception);
++            } else {
++                promise.reject("PERMISSION_DENIED", "Bluetooth discovery permission is required.", exception);
++            }
++        } catch (Exception exception) {
++            if (promiseMap.containsKey(PROMISE_SCAN)) {
++                rejectScan("DISCOVER", "Unable to scan for Bluetooth devices.", exception);
++            } else {
++                promise.reject("DISCOVER", "Unable to scan for Bluetooth devices.", exception);
+             }
+         }
+     }
+ 
++    @Override
++    public synchronized void invalidate() {
++        rejectScan("DISCOVER", "Bluetooth printer bridge closed.", null);
++        reactContext.unregisterReceiver(discoverReceiver);
++        mService.removeStateObserver(this);
++        super.invalidate();
++    }
++
+     @ReactMethod
+     public void connect(String address, final Promise promise) {
+-        BluetoothAdapter adapter = this.getBluetoothAdapter();
+-        if (adapter!=null && adapter.isEnabled()) {
+-            BluetoothDevice device = adapter.getRemoteDevice(address);
+-            promiseMap.put(PROMISE_CONNECT, promise);
+-            mService.connect(device);
+-        } else {
+-            promise.reject("BT NOT ENABLED");
++        try {
++            requireBluetoothPermissions(false);
++            BluetoothAdapter adapter = this.getBluetoothAdapter();
++            if (adapter != null && adapter.isEnabled()) {
++                BluetoothDevice device = adapter.getRemoteDevice(address);
++                promiseMap.put(PROMISE_CONNECT, promise);
++                mService.connect(device);
++            } else {
++                promise.reject("BT NOT ENABLED", "Turn on Bluetooth before connecting to a printer.");
++            }
++        } catch (SecurityException exception) {
++            promiseMap.remove(PROMISE_CONNECT);
++            promise.reject("PERMISSION_DENIED", "Bluetooth connection permission is required.", exception);
+         }
++    }
+ 
++    @ReactMethod
++    public void disconnect(String address, final Promise promise) {
++        try {
++            Promise pendingConnect = promiseMap.remove(PROMISE_CONNECT);
++            if (pendingConnect != null) {
++                pendingConnect.reject("CANCELLED", "Connection cancelled by disconnect request.");
++            }
++            if (mService != null) {
++                mService.stop();
++            }
++            mConnectedDeviceName = null;
++            promise.resolve(true);
++        } catch (Exception exception) {
++            Log.e(TAG, "Error disconnecting bluetooth service", exception);
++            promise.reject("DISCONNECT_FAILED", "Failed to disconnect printer.", exception);
++        }
+     }
+ 
+     @ReactMethod
+@@ -243,19 +379,6 @@ public class RNBluetoothManagerModule extends ReactContextBaseJavaModule
+         }
+     }
+ 
+-    private void cancelDisCovery() {
+-        try {
+-            BluetoothAdapter adapter = this.getBluetoothAdapter();
+-            if (adapter!=null && adapter.isDiscovering()) {
+-                adapter.cancelDiscovery();
+-            }
+-            Log.d(TAG, "Discover canceled");
+-        } catch (Exception e) {
+-            //ignore
+-        }
+-    }
+-
+-
+     @Override
+     public void onActivityResult(Activity activity, int requestCode, int resultCode, Intent data) {
+         BluetoothAdapter adapter = this.getBluetoothAdapter();
+@@ -346,46 +469,54 @@ public class RNBluetoothManagerModule extends ReactContextBaseJavaModule
+     private final BroadcastReceiver discoverReceiver = new BroadcastReceiver() {
+         @Override
+         public void onReceive(Context context, Intent intent) {
+-            String action = intent.getAction();
+-            Log.d(TAG, "on receive:" + action);
+-            // When discovery finds a device
+-            if (BluetoothDevice.ACTION_FOUND.equals(action)) {
+-                // Get the BluetoothDevice object from the Intent
+-                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+-                if (device.getBondState() != BluetoothDevice.BOND_BONDED) {
+-                    JSONObject deviceFound = new JSONObject();
+-                    try {
+-                        deviceFound.put("name", device.getName());
+-                        deviceFound.put("address", device.getAddress());
+-                    } catch (Exception e) {
+-                        //ignore
++            synchronized (RNBluetoothManagerModule.this) {
++                if (!promiseMap.containsKey(PROMISE_SCAN)) return;
++                String action = intent.getAction();
++                try {
++                    if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(action)) {
++                        int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.STATE_ON);
++                        if (state == BluetoothAdapter.STATE_TURNING_OFF || state == BluetoothAdapter.STATE_OFF) {
++                            rejectScan("BT NOT ENABLED", "Turn on Bluetooth before scanning for printers.", null);
++                        }
++                        return;
+                     }
+-                    if (!objectFound(deviceFound)) {
+-                        foundDevice.put(deviceFound);
++                    requireBluetoothPermissions(true);
++                    if (BluetoothAdapter.ACTION_DISCOVERY_STARTED.equals(action)) {
++                        scanDiscoveryStarted = true;
++                    } else if (scanDiscoveryStarted && BluetoothDevice.ACTION_FOUND.equals(action)) {
++                        BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
++                        if (device != null && device.getBondState() != BluetoothDevice.BOND_BONDED) {
++                            JSONObject deviceFound = new JSONObject();
++                            deviceFound.put("name", device.getName());
++                            deviceFound.put("address", device.getAddress());
++                            if (!objectFound(deviceFound)) {
++                                foundDevice.put(deviceFound);
++                                WritableMap params = Arguments.createMap();
++                                params.putString("device", deviceFound.toString());
++                                emitRNEvent(EVENT_DEVICE_FOUND, params);
++                            }
++                        }
++                    } else if (scanDiscoveryStarted && BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
++                        BluetoothAdapter adapter = RNBluetoothManagerModule.this.getBluetoothAdapter();
++                        if (adapter == null) {
++                            rejectScan(EVENT_BLUETOOTH_NOT_SUPPORT, "Bluetooth is not supported.", null);
++                            return;
++                        }
++                        if (!adapter.isEnabled()) {
++                            rejectScan("BT NOT ENABLED", "Turn on Bluetooth before scanning for printers.", null);
++                            return;
++                        }
++                        if (adapter.isDiscovering()) return;
++                        resolveScan(true);
+                         WritableMap params = Arguments.createMap();
+-                        params.putString("device", deviceFound.toString());
+-                        reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+-                                .emit(EVENT_DEVICE_FOUND, params);
++                        params.putString("paired", pairedDeivce.toString());
++                        params.putString("found", foundDevice.toString());
++                        emitRNEvent(EVENT_DEVICE_DISCOVER_DONE, params);
+                     }
+-
+-                }
+-            } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
+-                Promise promise = promiseMap.remove(PROMISE_SCAN);
+-                if (promise != null) {
+-
+-                    JSONObject result = null;
+-                    try {
+-                        result = new JSONObject();
+-                        result.put("paired", pairedDeivce);
+-                        result.put("found", foundDevice);
+-                        promise.resolve(result.toString());
+-                    } catch (Exception e) {
+-                        //ignore
+-                    }
+-                    WritableMap params = Arguments.createMap();
+-                    params.putString("paired", pairedDeivce.toString());
+-                    params.putString("found", foundDevice.toString());
+-                    emitRNEvent(EVENT_DEVICE_DISCOVER_DONE, params);
++                } catch (SecurityException exception) {
++                    rejectScan("PERMISSION_DENIED", "Bluetooth discovery permission is required.", exception);
++                } catch (Exception exception) {
++                    rejectScan("DISCOVER", "Unable to read Bluetooth discovery results.", exception);
+                 }
+             }
+         }
+@@ -430,7 +561,7 @@ public class RNBluetoothManagerModule extends ReactContextBaseJavaModule
+                 if (p == null) {
+                     emitRNEvent(EVENT_UNABLE_CONNECT, null);
+                 } else {
+-                    p.reject("Unable to connect device");
++                    p.reject(EVENT_UNABLE_CONNECT, "Unable to connect to printer. The printer may be connected to another device or out of range. Disconnect other devices or restart the printer.");
+                 }
+ 
+                 break;

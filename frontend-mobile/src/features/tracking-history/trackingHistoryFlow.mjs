@@ -5,11 +5,6 @@
 
 export const HISTORY_PAGE_SIZE = 20;
 
-export const SYNC_STATUSES = Object.freeze({
-  SYNCED: 'SYNCED',
-  PENDING_OFFLINE_SYNC: 'PENDING_OFFLINE_SYNC',
-});
-
 export const STATUS_LABELS = Object.freeze({
   REGISTERED: 'Registered',
   QR_GENERATED: 'QR Generated',
@@ -71,6 +66,7 @@ export function buildPersonalHistoryParams({ search, page = 0, size = HISTORY_PA
   const params = {
     page: safePage,
     size: safeSize,
+    includeTotals: false,
   };
 
   if (search != null) {
@@ -86,6 +82,35 @@ export function buildPersonalHistoryParams({ search, page = 0, size = HISTORY_PA
   }
 
   return params;
+}
+
+export function normalizeHistoryPage(data, expectedPage, expectedSize = HISTORY_PAGE_SIZE) {
+  const page = data?.page ?? data;
+  if (!Array.isArray(data?.content) || !page ||
+      !Number.isInteger(page.number) || page.number !== expectedPage ||
+      !Number.isInteger(page.size) || page.size !== expectedSize ||
+      data.content.length > page.size) {
+    throw new Error('Invalid personal history pagination response');
+  }
+
+  let hasNext;
+  if (Object.hasOwn(page, 'hasNext')) {
+    if (typeof page.hasNext !== 'boolean') {
+      throw new Error('Invalid personal history pagination response');
+    }
+    hasNext = page.hasNext;
+  } else {
+    if (!Number.isInteger(page.totalPages) || page.totalPages < 0 ||
+        !Number.isInteger(page.totalElements) || page.totalElements < 0 ||
+        page.totalPages !== Math.ceil(page.totalElements / page.size)) {
+      throw new Error('Invalid personal history pagination response');
+    }
+    hasNext = page.number + 1 < page.totalPages;
+  }
+  if (hasNext && data.content.length !== page.size) {
+    throw new Error('Invalid personal history pagination response');
+  }
+  return { content: data.content, number: page.number, size: page.size, hasNext };
 }
 
 /**
@@ -214,26 +239,4 @@ export function replacePageZeroEvents(incoming = []) {
 export function encodeTrackingId(value) {
   if (value == null) return '';
   return encodeURIComponent(String(value).trim());
-}
-
-/**
- * Resolves display metadata for sync status badges.
- */
-export function getSyncStatusMeta(status) {
-  if (status === SYNC_STATUSES.PENDING_OFFLINE_SYNC) {
-    return {
-      label: 'PENDING OFFLINE SYNC',
-      isPending: true,
-      color: '#A8790F',
-      bgColor: '#F7EFDA',
-      borderColor: '#D4A437',
-    };
-  }
-  return {
-    label: 'SYNCED',
-    isPending: false,
-    color: '#2E7D46',
-    bgColor: '#E7F3EA',
-    borderColor: '#98D2A5',
-  };
 }

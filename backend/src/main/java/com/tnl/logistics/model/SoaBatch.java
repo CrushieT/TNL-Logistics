@@ -3,6 +3,8 @@ package com.tnl.logistics.model;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "soa_batch")
@@ -16,6 +18,7 @@ public class SoaBatch {
     @JoinColumn(name = "collection_id", nullable = false)
     private WeeklyCollection collection;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "scope", nullable = false)
     private String scope = "ALL";
 

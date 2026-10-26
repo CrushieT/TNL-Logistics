@@ -8,6 +8,7 @@ import com.tnl.logistics.repository.*;
 import com.tnl.logistics.service.ShipmentService;
 import com.tnl.logistics.service.SseService;
 import com.tnl.logistics.service.TrackingService;
+import com.tnl.logistics.service.impl.TrackingTransitionPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -25,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -43,6 +45,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public class TrackingScanIntegrationTest {
 
     @Autowired
+    private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Autowired
@@ -53,6 +58,9 @@ public class TrackingScanIntegrationTest {
 
     @Autowired
     private TrackingService trackingService;
+
+    @Autowired
+    private TrackingTransitionPolicy transitionPolicy;
 
     @Autowired
     private com.tnl.logistics.config.DataSeeder dataSeeder;
@@ -84,15 +92,26 @@ public class TrackingScanIntegrationTest {
     @Autowired
     private BCryptPasswordEncoder passwordEncoder;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
     @SpyBean
     private SseService sseService;
 
     private String fieldToken;
+    private String haulerToken;
+    private String generalFieldToken;
     private String officeToken;
     private String adminToken;
 
     @BeforeEach
     public void setup() throws Exception {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
         vehicleRepository.deleteById("VH-SCAN-001");
         vehicleRepository.deleteById("VH-SCAN-002");
         vehicleRepository.deleteById("VH-INACTIVE");
@@ -106,16 +125,36 @@ public class TrackingScanIntegrationTest {
         // Seed users
         AppUser fieldUser = appUserRepository.findById("USR-FIELD").orElse(null);
         if (fieldUser == null) {
-            fieldUser = new AppUser("USR-FIELD", "field_staff", passwordEncoder.encode("field123"), "Field Staff User", UserRole.FIELD_STAFF);
-            fieldUser.setStaffType(StaffType.INTERNAL_TRUCK);
-            appUserRepository.save(fieldUser);
+            fieldUser = new AppUser("USR-FIELD", "field_staff", passwordEncoder.encode("field123"), "Courier Staff User", UserRole.COURIER_STAFF);
         }
+        fieldUser.setRole(UserRole.COURIER_STAFF);
+        fieldUser.setMustChangePassword(false);
+        fieldUser.setActive(true);
+        appUserRepository.save(fieldUser);
+
+        AppUser haulerUser = appUserRepository.findById("USR-HAULER").orElseGet(() ->
+                new AppUser("USR-HAULER", "hauler_staff", passwordEncoder.encode("hauler123"),
+                        "Dispatch Staff User", UserRole.DISPATCH_STAFF));
+        haulerUser.setRole(UserRole.DISPATCH_STAFF);
+        haulerUser.setMustChangePassword(false);
+        haulerUser.setActive(true);
+        appUserRepository.save(haulerUser);
+
+        AppUser generalFieldUser = appUserRepository.findById("USR-FIELD-GENERAL").orElseGet(() ->
+                new AppUser("USR-FIELD-GENERAL", "general_field", passwordEncoder.encode("general123"),
+                        "General Courier User", UserRole.COURIER_STAFF));
+        generalFieldUser.setRole(UserRole.COURIER_STAFF);
+        generalFieldUser.setMustChangePassword(false);
+        generalFieldUser.setActive(true);
+        appUserRepository.save(generalFieldUser);
 
         AppUser officeUser = appUserRepository.findById("USR-OFFICE").orElse(null);
         if (officeUser == null) {
-            officeUser = new AppUser("USR-OFFICE", "office_staff", passwordEncoder.encode("office123"), "Office Staff User", UserRole.OFFICE_STAFF);
+            officeUser = new AppUser("USR-OFFICE", "office_staff", passwordEncoder.encode("office123"), "Receiving Staff User", UserRole.RECEIVING_STAFF);
             appUserRepository.save(officeUser);
         }
+        officeUser.setRole(UserRole.RECEIVING_STAFF);
+        appUserRepository.save(officeUser);
 
         AppUser adminUser = appUserRepository.findById("USR-ADMIN").orElse(null);
         if (adminUser == null) {
@@ -123,9 +162,11 @@ public class TrackingScanIntegrationTest {
             appUserRepository.save(adminUser);
         }
 
-        fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
-        adminToken = "Bearer " + JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
+        fieldToken = "Bearer " + sessionTokens.generateToken("USR-FIELD", "COURIER_STAFF");
+        haulerToken = "Bearer " + sessionTokens.generateToken("USR-HAULER", "DISPATCH_STAFF");
+        generalFieldToken = "Bearer " + sessionTokens.generateToken("USR-FIELD-GENERAL", "COURIER_STAFF");
+        officeToken = "Bearer " + sessionTokens.generateToken("USR-OFFICE", "RECEIVING_STAFF");
+        adminToken = "Bearer " + sessionTokens.generateToken("USR-ADMIN", "ADMIN");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {
@@ -146,6 +187,8 @@ public class TrackingScanIntegrationTest {
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("350.00"));
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
 
         List<ParcelUnitRequest> parcels = new ArrayList<>();
         for (int i = 1; i <= quantity; i++) {
@@ -167,6 +210,8 @@ public class TrackingScanIntegrationTest {
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("500.00"));
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
 
         List<ParcelUnitRequest> parcels = new ArrayList<>();
         for (int i = 1; i <= quantity; i++) {
@@ -215,7 +260,7 @@ public class TrackingScanIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    // 3. Every status maps to the correct next scanner status
+    // 3. Scan context remains lifecycle-driven for all field roles
     @Test
     public void testStatusMappingAcrossLifecycle() throws Exception {
         String trackingId = createTestShipment(1);
@@ -256,9 +301,15 @@ public class TrackingScanIntegrationTest {
                 .andExpect(jsonPath("$.nextStatusCode").value("LOADED_TO_HAULER"))
                 .andExpect(jsonPath("$.requiresVehicle").value(false))
                 .andExpect(jsonPath("$.canScan").value(true));
+
+        mockMvc.perform(get("/api/v1/tracking-events/scan-context/" + trackingId).header("Authorization", haulerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nextStatusCode").value("LOADED_TO_HAULER"))
+                .andExpect(jsonPath("$.requiresVehicle").value(false))
+                .andExpect(jsonPath("$.canScan").value(true));
     }
 
-    // 4. LOADED_TO_HAULER and COMPLETED return canScan = false
+    // 4. No-waybill parcels advertise direct completion and COMPLETED remains terminal
     @Test
     public void testTerminalStatusesReturnCannotScan() throws Exception {
         String trackingId = createTestShipment(1);
@@ -269,8 +320,14 @@ public class TrackingScanIntegrationTest {
         parcelUnitRepository.saveAndFlush(unit);
         mockMvc.perform(get("/api/v1/tracking-events/scan-context/" + trackingId).header("Authorization", fieldToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.canScan").value(false))
-                .andExpect(jsonPath("$.nextStatusCode").doesNotExist());
+                .andExpect(jsonPath("$.canScan").value(true))
+                .andExpect(jsonPath("$.nextStatusCode").value("COMPLETED"))
+                .andExpect(jsonPath("$.nextStatusLabel").value("Completed"));
+
+        mockMvc.perform(get("/api/v1/tracking-events/scan-context/" + trackingId).header("Authorization", haulerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.canScan").value(true))
+                .andExpect(jsonPath("$.nextStatusCode").value("COMPLETED"));
 
         // COMPLETED
         unit.setCurrentStatus(ParcelStatus.COMPLETED);
@@ -330,13 +387,26 @@ public class TrackingScanIntegrationTest {
         // ARRIVED_AT_TNL -> LOADED_TO_HAULER
         TrackingScanRequest req3 = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_TO_HAULER, null, "To Hauler");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
-                        .header("Authorization", fieldToken)
+                        .header("Authorization", haulerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req3)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.transitionApplied").value(true))
                 .andExpect(jsonPath("$.previousStatusCode").value("ARRIVED_AT_TNL"))
                 .andExpect(jsonPath("$.newStatusCode").value("LOADED_TO_HAULER"));
+
+        // No-waybill direct completion remains available to Dispatch Staff.
+        TrackingScanRequest req4 = new TrackingScanRequest(trackingId, ParcelStatus.COMPLETED, null, "Delivered");
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", haulerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req4)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.transitionApplied").value(true))
+                .andExpect(jsonPath("$.previousStatusCode").value("LOADED_TO_HAULER"))
+                .andExpect(jsonPath("$.newStatusCode").value("COMPLETED"));
+        assertEquals(ParcelStatus.COMPLETED,
+                parcelUnitRepository.findById(trackingId).orElseThrow().getCurrentStatus());
     }
 
     // 7. LOADED_ON_TRUCK rejects missing vehicle
@@ -855,7 +925,7 @@ public class TrackingScanIntegrationTest {
 
         TrackingScanRequest req = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Auth test");
 
-        // FIELD_STAFF -> OK
+        // COURIER_STAFF -> OK
         mockMvc.perform(post("/api/v1/tracking-events/scan")
                         .header("Authorization", fieldToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -867,5 +937,242 @@ public class TrackingScanIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    public void testCrossRoleSingleScansAndUnauthorizedRetriesReturnForbiddenWithoutWrites() throws Exception {
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "AUTH-1001", "Authorization Truck"));
+        String internalTarget = createTestShipment(1);
+        ParcelUnit arrivedParcel = parcelUnitRepository.findById(internalTarget).orElseThrow();
+        arrivedParcel.setCurrentStatus(ParcelStatus.ARRIVED_AT_TNL);
+        parcelUnitRepository.saveAndFlush(arrivedParcel);
+        String haulerTarget = createTestShipment(1);
+        long eventCountBefore = trackingEventRepository.count();
+
+        TrackingScanRequest internalCrossRole = new TrackingScanRequest(
+                internalTarget, ParcelStatus.LOADED_TO_HAULER, null, "Unauthorized handover");
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", fieldToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(internalCrossRole)))
+                .andExpect(status().isForbidden());
+
+        arrivedParcel.setCurrentStatus(ParcelStatus.LOADED_TO_HAULER);
+        parcelUnitRepository.saveAndFlush(arrivedParcel);
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", fieldToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(internalCrossRole)))
+                .andExpect(status().isForbidden());
+
+        TrackingScanRequest haulerCrossRole = new TrackingScanRequest(
+                haulerTarget, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Unauthorized truck load");
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", haulerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(haulerCrossRole)))
+                .andExpect(status().isForbidden());
+
+        assertEquals(ParcelStatus.LOADED_TO_HAULER,
+                parcelUnitRepository.findById(internalTarget).orElseThrow().getCurrentStatus());
+        assertEquals(ParcelStatus.QR_GENERATED,
+                parcelUnitRepository.findById(haulerTarget).orElseThrow().getCurrentStatus());
+        assertEquals(eventCountBefore, trackingEventRepository.count());
+    }
+
+    @Test
+    public void testCrossRoleBatchScansReturnForbiddenAtomically() throws Exception {
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "AUTH-1002", "Batch Authorization Truck"));
+        List<String> internalTargets = createTestShipmentAllIds(2);
+        for (String trackingId : internalTargets) {
+            ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+            parcel.setCurrentStatus(ParcelStatus.ARRIVED_AT_TNL);
+            parcelUnitRepository.saveAndFlush(parcel);
+        }
+        List<String> haulerTargets = createTestShipmentAllIds(2);
+        long eventCountBefore = trackingEventRepository.count();
+
+        BatchTrackingScanRequest internalCrossRole = new BatchTrackingScanRequest(
+                internalTargets, ParcelStatus.LOADED_TO_HAULER, null, "Unauthorized batch handover");
+        mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
+                        .header("Authorization", fieldToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(internalCrossRole)))
+                .andExpect(status().isForbidden());
+
+        BatchTrackingScanRequest haulerCrossRole = new BatchTrackingScanRequest(
+                haulerTargets, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Unauthorized batch truck load");
+        mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
+                        .header("Authorization", haulerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(haulerCrossRole)))
+                .andExpect(status().isForbidden());
+
+        for (String trackingId : internalTargets) {
+            assertEquals(ParcelStatus.ARRIVED_AT_TNL,
+                    parcelUnitRepository.findById(trackingId).orElseThrow().getCurrentStatus());
+        }
+        for (String trackingId : haulerTargets) {
+            assertEquals(ParcelStatus.QR_GENERATED,
+                    parcelUnitRepository.findById(trackingId).orElseThrow().getCurrentStatus());
+        }
+        assertEquals(eventCountBefore, trackingEventRepository.count());
+    }
+
+    @Test
+    public void testRoleSpecificTransitionsCannotCrossAuthorityOrSkipArrival() throws Exception {
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "AUTH-1004", "General Staff Truck"));
+        String trackingId = createTestShipment(1);
+
+        for (TrackingScanRequest request : List.of(
+                new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Loaded"),
+                new TrackingScanRequest(trackingId, ParcelStatus.ARRIVED_AT_TNL, null, "Arrived"))) {
+            mockMvc.perform(post("/api/v1/tracking-events/scan")
+                            .header("Authorization", generalFieldToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.transitionApplied").value(true));
+        }
+        TrackingScanRequest handover = new TrackingScanRequest(
+                trackingId, ParcelStatus.LOADED_TO_HAULER, null, "Handover");
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", generalFieldToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(handover)))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", haulerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(handover)))
+                .andExpect(status().isOk());
+
+        TrackingScanRequest genericCompletion = new TrackingScanRequest(
+                trackingId, ParcelStatus.COMPLETED, null, "Completed");
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", haulerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(genericCompletion)))
+                .andExpect(status().isOk());
+        assertEquals(ParcelStatus.COMPLETED,
+                parcelUnitRepository.findById(trackingId).orElseThrow().getCurrentStatus());
+
+        String skippedTrackingId = createTestShipment(1);
+        TrackingScanRequest loadRequest = new TrackingScanRequest(
+                skippedTrackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Loaded");
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", generalFieldToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loadRequest)))
+                .andExpect(status().isOk());
+
+        TrackingScanRequest skippedRequest = new TrackingScanRequest(
+                skippedTrackingId, ParcelStatus.LOADED_TO_HAULER, null, "Skip arrival");
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", haulerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(skippedRequest)))
+                .andExpect(status().isBadRequest());
+        assertEquals(ParcelStatus.LOADED_ON_TRUCK,
+                parcelUnitRepository.findById(skippedTrackingId).orElseThrow().getCurrentStatus());
+    }
+
+    @Test
+    public void testAdminAndReceivingRetainFullSequentialTransitionAccess() throws Exception {
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "AUTH-1005", "Full Access Truck"));
+
+        for (String token : List.of(adminToken, officeToken)) {
+            String trackingId = createTestShipment(1);
+            ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+            parcel.setCurrentStatus(ParcelStatus.REGISTERED);
+            parcelUnitRepository.saveAndFlush(parcel);
+
+            for (TrackingScanRequest request : List.of(
+                    new TrackingScanRequest(trackingId, ParcelStatus.QR_GENERATED, null, "QR generated"),
+                    new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Loaded"),
+                    new TrackingScanRequest(trackingId, ParcelStatus.ARRIVED_AT_TNL, null, "Arrived"),
+                    new TrackingScanRequest(trackingId, ParcelStatus.LOADED_TO_HAULER, null, "Handover"),
+                    new TrackingScanRequest(trackingId, ParcelStatus.COMPLETED, null, "Completed"))) {
+                mockMvc.perform(post("/api/v1/tracking-events/scan")
+                                .header("Authorization", token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request)))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.transitionApplied").value(true));
+            }
+
+            assertEquals(ParcelStatus.COMPLETED,
+                    parcelUnitRepository.findById(trackingId).orElseThrow().getCurrentStatus());
+        }
+    }
+
+    @Test
+    public void testCompleteRoleTransitionAuthorityMatrix() {
+        assertTransitionAuthority(UserRole.ADMIN, Set.of(ParcelStatus.values()));
+        assertTransitionAuthority(UserRole.RECEIVING_STAFF, Set.of(ParcelStatus.values()));
+        assertTransitionAuthority(UserRole.COURIER_STAFF,
+                Set.of(ParcelStatus.LOADED_ON_TRUCK, ParcelStatus.ARRIVED_AT_TNL));
+        assertTransitionAuthority(UserRole.DISPATCH_STAFF,
+                Set.of(ParcelStatus.LOADED_TO_HAULER, ParcelStatus.COMPLETED));
+    }
+
+    @Test
+    public void testBatchScanEntryPointsRemainAvailableToAllTargetRoles() throws Exception {
+        vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "AUTH-1006", "Batch Matrix Truck"));
+
+        for (String token : List.of(adminToken, officeToken, fieldToken)) {
+            List<String> trackingIds = createTestShipmentAllIds(1);
+            BatchTrackingScanRequest request = new BatchTrackingScanRequest(
+                    trackingIds, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Batch load");
+            mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
+                            .header("Authorization", token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].transitionApplied").value(true));
+        }
+
+        List<String> dispatchTrackingIds = createTestShipmentAllIds(1);
+        ParcelUnit dispatchParcel = parcelUnitRepository.findById(dispatchTrackingIds.get(0)).orElseThrow();
+        dispatchParcel.setCurrentStatus(ParcelStatus.ARRIVED_AT_TNL);
+        parcelUnitRepository.saveAndFlush(dispatchParcel);
+        BatchTrackingScanRequest dispatchRequest = new BatchTrackingScanRequest(
+                dispatchTrackingIds, ParcelStatus.LOADED_TO_HAULER, null, "Batch handover");
+        mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
+                        .header("Authorization", haulerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dispatchRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].transitionApplied").value(true));
+    }
+
+    @Test
+    public void testOperationalMetricsCountCourierAndDispatchActivity() throws Exception {
+        String trackingId = createTestShipment(1);
+        ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+        AppUser courier = appUserRepository.findById("USR-FIELD").orElseThrow();
+        AppUser dispatch = appUserRepository.findById("USR-HAULER").orElseThrow();
+        trackingEventRepository.saveAndFlush(new TrackingEvent(
+                parcel, ParcelStatus.LOADED_ON_TRUCK, null, courier, "Courier metric"));
+        trackingEventRepository.saveAndFlush(new TrackingEvent(
+                parcel, ParcelStatus.LOADED_TO_HAULER, null, dispatch, "Dispatch metric"));
+
+        MvcResult result = mockMvc.perform(get("/api/v1/tracking-events/metrics")
+                        .header("Authorization", adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        assertTrue(objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("activeCouriersCount").asLong() >= 2);
+    }
+
+    private void assertTransitionAuthority(UserRole role, Set<ParcelStatus> allowedStatuses) {
+        for (ParcelStatus targetStatus : ParcelStatus.values()) {
+            TrackingTransitionPolicy.StaffAuthorizationDecision expected = allowedStatuses.contains(targetStatus)
+                    ? TrackingTransitionPolicy.StaffAuthorizationDecision.ALLOWED
+                    : TrackingTransitionPolicy.StaffAuthorizationDecision.DENIED;
+            assertEquals(expected, transitionPolicy.decideStaffAuthorization(role, targetStatus),
+                    role + " authority mismatch for " + targetStatus);
+        }
     }
 }

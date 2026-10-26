@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -36,21 +37,21 @@ public class TrackingServiceImpl implements TrackingService {
     private final TrackingEventRepository trackingEventRepository;
     private final AppUserRepository appUserRepository;
     private final SseService sseService;
-    private final OfflineTrackingSyncItemService offlineTrackingSyncItemService;
     private final TrackingTransitionPolicy transitionPolicy;
+    private final com.tnl.logistics.service.ParcelCustodyLocks custodyLocks;
 
     public TrackingServiceImpl(ParcelUnitRepository parcelUnitRepository,
                                TrackingEventRepository trackingEventRepository,
                                AppUserRepository appUserRepository,
                                SseService sseService,
-                               OfflineTrackingSyncItemService offlineTrackingSyncItemService,
-                               TrackingTransitionPolicy transitionPolicy) {
+                               TrackingTransitionPolicy transitionPolicy,
+                               com.tnl.logistics.service.ParcelCustodyLocks custodyLocks) {
         this.parcelUnitRepository = parcelUnitRepository;
         this.trackingEventRepository = trackingEventRepository;
         this.appUserRepository = appUserRepository;
         this.sseService = sseService;
-        this.offlineTrackingSyncItemService = offlineTrackingSyncItemService;
         this.transitionPolicy = transitionPolicy;
+        this.custodyLocks = custodyLocks;
     }
 
     @Override
@@ -94,6 +95,11 @@ public class TrackingServiceImpl implements TrackingService {
                 canScan = true;
                 break;
             case LOADED_TO_HAULER:
+                nextStatusCode = parcel.getWaybill() == null ? ParcelStatus.COMPLETED.name() : null;
+                nextStatusLabel = parcel.getWaybill() == null ? formatStatusDisplay(ParcelStatus.COMPLETED) : null;
+                requiresVehicle = false;
+                canScan = parcel.getWaybill() == null;
+                break;
             case COMPLETED:
             default:
                 nextStatusCode = null;
@@ -111,7 +117,7 @@ public class TrackingServiceImpl implements TrackingService {
         String assignedVehicleId = currentVehicle != null ? currentVehicle.getVehicleId() : null;
         String assignedVehiclePlateNumber = currentVehicle != null ? currentVehicle.getPlateNumber() : null;
 
-        return new TrackingScanContextResponse(
+        TrackingScanContextResponse response = new TrackingScanContextResponse(
                 parcel.getTrackingId(),
                 shipmentId,
                 packageIndex,
@@ -125,6 +131,15 @@ public class TrackingServiceImpl implements TrackingService {
                 assignedVehiclePlateNumber,
                 canScan
         );
+        response.setLost(parcel.isLost());
+        if (parcel.isLost()) {
+            response.setCanScan(false);
+            response.setNextStatusCode(null);
+            response.setNextStatusLabel(null);
+            response.setRequiresVehicle(false);
+            response.setScanBlockedReason("Parcel is lost. Admin must mark it found before scanning.");
+        }
+        return response;
     }
 
     @Override
@@ -136,6 +151,9 @@ public class TrackingServiceImpl implements TrackingService {
             throw new IllegalArgumentException("Target status is required");
         }
 
+        AppUser actingStaff = requireActingStaff(actingStaffUserId);
+        requireStaffAuthorization(actingStaff, request.getTargetStatus());
+
         String normalizedTrackingId = request.getTrackingId().trim();
         String normalizedVehicleId = request.getVehicleId() != null ? request.getVehicleId().trim() : null;
 
@@ -145,11 +163,7 @@ public class TrackingServiceImpl implements TrackingService {
             }
         }
 
-        ParcelUnit parcel = parcelUnitRepository.findByIdWithPessimisticLock(normalizedTrackingId)
-                .orElseThrow(() -> new IllegalArgumentException("Parcel unit not found: " + normalizedTrackingId));
-
-        AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
-                .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
+        ParcelUnit parcel = lockScanParcels(List.of(normalizedTrackingId)).get(0);
 
         TrackingTransitionPolicy.Decision decision = transitionPolicy.decide(parcel.getCurrentStatus(), request.getTargetStatus(),
                 vehicleId(parcel.getCurrentVehicle()), normalizedVehicleId);
@@ -189,6 +203,9 @@ public class TrackingServiceImpl implements TrackingService {
             throw new IllegalArgumentException("Target status is required");
         }
 
+        AppUser actingStaff = requireActingStaff(actingStaffUserId);
+        requireStaffAuthorization(actingStaff, request.getTargetStatus());
+
         String normalizedVehicleId = request.getVehicleId() != null ? request.getVehicleId().trim() : null;
         if (request.getTargetStatus() == ParcelStatus.LOADED_ON_TRUCK) {
             if (normalizedVehicleId == null || normalizedVehicleId.isEmpty()) {
@@ -210,17 +227,12 @@ public class TrackingServiceImpl implements TrackingService {
             normalizedIds.add(trimmed);
         }
 
-        AppUser actingStaff = appUserRepository.findById(actingStaffUserId)
-                .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
-
         // Acquire parcel locks in sorted Tracking ID order to prevent deadlocks
         List<String> sortedIds = new ArrayList<>(normalizedIds);
         Collections.sort(sortedIds);
         Map<String, ParcelUnit> lockedParcels = new HashMap<>();
-        for (String id : sortedIds) {
-            ParcelUnit p = parcelUnitRepository.findByIdWithPessimisticLock(id)
-                    .orElseThrow(() -> new IllegalArgumentException("Parcel unit not found: " + id));
-            lockedParcels.put(id, p);
+        for (ParcelUnit parcel : lockScanParcels(sortedIds)) {
+            lockedParcels.put(parcel.getTrackingId(), parcel);
         }
 
         // Pre-validate all transitions before mutating entities
@@ -266,62 +278,6 @@ public class TrackingServiceImpl implements TrackingService {
         return responses;
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public OfflineTrackingSyncResponse processOfflineSync(OfflineTrackingSyncRequest request, String actingStaffUserId) {
-        AppUser actor = appUserRepository.findById(actingStaffUserId)
-                .orElseThrow(() -> new IllegalArgumentException("Staff user not found"));
-        if (!Boolean.TRUE.equals(actor.getActive()) || actor.getRole() != UserRole.FIELD_STAFF) {
-            throw new org.springframework.security.access.AccessDeniedException("Field Staff access is required");
-        }
-        Set<String> eventIds = new HashSet<>();
-        for (OfflineTrackingSyncItemRequest item : request.items()) {
-            if (!eventIds.add(java.util.UUID.fromString(item.clientEventId()).toString())) {
-                throw new IllegalArgumentException("Duplicate clientEventId in batch");
-            }
-        }
-        List<OfflineTrackingSyncItemRequest> ordered = new ArrayList<>(request.items());
-        ordered.sort(Comparator.comparing(OfflineTrackingSyncItemRequest::clientSequence));
-        List<OfflineTrackingSyncItemResponse> results = new ArrayList<>(ordered.size());
-        Set<String> failedParcels = new HashSet<>();
-        for (OfflineTrackingSyncItemRequest item : ordered) {
-            String trackingId = item.trackingId().trim().toUpperCase();
-            if (failedParcels.contains(trackingId)) {
-                results.add(new OfflineTrackingSyncItemResponse(item.clientEventId(), trackingId, "BLOCKED_BY_PRIOR_FAILURE",
-                        "PRIOR_ITEM_FAILED", false, false, null, null, null));
-                continue;
-            }
-            try {
-                OfflineTrackingSyncItemResponse result = offlineTrackingSyncItemService.process(item, actor);
-                results.add(result);
-                if (!"APPLIED".equals(result.outcome()) && !"ALREADY_APPLIED".equals(result.outcome())) {
-                    failedParcels.add(trackingId);
-                }
-            } catch (org.springframework.dao.DataIntegrityViolationException ex) {
-                OfflineTrackingSyncItemResponse recovered = offlineTrackingSyncItemService.recoverDuplicateReservation(item, actor);
-                if (recovered != null) {
-                    results.add(recovered);
-                    if (!"APPLIED".equals(recovered.outcome()) && !"ALREADY_APPLIED".equals(recovered.outcome())) {
-                        failedParcels.add(trackingId);
-                    }
-                    continue;
-                }
-                results.add(new OfflineTrackingSyncItemResponse(item.clientEventId(), trackingId, "RETRYABLE_ERROR",
-                        "TEMPORARY_FAILURE", true, false, null, null, null));
-                failedParcels.add(trackingId);
-            } catch (org.springframework.dao.DataAccessException ex) {
-                results.add(new OfflineTrackingSyncItemResponse(item.clientEventId(), trackingId, "RETRYABLE_ERROR",
-                        "TEMPORARY_FAILURE", true, false, null, null, null));
-                failedParcels.add(trackingId);
-            }
-        }
-        int applied = (int) results.stream().filter(value -> "APPLIED".equals(value.outcome())).count();
-        int alreadyApplied = (int) results.stream().filter(value -> "ALREADY_APPLIED".equals(value.outcome())).count();
-        int retryable = (int) results.stream().filter(OfflineTrackingSyncItemResponse::retryable).count();
-        return new OfflineTrackingSyncResponse(results.size(), applied, alreadyApplied,
-                results.size() - applied - alreadyApplied - retryable, retryable, results);
-    }
-
     private ScanTransitionResult processStatusScanInternal(
             ParcelUnit parcel,
             ParcelStatus targetStatus,
@@ -331,6 +287,9 @@ public class TrackingServiceImpl implements TrackingService {
             AppUser actingStaff) {
 
         ParcelStatus currentStatus = parcel.getCurrentStatus();
+        if (targetStatus == ParcelStatus.COMPLETED && parcel.getWaybill() != null) {
+            throw new IllegalStateException("Assigned parcel can only be completed through its returned waybill");
+        }
         TrackingTransitionPolicy.Decision decision = transitionPolicy.decide(currentStatus, targetStatus,
                 vehicleId(parcel.getCurrentVehicle()), requestedVehicleId);
         requireOnlineDecision(decision, parcel, targetStatus, requestedVehicleId);
@@ -427,12 +386,42 @@ public class TrackingServiceImpl implements TrackingService {
         return resolution.vehicle();
     }
 
+    private List<ParcelUnit> lockScanParcels(List<String> trackingIds) {
+        try {
+            return custodyLocks.lockParcels(trackingIds);
+        } catch (ResponseStatusException exception) {
+            if (exception.getStatusCode() == HttpStatus.NOT_FOUND) {
+                throw new IllegalArgumentException("Parcel unit not found");
+            }
+            throw exception;
+        }
+    }
+
+    private AppUser requireActingStaff(String actingStaffUserId) {
+        return appUserRepository.findById(actingStaffUserId)
+                .orElseThrow(() -> new IllegalArgumentException("Staff user not found: " + actingStaffUserId));
+    }
+
+    private void requireStaffAuthorization(AppUser actingStaff, ParcelStatus targetStatus) {
+        TrackingTransitionPolicy.StaffAuthorizationDecision decision =
+                transitionPolicy.decideStaffAuthorization(actingStaff.getRole(), targetStatus);
+        if (decision == TrackingTransitionPolicy.StaffAuthorizationDecision.DENIED) {
+            throw new AccessDeniedException("Staff role is not permitted to perform this tracking transition");
+        }
+    }
+
     private static String vehicleId(Vehicle vehicle) {
         return vehicle == null ? null : vehicle.getVehicleId();
     }
 
     private void requireOnlineDecision(TrackingTransitionPolicy.Decision decision, ParcelUnit parcel,
                                        ParcelStatus target, String requestedVehicleId) {
+        if (parcel.isLost()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Parcel is lost. Admin must mark it found before scanning.");
+        }
+        if (target == ParcelStatus.COMPLETED && parcel.getWaybill() != null) {
+            throw new IllegalStateException("Assigned parcel can only be completed through its returned waybill");
+        }
         if (decision.kind() == TrackingTransitionPolicy.DecisionKind.VEHICLE_MISMATCH) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     String.format("Parcel %s is already LOADED_ON_TRUCK with vehicle %s, cannot assign different vehicle %s",
@@ -496,6 +485,11 @@ public class TrackingServiceImpl implements TrackingService {
         if (parcels.isEmpty()) return "0 / 0 Registered";
 
         int total = parcels.size();
+        long lostCount = parcels.stream().filter(ParcelUnit::isLost).count();
+        if (lostCount > 0) {
+            long delivered = parcels.stream().filter(parcel -> !parcel.isLost() && parcel.getCurrentStatus() == ParcelStatus.COMPLETED).count();
+            return delivered + " / " + total + " Delivered; " + lostCount + " Lost";
+        }
         Map<ParcelStatus, Long> counts = parcels.stream()
                 .collect(Collectors.groupingBy(ParcelUnit::getCurrentStatus, Collectors.counting()));
 
@@ -529,8 +523,14 @@ public class TrackingServiceImpl implements TrackingService {
         LocalDateTime startDateTime = (startDate != null) ? startDate.atStartOfDay() : null;
         LocalDateTime endDateTime = (endDate != null) ? endDate.atTime(23, 59, 59, 999999999) : null;
 
-        Page<TrackingEvent> eventsPage = trackingEventRepository.searchTrackingEvents(
-                cleanSearch, status, startDateTime, endDateTime, pageable);
+        int pageNumber = (pageable != null) ? Math.max(0, pageable.getPageNumber()) : 0;
+        int pageSize = (pageable != null) ? Math.min(500, Math.max(1, pageable.getPageSize())) : 25;
+        org.springframework.data.domain.Pageable clampedPageable = org.springframework.data.domain.PageRequest.of(
+                pageNumber, pageSize,
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.desc("eventTimestamp"), org.springframework.data.domain.Sort.Order.desc("eventId")));
+
+        Page<TrackingEvent> eventsPage = trackingEventRepository.findAdminTrackingEvents(
+                cleanSearch, status, startDateTime, endDateTime, clampedPageable);
 
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a", Locale.ENGLISH);
 
@@ -562,7 +562,6 @@ public class TrackingServiceImpl implements TrackingService {
                     (staff != null) ? staff.getUsername() : null,
                     (staff != null) ? staff.getFullName() : null,
                     (staff != null && staff.getRole() != null) ? staff.getRole().name() : null,
-                    (staff != null && staff.getStaffType() != null) ? staff.getStaffType().name() : null,
                     event.getRemarks(),
                     event.getEventTimestamp(),
                     formattedTimestamp
@@ -577,10 +576,16 @@ public class TrackingServiceImpl implements TrackingService {
         LocalDateTime startOfDay = today.atStartOfDay();
         LocalDateTime endOfDay = today.atTime(23, 59, 59, 999999999);
 
-        long totalScans = trackingEventRepository.countOperationalScansBetween(startOfDay, endOfDay);
-        long activeCouriers = trackingEventRepository.countDistinctCouriersBetween(startOfDay, endOfDay);
-        long loadedOnTruck = trackingEventRepository.countStatusBetween(ParcelStatus.LOADED_ON_TRUCK, startOfDay, endOfDay);
-        long handedToHauler = trackingEventRepository.countStatusBetween(ParcelStatus.LOADED_TO_HAULER, startOfDay, endOfDay);
+        com.tnl.logistics.repository.TodayTrackingMetricsSummary summary =
+                trackingEventRepository.getTodayTrackingMetricsSummary(startOfDay, endOfDay);
+        if (summary == null) {
+            return new TrackingMetricsResponse(0L, 0L, 0L, 0L);
+        }
+
+        long totalScans = summary.getTodayTotalScans() != null ? summary.getTodayTotalScans() : 0L;
+        long activeCouriers = summary.getActiveCouriersCount() != null ? summary.getActiveCouriersCount() : 0L;
+        long loadedOnTruck = summary.getLoadedOnTruckToday() != null ? summary.getLoadedOnTruckToday() : 0L;
+        long handedToHauler = summary.getHandedToHaulerToday() != null ? summary.getHandedToHaulerToday() : 0L;
 
         return new TrackingMetricsResponse(totalScans, activeCouriers, loadedOnTruck, handedToHauler);
     }
@@ -592,15 +597,27 @@ public class TrackingServiceImpl implements TrackingService {
             String search,
             ParcelStatus status,
             Pageable pageable) {
+        return trackingEventRepository.findPersonalEvents(
+                actingStaffUserId, normalizePersonalHistorySearch(search), status, pageable)
+                .map(this::mapToPersonalTrackingEventResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Slice<PersonalTrackingEventResponse> getPersonalTrackingEventSlice(
+            String actingStaffUserId, String search, ParcelStatus status, Pageable pageable) {
+        return trackingEventRepository.findPersonalEventSlice(
+                actingStaffUserId, normalizePersonalHistorySearch(search), status, pageable)
+                .map(this::mapToPersonalTrackingEventResponse);
+    }
+
+    private String normalizePersonalHistorySearch(String search) {
         String cleanSearch = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
         if (cleanSearch != null && cleanSearch.length() > 50) {
             cleanSearch = cleanSearch.substring(0, 50);
         }
 
-        Page<TrackingEvent> eventsPage = trackingEventRepository.findPersonalEvents(
-                actingStaffUserId, cleanSearch, status, pageable);
-
-        return eventsPage.map(this::mapToPersonalTrackingEventResponse);
+        return cleanSearch;
     }
 
     @Override
@@ -672,7 +689,7 @@ public class TrackingServiceImpl implements TrackingService {
         String labelStatusCode = parcel.getLabelStatus() != null ? parcel.getLabelStatus().name() : LabelStatus.NOT_PRINTED.name();
         String labelStatusDisplay = formatLabelStatus(parcel.getLabelStatus());
 
-        return new PersonalParcelHistoryResponse(
+        PersonalParcelHistoryResponse response = new PersonalParcelHistoryResponse(
                 parcel.getTrackingId(),
                 shipmentId,
                 packageIndex,
@@ -685,6 +702,8 @@ public class TrackingServiceImpl implements TrackingService {
                 currentVehiclePlateNumber,
                 eventResponses
         );
+        response.setLost(parcel.isLost());
+        return response;
     }
 
     private PersonalTrackingEventResponse mapToPersonalTrackingEventResponse(TrackingEvent event) {
@@ -701,8 +720,6 @@ public class TrackingServiceImpl implements TrackingService {
         String vehicleId = vehicle != null ? vehicle.getVehicleId() : null;
         String vehiclePlateNumber = vehicle != null ? vehicle.getPlateNumber() : null;
         LocalDateTime timestamp = event.getEventTimestamp();
-        String syncStatus = "SYNCED";
-
         return new PersonalTrackingEventResponse(
                 event.getEventId(),
                 trackingId,
@@ -713,8 +730,7 @@ public class TrackingServiceImpl implements TrackingService {
                 statusDisplay,
                 vehicleId,
                 vehiclePlateNumber,
-                timestamp,
-                syncStatus
+                timestamp
         );
     }
 

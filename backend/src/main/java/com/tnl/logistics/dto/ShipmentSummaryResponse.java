@@ -7,6 +7,12 @@ import java.time.LocalDateTime;
  * Summary DTO for shipments data table and paginated search.
  */
 public class ShipmentSummaryResponse {
+    private long lostCount;
+    private long deliveredCount;
+    public long getLostCount() { return lostCount; }
+    public void setLostCount(long count) { lostCount = count; }
+    public long getDeliveredCount() { return deliveredCount; }
+    public void setDeliveredCount(long count) { deliveredCount = count; }
 
     private String shipmentId;
     private String clientId;
@@ -20,11 +26,24 @@ public class ShipmentSummaryResponse {
     private BigDecimal totalAmount;
     private BigDecimal amountPaid;
     private BigDecimal balance;
+    private String financialStatus;
+    private BigDecimal collectibleBalance;
+    private String statementId;
     private String route;
     private LocalDateTime dateRegistered;
     private String dateLabel;
     private String vehicleId;
     private String vehiclePlate;
+    private int currentVehicleCount;
+    private String currentVehicleId;
+    private String currentVehiclePlate;
+
+    public int getCurrentVehicleCount() { return currentVehicleCount; }
+    public void setCurrentVehicleCount(int currentVehicleCount) { this.currentVehicleCount = currentVehicleCount; }
+    public String getCurrentVehicleId() { return currentVehicleId; }
+    public void setCurrentVehicleId(String currentVehicleId) { this.currentVehicleId = currentVehicleId; }
+    public String getCurrentVehiclePlate() { return currentVehiclePlate; }
+    public void setCurrentVehiclePlate(String currentVehiclePlate) { this.currentVehiclePlate = currentVehiclePlate; }
     private String registeredVia;
     private Boolean allLabelsPrinted;
 
@@ -108,6 +127,15 @@ public class ShipmentSummaryResponse {
 
     public BigDecimal getBalance() { return balance; }
     public void setBalance(BigDecimal balance) { this.balance = balance; }
+
+    public String getFinancialStatus() { return financialStatus; }
+    public void setFinancialStatus(String financialStatus) { this.financialStatus = financialStatus; }
+
+    public BigDecimal getCollectibleBalance() { return collectibleBalance; }
+    public void setCollectibleBalance(BigDecimal collectibleBalance) { this.collectibleBalance = collectibleBalance; }
+
+    public String getStatementId() { return statementId; }
+    public void setStatementId(String statementId) { this.statementId = statementId; }
 
     public String getRoute() { return route; }
     public void setRoute(String route) { this.route = route; }

@@ -12,11 +12,10 @@ export default function LabelPreview({
   recipientName = 'Juan Dela Cruz',
   contactNumber = '0917-000-0000',
   address = 'Manila, Philippines',
-  destination = 'TNL Baguio Hub',
   contents = 'General Goods',
   shipmentId = 'SHP-2026-001',
   client = 'Northbridge Trading',
-  route = 'Manila to TNL Baguio',
+  route = '',
   total = 500,
 }) {
   const [branding, setBranding] = useState(null);
@@ -36,15 +35,11 @@ export default function LabelPreview({
   }, [propCompanyName]);
 
   const brandTitle = (propCompanyName || branding?.companyName || 'TNL LOGISTICS').toUpperCase();
-  const brandBadge = brandTitle.trim().charAt(0) || 'T';
 
   return (
     <View style={styles.card}>
       <View style={styles.header}>
         <View style={styles.brandRow}>
-          <View style={styles.brandBadge}>
-            <Text style={styles.brandBadgeText}>{brandBadge}</Text>
-          </View>
           <Text style={styles.brandTitle} numberOfLines={1} ellipsizeMode="tail">{brandTitle}</Text>
         </View>
         <View style={styles.headerRight}>
@@ -71,31 +66,25 @@ export default function LabelPreview({
           <Text style={styles.recipientAddressText} numberOfLines={2}>
             {address}
           </Text>
-          <Text style={styles.destinationHubText} numberOfLines={1}>
-            to {destination}
-          </Text>
+          {route ? <Text style={styles.destinationHubText}>{route}</Text> : null}
         </View>
       </View>
 
       <View style={styles.footer}>
-        <View style={styles.footerRow}>
-          <Text style={styles.footerItem}>
+        <View style={[styles.footerRow, styles.contentsRow]}>
+          <Text style={[styles.footerItem, styles.contentsField]}>
             <Text style={styles.footerMuted}>Contents: </Text>
             {contents || 'General Goods'}
           </Text>
-          <Text style={styles.footerItem}>
-            <Text style={styles.footerMuted}>Shipment: </Text>
-            <Text style={styles.footerMono}>{shipmentId}</Text>
-          </Text>
         </View>
-        <View style={styles.footerRow}>
-          <Text style={styles.footerItem} numberOfLines={1}>
+        <View style={[styles.footerRow, styles.contentsRow]}>
+          <Text style={[styles.footerItem, styles.contentsField]}>
             <Text style={styles.footerMuted}>Client: </Text>
             {client || 'Northbridge Trading'}
           </Text>
-          <Text style={styles.footerItem}>
-            <Text style={styles.footerMuted}>Route: </Text>
-            {route || 'Manila to TNL Baguio'}
+          <Text style={[styles.footerItem, styles.shipmentField]}>
+            <Text style={styles.footerMuted}>Shipment: </Text>
+            <Text style={styles.footerMono}>{shipmentId}</Text>
           </Text>
         </View>
         <View style={styles.totalRow}>
@@ -134,21 +123,6 @@ const styles = StyleSheet.create({
     gap: 8,
     marginRight: 10,
     minWidth: 0,
-  },
-  brandBadge: {
-    width: 20,
-    height: 20,
-    backgroundColor: '#000000',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 2,
-    flexShrink: 0,
-  },
-  brandBadgeText: {
-    color: '#FFFFFF',
-    fontFamily: fonts.sans,
-    fontSize: 12,
-    fontWeight: '900',
   },
   brandTitle: {
     flex: 1,
@@ -254,6 +228,19 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sans,
     fontSize: 10,
     color: '#111111',
+  },
+  contentsRow: {
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+  contentsField: {
+    flex: 1,
+    minWidth: 0,
+    overflowWrap: 'anywhere',
+  },
+  shipmentField: {
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
   },
   footerMono: {
     fontFamily: fonts.mono,

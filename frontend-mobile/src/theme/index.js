@@ -15,10 +15,20 @@ export const colors = {
 
   success: '#2E7D46',
   successSoft: '#E7F3EA',
+  info: '#3355CC',
+  infoSoft: '#E9EDFB',
   warning: '#A8790F',
   warningSoft: '#F7EFDA',
   danger: '#DC2626',
   dangerSoft: '#FEF2F2',
+  teal: '#0D9488',
+  tealSoft: '#F0FDFA',
+  amber: '#D97706',
+  amberSoft: '#FEF3C7',
+  slate: '#475569',
+  slateSoft: '#F1F5F9',
+  purple: '#7C3AED',
+  purpleSoft: '#F5F3FF',
 
   keypadBg: '#FFFFFF',
   keypadBorder: '#E0E0E0',
@@ -87,3 +97,30 @@ export const radius = {
   lg: 12,
   pill: 999,
 };
+
+export function getParcelStatusColor(status, isLost = false) {
+  if (isLost) return colors.danger;
+  switch (status) {
+    case 'Completed':
+    case 'Delivered / Completed':
+    case 'COMPLETED':
+      return colors.success;
+    case 'Loaded to Hauler':
+    case 'LOADED_TO_HAULER':
+      return colors.purple;
+    case 'Arrived at TNL':
+    case 'ARRIVED_AT_TNL':
+      return colors.teal;
+    case 'Loaded on Truck':
+    case 'LOADED_ON_TRUCK':
+      return colors.amber;
+    case 'QR Generated':
+    case 'QR_GENERATED':
+      return colors.info;
+    case 'Registered':
+    case 'REGISTERED':
+    default:
+      return colors.slate;
+  }
+}
+

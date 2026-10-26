@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { colors, spacing, typography } from '../../../theme';
+import { colors, getParcelStatusColor, spacing, typography } from '../../../theme';
 import { shipmentApi } from '../services/shipmentApi';
 import { StatusModal } from '../../../components/common/StatusModal';
 import { BackButton } from '../../../components/common/BackButton';
@@ -188,9 +188,19 @@ export function ParcelDetailScreen({ trackingId }) {
 
           <View style={styles.badgeRow}>
             <Text style={styles.metaLabel}>Current Status</Text>
-            <View style={styles.statusBadge}>
-              <View style={styles.badgeDot} />
-              <Text style={styles.badgeText}>{parcel.status || 'QR Generated'}</Text>
+            <View style={styles.statusStack}>
+              {(() => {
+                const statusColor = getParcelStatusColor(parcel.status, parcel.lost);
+                return (
+                  <View style={[styles.statusBadge, parcel.lost ? styles.lossBadge : { borderColor: statusColor }]}>
+                    <View style={[styles.badgeDot, parcel.lost ? styles.lossBadgeDot : { backgroundColor: statusColor }]} />
+                    <Text style={[styles.badgeText, parcel.lost ? styles.lossBadgeText : { color: statusColor }]}>
+                      {parcel.lost ? 'Lost' : parcel.status || 'QR Generated'}
+                    </Text>
+                  </View>
+                );
+              })()}
+              {parcel.lost && <Text style={styles.lastConfirmedStatus}>Last confirmed: {parcel.status}</Text>}
             </View>
           </View>
 
@@ -418,6 +428,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 6,
   },
+  statusStack: { alignItems: 'flex-end', gap: spacing.xs, flexShrink: 1 },
+  lastConfirmedStatus: { ...typography.mono, color: colors.inkSoft, textAlign: 'right' },
+  lossBadge: { borderColor: colors.danger, backgroundColor: colors.dangerSoft },
+  lossBadgeDot: { backgroundColor: colors.danger },
+  lossBadgeText: { color: colors.danger, fontWeight: '800' },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',

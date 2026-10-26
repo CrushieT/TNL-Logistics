@@ -23,6 +23,14 @@ export const colors = {
   warningSoft: '#F7EFDA',
   danger: '#C0392B',
   dangerSoft: '#FBEAE8',
+  teal: '#0D9488',
+  tealSoft: '#F0FDFA',
+  amber: '#D97706',
+  amberSoft: '#FEF3C7',
+  slate: '#475569',
+  slateSoft: '#F1F5F9',
+  purple: '#7C3AED',
+  purpleSoft: '#F5F3FF',
 
   black: '#111111',
 };
@@ -107,38 +115,85 @@ export const radius = {
 
 // Status -> pill color mapping used across shipments, tracking, packages
 export const statusStyles = {
-  Registered: { fg: colors.info, bg: colors.infoSoft, dot: colors.info, outline: true },
-  'QR Generated': { fg: colors.info, bg: colors.infoSoft, dot: colors.info, outline: true },
-  'Loaded on Truck': { fg: colors.inkSoft, bg: colors.surface, dot: colors.warning, outline: true },
-  'Arrived at TNL': { fg: colors.success, bg: colors.successSoft, dot: colors.success, outline: true },
-  'Loaded to Hauler': { fg: colors.success, bg: colors.successSoft, dot: colors.success, outline: true },
-  Completed: { fg: colors.success, bg: colors.successSoft, dot: colors.success, outline: true },
-  'Delivered / Completed': { fg: colors.success, bg: colors.successSoft, dot: colors.success, outline: true },
+  // Phase 1: Receiving Staff Custody (Intake & Labeling)
+  Registered: { fg: colors.slate, bg: colors.slateSoft, border: '#CBD5E1', dot: '#64748B', outline: true },
+  REGISTERED: { fg: colors.slate, bg: colors.slateSoft, border: '#CBD5E1', dot: '#64748B', outline: true },
+  'QR Generated': { fg: colors.info, bg: colors.infoSoft, border: '#BFDBFE', dot: colors.info, outline: true },
+  QR_GENERATED: { fg: colors.info, bg: colors.infoSoft, border: '#BFDBFE', dot: colors.info, outline: true },
+
+  // Phase 2: Courier Staff Custody (First-Mile Pickup & Hub Consolidation)
+  'Loaded on Truck': { fg: colors.amber, bg: colors.amberSoft, border: '#FDE68A', dot: colors.amber, outline: true },
+  LOADED_ON_TRUCK: { fg: colors.amber, bg: colors.amberSoft, border: '#FDE68A', dot: colors.amber, outline: true },
+  'Arrived at TNL': { fg: colors.teal, bg: colors.tealSoft, border: '#99F6E4', dot: colors.teal, outline: true },
+  ARRIVED_AT_TNL: { fg: colors.teal, bg: colors.tealSoft, border: '#99F6E4', dot: colors.teal, outline: true },
+
+  // Phase 3: Dispatch Staff Custody (Carrier Linehaul & Final Delivery)
+  'Loaded to Hauler': { fg: colors.purple, bg: colors.purpleSoft, border: '#DDD6FE', dot: colors.purple, outline: true },
+  LOADED_TO_HAULER: { fg: colors.purple, bg: colors.purpleSoft, border: '#DDD6FE', dot: colors.purple, outline: true },
+  Completed: { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success, outline: true },
+  COMPLETED: { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success, outline: true },
+  'Delivered / Completed': { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success, outline: true },
+
+  // Exceptions & Entity States
+  Lost: { fg: colors.danger, bg: colors.dangerSoft, border: colors.danger, dot: colors.danger },
+  LOST: { fg: colors.danger, bg: colors.dangerSoft, border: colors.danger, dot: colors.danger },
+  'With Loss': { fg: colors.danger, bg: colors.dangerSoft, border: colors.danger, dot: colors.danger },
   Active: { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success },
   'In Maintenance': { fg: '#9A6700', bg: '#FFF8E7', border: '#F2D399', dot: '#B57B00' },
   Inactive: { fg: colors.inkFaint, bg: colors.canvas, border: colors.border, dot: colors.inkFaint },
 };
 
 export const paymentStyles = {
-  Paid: { fg: '#16A34A', bg: '#F0FDF4', border: '#86EFAC', dot: '#16A34A' },
-  Unpaid: { fg: '#DC2626', bg: '#FEF2F2', border: '#FCA5A5', dot: '#DC2626' },
-  Partial: { fg: '#D97706', bg: '#FFFBEB', border: '#FDE68A', dot: '#D97706' },
+  Paid: { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success },
+  PAID: { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success },
+  Settled: { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success },
+  SETTLED: { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success },
+  Unpaid: { fg: colors.amber, bg: colors.amberSoft, border: '#FDE68A', dot: colors.amber },
+  UNPAID: { fg: colors.amber, bg: colors.amberSoft, border: '#FDE68A', dot: colors.amber },
+  'For Collection': { fg: colors.amber, bg: colors.amberSoft, border: '#FDE68A', dot: colors.amber },
+  FOR_COLLECTION: { fg: colors.amber, bg: colors.amberSoft, border: '#FDE68A', dot: colors.amber },
+  Partial: { fg: colors.amber, bg: colors.amberSoft, border: '#FDE68A', dot: colors.amber },
+  PARTIAL: { fg: colors.amber, bg: colors.amberSoft, border: '#FDE68A', dot: colors.amber },
+  PARTIALLY_PAID: { fg: colors.amber, bg: colors.amberSoft, border: '#FDE68A', dot: colors.amber },
+};
+
+export const collectionStyles = {
+  READY_FOR_SOA: { fg: colors.info, bg: colors.infoSoft, border: '#BFDBFE', dot: colors.info, label: 'Ready for SOA' },
+  'Ready for SOA': { fg: colors.info, bg: colors.infoSoft, border: '#BFDBFE', dot: colors.info, label: 'Ready for SOA' },
+  SOA_GENERATED: { fg: colors.amber, bg: colors.amberSoft, border: '#FDE68A', dot: colors.amber, label: 'SOA Generated' },
+  'SOA Generated': { fg: colors.amber, bg: colors.amberSoft, border: '#FDE68A', dot: colors.amber, label: 'SOA Generated' },
+  SETTLED: { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success, label: 'Settled' },
+  Settled: { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success, label: 'Settled' },
 };
 
 export const labelStyles = {
   Printed: { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success },
+  PRINTED: { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success },
+  Reprinted: { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success },
+  REPRINTED: { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success },
   Pending: { fg: colors.inkFaint, bg: colors.canvas, border: colors.border, dot: colors.inkFaint },
+  PENDING: { fg: colors.inkFaint, bg: colors.canvas, border: colors.border, dot: colors.inkFaint },
+  'Not Printed': { fg: colors.inkFaint, bg: colors.canvas, border: colors.border, dot: colors.inkFaint },
+  NOT_PRINTED: { fg: colors.inkFaint, bg: colors.canvas, border: colors.border, dot: colors.inkFaint },
   'Label: Printed': { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success },
   'Label: Pending': { fg: colors.inkFaint, bg: colors.canvas, border: colors.border, dot: colors.inkFaint },
 };
 
 export const waybillStyles = {
-  'Signed / Completed': { fg: colors.ink, bg: colors.canvas, border: colors.borderStrong },
-  'Waybill: Signed / Completed': { fg: colors.ink, bg: colors.canvas, border: colors.borderStrong },
-  'Sent to Hauler': { fg: colors.info, bg: colors.infoSoft, border: colors.info },
-  'Waybill: Sent to Hauler': { fg: colors.info, bg: colors.infoSoft, border: colors.info },
-  Generated: { fg: colors.warning, bg: colors.warningSoft, border: colors.warning },
-  'Waybill: Generated': { fg: colors.warning, bg: colors.warningSoft, border: colors.warning },
+  'Signed / Completed': { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success },
+  'Waybill: Signed / Completed': { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success },
+  SIGNED_COMPLETED: { fg: colors.success, bg: colors.successSoft, border: '#B8E2C8', dot: colors.success },
+  'Closed with Loss': { fg: colors.danger, bg: colors.dangerSoft, border: colors.danger, dot: colors.danger },
+  'Waybill: Closed with Loss': { fg: colors.danger, bg: colors.dangerSoft, border: colors.danger, dot: colors.danger },
+  'Closed as All Lost': { fg: colors.danger, bg: colors.dangerSoft, border: colors.danger, dot: colors.danger },
+  'Waybill: Closed as All Lost': { fg: colors.danger, bg: colors.dangerSoft, border: colors.danger, dot: colors.danger },
+  'Sent to Hauler': { fg: colors.purple, bg: colors.purpleSoft, border: '#DDD6FE', dot: colors.purple },
+  'Waybill: Sent to Hauler': { fg: colors.purple, bg: colors.purpleSoft, border: '#DDD6FE', dot: colors.purple },
+  SENT_TO_HAULER: { fg: colors.purple, bg: colors.purpleSoft, border: '#DDD6FE', dot: colors.purple },
+  Generated: { fg: colors.info, bg: colors.infoSoft, border: '#BFDBFE', dot: colors.info },
+  'Waybill: Generated': { fg: colors.info, bg: colors.infoSoft, border: '#BFDBFE', dot: colors.info },
+  GENERATED: { fg: colors.info, bg: colors.infoSoft, border: '#BFDBFE', dot: colors.info },
   'Not Generated': { fg: colors.inkFaint, bg: colors.canvas, border: colors.border },
   'Waybill: Not Generated': { fg: colors.inkFaint, bg: colors.canvas, border: colors.border },
+  NOT_GENERATED: { fg: colors.inkFaint, bg: colors.canvas, border: colors.border },
 };

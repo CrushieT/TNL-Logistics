@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { Animated, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { CameraView } from 'expo-camera';
 import { colors, typography, spacing, radius } from '../../../theme';
@@ -16,12 +16,16 @@ export default function ScanViewfinder({
   onCameraMountError,
   onRetryCamera,
   cameraMountKey,
-  pausedText
+  pausedText,
+  viewfinderHeight = 280,
+  animatedHeight
 }) {
   const hasCameraError = Boolean(cameraError);
+  const isCompact = viewfinderHeight < 220;
+  const reticleSize = isCompact ? 104 : 200;
 
   return (
-    <View style={styles.container}>
+    <Animated.View style={[styles.container, { height: animatedHeight || viewfinderHeight }]}>
       {permissionGranted && cameraActive && !hasCameraError ? (
         <CameraView
           key={cameraMountKey}
@@ -35,11 +39,11 @@ export default function ScanViewfinder({
           }}
         />
       ) : (
-        <View style={styles.fallbackContainer}>
+        <View style={[styles.fallbackContainer, isCompact && styles.fallbackContainerCompact]}>
           {hasCameraError ? (
             <>
-              <Icon source="camera-off" size={36} color={colors.inkFaint} />
-              <Text style={styles.fallbackText}>
+              <Icon source="camera-off" size={isCompact ? 24 : 36} color={colors.inkFaint} />
+              <Text style={[styles.fallbackText, isCompact && styles.fallbackTextCompact]}>
                 {cameraError || 'Camera preview unavailable. You can enter tracking IDs manually below.'}
               </Text>
               {onRetryCamera && (
@@ -50,14 +54,18 @@ export default function ScanViewfinder({
             </>
           ) : !permissionGranted ? (
             <>
-              <Icon source="camera-off" size={36} color={colors.inkFaint} />
-              <Text style={styles.fallbackText}>Camera permission is required to scan QR codes</Text>
+              <Icon source="camera-off" size={isCompact ? 24 : 36} color={colors.inkFaint} />
+              <Text style={[styles.fallbackText, isCompact && styles.fallbackTextCompact]}>
+                Camera permission is required to scan QR codes
+              </Text>
               <TouchableOpacity style={styles.permissionButton} onPress={onRequestPermission}>
                 <Text style={styles.permissionButtonText}>Grant Permission</Text>
               </TouchableOpacity>
             </>
           ) : (
-            <Text style={styles.fallbackText}>{pausedText || 'Camera preview paused'}</Text>
+            <Text style={[styles.fallbackText, isCompact && styles.fallbackTextCompact]}>
+              {pausedText || 'Camera preview paused'}
+            </Text>
           )}
         </View>
       )}
@@ -81,7 +89,10 @@ export default function ScanViewfinder({
 
         {/* Reticle Frame */}
         {permissionGranted && cameraActive && !hasCameraError && (
-          <View style={styles.reticleContainer} pointerEvents="none">
+          <View
+            style={[styles.reticleContainer, { width: reticleSize, height: reticleSize }]}
+            pointerEvents="none"
+          >
             {/* Top Left Corner */}
             <View style={[styles.corner, styles.cornerTL]} />
             {/* Top Right Corner */}
@@ -97,21 +108,24 @@ export default function ScanViewfinder({
         )}
 
         {/* Instruction Label */}
-        <View style={styles.instructionContainer} pointerEvents="none">
-          <Text style={styles.instructionText}>
+        <View
+          style={[styles.instructionContainer, isCompact && styles.instructionContainerCompact]}
+          pointerEvents="none"
+        >
+          <Text style={[styles.instructionText, isCompact && styles.instructionTextCompact]} numberOfLines={1}>
             {instructionText || 'Each package has its own QR — scan identifies the exact unit'}
           </Text>
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    height: 280,
     backgroundColor: '#111317',
-    position: 'relative'
+    position: 'relative',
+    overflow: 'hidden'
   },
   camera: {
     ...StyleSheet.absoluteFillObject,
@@ -124,12 +138,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing.lg
   },
+  fallbackContainerCompact: {
+    padding: spacing.sm
+  },
   fallbackText: {
     ...typography.bodySmall,
     color: '#A8A7A0',
     textAlign: 'center',
     marginTop: spacing.sm,
     marginBottom: spacing.md
+  },
+  fallbackTextCompact: {
+    fontSize: 11,
+    marginTop: 4,
+    marginBottom: spacing.xs
   },
   permissionButton: {
     backgroundColor: colors.accent,
@@ -165,8 +187,6 @@ const styles = StyleSheet.create({
     borderColor: colors.accent
   },
   reticleContainer: {
-    width: 200,
-    height: 200,
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center'
@@ -212,11 +232,18 @@ const styles = StyleSheet.create({
     bottom: 12,
     paddingHorizontal: spacing.lg
   },
+  instructionContainerCompact: {
+    bottom: 4,
+    paddingHorizontal: spacing.sm
+  },
   instructionText: {
     fontSize: 11,
     color: '#E0DFD8',
     textAlign: 'center',
     fontWeight: '500',
     letterSpacing: 0.2
+  },
+  instructionTextCompact: {
+    fontSize: 9
   }
 });

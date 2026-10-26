@@ -10,6 +10,7 @@ import {
 import { useRouter } from 'expo-router';
 import Card from '../../../components/common/Card';
 import Button from '../../../components/common/Button';
+import { TableRowSkeleton } from '../../../components/common/Skeleton';
 import { colors, fonts, spacing, radius } from '../../../theme';
 
 export default function TrackingLogsTable({
@@ -44,12 +45,9 @@ export default function TrackingLogsTable({
         <Text style={[styles.headerCell, styles.colStaff]}>STAFF</Text>
       </View>
 
-      {/* Loading State */}
+      {/* Loading Skeleton State */}
       {loading && logs.length === 0 ? (
-        <View style={styles.stateContainer}>
-          <ActivityIndicator size="large" color={colors.ink} />
-          <Text style={styles.stateText}>Loading audit trail...</Text>
-        </View>
+        <TableRowSkeleton rows={8} columns={5} height={52} />
       ) : logs.length === 0 ? (
         <View style={styles.stateContainer}>
           <Text style={styles.emptyTitle}>No tracking events found</Text>
@@ -178,12 +176,12 @@ export default function TrackingLogsTable({
 
 const webSelectStyle = {
   fontFamily: fonts.mono,
-  fontSize: 11.5,
-  color: colors.ink,
+  fontSize: 12.5,
+  color: colors.inkSoft,
+  backgroundColor: '#FAF9F5',
   border: `1px solid ${colors.border}`,
-  backgroundColor: '#FFFFFF',
-  padding: '6px 8px',
-  borderRadius: 3,
+  borderRadius: radius.sm,
+  padding: '6px 10px',
   outline: 'none',
   cursor: 'pointer',
 };
@@ -202,13 +200,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAF9F5',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
     alignItems: 'center',
   },
   headerCell: {
-    fontFamily: fonts.sans,
-    fontSize: 10.5,
+    fontFamily: fonts.mono,
+    fontSize: 11.5,
     fontWeight: '700',
     color: colors.inkFaint,
     letterSpacing: 0.8,
@@ -239,8 +237,8 @@ const styles = StyleSheet.create({
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     minHeight: 46,
@@ -249,9 +247,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF7ED', // subtle warm amber pulse for newly prepended SSE scans
   },
   timestampText: {
-    fontFamily: fonts.sans,
-    fontSize: 12.5,
-    color: colors.inkSoft,
+    fontFamily: fonts.mono,
+    fontSize: 13,
+    color: colors.inkFaint,
   },
   eventContainer: {
     flexDirection: 'row',
@@ -261,8 +259,8 @@ const styles = StyleSheet.create({
   },
   eventText: {
     fontFamily: fonts.mono,
-    fontSize: 12.5,
-    fontWeight: '600',
+    fontSize: 13.5,
+    fontWeight: '700',
     color: colors.accent, // Burnt orange from prototype
   },
   vehicleBadge: {
@@ -275,7 +273,7 @@ const styles = StyleSheet.create({
   },
   vehicleBadgeText: {
     fontFamily: fonts.mono,
-    fontSize: 10.5,
+    fontSize: 11.5,
     fontWeight: '700',
     color: colors.inkSoft,
   },
@@ -284,21 +282,21 @@ const styles = StyleSheet.create({
   },
   trackingIdText: {
     fontFamily: fonts.mono,
-    fontSize: 12.5,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.ink,
     letterSpacing: 0.2,
   },
   packageText: {
-    fontFamily: fonts.sans,
-    fontSize: 12.5,
+    fontFamily: fonts.mono,
+    fontSize: 13.5,
     color: colors.inkSoft,
   },
   staffText: {
     fontFamily: fonts.sans,
-    fontSize: 12.5,
+    fontSize: 14,
     color: colors.ink,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   stateContainer: {
     paddingVertical: 48,
@@ -327,8 +325,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: '#FAF9F5',
@@ -340,8 +338,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   paginationText: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
+    fontFamily: fonts.mono,
+    fontSize: 12.5,
     color: colors.inkSoft,
   },
   paginationStrong: {
@@ -360,6 +358,5 @@ const styles = StyleSheet.create({
   pageBtn: {
     paddingVertical: 6,
     paddingHorizontal: 12,
-    minHeight: 32,
   },
 });

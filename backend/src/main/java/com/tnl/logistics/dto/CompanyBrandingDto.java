@@ -13,17 +13,25 @@ public class CompanyBrandingDto {
     private String billingEmail;
     private DayOfWeek collectionDay;
     private Integer volumetricDivisor;
+    private java.math.BigDecimal ratePerKilo;
 
     public CompanyBrandingDto() {}
 
     public CompanyBrandingDto(String companyName, String companyAddress, String companyContact,
                               String billingEmail, DayOfWeek collectionDay, Integer volumetricDivisor) {
+        this(companyName, companyAddress, companyContact, billingEmail, collectionDay, volumetricDivisor, null);
+    }
+
+    public CompanyBrandingDto(String companyName, String companyAddress, String companyContact,
+                              String billingEmail, DayOfWeek collectionDay, Integer volumetricDivisor,
+                              java.math.BigDecimal ratePerKilo) {
         this.companyName = companyName;
         this.companyAddress = companyAddress;
         this.companyContact = companyContact;
         this.billingEmail = billingEmail;
         this.collectionDay = collectionDay;
         this.volumetricDivisor = volumetricDivisor;
+        this.ratePerKilo = ratePerKilo;
     }
 
     public String getCompanyName() { return companyName; }
@@ -43,4 +51,7 @@ public class CompanyBrandingDto {
 
     public Integer getVolumetricDivisor() { return volumetricDivisor; }
     public void setVolumetricDivisor(Integer volumetricDivisor) { this.volumetricDivisor = volumetricDivisor; }
+
+    public java.math.BigDecimal getRatePerKilo() { return ratePerKilo; }
+    public void setRatePerKilo(java.math.BigDecimal ratePerKilo) { this.ratePerKilo = ratePerKilo; }
 }

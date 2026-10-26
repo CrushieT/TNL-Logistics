@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Platform, LogBox, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Platform, LogBox, StyleSheet, View, Text, Pressable } from 'react-native';
 import { Stack, usePathname, useRouter, useRootNavigationState } from 'expo-router';
 import {
   checkFirstBootStatus,
   getCurrentUser,
+  getSessionGeneration,
   getToken,
   hasVerifiedAdminSession,
   isAuthenticated,
@@ -11,7 +12,7 @@ import {
   validateSession,
 } from '../services/api/client';
 import { retryPendingPrintAudits } from '../features/shipments/services/printAuditOutbox';
-import { colors, fonts, spacing } from '../theme';
+import { dismissLoadingShell } from '../utils/loadingShell';
 
 LogBox.ignoreLogs([
   'Failed to complete waybill',
@@ -26,39 +27,44 @@ export default function RootLayout() {
   const navigationState = useRootNavigationState();
   const [firstBootStatus, setFirstBootStatus] = useState(null);
   const [isAdminVerified, setIsAdminVerified] = useState(hasVerifiedAdminSession());
-  const [isVerifyingSession, setIsVerifyingSession] = useState(false);
-  const [hasVerificationError, setHasVerificationError] = useState(false);
+  const [synchronizationError, setSynchronizationError] = useState(null);
+  const [isSynchronizing, setIsSynchronizing] = useState(false);
+  const pendingSynchronization = useRef(null);
 
-  const synchronizeAccess = useCallback(async () => {
+  const synchronizeAccess = useCallback(() => {
     if (!navigationState?.key) return;
+    const generation = getSessionGeneration();
+    if (pendingSynchronization.current?.generation === generation) return pendingSynchronization.current.promise;
 
-    const isFirstBoot = await checkFirstBootStatus();
-    setFirstBootStatus(isFirstBoot);
-
-    if (isFirstBoot !== false) {
-      setIsAdminVerified(false);
-      setHasVerificationError(isFirstBoot === null);
-      return;
-    }
-
-    if (!getToken()) {
-      setIsAdminVerified(false);
-      setHasVerificationError(false);
-      return;
-    }
-
-    if (hasVerifiedAdminSession()) {
-      setIsAdminVerified(true);
-      setHasVerificationError(false);
-      return;
-    }
-
-    setIsVerifyingSession(true);
-    setHasVerificationError(false);
-    const validationStatus = await validateSession();
-    setIsVerifyingSession(false);
-    setIsAdminVerified(validationStatus === 'VALID' && hasVerifiedAdminSession());
-    setHasVerificationError(validationStatus === 'UNVERIFIED');
+    const operation = { generation };
+    pendingSynchronization.current = operation;
+    const isCurrent = () => pendingSynchronization.current === operation && getSessionGeneration() === generation;
+    setIsSynchronizing(true);
+    setIsAdminVerified(hasVerifiedAdminSession());
+    operation.promise = (async () => {
+      const isFirstBoot = await checkFirstBootStatus();
+      if (!isCurrent()) return;
+      setFirstBootStatus(isFirstBoot);
+      if (isFirstBoot === null) {
+        setSynchronizationError('Unable to verify access. Check your connection and retry.');
+        return;
+      }
+      if (isFirstBoot || !getToken()) {
+        setIsAdminVerified(false);
+        setSynchronizationError(null);
+        return;
+      }
+      const validationStatus = hasVerifiedAdminSession() ? 'VALID' : await validateSession();
+      if (!isCurrent()) return;
+      setIsAdminVerified(validationStatus === 'VALID' && hasVerifiedAdminSession());
+      setSynchronizationError(validationStatus === 'UNVERIFIED' ? 'Unable to verify your session. Check your connection and retry.' : null);
+    })().finally(() => {
+      if (isCurrent()) {
+        pendingSynchronization.current = null;
+        setIsSynchronizing(false);
+      }
+    });
+    return operation.promise;
   }, [navigationState?.key]);
 
   useEffect(() => {
@@ -77,6 +83,8 @@ export default function RootLayout() {
       window.removeEventListener('online', synchronizeAccess);
     };
   }, [synchronizeAccess]);
+
+  useEffect(() => () => { pendingSynchronization.current = null; }, []);
 
   useEffect(() => {
     if (!navigationState?.key || firstBootStatus === null) return;
@@ -138,10 +146,26 @@ export default function RootLayout() {
     document.head.appendChild(styleEl);
   }, []);
 
-  const shouldShowVerificationGate = firstBootStatus === null || (Boolean(getToken()) && !isAdminVerified);
+  const useIsomorphicLayoutEffect =
+    typeof window !== 'undefined' && Platform.OS === 'web' && typeof React.useLayoutEffect === 'function'
+      ? React.useLayoutEffect
+      : useEffect;
+
+  useIsomorphicLayoutEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    dismissLoadingShell();
+  }, []);
 
   return (
     <View style={styles.container}>
+      {synchronizationError && (
+        <View style={styles.errorBanner}>
+          <Text accessibilityRole="alert" style={styles.errorText}>{synchronizationError}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Retry session verification" accessibilityState={{ disabled: isSynchronizing }} disabled={isSynchronizing} onPress={synchronizeAccess}>
+            <Text style={styles.retryText}>{isSynchronizing ? 'Retrying…' : 'Retry'}</Text>
+          </Pressable>
+        </View>
+      )}
       <Stack
         screenOptions={{
           headerShown: false,
@@ -152,7 +176,7 @@ export default function RootLayout() {
         <Stack.Protected guard={firstBootStatus === true}>
           <Stack.Screen name="setup" />
         </Stack.Protected>
-        <Stack.Protected guard={isAdminVerified}>
+        <Stack.Protected guard={isAuthenticated()}>
           <Stack.Screen name="change-password" />
           <Stack.Screen name="index" />
           <Stack.Screen name="register" />
@@ -166,69 +190,22 @@ export default function RootLayout() {
           <Stack.Screen name="statements/print" />
           <Stack.Screen name="tracking-logs" />
           <Stack.Screen name="reports" />
+          <Stack.Screen name="reports/print" />
           <Stack.Screen name="users" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="vehicles" />
           <Stack.Screen name="waybills/index" />
+          <Stack.Screen name="waybills/[id]" />
           <Stack.Screen name="+not-found" options={{ title: 'Page Not Found' }} />
         </Stack.Protected>
       </Stack>
-      {shouldShowVerificationGate ? (
-        <View style={styles.verificationGate}>
-          <Text style={styles.verificationTitle}>
-            {isVerifyingSession ? 'VERIFYING ADMINISTRATOR SESSION' : 'CONNECTION VERIFICATION REQUIRED'}
-          </Text>
-          <Text style={styles.verificationMessage}>
-            {hasVerificationError
-              ? 'The console will remain locked until the server can confirm this session.'
-              : 'Checking access before opening the operations console.'}
-          </Text>
-          {(hasVerificationError || !isVerifyingSession) ? (
-            <TouchableOpacity style={styles.retryButton} onPress={synchronizeAccess}>
-              <Text style={styles.retryButtonText}>RETRY</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  verificationGate: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.canvas,
-    padding: spacing.xl,
-  },
-  verificationTitle: {
-    color: colors.ink,
-    fontFamily: fonts.mono,
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  verificationMessage: {
-    color: colors.inkSoft,
-    fontFamily: fonts.sans,
-    fontSize: 13,
-    marginTop: spacing.sm,
-    maxWidth: 360,
-    textAlign: 'center',
-  },
-  retryButton: {
-    backgroundColor: colors.accent,
-    marginTop: spacing.lg,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontFamily: fonts.mono,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-  },
+  errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, backgroundColor: '#FEF2F2' },
+  errorText: { flex: 1, color: '#991B1B' },
+  retryText: { color: '#991B1B', fontWeight: '600', padding: 8 },
 });

@@ -57,6 +57,7 @@ export default function CollectionWeightTrackingCard({
               placeholder="5000"
               keyboardType="numeric"
               integerOnly
+              maxLength={5}
               error={errors.volumetricDivisor}
             />
           </View>
@@ -67,6 +68,20 @@ export default function CollectionWeightTrackingCard({
         <Text style={styles.subHelper}>
           Configurable business setting: Volumetric Weight = Volume (cm³) / divisor.
         </Text>
+      </View>
+
+      {/* Rate Per Kilo */}
+      <View style={styles.fieldWrap}>
+        <FormField
+          label="RATE PER KILO (PHP)"
+          required
+          value={String(form.ratePerKilo || '')}
+          onChangeText={(val) => onChangeField('ratePerKilo', val)}
+          placeholder="e.g. 15.00"
+          keyboardType="numeric"
+          error={errors.ratePerKilo}
+          helper="Base rate applied to billable weight (PHP per kg) for new shipment registrations."
+        />
       </View>
 
       {/* Read-Only Prefixes */}

@@ -71,10 +71,7 @@ export function normalizeLabelData(shipment, unit, unitIndex = 0, totalUnits = 1
     typeof sourceShipment.client === 'string' ? sourceShipment.client : sourceShipment.client?.name
   );
 
-  let route = optionalText(sourceShipment.route);
-  if (!route && sourceShipment.origin && sourceShipment.destination) {
-    route = `${sourceShipment.origin} → ${sourceShipment.destination}`;
-  }
+  const route = optionalText(sourceShipment.route);
 
   return {
     trackingId,
@@ -112,7 +109,6 @@ export function buildLabelHtml(labelOrLabels, branding = null) {
   ) || 'TNL LOGISTICS';
 
   const brandTitle = escapeHtml(resolvedName.toUpperCase());
-  const badgeLetter = escapeHtml(resolvedName.charAt(0).toUpperCase() || 'T');
   const displayBrandInTitle = resolvedName === 'TNL LOGISTICS' ? 'TNL' : resolvedName;
 
   const primaryTitle = escapeHtml(labels.length === 1
@@ -128,7 +124,6 @@ export function buildLabelHtml(labelOrLabels, branding = null) {
     const recipientName = escapeHtml(label.recipientName);
     const contactNumber = escapeHtml(label.contactNumber);
     const address = escapeHtml(label.address);
-    const destinationHub = escapeHtml(label.destinationHub);
     const contents = escapeHtml(label.contents);
     const shipmentId = escapeHtml(label.shipmentId);
     const clientName = escapeHtml(label.clientName);
@@ -140,7 +135,6 @@ export function buildLabelHtml(labelOrLabels, branding = null) {
     return `  <div class="label-card">
     <div class="header">
       <div class="brand">
-        <div class="brand-badge">${badgeLetter}</div>
         <div class="brand-title">${brandTitle}</div>
       </div>
       <div class="header-right">
@@ -160,17 +154,16 @@ export function buildLabelHtml(labelOrLabels, branding = null) {
         <div class="recipient">${recipientName}</div>
         ${contactNumber ? `<div class="contact">${contactNumber}</div>` : ''}
         ${address ? `<div class="address">${address}</div>` : ''}
-        <div class="hub">to ${destinationHub}</div>
+        ${route ? `<div class="hub">${route}</div>` : ''}
       </div>
     </div>
     <div class="footer">
       <div class="footer-row">
-        ${contents ? `<div><span class="muted">Contents:</span> ${contents}</div>` : '<div></div>'}
-        <div><span class="muted">Shipment:</span> ${shipmentId}</div>
+        <div class="contents-field">${contents ? `<span class="muted">Contents:</span> ${contents}` : ''}</div>
       </div>
       <div class="footer-row">
-        ${clientName ? `<div><span class="muted">Client:</span> ${clientName}</div>` : '<div></div>'}
-        ${route ? `<div><span class="muted">Route:</span> ${route}</div>` : '<div></div>'}
+        <div class="client-field">${clientName ? `<span class="muted">Client:</span> ${clientName}` : ''}</div>
+        <div class="shipment-field"><span class="muted">Shipment:</span> ${shipmentId}</div>
       </div>
       ${formattedTotal !== null ? `<div class="total-row"><span class="muted">Total:</span> PHP ${formattedTotal}</div>` : ''}
     </div>
@@ -184,8 +177,7 @@ export function buildLabelHtml(labelOrLabels, branding = null) {
   <title>${primaryTitle}</title>
   <style>
     @page {
-      size: A6 portrait;
-      size: 105mm 148mm;
+      size: 150mm 100mm;
       margin: 0;
     }
     * {
@@ -195,19 +187,20 @@ export function buildLabelHtml(labelOrLabels, branding = null) {
     }
     body {
       margin: 0;
-      padding: 12px;
+      padding: 10mm;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif;
       background: #FFFFFF;
       color: #111111;
       display: flex;
       flex-direction: column;
       align-items: center;
+      justify-content: center;
     }
     .label-card {
       width: 100%;
-      max-width: 380px;
-      border: 2px solid #000000;
-      padding: 16px;
+      max-width: 540px;
+      border: 3px solid #000000;
+      padding: 20px;
       box-sizing: border-box;
       background: #FFFFFF;
       margin-bottom: 24px;
@@ -226,18 +219,6 @@ export function buildLabelHtml(labelOrLabels, branding = null) {
       display: flex;
       align-items: center;
       gap: 8px;
-    }
-    .brand-badge {
-      width: 22px;
-      height: 22px;
-      background: #000000;
-      color: #FFFFFF;
-      font-weight: 900;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      border-radius: 2px;
     }
     .brand-title {
       font-weight: 900;
@@ -266,14 +247,14 @@ export function buildLabelHtml(labelOrLabels, branding = null) {
     }
     .body {
       display: flex;
-      gap: 16px;
+      gap: 20px;
       align-items: center;
-      margin-bottom: 12px;
+      margin-bottom: 16px;
     }
     .qr-box {
       flex-shrink: 0;
-      width: 120px;
-      height: 120px;
+      width: 150px;
+      height: 150px;
       border: 1px solid #E5E7EB;
       padding: 4px;
       box-sizing: border-box;
@@ -286,50 +267,62 @@ export function buildLabelHtml(labelOrLabels, branding = null) {
       flex: 1;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 5px;
       min-width: 0;
       word-break: break-word;
     }
     .tracking-id {
       font-family: monospace;
-      font-size: 15px;
+      font-size: 18px;
       font-weight: 800;
       color: #000000;
+      letter-spacing: 0.5px;
     }
     .recipient {
-      font-size: 13px;
+      font-size: 15px;
       font-weight: 800;
       color: #111111;
-      line-height: 17px;
+      line-height: 19px;
     }
     .contact, .address, .hub {
-      font-size: 11px;
+      font-size: 12px;
       color: #444444;
-      line-height: 14px;
+      line-height: 16px;
     }
     .hub {
       font-weight: 700;
       color: #000000;
-      margin-top: 2px;
+      margin-top: 4px;
     }
     .footer {
-      border-top: 1.5px dashed #666666;
-      padding-top: 10px;
+      border-top: 2px dashed #000000;
+      padding-top: 12px;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 6px;
     }
     .footer-row {
       display: flex;
       justify-content: space-between;
-      font-size: 10.5px;
+      align-items: flex-start;
+      gap: 16px;
+      font-size: 11.5px;
     }
     .muted {
-      color: #666666;
+      color: #555555;
+    }
+    .contents-field, .client-field {
+      flex: 1;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .shipment-field {
+      flex: none;
+      white-space: nowrap;
     }
     .total-row {
       text-align: right;
-      font-size: 12px;
+      font-size: 13.5px;
       font-weight: 900;
       margin-top: 4px;
       color: #000000;

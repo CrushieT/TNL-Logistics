@@ -22,15 +22,21 @@ public class TestSecurityController {
         return Map.of("message", "Access Granted: ADMIN Role");
     }
 
-    @GetMapping("/office")
-    @PreAuthorize("hasRole('OFFICE_STAFF')")
-    public Map<String, String> testOffice() {
-        return Map.of("message", "Access Granted: OFFICE_STAFF Role");
+    @GetMapping("/receiving")
+    @PreAuthorize("hasRole('RECEIVING_STAFF')")
+    public Map<String, String> testReceiving() {
+        return Map.of("message", "Access Granted: RECEIVING_STAFF Role");
     }
 
-    @GetMapping("/field")
-    @PreAuthorize("hasRole('FIELD_STAFF')")
-    public Map<String, String> testField() {
-        return Map.of("message", "Access Granted: FIELD_STAFF Role");
+    @GetMapping("/courier")
+    @PreAuthorize("hasRole('COURIER_STAFF')")
+    public Map<String, String> testCourier() {
+        return Map.of("message", "Access Granted: COURIER_STAFF Role");
+    }
+
+    @GetMapping("/dispatch")
+    @PreAuthorize("hasRole('DISPATCH_STAFF')")
+    public Map<String, String> testDispatch() {
+        return Map.of("message", "Access Granted: DISPATCH_STAFF Role");
     }
 }

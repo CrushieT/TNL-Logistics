@@ -1,10 +1,16 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import PreviewStatus from '../../components/common/PreviewStatus';
+import { TableRowSkeleton } from '../../components/common/Skeleton';
+import { useCachedPreview, requirePage, requireDirectory } from '../../services/api/useCachedPreview';
+import { CACHE_SLOTS } from '../../services/api/responseCache.mjs';
+import React, { useState } from 'react';
+import { Text } from 'react-native';
+import { colors, fonts, spacing } from '../../theme';
 import { useRouter } from 'expo-router';
 import AppShell from '../../components/layout/AppShell';
 import PageHeader from '../../components/layout/PageHeader';
 import Button from '../../components/common/Button';
 import SearchFilterBar from '../../components/common/SearchFilterBar';
-import { ShipmentsTable, listShipments, subscribeRealtimeEvents } from '../../features/shipments';
+import { ShipmentsTable, listShipments } from '../../features/shipments';
 import { listVehicles } from '../../features/vehicles';
 
 const STATUS_OPTIONS = [
@@ -14,6 +20,7 @@ const STATUS_OPTIONS = [
   { value: 'Loaded on Truck', label: 'Loaded on Truck' },
   { value: 'Arrived at TNL', label: 'Arrived at TNL' },
   { value: 'Loaded to Hauler', label: 'Loaded to Hauler' },
+  { value: 'Completed', label: 'Completed' },
 ];
 
 const PAYMENT_OPTIONS = [
@@ -25,157 +32,29 @@ const PAYMENT_OPTIONS = [
 
 export default function ShipmentsListScreen() {
   const router = useRouter();
-  const [shipments, setShipments] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [paymentFilter, setPaymentFilter] = useState('ALL');
   const [vehicleFilter, setVehicleFilter] = useState('ALL');
-  const [vehicleOptions, setVehicleOptions] = useState([{ value: 'ALL', label: 'Vehicle: All' }]);
+
 
   // Pagination state
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalElements, setTotalElements] = useState(0);
-
-  const searchTimer = useRef(null);
-  const filtersRef = useRef({
-    page,
-    pageSize,
-    search,
-    statusFilter,
-    paymentFilter,
-    vehicleFilter,
-  });
-
-  useEffect(() => {
-    filtersRef.current = {
-      page,
-      pageSize,
-      search,
-      statusFilter,
-      paymentFilter,
-      vehicleFilter,
-    };
-  }, [page, pageSize, search, statusFilter, paymentFilter, vehicleFilter]);
-
-  // Fetch available vehicles for dynamic filter options
-  useEffect(() => {
-    let isMounted = true;
-    async function loadVehicles() {
-      try {
-        const vehicles = await listVehicles(true);
-        if (isMounted && Array.isArray(vehicles)) {
-          const options = [
-            { value: 'ALL', label: 'Vehicle: All' },
-            ...vehicles.map((v) => ({
-              value: v.vehicleId,
-              label: `${v.vehicleId} (${v.plateNumber})`,
-            })),
-          ];
-          setVehicleOptions(options);
-        }
-      } catch (err) {
-        console.warn('Failed to load vehicles for filter dropdown:', err?.message);
-      }
-    }
-    loadVehicles();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const fetchShipments = useCallback(async (currPage, currSize, currSearch, currStatus, currPayment, currVehicle, showSpinner = true) => {
-    try {
-      if (showSpinner) setLoading(true);
-      const params = {
-        page: currPage,
-        size: currSize,
-      };
-      if (currSearch && currSearch.trim()) params.search = currSearch.trim();
-      if (currStatus && currStatus !== 'ALL') params.status = currStatus;
-      if (currPayment && currPayment !== 'ALL') params.paymentStatus = currPayment;
-      if (currVehicle && currVehicle !== 'ALL') params.vehicleId = currVehicle;
-
-      const data = await listShipments(params);
-      if (data && data.content) {
-        setShipments(data.content);
-        setTotalPages(data.page?.totalPages ?? data.totalPages ?? 1);
-        setTotalElements(data.page?.totalElements ?? data.totalElements ?? data.content.length);
-      } else if (Array.isArray(data)) {
-        setShipments(data);
-        setTotalPages(1);
-        setTotalElements(data.length);
-      }
-    } catch (err) {
-      console.warn('Failed to load shipments from backend:', err?.message);
-    } finally {
-      if (showSpinner) setLoading(false);
-    }
-  }, []);
-
-  // Fetch when filters or page changes
-  useEffect(() => {
-    fetchShipments(page, pageSize, search, statusFilter, paymentFilter, vehicleFilter, true);
-  }, [fetchShipments, page, pageSize, statusFilter, paymentFilter, vehicleFilter]);
-
-  // Real-time SSE listener + Window focus listener + Visible-tab periodic fallback
-  useEffect(() => {
-    const handleSilentRefresh = () => {
-      const {
-        page: p,
-        pageSize: ps,
-        search: s,
-        statusFilter: sf,
-        paymentFilter: pf,
-        vehicleFilter: vf,
-      } = filtersRef.current;
-      fetchShipments(p, ps, s, sf, pf, vf, false);
-    };
-
-    // 1. Subscribe to real-time status updates, shipment creation, label printing, and payment recording
-    const unsubscribe = subscribeRealtimeEvents((event) => {
-      if (
-        event.type === 'STATUS_UPDATE' ||
-        event.type === 'SHIPMENT_CREATED' ||
-        event.type === 'LABEL_PRINTED' ||
-        event.type === 'PAYMENT_RECORDED'
-      ) {
-        handleSilentRefresh();
-      }
-    });
-
-    // 2. Fallback on window focus
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', handleSilentRefresh);
-    }
-
-    // 3. Fallback background polling (every 30 seconds when visible)
-    const intervalId = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        handleSilentRefresh();
-      }
-    }, 30000);
-
-    return () => {
-      unsubscribe();
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('focus', handleSilentRefresh);
-      }
-      clearInterval(intervalId);
-    };
-  }, [fetchShipments]);
-
-  // Debounced search
-  const handleSearchChange = (val) => {
-    setSearch(val);
-    setPage(0);
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => {
-      fetchShipments(0, pageSize, val, statusFilter, paymentFilter, vehicleFilter, true);
-    }, 350);
-  };
+  const query = { page, size: pageSize, search: search.trim(),
+    status: statusFilter === 'ALL' ? undefined : statusFilter,
+    paymentStatus: paymentFilter === 'ALL' ? undefined : paymentFilter,
+    vehicleId: vehicleFilter === 'ALL' ? undefined : vehicleFilter };
+  const resource = useCachedPreview({ slot: CACHE_SLOTS.SHIPMENTS, query, pollMs: 30000,
+    fetcher: async signal => requirePage(await listShipments(query, { signal })) });
+  const directory = useCachedPreview({ slot: CACHE_SLOTS.VEHICLES, query: { all: true },
+    fetcher: async signal => requireDirectory(await listVehicles(true, { signal })) });
+  const vehicleOptions = [{ value: 'ALL', label: 'Vehicle: All' }, ...(directory.data || []).map(vehicle => ({ value: vehicle.vehicleId, label: `${vehicle.vehicleId} (${vehicle.plateNumber})` }))];
+  const shipments = Array.isArray(resource.data) ? resource.data : resource.data?.content || [];
+  const loading = resource.loading;
+  const totalPages = resource.data?.page?.totalPages ?? resource.data?.totalPages ?? 1;
+  const totalElements = resource.data?.page?.totalElements ?? resource.data?.totalElements ?? shipments.length;
+  const handleSearchChange = value => { setSearch(value); setPage(0); };
 
   return (
     <AppShell>
@@ -220,7 +99,12 @@ export default function ShipmentsListScreen() {
         ]}
       />
 
-      <ShipmentsTable
+      <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: colors.inkFaint, marginBottom: spacing.sm }}>
+        Vehicle filter includes current and previous assignments. The Vehicle column shows current assignments only.
+      </Text>
+      <PreviewStatus resource={directory} label="Vehicle filters" />
+      <PreviewStatus resource={resource} label="Shipments" />
+      {loading ? <TableRowSkeleton /> : resource.data !== null ? <ShipmentsTable
         shipments={shipments}
         loading={loading}
         page={page}
@@ -233,7 +117,7 @@ export default function ShipmentsListScreen() {
           setPage(0);
         }}
         onView={(s) => router.push(`/shipments/${s.shipmentId}`)}
-      />
+      /> : null}
     </AppShell>
   );
 }

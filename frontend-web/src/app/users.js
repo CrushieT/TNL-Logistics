@@ -30,33 +30,21 @@ import {
   ResetPinModal,
   ConfirmActionModal,
 } from '../features/users';
+import {
+  getRoleLabel,
+  PLATFORM_ACCESS,
+  ROLE_CHIP_COLORS,
+  ROLE_FILTERS,
+} from '../features/users/userRoles.mjs';
 import { colors, fonts, spacing, radius, type } from '../theme';
 
-const ROLE_FILTERS = ['ALL', 'ADMIN', 'OFFICE_STAFF', 'FIELD_STAFF'];
 const STATUS_FILTERS = ['ALL', 'Active', 'Inactive'];
 
-const ROLE_LABELS = {
-  ADMIN: 'Administrator',
-  OFFICE_STAFF: 'Office Staff',
-  FIELD_STAFF: 'Field Staff',
-};
-
-const PLATFORM_ACCESS = {
-  ADMIN: 'Full access (shared system)',
-  OFFICE_STAFF: 'Mobile only (office workflows) | shared system',
-  FIELD_STAFF: 'Mobile (scan-only) | shared system',
-};
-
 function RoleChip({ role }) {
-  const colors = {
-    ADMIN: { bg: '#EFF6FF', text: '#1D4ED8' },
-    OFFICE_STAFF: { bg: '#F0FDF4', text: '#15803D' },
-    FIELD_STAFF: { bg: '#FFF7ED', text: '#C2410C' },
-  };
-  const c = colors[role] || { bg: '#F3F4F6', text: '#6B7280' };
+  const roleColors = ROLE_CHIP_COLORS[role] || { bg: '#F3F4F6', text: '#6B7280' };
   return (
-    <View style={[chipStyles.base, { backgroundColor: c.bg }]}>
-      <Text style={[chipStyles.text, { color: c.text }]}>{ROLE_LABELS[role] || role}</Text>
+    <View style={[chipStyles.base, { backgroundColor: roleColors.bg }]}>
+      <Text style={[chipStyles.text, { color: roleColors.text }]}>{getRoleLabel(role)}</Text>
     </View>
   );
 }
@@ -114,7 +102,7 @@ export default function UsersScreen() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('Active');
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
 
@@ -242,7 +230,7 @@ export default function UsersScreen() {
                     onPress={() => setRoleFilter(r)}
                   >
                     <Text style={[styles.filterPillText, roleFilter === r && styles.filterPillTextActive]}>
-                      {r === 'ALL' ? 'All' : ROLE_LABELS[r]}
+                      {r === 'ALL' ? 'All' : getRoleLabel(r)}
                     </Text>
                   </Pressable>
                 ))}
@@ -258,7 +246,7 @@ export default function UsersScreen() {
                     onPress={() => setStatusFilter(s)}
                   >
                     <Text style={[styles.filterPillText, statusFilter === s && styles.filterPillTextActive]}>
-                      {s}
+                      {s === 'ALL' ? 'All' : s}
                     </Text>
                   </Pressable>
                 ))}
@@ -438,11 +426,14 @@ export default function UsersScreen() {
         </View>
 
         <View style={[styles.capabilityCard, { flex: 1 }]}>
-          <Text style={styles.capabilityTitle}>OFFICE STAFF</Text>
+          <Text style={styles.capabilityTitle}>RECEIVING STAFF</Text>
           {[
-            'Login, Change Password, Logout',
-            'Register clients, shipments & parcels (mobile app)',
-            'Generate QR + manage QR / label printing (Bluetooth thermal printer)',
+            'Moves cargo: Registered -> QR Generated',
+            'Client, shipment & heterogeneous parcel intake',
+            'Volumetric (cm³) & weight shipping calculations',
+            'Initial payment recording (Paid, Partial, Unpaid)',
+            'Bluetooth thermal label printing & reprint management',
+            'Past shipments directory & parcel unit lookup',
           ].map((item) => (
             <View key={item} style={styles.capabilityItem}>
               <Text style={styles.capabilityText}>{item}</Text>
@@ -450,18 +441,18 @@ export default function UsersScreen() {
           ))}
           <View style={styles.capabilityDivider} />
           <Text style={styles.capabilityNote}>
-            Mobile app only (authorized shipment registration & label printing). Blocked from billing, reports, and administration.
+            Mobile app only (intake, pricing & label printing). Blocked from driver transit scans, hauler waybills, SOA, reports, and administration.
           </Text>
         </View>
 
         <View style={[styles.capabilityCard, { flex: 1 }]}>
-          <Text style={styles.capabilityTitle}>FIELD STAFF (SCAN-ONLY)</Text>
+          <Text style={styles.capabilityTitle}>COURIER STAFF</Text>
           {[
-            'Login, Change Password, Logout',
-            'Scan QR to view parcel / shipment details',
-            'See current status & valid next action',
-            'Select registered truck when loading',
-            'Confirm status, view tracking history',
+            'Moves cargo: QR Generated -> Loaded on Truck -> Arrived at TNL',
+            'Dedicated Scan QR transit camera & Rapid Batch',
+            'Active vehicle selection with debounced fleet search',
+            'Hub arrival check-in for incoming pickup cargo',
+            'Personal shift scan history & real-time metrics',
           ].map((item) => (
             <View key={item} style={styles.capabilityItem}>
               <Text style={styles.capabilityText}>{item}</Text>
@@ -469,7 +460,26 @@ export default function UsersScreen() {
           ))}
           <View style={styles.capabilityDivider} />
           <Text style={styles.capabilityRestriction}>
-            No registration, QR generation, printing, payments, SOA, deductions, collections, user or vehicle administration. The role model blocks these actions (not just their buttons).
+            Mobile app only (truck pickup & hub check-in). Blocked from waybill manifests, shipment registration, billing, and administration.
+          </Text>
+        </View>
+
+        <View style={[styles.capabilityCard, { flex: 1 }]}>
+          <Text style={styles.capabilityTitle}>DISPATCH STAFF</Text>
+          {[
+            'Moves cargo: Arrived at TNL -> Loaded to Hauler -> Sent to Hauler -> Completed',
+            'Dedicated Waybills management console & hub queueing',
+            'Split waybill generation with shipment discovery rails',
+            '2-copy A4 manifest printing with carrier signature blocks',
+            'Driver return scan verification to mark cargo Completed',
+          ].map((item) => (
+            <View key={item} style={styles.capabilityItem}>
+              <Text style={styles.capabilityText}>{item}</Text>
+            </View>
+          ))}
+          <View style={styles.capabilityDivider} />
+          <Text style={styles.capabilityRestriction}>
+            Mobile app only (hauler dispatch & manifest handover). Blocked from parcel intake registration, billing, and administration.
           </Text>
         </View>
       </View>
@@ -628,7 +638,7 @@ const styles = StyleSheet.create({
   filterGroup: { gap: 4 },
   filterGroupLabel: {
     fontFamily: fonts.sans,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.inkFaint,
     letterSpacing: 0.7,
@@ -643,7 +653,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   filterPillActive: { backgroundColor: colors.black, borderColor: colors.black },
-  filterPillText: { fontFamily: fonts.sans, fontSize: 11.5, fontWeight: '600', color: colors.ink },
+  filterPillText: { fontFamily: fonts.sans, fontSize: 12.5, fontWeight: '600', color: colors.ink },
   filterPillTextActive: { color: '#FFFFFF' },
   tableCard: {
     marginBottom: spacing.lg,
@@ -664,23 +674,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAF9F5',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   headerText: {
-    fontFamily: fonts.sans,
-    fontSize: 10,
-    fontWeight: '800',
+    fontFamily: fonts.mono,
+    fontSize: 11.5,
+    fontWeight: '700',
     color: colors.inkFaint,
-    letterSpacing: 0.7,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
   tableRow: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight || colors.border,
+    borderBottomColor: colors.border,
     alignItems: 'center',
     overflow: 'visible',
   },
@@ -692,9 +702,9 @@ const styles = StyleSheet.create({
   colAccess: { flex: 2 },
   colStatus: { width: 80 },
   colActions: { width: 180 },
-  monoText: { fontFamily: fonts.mono, fontSize: 12, fontWeight: '700', color: colors.ink },
-  cellText: { fontFamily: fonts.sans, fontSize: 13, color: colors.ink, fontWeight: '500' },
-  accessText: { fontFamily: fonts.sans, fontSize: 11.5, color: colors.inkSoft },
+  monoText: { fontFamily: fonts.mono, fontSize: 14, fontWeight: '700', color: colors.ink },
+  cellText: { fontFamily: fonts.sans, fontSize: 14, color: colors.ink, fontWeight: '600' },
+  accessText: { fontFamily: fonts.mono, fontSize: 12, color: colors.inkFaint },
   actionsRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   actionBtn: {
     borderWidth: 1,
@@ -709,7 +719,7 @@ const styles = StyleSheet.create({
     borderColor: colors.ink,
   },
   actionBtnDanger: { borderColor: '#FCA5A5', backgroundColor: '#FFF5F5' },
-  actionBtnText: { fontFamily: fonts.sans, fontSize: 11, fontWeight: '600', color: colors.ink },
+  actionBtnText: { fontFamily: fonts.sans, fontSize: 13, fontWeight: '600', color: colors.ink },
   actionBtnTextDanger: { color: colors.danger },
   moreActionWrapper: {
     position: 'relative',
@@ -755,7 +765,7 @@ const styles = StyleSheet.create({
   },
   popoverItemText: {
     fontFamily: fonts.sans,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.ink,
   },
@@ -785,11 +795,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     padding: spacing.xl,
     gap: spacing.sm,
-    minWidth: 280,
+    minWidth: 240,
   },
   capabilityTitle: {
     fontFamily: fonts.sans,
-    fontSize: 10.5,
+    fontSize: 11.5,
     fontWeight: '800',
     color: colors.ink,
     letterSpacing: 0.7,
@@ -797,7 +807,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   capabilityItem: { paddingVertical: 2 },
-  capabilityText: { fontFamily: fonts.sans, fontSize: 12.5, color: colors.ink, lineHeight: 18 },
+  capabilityText: { fontFamily: fonts.sans, fontSize: 13.5, color: colors.ink, lineHeight: 18 },
   capabilityDivider: {
     height: 1,
     backgroundColor: colors.border,
@@ -806,14 +816,14 @@ const styles = StyleSheet.create({
   },
   capabilityNote: {
     fontFamily: fonts.sans,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.inkSoft,
     fontStyle: 'italic',
     lineHeight: 16,
   },
   capabilityRestriction: {
     fontFamily: fonts.sans,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.danger,
     lineHeight: 16,
   },

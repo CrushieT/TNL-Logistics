@@ -1,7 +1,9 @@
 package com.tnl.logistics.controller;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -50,8 +52,17 @@ public class PaymentIntegrationTest {
     @Autowired
     private ShipmentRepository shipmentRepository;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
     @BeforeEach
     void setup() {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client != null) {
             client.setActive(true);
@@ -66,7 +77,7 @@ public class PaymentIntegrationTest {
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
         shipmentReq.setClientId("CL-001");
         shipmentReq.setRecipientName("Payment Test Recipient");
-        shipmentReq.setRecipientContact("0917-888-9999");
+        shipmentReq.setRecipientContact("09178889999");
         shipmentReq.setRecipientAddress("Baguio City Center");
         shipmentReq.setRoute("Manila → TNL Baguio Hub");
         shipmentReq.setDescription("Electronics & Parts");
@@ -76,12 +87,15 @@ public class PaymentIntegrationTest {
         shipmentReq.setOtherCharges(new BigDecimal("100.00"));
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        shipmentReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipmentReq.setExpectedVolumetricDivisor(5000);
 
-        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("4.0"), new BigDecimal("30"), new BigDecimal("20"), new BigDecimal("15"));
-        ParcelUnitRequest p2 = new ParcelUnitRequest(2, new BigDecimal("6.0"), new BigDecimal("40"), new BigDecimal("30"), new BigDecimal("25"));
+        ParcelUnitRequest p1 = new ParcelUnitRequest(1, new BigDecimal("6.0"), new BigDecimal("30"), new BigDecimal("20"), new BigDecimal("15"));
+        ParcelUnitRequest p2 = new ParcelUnitRequest(2, new BigDecimal("8.0"), new BigDecimal("40"), new BigDecimal("30"), new BigDecimal("25"));
         shipmentReq.setParcels(List.of(p1, p2));
 
         MvcResult createResult = mockMvc.perform(post("/api/v1/shipments")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(shipmentReq)))
                 .andExpect(status().isCreated())
@@ -91,12 +105,27 @@ public class PaymentIntegrationTest {
         String shipmentId = createdShipment.getShipmentId();
 
         // 2. Verify initial state is Unpaid with ₱1,500 balance
-        mockMvc.perform(get("/api/v1/shipments/" + shipmentId))
+        mockMvc.perform(get("/api/v1/shipments/" + shipmentId)
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.payment").value("Unpaid"))
                 .andExpect(jsonPath("$.totalAmount").value(1500.00))
                 .andExpect(jsonPath("$.amountPaid").value(0))
                 .andExpect(jsonPath("$.balance").value(1500.00));
+
+        for (String[] identity : new String[][]{
+                {"USR-ADMIN", "ADMIN"},
+                {"USR-FIELD", "COURIER_STAFF"},
+                {"USR-HAULER", "DISPATCH_STAFF"}}) {
+            mockMvc.perform(get("/api/v1/payments/shipment/" + shipmentId)
+                            .with(user(identity[0]).roles(identity[1])))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.shipmentId").value(shipmentId))
+                    .andExpect(jsonPath("$.balance").value(1500.00));
+        }
+        mockMvc.perform(get("/api/v1/payments/shipment/" + shipmentId)
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
+                .andExpect(status().isForbidden());
 
         // 3. Record partial payment: ₱500.00 via GCASH
         PaymentRecordRequest partialPayment = new PaymentRecordRequest(
@@ -121,7 +150,8 @@ public class PaymentIntegrationTest {
                 .andExpect(jsonPath("$.shipmentPaymentStatus").value("Partial"));
 
         // 4. Verify shipment details now shows "Partial"
-        mockMvc.perform(get("/api/v1/shipments/" + shipmentId))
+        mockMvc.perform(get("/api/v1/shipments/" + shipmentId)
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.payment").value("Partial"))
                 .andExpect(jsonPath("$.amountPaid").value(500.00))
@@ -161,7 +191,8 @@ public class PaymentIntegrationTest {
                 .andExpect(jsonPath("$.shipmentPaymentStatus").value("Paid"));
 
         // 7. Verify shipment details now shows "Paid" with balance 0
-        mockMvc.perform(get("/api/v1/shipments/" + shipmentId))
+        mockMvc.perform(get("/api/v1/shipments/" + shipmentId)
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.payment").value("Paid"))
                 .andExpect(jsonPath("$.amountPaid").value(1500.00))
@@ -190,7 +221,7 @@ public class PaymentIntegrationTest {
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
         shipmentReq.setClientId("CL-001");
         shipmentReq.setRecipientName("Ref Test Recipient");
-        shipmentReq.setRecipientContact("0917-000-1111");
+        shipmentReq.setRecipientContact("09170001111");
         shipmentReq.setRecipientAddress("Manila Hub");
         shipmentReq.setRoute("Manila → Hub");
         shipmentReq.setDescription("Test items");
@@ -200,9 +231,12 @@ public class PaymentIntegrationTest {
         shipmentReq.setOtherCharges(BigDecimal.ZERO);
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
-        shipmentReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
+        shipmentReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipmentReq.setExpectedVolumetricDivisor(5000);
+        shipmentReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("5.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
         MvcResult createResult = mockMvc.perform(post("/api/v1/shipments")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(shipmentReq)))
                 .andExpect(status().isCreated())
@@ -242,7 +276,7 @@ public class PaymentIntegrationTest {
     }
 
     @Test
-    @WithMockUser(username = "USR-FIELD", roles = {"FIELD_STAFF"})
+    @WithMockUser(username = "USR-COURIER", roles = {"COURIER_STAFF"})
     void testFieldStaffCannotRecordPayment() throws Exception {
         PaymentRecordRequest req = new PaymentRecordRequest(
                 "SHP-2026-001",
@@ -266,7 +300,7 @@ public class PaymentIntegrationTest {
         ShipmentRegistrationRequest shipReq = new ShipmentRegistrationRequest();
         shipReq.setClientId("CL-001");
         shipReq.setRecipientName("Attribution Test Consignee");
-        shipReq.setRecipientContact("0917-123-4567");
+        shipReq.setRecipientContact("09171234567");
         shipReq.setRecipientAddress("Baguio City");
         shipReq.setRoute("Manila -> Baguio");
         shipReq.setDescription("Attribution Goods");
@@ -276,9 +310,12 @@ public class PaymentIntegrationTest {
         shipReq.setOtherCharges(BigDecimal.ZERO);
         shipReq.setPaidAtRegistration(false);
         shipReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
-        shipReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
+        shipReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipReq.setExpectedVolumetricDivisor(5000);
+        shipReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("6.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
         MvcResult res = mockMvc.perform(post("/api/v1/shipments")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(shipReq)))
                 .andExpect(status().isCreated())
@@ -308,7 +345,7 @@ public class PaymentIntegrationTest {
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
         shipmentReq.setClientId("CL-001");
         shipmentReq.setRecipientName("Lock Test Recipient");
-        shipmentReq.setRecipientContact("0917-555-4321");
+        shipmentReq.setRecipientContact("09175554321");
         shipmentReq.setRecipientAddress("Baguio City Center");
         shipmentReq.setRoute("Manila → TNL Baguio Hub");
         shipmentReq.setDescription("Hardware Supplies");
@@ -318,9 +355,12 @@ public class PaymentIntegrationTest {
         shipmentReq.setOtherCharges(BigDecimal.ZERO);
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
-        shipmentReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
+        shipmentReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipmentReq.setExpectedVolumetricDivisor(5000);
+        shipmentReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("10.0"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
         MvcResult createResult = mockMvc.perform(post("/api/v1/shipments")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(shipmentReq)))
                 .andExpect(status().isCreated())
@@ -374,7 +414,7 @@ public class PaymentIntegrationTest {
         ShipmentRegistrationRequest shipmentReq = new ShipmentRegistrationRequest();
         shipmentReq.setClientId("CL-001");
         shipmentReq.setRecipientName("Cheque Test Recipient");
-        shipmentReq.setRecipientContact("0917-777-6666");
+        shipmentReq.setRecipientContact("09177776666");
         shipmentReq.setRecipientAddress("Baguio City");
         shipmentReq.setRoute("Manila → TNL Baguio Hub");
         shipmentReq.setDescription("Office Supplies");
@@ -384,9 +424,12 @@ public class PaymentIntegrationTest {
         shipmentReq.setOtherCharges(BigDecimal.ZERO);
         shipmentReq.setPaidAtRegistration(false);
         shipmentReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
-        shipmentReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("3.0"), new BigDecimal("15"), new BigDecimal("15"), new BigDecimal("15"))));
+        shipmentReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        shipmentReq.setExpectedVolumetricDivisor(5000);
+        shipmentReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("20.0"), new BigDecimal("15"), new BigDecimal("15"), new BigDecimal("15"))));
 
         MvcResult createResult = mockMvc.perform(post("/api/v1/shipments")
+                        .with(user("USR-OFFICE").roles("RECEIVING_STAFF"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(shipmentReq)))
                 .andExpect(status().isCreated())
@@ -453,8 +496,7 @@ public class PaymentIntegrationTest {
         mockMvc.perform(get("/api/v1/payments/shipment/" + shipmentId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.payments.length()").value(2))
-                .andExpect(jsonPath("$.payments[0].method").value("CHEQUE"))
-                .andExpect(jsonPath("$.payments[1].method").value("OTHER"));
+                .andExpect(jsonPath("$.payments[*].method").value(containsInAnyOrder("CHEQUE", "OTHER")));
     }
 }
 

@@ -45,7 +45,7 @@ public class SystemSettingController {
     }
 
     @GetMapping("/branding")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OFFICE_STAFF', 'FIELD_STAFF')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEIVING_STAFF', 'COURIER_STAFF', 'DISPATCH_STAFF')")
     public ResponseEntity<CompanyBrandingDto> getCompanyBranding() {
         return ResponseEntity.ok(systemSettingService.getCompanyBranding());
     }

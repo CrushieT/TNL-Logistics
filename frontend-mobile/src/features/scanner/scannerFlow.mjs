@@ -25,6 +25,21 @@ export const BATCH_OPERATIONS = [
   'LOADED_TO_HAULER'
 ];
 
+const ALL_SEQUENTIAL_TRANSITIONS = [
+  'QR_GENERATED',
+  'LOADED_ON_TRUCK',
+  'ARRIVED_AT_TNL',
+  'LOADED_TO_HAULER',
+  'COMPLETED'
+];
+
+const ROLE_TRANSITIONS = {
+  ADMIN: ALL_SEQUENTIAL_TRANSITIONS,
+  RECEIVING_STAFF: ALL_SEQUENTIAL_TRANSITIONS,
+  COURIER_STAFF: ['LOADED_ON_TRUCK', 'ARRIVED_AT_TNL'],
+  DISPATCH_STAFF: ['LOADED_TO_HAULER', 'COMPLETED']
+};
+
 export const MAX_BATCH_SIZE = 100;
 
 export const STATUS_LABELS = {
@@ -36,12 +51,95 @@ export const STATUS_LABELS = {
   COMPLETED: 'Completed'
 };
 
+export function getScannerConnectivity(isConnected, isInternetReachable) {
+  const isKnown = typeof isConnected === 'boolean' && typeof isInternetReachable === 'boolean';
+  return {
+    isKnown,
+    isOnline: isKnown && isConnected && isInternetReachable
+  };
+}
+
 /**
  * Formats status code to approved human-readable mobile display label.
  */
 export function formatStatusLabel(statusCode) {
   if (!statusCode) return 'Unknown';
   return STATUS_LABELS[statusCode] || statusCode;
+}
+
+export function getAllowedTransitions(role) {
+  return [...(ROLE_TRANSITIONS[role] || [])];
+}
+
+export function isRoleTransitionAllowed(role, targetStatus) {
+  if (!targetStatus) return false;
+  return getAllowedTransitions(role).includes(targetStatus);
+}
+
+export function getAllowedBatchOperations(role) {
+  return BATCH_OPERATIONS.filter((operation) => isRoleTransitionAllowed(role, operation));
+}
+
+export function getSingleScanPermission(context, role) {
+  if (!context?.canScan || !context?.nextStatusCode) {
+    return { isAllowed: false, isPermissionDenied: false, message: null };
+  }
+  if (isRoleTransitionAllowed(role, context.nextStatusCode)) {
+    return { isAllowed: true, isPermissionDenied: false, message: null };
+  }
+  return {
+    isAllowed: false,
+    isPermissionDenied: true,
+    message: `Your role is not permitted to update parcels to ${formatStatusLabel(context.nextStatusCode)}.`
+  };
+}
+
+/**
+ * Validates whether a parcel candidate can be added to the rapid batch queue for the target operation.
+ */
+export function validateBatchCandidate(context, targetOperation, role) {
+  if (!context || !context.trackingId) {
+    return {
+      isValid: false,
+      error: 'Invalid parcel scan context.'
+    };
+  }
+
+  if (!context.canScan || !context.nextStatusCode) {
+    const currentLabel = context.currentStatusLabel || formatStatusLabel(context.currentStatusCode) || 'Completed';
+    return {
+      isValid: false,
+      error: context.scanBlockedReason || `Parcel ${context.trackingId} has reached terminal status (${currentLabel}) and cannot be scanned.`
+    };
+  }
+
+  if (!targetOperation) {
+    return {
+      isValid: false,
+      error: 'Please select a target operation before scanning parcels.'
+    };
+  }
+
+  if (!isRoleTransitionAllowed(role, targetOperation)) {
+    return {
+      isValid: false,
+      error: `Your role is not permitted to update parcels to ${formatStatusLabel(targetOperation)}.`
+    };
+  }
+
+  if (context.nextStatusCode !== targetOperation) {
+    const currentLabel = context.currentStatusLabel || formatStatusLabel(context.currentStatusCode) || 'Unknown';
+    const targetLabel = formatStatusLabel(targetOperation);
+    return {
+      isValid: false,
+      error: `Cannot add ${context.trackingId}: current status is "${currentLabel}". Expected next status is "${targetLabel}".`
+    };
+  }
+
+  return {
+    isValid: true,
+    error: null
+  };
 }
 
 /**
@@ -123,9 +221,12 @@ export function removeTrackingIdFromBatch(queue, trackingId) {
 /**
  * Builds the payload for a single scan submission.
  */
-export function buildSingleScanRequest(context, vehicleId) {
+export function buildSingleScanRequest(context, vehicleId, role) {
   if (!context || !context.trackingId || !context.nextStatusCode) {
     throw new Error('Valid scan context with next status is required');
+  }
+  if (!isRoleTransitionAllowed(role, context.nextStatusCode)) {
+    throw new Error('Your role is not permitted to perform this tracking transition');
   }
   const isVehicleRequired = context.nextStatusCode === 'LOADED_ON_TRUCK';
   if (isVehicleRequired && (!vehicleId || !String(vehicleId).trim())) {
@@ -148,12 +249,15 @@ export function buildSingleScanRequest(context, vehicleId) {
 /**
  * Builds the payload for a rapid batch scan submission.
  */
-export function buildBatchScanRequest(queue, targetStatus, vehicleId) {
+export function buildBatchScanRequest(queue, targetStatus, vehicleId, role) {
   if (!Array.isArray(queue) || queue.length === 0) {
     throw new Error('At least one tracking ID is required in batch queue');
   }
   if (!targetStatus || !BATCH_OPERATIONS.includes(targetStatus)) {
     throw new Error(`Valid target operation is required. Must be one of: ${BATCH_OPERATIONS.join(', ')}`);
+  }
+  if (!isRoleTransitionAllowed(role, targetStatus)) {
+    throw new Error('Your role is not permitted to perform this tracking transition');
   }
   const isVehicleRequired = targetStatus === 'LOADED_ON_TRUCK';
   if (isVehicleRequired && (!vehicleId || !String(vehicleId).trim())) {
@@ -176,8 +280,9 @@ export function buildBatchScanRequest(queue, targetStatus, vehicleId) {
 /**
  * Validates whether single scan can be confirmed.
  */
-export function canSubmitSingle(context, vehicleId) {
+export function canSubmitSingle(context, vehicleId, role) {
   if (!context || !context.canScan || !context.nextStatusCode) return false;
+  if (!isRoleTransitionAllowed(role, context.nextStatusCode)) return false;
   if (context.requiresVehicle && (!vehicleId || !String(vehicleId).trim())) return false;
   return true;
 }
@@ -185,9 +290,10 @@ export function canSubmitSingle(context, vehicleId) {
 /**
  * Validates whether batch scan can be submitted.
  */
-export function canSubmitBatch(queue, targetStatus, vehicleId) {
+export function canSubmitBatch(queue, targetStatus, vehicleId, role) {
   if (!Array.isArray(queue) || queue.length === 0) return false;
   if (!targetStatus || !BATCH_OPERATIONS.includes(targetStatus)) return false;
+  if (!isRoleTransitionAllowed(role, targetStatus)) return false;
   if (targetStatus === 'LOADED_ON_TRUCK' && (!vehicleId || !String(vehicleId).trim())) return false;
   return true;
 }
@@ -202,14 +308,17 @@ export function canActivateCamera({
   phase,
   mode,
   batchOperation,
-  batchVehicleId
+  batchVehicleId,
+  role
 }) {
   if (!permissionGranted) return false;
   if (!isScreenFocused) return false;
   if (Boolean(cameraError)) return false;
+  if (!ROLE_TRANSITIONS[role]) return false;
   if (phase !== SCANNER_PHASES.SCANNING && phase !== SCANNER_PHASES.BATCH_READY) return false;
   if (mode === SCANNER_MODES.BATCH) {
     if (!batchOperation) return false;
+    if (!isRoleTransitionAllowed(role, batchOperation)) return false;
     if (batchOperation === 'LOADED_ON_TRUCK' && (!batchVehicleId || !String(batchVehicleId).trim())) {
       return false;
     }
@@ -330,6 +439,19 @@ export function scannerReducer(state, action) {
         batchOperation: action.payload,
         batchVehicleId: action.payload === 'LOADED_ON_TRUCK' ? state.batchVehicleId : null,
         error: null
+      };
+    }
+
+    case 'RECONCILE_ROLE_PERMISSIONS': {
+      if (!state.batchOperation || isRoleTransitionAllowed(action.payload, state.batchOperation)) {
+        return state;
+      }
+      return {
+        ...state,
+        batchOperation: null,
+        batchVehicleId: null,
+        batchQueue: [],
+        error: 'The selected batch operation is not permitted for your role.'
       };
     }
 

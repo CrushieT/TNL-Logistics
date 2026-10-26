@@ -7,6 +7,7 @@ export { default as FinancialRevenueTab } from './components/FinancialRevenueTab
 export { default as OperationalVolumeTab } from './components/OperationalVolumeTab';
 export { default as ReceivablesAgingTab } from './components/ReceivablesAgingTab';
 export { default as PrintableReportModal } from './components/PrintableReportModal';
+export { default as PrintableReportDocument } from './components/PrintableReportDocument';
 export { default as TablePaginationFooter } from './components/TablePaginationFooter';
 export * from './api/reportsApi';
 export * from './utils/exportReportsCsv';

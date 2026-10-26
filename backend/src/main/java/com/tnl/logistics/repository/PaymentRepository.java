@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -18,6 +19,10 @@ import java.util.List;
  */
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Payment p WHERE p.shipment.shipmentId IN :shipmentIds ORDER BY p.paymentId")
+    List<Payment> findByShipmentIdsForUpdate(@Param("shipmentIds") Collection<String> shipmentIds);
 
     List<Payment> findByShipment_ShipmentId(String shipmentId);
 
@@ -52,4 +57,40 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
                                  @Param("startDate") LocalDate startDate,
                                  @Param("endDate") LocalDate endDate,
                                  Pageable pageable);
+
+    @Query(value = """
+            SELECT COALESCE(SUM(amount_paid), 0)
+            FROM payment
+            WHERE payment_date BETWEEN :startDate AND :endDate
+            """, nativeQuery = true)
+    BigDecimal sumAmountPaidBetween(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
+    @Query(value = """
+            SELECT s.client_id AS clientId,
+                   c.name AS clientName,
+                   COALESCE(SUM(p.amount_paid), 0) AS totalPaid
+            FROM payment p
+            JOIN shipment s ON s.shipment_id = p.shipment_id
+            JOIN client c ON c.client_id = s.client_id
+            WHERE p.payment_date BETWEEN :startDate AND :endDate
+            GROUP BY s.client_id, c.name
+            """, nativeQuery = true)
+    List<ClientPeriodPaymentTotals> aggregateClientPeriodPayments(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
+    @Query(value = """
+            SELECT p.method AS method,
+                   COUNT(*) AS count,
+                   COALESCE(SUM(p.amount_paid), 0) AS totalAmount
+            FROM payment p
+            WHERE p.payment_date BETWEEN :startDate AND :endDate
+              AND p.method IS NOT NULL
+            GROUP BY p.method
+            """, nativeQuery = true)
+    List<PaymentMethodTotals> aggregatePaymentMethodsBetween(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
 }

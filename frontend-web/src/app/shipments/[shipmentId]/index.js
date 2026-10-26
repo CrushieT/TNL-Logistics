@@ -209,7 +209,7 @@ export default function ShipmentDetailScreen() {
 
           {/* Card 2: Parcel Units */}
           <Card
-            title={`PARCEL UNITS (${shipment.units?.length || 0})`}
+            title={`PARCEL UNITS (${shipment.units?.length || 0}) | ${shipment.lostCount ?? 0} LOST`}
             right={
               <Button
                 label={`Print All Labels (${shipment.units?.length || 0})`}
@@ -221,31 +221,29 @@ export default function ShipmentDetailScreen() {
           >
             <View style={styles.unitsTable}>
               <View style={styles.unitsHeaderRow}>
-                <Text style={[styles.unitsHeaderCell, { flex: 1.3 }]}>PACKAGE</Text>
-                <Text style={[styles.unitsHeaderCell, { flex: 1.4 }]}>TRACKING ID</Text>
+                <Text style={[styles.unitsHeaderCell, { flex: 1 }]}>PACKAGE</Text>
+                <Text style={[styles.unitsHeaderCell, { flex: 1.6 }]}>TRACKING ID</Text>
                 <Text style={[styles.unitsHeaderCell, { flex: 1.2 }]}>STATUS</Text>
-                <Text style={[styles.unitsHeaderCell, { flex: 1.2 }]}>LABEL</Text>
-                <Text style={[styles.unitsHeaderCell, { flex: 0.9, textAlign: 'right' }]} />
+                <Text style={[styles.unitsHeaderCell, { flex: 1 }]}>VEHICLE</Text>
+                <Text style={[styles.unitsHeaderCell, styles.unitActions]} />
               </View>
               {shipment.units?.map((u, idx) => (
                 <View
                   key={u.trackingId}
                   style={[styles.unitRow, idx !== shipment.units.length - 1 && styles.unitDivider]}
                 >
-                  <Text style={[styles.unitCell, { flex: 1.3 }]}>
+                  <Text style={[styles.unitCell, { flex: 1 }]}>
                     Package {u.packageIndex} of {u.packageCount}
                   </Text>
-                  <Text style={[styles.unitCellStrong, { flex: 1.4 }]}>{u.trackingId}</Text>
+                  <Text style={[styles.unitCellStrong, { flex: 1.6 }]}>{u.trackingId}</Text>
                   <View style={{ flex: 1.2 }}>
-                    <StatusBadge value={u.status} kind="status" />
+                    <StatusBadge value={u.lost ? 'Lost' : u.status} kind="status" />
+                    {u.lost && <Text style={styles.lastConfirmedStatus}>Last confirmed: {u.status}</Text>}
                   </View>
-                  <View style={{ flex: 1.2 }}>
-                    <StatusBadge
-                      value={u.labelStatus === 'Printed' ? 'Label: Printed' : 'Label: Pending'}
-                      kind="label"
-                    />
-                  </View>
-                  <View style={{ flex: 0.9, flexDirection: 'row', gap: spacing.md, justifyContent: 'flex-end' }}>
+                  <Text style={[styles.unitCell, styles.unitVehicle]}>
+                    {u.lost ? '—' : u.currentVehiclePlate?.trim() || u.currentVehicleId || '—'}
+                  </Text>
+                  <View style={styles.unitActions}>
                     <Pressable onPress={() => router.push(`/shipments/${shipmentId}/units/${u.trackingId}`)}>
                       <Text style={styles.unitLinkDark}>View</Text>
                     </Pressable>
@@ -294,7 +292,7 @@ export default function ShipmentDetailScreen() {
           <Card title="PAYMENT: TRANSACTION" style={styles.paymentCard}>
             <Text style={styles.chargingLabel}>{(shipment.chargeModel || 'Flat')} charging</Text>
             <PaymentLine label="Shipping" value={shipment.shippingFee} />
-            <PaymentLine label="Other Charges" value={shipment.otherCharges} />
+            <PaymentLine label="Charges" value={shipment.otherCharges} />
             <PaymentLine label="Total Due" value={shipment.totalAmount} strong />
             <PaymentLine label="Amount Paid" value={shipment.amountPaid} />
             <View style={styles.paymentDivider} />
@@ -401,6 +399,12 @@ function PaymentLine({ label, value, strong, accent }) {
 }
 
 const styles = StyleSheet.create({
+  lastConfirmedStatus: {
+    fontFamily: fonts.mono,
+    fontSize: 10.5,
+    color: colors.inkFaint,
+    marginTop: 4,
+  },
   backLink: {
     fontFamily: fonts.mono,
     fontSize: 12,
@@ -571,16 +575,30 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   unitCell: {
+    minWidth: 0,
+    paddingRight: 8,
     fontFamily: fonts.sans,
     fontSize: 13,
     color: colors.ink,
     fontWeight: '500',
   },
   unitCellStrong: {
+    minWidth: 0,
+    paddingRight: 8,
     fontFamily: fonts.mono,
     fontSize: 13,
     color: colors.ink,
     fontWeight: '700',
+  },
+  unitVehicle: {
+    flex: 1,
+    overflowWrap: 'anywhere',
+  },
+  unitActions: {
+    width: 100,
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'flex-end',
   },
   unitLinkDark: {
     fontFamily: fonts.sans,

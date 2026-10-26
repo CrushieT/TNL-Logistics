@@ -7,6 +7,12 @@ import java.util.List;
  * Detailed response for shipment details page matching the August 26 prototype specification.
  */
 public class ShipmentDetailResponse {
+    private long lostCount;
+    private long deliveredCount;
+    public long getLostCount() { return lostCount; }
+    public void setLostCount(long count) { lostCount = count; }
+    public long getDeliveredCount() { return deliveredCount; }
+    public void setDeliveredCount(long count) { deliveredCount = count; }
 
     private String shipmentId;
     private String origin;
@@ -38,6 +44,13 @@ public class ShipmentDetailResponse {
     private BigDecimal volumeCm3;
     private BigDecimal volumetricWeightKg;
     private BigDecimal billableWeightKg;
+
+    // Calculation snapshots
+    private BigDecimal appliedRatePerKilo;
+    private Integer appliedVolumetricDivisor;
+    private BigDecimal totalActualWeight;
+    private BigDecimal totalVolumetricWeight;
+    private BigDecimal billableWeight;
 
     // Waybill Information
     private String waybillStatus;
@@ -147,4 +160,19 @@ public class ShipmentDetailResponse {
 
     public List<ParcelUnitResponse> getUnits() { return units; }
     public void setUnits(List<ParcelUnitResponse> units) { this.units = units; }
+
+    public BigDecimal getAppliedRatePerKilo() { return appliedRatePerKilo; }
+    public void setAppliedRatePerKilo(BigDecimal appliedRatePerKilo) { this.appliedRatePerKilo = appliedRatePerKilo; }
+
+    public Integer getAppliedVolumetricDivisor() { return appliedVolumetricDivisor; }
+    public void setAppliedVolumetricDivisor(Integer appliedVolumetricDivisor) { this.appliedVolumetricDivisor = appliedVolumetricDivisor; }
+
+    public BigDecimal getTotalActualWeight() { return totalActualWeight; }
+    public void setTotalActualWeight(BigDecimal totalActualWeight) { this.totalActualWeight = totalActualWeight; }
+
+    public BigDecimal getTotalVolumetricWeight() { return totalVolumetricWeight; }
+    public void setTotalVolumetricWeight(BigDecimal totalVolumetricWeight) { this.totalVolumetricWeight = totalVolumetricWeight; }
+
+    public BigDecimal getBillableWeight() { return billableWeight; }
+    public void setBillableWeight(BigDecimal billableWeight) { this.billableWeight = billableWeight; }
 }

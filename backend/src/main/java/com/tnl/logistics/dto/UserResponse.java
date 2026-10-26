@@ -1,7 +1,6 @@
 package com.tnl.logistics.dto;
 
 import com.tnl.logistics.model.AppUser;
-import com.tnl.logistics.model.StaffType;
 import com.tnl.logistics.model.UserRole;
 
 import java.time.LocalDateTime;
@@ -16,7 +15,6 @@ public class UserResponse {
     private String fullName;
     private String username;
     private UserRole role;
-    private StaffType staffType;
     private Boolean active;
     private Boolean mustChangePassword;
     private Boolean hasPinSet;
@@ -30,7 +28,6 @@ public class UserResponse {
         dto.fullName = user.getFullName();
         dto.username = user.getUsername();
         dto.role = user.getRole();
-        dto.staffType = user.getStaffType();
         dto.active = user.getActive();
         dto.mustChangePassword = user.getMustChangePassword();
         dto.hasPinSet = user.getPinHash() != null && !user.getPinHash().isBlank();
@@ -50,8 +47,6 @@ public class UserResponse {
     public UserRole getRole() { return role; }
     public void setRole(UserRole role) { this.role = role; }
 
-    public StaffType getStaffType() { return staffType; }
-    public void setStaffType(StaffType staffType) { this.staffType = staffType; }
 
     public Boolean getActive() { return active; }
     public void setActive(Boolean active) { this.active = active; }

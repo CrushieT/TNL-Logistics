@@ -32,6 +32,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public class TrackingAndVehicleIntegrationTest {
 
     @Autowired
+    private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Autowired
@@ -61,12 +64,22 @@ public class TrackingAndVehicleIntegrationTest {
     private String officeToken;
     private String adminToken;
     private String fieldToken;
+    private String haulerToken;
 
     @Autowired
     private com.tnl.logistics.repository.WaybillRepository waybillRepository;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
     @BeforeEach
     public void setup() {
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
         waybillRepository.deleteAll();
         trackingEventRepository.deleteAll();
         parcelUnitRepository.deleteAll();
@@ -74,9 +87,10 @@ public class TrackingAndVehicleIntegrationTest {
         shipmentRepository.deleteAll();
         vehicleRepository.deleteAll();
 
-        officeToken = "Bearer " + JwtTokenProvider.generateToken("USR-OFFICE", "OFFICE_STAFF");
-        adminToken = "Bearer " + JwtTokenProvider.generateToken("USR-ADMIN", "ADMIN");
-        fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
+        officeToken = "Bearer " + sessionTokens.generateToken("USR-OFFICE", "RECEIVING_STAFF");
+        adminToken = "Bearer " + sessionTokens.generateToken("USR-ADMIN", "ADMIN");
+        fieldToken = "Bearer " + sessionTokens.generateToken("USR-FIELD", "COURIER_STAFF");
+        haulerToken = "Bearer " + sessionTokens.generateToken("USR-HAULER", "DISPATCH_STAFF");
 
         Client client = clientRepository.findById("CL-001").orElse(null);
         if (client == null) {
@@ -117,7 +131,7 @@ public class TrackingAndVehicleIntegrationTest {
 
         // 3. List active vehicles
         MvcResult listRes = mockMvc.perform(get("/api/v1/vehicles")
-                        .header("Authorization", fieldToken))
+                        .header("Authorization", adminToken))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -145,6 +159,69 @@ public class TrackingAndVehicleIntegrationTest {
     }
 
     @Test
+    public void testVehicleBoundaryValidation() throws Exception {
+        // Plate number > 20 characters
+        VehicleRequest longPlate = new VehicleRequest("A".repeat(21), "Valid Description", true);
+        MvcResult resPlate = mockMvc.perform(post("/api/v1/vehicles")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(longPlate)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+        assertTrue(objectMapper.readTree(resPlate.getResponse().getContentAsString()).get("fieldErrors").has("plateNumber"));
+
+        // Description > 100 characters
+        VehicleRequest longDesc = new VehicleRequest("ABC-1234", "D".repeat(101), true);
+        MvcResult resDesc = mockMvc.perform(post("/api/v1/vehicles")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(longDesc)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+        assertTrue(objectMapper.readTree(resDesc.getResponse().getContentAsString()).get("fieldErrors").has("description"));
+
+        // Vehicle type > 50 characters
+        VehicleRequest longType = new VehicleRequest("ABC-1234", "T".repeat(51), "Valid Description", "Active", "None", true);
+        MvcResult resType = mockMvc.perform(post("/api/v1/vehicles")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(longType)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+        assertTrue(objectMapper.readTree(resType.getResponse().getContentAsString()).get("fieldErrors").has("vehicleType"));
+
+        // Status > 30 characters
+        VehicleRequest longStatus = new VehicleRequest("ABC-1234", "6-Wheeler Forward", "Valid Description", "S".repeat(31), "None", true);
+        MvcResult resStatus = mockMvc.perform(post("/api/v1/vehicles")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(longStatus)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+        assertTrue(objectMapper.readTree(resStatus.getResponse().getContentAsString()).get("fieldErrors").has("status"));
+
+        // Remarks > 255 characters
+        VehicleRequest longRemarks = new VehicleRequest("ABC-1234", "6-Wheeler Forward", "Valid Description", "Active", "R".repeat(256), true);
+        MvcResult resRemarks = mockMvc.perform(post("/api/v1/vehicles")
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(longRemarks)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+        assertTrue(objectMapper.readTree(resRemarks.getResponse().getContentAsString()).get("fieldErrors").has("remarks"));
+
+        // Put update boundary check
+        Vehicle existing = vehicleRepository.saveAndFlush(new Vehicle("VH-099", "PLATE-01", "Existing Truck"));
+        MvcResult resPut = mockMvc.perform(put("/api/v1/vehicles/" + existing.getVehicleId())
+                        .header("Authorization", adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(longDesc)))
+                .andExpect(status().isBadRequest())
+                .andReturn();
+        assertTrue(objectMapper.readTree(resPut.getResponse().getContentAsString()).get("fieldErrors").has("description"));
+    }
+
+    @Test
     public void testSequential5StateStatusFlowAndVehicleAssignment() throws Exception {
         // 1. Create a vehicle
         vehicleRepository.saveAndFlush(new Vehicle("VH-001", "ABC-1234", "TNL Truck 1"));
@@ -159,6 +236,8 @@ public class TrackingAndVehicleIntegrationTest {
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("350.00"));
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2.5"), new BigDecimal("20"), new BigDecimal("15"), new BigDecimal("10"))));
 
         ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "USR-OFFICE");
@@ -208,7 +287,7 @@ public class TrackingAndVehicleIntegrationTest {
         // 5. Scan: ARRIVED_AT_TNL -> LOADED_TO_HAULER (Final terminal dispatch)
         TrackingScanRequest scan3 = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_TO_HAULER, null, "Dispatched to 3rd party hauler");
         MvcResult res3 = mockMvc.perform(post("/api/v1/tracking-events/scan")
-                        .header("Authorization", fieldToken)
+                        .header("Authorization", haulerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(scan3)))
                 .andExpect(status().isOk())
@@ -235,6 +314,8 @@ public class TrackingAndVehicleIntegrationTest {
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("200.00"));
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("1"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
         ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "USR-OFFICE");
@@ -243,7 +324,7 @@ public class TrackingAndVehicleIntegrationTest {
         // 2. Attempt skipping from QR_GENERATED straight to LOADED_TO_HAULER (Should fail)
         TrackingScanRequest invalidSkip = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_TO_HAULER, null, "Invalid skip");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
-                        .header("Authorization", fieldToken)
+                        .header("Authorization", haulerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(invalidSkip)))
                 .andExpect(status().isBadRequest());
@@ -298,6 +379,8 @@ public class TrackingAndVehicleIntegrationTest {
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("500.00"));
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setParcels(List.of(
                 new ParcelUnitRequest(1, new BigDecimal("5"), new BigDecimal("30"), new BigDecimal("30"), new BigDecimal("30")),
                 new ParcelUnitRequest(2, new BigDecimal("5"), new BigDecimal("30"), new BigDecimal("30"), new BigDecimal("30"))
@@ -317,7 +400,7 @@ public class TrackingAndVehicleIntegrationTest {
 
         // 4. Verify onTruckCount is now 1
         MvcResult getRes1 = mockMvc.perform(get("/api/v1/vehicles/" + v.getVehicleId())
-                        .header("Authorization", officeToken))
+                        .header("Authorization", adminToken))
                 .andExpect(status().isOk())
                 .andReturn();
         VehicleResponse vAfter1 = objectMapper.readValue(getRes1.getResponse().getContentAsString(), VehicleResponse.class);
@@ -333,7 +416,7 @@ public class TrackingAndVehicleIntegrationTest {
 
         // 6. Verify onTruckCount is now 2
         MvcResult getRes2 = mockMvc.perform(get("/api/v1/vehicles/" + v.getVehicleId())
-                        .header("Authorization", officeToken))
+                        .header("Authorization", adminToken))
                 .andExpect(status().isOk())
                 .andReturn();
         VehicleResponse vAfter2 = objectMapper.readValue(getRes2.getResponse().getContentAsString(), VehicleResponse.class);
@@ -349,7 +432,7 @@ public class TrackingAndVehicleIntegrationTest {
 
         // 8. Verify onTruckCount decremented to 1
         MvcResult getRes3 = mockMvc.perform(get("/api/v1/vehicles/" + v.getVehicleId())
-                        .header("Authorization", officeToken))
+                        .header("Authorization", adminToken))
                 .andExpect(status().isOk())
                 .andReturn();
         VehicleResponse vAfter3 = objectMapper.readValue(getRes3.getResponse().getContentAsString(), VehicleResponse.class);

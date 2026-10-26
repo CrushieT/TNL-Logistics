@@ -31,6 +31,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 public class TrackingConcurrencyIntegrationTest {
 
     @Autowired
+    private com.tnl.logistics.support.TestSessionTokenFactory sessionTokens;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Autowired
@@ -54,6 +57,12 @@ public class TrackingConcurrencyIntegrationTest {
     @Autowired
     private ClientRepository clientRepository;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.tnl.logistics.service.SystemSettingService systemSettingService;
+
     private String fieldToken;
     private String createdShipmentId;
     private String createdTrackingId;
@@ -61,7 +70,10 @@ public class TrackingConcurrencyIntegrationTest {
 
     @BeforeEach
     public void setup() {
-        fieldToken = "Bearer " + JwtTokenProvider.generateToken("USR-FIELD", "FIELD_STAFF");
+        jdbcTemplate.update("UPDATE system_setting SET rate_per_kilo = 100.00 WHERE setting_id = 1");
+        systemSettingService.refreshCachedSettings();
+
+        fieldToken = "Bearer " + sessionTokens.generateToken("USR-FIELD", "COURIER_STAFF");
 
         // Ensure client CL-001 exists and is active without clearing other clients
         Client client = clientRepository.findById("CL-001").orElse(null);
@@ -109,6 +121,8 @@ public class TrackingConcurrencyIntegrationTest {
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("300.00"));
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setParcels(List.of(new ParcelUnitRequest(1, new BigDecimal("2"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10"))));
 
         ShipmentResponse shipResp = shipmentService.registerShipment(regReq, "USR-OFFICE");
@@ -182,6 +196,8 @@ public class TrackingConcurrencyIntegrationTest {
         regReq.setChargeModel(ChargeModel.FLAT);
         regReq.setShippingFee(new BigDecimal("500.00"));
         regReq.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
+        regReq.setExpectedRatePerKilo(new BigDecimal("100.00"));
+        regReq.setExpectedVolumetricDivisor(5000);
         regReq.setParcels(List.of(
                 new ParcelUnitRequest(1, new BigDecimal("1.5"), new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("10")),
                 new ParcelUnitRequest(2, new BigDecimal("2.0"), new BigDecimal("12"), new BigDecimal("12"), new BigDecimal("12"))

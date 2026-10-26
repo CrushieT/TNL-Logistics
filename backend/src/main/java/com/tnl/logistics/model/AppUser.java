@@ -36,13 +36,6 @@ public class AppUser implements Persistable<String> {
     @Column(name = "must_change_password", nullable = false)
     private Boolean mustChangePassword = true;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "staff_type")
-    private StaffType staffType;
-
-    @Column(name = "hauler_company", length = 100)
-    private String haulerCompany;
-
     @Column(name = "pin_hash", length = 255)
     private String pinHash;
 
@@ -83,23 +76,7 @@ public class AppUser implements Persistable<String> {
         this.role = role;
     }
 
-    public AppUser(String userId, String username, String passwordHash, String fullName, UserRole role, StaffType staffType, String haulerCompany) {
-        this.userId = userId;
-        this.username = username;
-        this.passwordHash = passwordHash;
-        this.fullName = fullName;
-        this.role = role;
-        this.staffType = staffType;
-        this.haulerCompany = haulerCompany;
-    }
-
     // Getters and Setters
-    public StaffType getStaffType() { return staffType; }
-    public void setStaffType(StaffType staffType) { this.staffType = staffType; }
-
-    public String getHaulerCompany() { return haulerCompany; }
-    public void setHaulerCompany(String haulerCompany) { this.haulerCompany = haulerCompany; }
-
     public String getPinHash() { return pinHash; }
     public void setPinHash(String pinHash) { this.pinHash = pinHash; }
 

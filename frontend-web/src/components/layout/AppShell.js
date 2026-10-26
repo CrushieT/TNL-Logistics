@@ -5,7 +5,7 @@ import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import { colors, fonts, spacing } from '../../theme';
 
-export default function AppShell({ children, shipmentCount, parcelCount }) {
+export default function AppShell({ children }) {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
@@ -50,7 +50,7 @@ export default function AppShell({ children, shipmentCount, parcelCount }) {
 
         {/* Content Area */}
         <View style={[styles.main, isMobile && styles.mainMobile]}>
-          <TopBar shipmentCount={shipmentCount} parcelCount={parcelCount} />
+          <TopBar />
           <ScrollView
             style={styles.pageScrollView}
             contentContainerStyle={[styles.content, isMobile && styles.contentMobile]}
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
     minHeight: 'auto',
   },
   sidebarWrap: {
-    width: 252,
+    width: 260,
     height: '100%',
     backgroundColor: '#FFFFFF',
   },

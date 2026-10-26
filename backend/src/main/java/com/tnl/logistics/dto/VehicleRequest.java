@@ -1,19 +1,25 @@
 package com.tnl.logistics.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 public class VehicleRequest {
 
     @NotBlank(message = "Plate number is required")
+    @Size(max = 20, message = "Plate number cannot exceed 20 characters")
     private String plateNumber;
 
+    @Size(max = 50, message = "Vehicle type cannot exceed 50 characters")
     private String vehicleType = "6-Wheeler Forward";
 
     @NotBlank(message = "Vehicle description is required")
+    @Size(max = 100, message = "Vehicle description cannot exceed 100 characters")
     private String description;
 
+    @Size(max = 30, message = "Status cannot exceed 30 characters")
     private String status = "Active";
 
+    @Size(max = 255, message = "Remarks cannot exceed 255 characters")
     private String remarks;
 
     private Boolean active = true;
