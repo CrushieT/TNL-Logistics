@@ -16,6 +16,7 @@ import PageHeader from '../components/layout/PageHeader';
 import {
   getWeeklyCollections,
   generateBatchSoa,
+  generateStatement,
   saveStatement,
   getRecentThursdays,
   getActiveCollectionCycles,
@@ -304,7 +305,7 @@ export default function WeeklyCollectionsScreen() {
 
     if (!isAlreadyGenerated) {
       try {
-        await saveStatement({
+        await generateStatement({
           clientId: id,
           targetDate: selectedCycle,
           cycleThursday: selectedCycle,
@@ -334,7 +335,7 @@ export default function WeeklyCollectionsScreen() {
       for (const client of unbilledClients) {
         const id = client.clientId || client.clientCode;
         try {
-          await saveStatement({
+          await generateStatement({
             clientId: id,
             targetDate: selectedCycle,
             cycleThursday: selectedCycle,

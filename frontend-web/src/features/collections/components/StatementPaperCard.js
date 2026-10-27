@@ -1,23 +1,63 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { View, Text, Image, StyleSheet, Platform } from 'react-native';
+import apiClient from '../../../services/api/client';
 import { colors, fonts, spacing, radius } from '../../../theme';
 import { formatCurrency } from '../utils/collectionsUtils';
 import {
   createStatementPrintSheetSequence,
   paginateStatementItems,
+  waitForImageReady,
 } from '../utils/statementPrintModel.mjs';
 
 export { paginateStatementItems } from '../utils/statementPrintModel.mjs';
 
 export const STATEMENT_LOGO_SOURCE = require('../../../../assets/tracking-logo.png');
 
-function StatementLogo({ compact = false, forceFallback = false, size = 150 }) {
-  const [hasLoadError, setHasLoadError] = React.useState(false);
+export function useStatementLogo(data, enabled = true) {
+  const [result, setResult] = useState(null);
+  const [attempt, setAttempt] = useState(0);
+  const archived = Boolean(data?.activeVersion);
+  const identity = JSON.stringify([data?.soaNo, data?.activeVersion, data?.logoHash]);
+  useEffect(() => {
+    if (!enabled || !data) return;
+    let active = true;
+    let objectUrl;
+    const controller = new AbortController();
+    setResult(null);
+    async function load() {
+      try {
+        const asset = Image.resolveAssetSource?.(STATEMENT_LOGO_SOURCE);
+        let uri = asset?.uri || (typeof STATEMENT_LOGO_SOURCE === 'string' ? STATEMENT_LOGO_SOURCE : STATEMENT_LOGO_SOURCE?.uri || STATEMENT_LOGO_SOURCE?.default);
+        if (archived) {
+          if (!data.logoHash) throw new Error('Saved logo is missing.');
+          const response = await apiClient.get('/soa/logo/' + encodeURIComponent(data.logoHash), { responseType: 'blob', signal: controller.signal });
+          if (!active) return;
+          objectUrl = URL.createObjectURL(response.data);
+          uri = objectUrl;
+        }
+        const status = await waitForImageReady(uri, () => new window.Image());
+        if (active) setResult({ identity, uri, status });
+      } catch {
+        if (active) setResult({ identity, uri: null, status: 'failed' });
+      }
+    }
+    load();
+    return () => {
+      active = false;
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [identity, enabled, attempt]);
+  return { ...(result?.identity === identity ? result : { uri: null, status: 'loading' }),
+    retry: () => setAttempt(previous => previous + 1) };
+}
 
+function StatementLogo({ compact = false, forceFallback = false, size = 150, uri, archived = false }) {
+  const [hasLoadError, setHasLoadError] = useState(false);
   const logoWidth = compact ? 88 : size;
   const logoHeight = Math.round(logoWidth * (580 / 1800));
 
-  if (forceFallback || hasLoadError) {
+  if (!archived && (forceFallback || hasLoadError)) {
     return (
       <View style={[styles.logoFallback, { width: logoWidth, height: logoHeight }]}>
         <Text style={[styles.logoFallbackText, compact && styles.logoFallbackTextCompact]}>TNL</Text>
@@ -26,12 +66,14 @@ function StatementLogo({ compact = false, forceFallback = false, size = 150 }) {
   }
 
   const asset = Image.resolveAssetSource ? Image.resolveAssetSource(STATEMENT_LOGO_SOURCE) : null;
-  const logoUri = asset?.uri || (typeof STATEMENT_LOGO_SOURCE === 'string' ? STATEMENT_LOGO_SOURCE : (STATEMENT_LOGO_SOURCE?.uri || STATEMENT_LOGO_SOURCE?.default || ''));
+  const defaultUri = asset?.uri || (typeof STATEMENT_LOGO_SOURCE === 'string' ? STATEMENT_LOGO_SOURCE : (STATEMENT_LOGO_SOURCE?.uri || STATEMENT_LOGO_SOURCE?.default || ''));
+  const effectiveUri = archived ? uri : (uri || defaultUri);
+  if (archived && !effectiveUri) return <View style={{ width: logoWidth, height: logoHeight }} />;
 
-  if (Platform.OS === 'web' && logoUri) {
+  if (Platform.OS === 'web' && effectiveUri) {
     return (
       <img
-        src={logoUri}
+        src={effectiveUri}
         alt="TNL Logistics"
         onError={() => setHasLoadError(true)}
         style={{
@@ -95,7 +137,12 @@ export default function StatementPaperCard({
   showCopyLabels = false,
   showLogo = true,
   logoLoadFailed = false,
+  resolvedLogo,
+  isPrint = false,
 }) {
+  const isPrintMode = Boolean(isPrint || showCopyLabels || (copies && copies > 1));
+  const ownLogo = useStatementLogo(data, showLogo && resolvedLogo === undefined);
+  const logo = resolvedLogo || ownLogo;
   if (!data) return null;
 
   const {
@@ -113,11 +160,12 @@ export default function StatementPaperCard({
     items = [],
   } = data;
 
-  const deductionVal = Number(liveDeduction ?? data.deductionAmount ?? 0);
-  const deductionReason = liveDeductionNote ?? data.deductionNote ?? '';
-  const collector = liveCollectedBy ?? data.collectedBy ?? '';
+  const deductionVal = Number((data.activeVersion ? data.deductionAmount : liveDeduction ?? data.deductionAmount) ?? 0);
+  const deductionReason = (data.activeVersion ? data.deductionNote : liveDeductionNote ?? data.deductionNote) ?? '';
+  const collector = (data.activeVersion ? data.collectedBy : liveCollectedBy ?? data.collectedBy) ?? '';
 
-  const finalAmountDue = Math.max(0, Number(totalCharges || 0) - Number(totalPaid || 0) - deductionVal);
+  const finalAmountDue = data.activeVersion ? Number(data.amountDue)
+    : Math.max(0, Number(totalCharges || 0) - Number(totalPaid || 0) - deductionVal);
 
   const formattedStatementDate = statementDate
     ? new Date(statementDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -127,7 +175,7 @@ export default function StatementPaperCard({
     ? `${new Date(collectionDate).toLocaleDateString('en-US', { weekday: 'short' })}, ${new Date(collectionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
     : '-';
 
-  const branding = companyBranding || data;
+  const branding = data.activeVersion ? data : companyBranding || data;
   const brandName = (branding.companyName || 'TNL LOGISTICS').toUpperCase();
   const brandAddress = branding.companyAddress || 'Manila Central Hub';
   const brandContact = branding.companyContact || '0917-555-0000';
@@ -159,11 +207,18 @@ export default function StatementPaperCard({
             nativeID={`soa-printable-sheet-${copyIndex}-${pageIndex}`}
           >
 
+            {data.isLive && (
+              <View style={styles.liveBannerTop}>
+                <Text style={styles.liveBannerTopText}>LIVE SOA — MAY CHANGE</Text>
+              </View>
+            )}
+
             {/* Top-Centered Letterhead Brand Header (Rendered on Every Page) */}
             <View style={styles.letterheadBlock}>
               {showLogo && (
                 <View style={styles.letterheadLogoWrap}>
-                  <StatementLogo forceFallback={logoLoadFailed} size={150} />
+                  <StatementLogo key={data.logoHash} forceFallback={logoLoadFailed || logo.status === 'failed'} size={150} uri={logo.uri} archived={Boolean(data.activeVersion)} />
+                  {data.activeVersion && logo.status === 'failed' && <Text onPress={logo.retry}>Saved logo failed to load. Retry</Text>}
                 </View>
               )}
               <Text style={styles.companyNameCentered}>{brandName}</Text>
@@ -177,7 +232,22 @@ export default function StatementPaperCard({
             <View style={styles.metaRow}>
               <View style={styles.titleCol}>
                 <Text style={styles.documentTitle}>STATEMENT OF ACCOUNT</Text>
-                {showCopyLabels && <Text style={[styles.copyLabel, copyIndex > 0 && styles.clientCopyLabel]}>{copyIndex === 0 ? 'ORIGINAL COPY' : 'CLIENT COPY'}</Text>}
+                <View style={styles.titleBadgeRow}>
+                  {showCopyLabels && (
+                    <Text style={[styles.copyLabel, copyIndex > 0 && styles.clientCopyLabel]}>
+                      {copyIndex === 0 ? 'ORIGINAL COPY' : 'CLIENT COPY'}
+                    </Text>
+                  )}
+                  {data.isLive ? (
+                    <View style={styles.liveBadge}>
+                      <Text style={styles.liveBadgeText}>LIVE SOA — MAY CHANGE</Text>
+                    </View>
+                  ) : (!isPrintMode && (data.activeVersion || data.versionNumber)) ? (
+                    <View style={styles.versionBadge}>
+                      <Text style={styles.versionBadgeText}>VERSION {data.activeVersion || data.versionNumber}</Text>
+                    </View>
+                  ) : null}
+                </View>
               </View>
 
               <View style={styles.metaCol}>
@@ -185,6 +255,24 @@ export default function StatementPaperCard({
                   <Text style={styles.metaLabel}>SOA No. </Text>
                   <Text style={styles.metaValueMono}>{soaNo}</Text>
                 </Text>
+                {!data.isLive && (
+                  isPrintMode ? (
+                    data.capturedAt ? (
+                      <Text style={styles.metaLine}>
+                        <Text style={styles.metaLabel}>Captured: </Text>
+                        <Text style={styles.metaValue}>{data.capturedAt}</Text>
+                      </Text>
+                    ) : null
+                  ) : (data.activeVersion || data.versionNumber) ? (
+                    <Text style={styles.metaLine}>
+                      <Text style={styles.metaLabel}>Version: </Text>
+                      <Text style={styles.metaValue}>
+                        V{data.activeVersion || data.versionNumber}
+                        {data.capturedAt ? (' (' + data.capturedAt + ')') : ''}
+                      </Text>
+                    </Text>
+                  ) : null
+                )}
                 <Text style={styles.metaLine}>
                   <Text style={styles.metaLabel}>Statement Date: </Text>
                   <Text style={styles.metaValue}>{formattedStatementDate}</Text>
@@ -327,7 +415,7 @@ export default function StatementPaperCard({
                     {/* Signature 1: Prepared by */}
                     <View style={styles.sigCol}>
                       <View style={styles.sigNameWrap}>
-                        <Text style={styles.sigNameText}>{currentUser?.name || 'Maria Santos'}</Text>
+                        <Text style={styles.sigNameText}>{data.activeVersion ? data.capturedByName || '' : currentUser?.name || 'Maria Santos'}</Text>
                       </View>
                       <View style={styles.sigLine} />
                       <Text style={styles.sigText}>Prepared by</Text>
@@ -435,6 +523,57 @@ const styles = StyleSheet.create({
   },
   titleCol: {
     justifyContent: 'flex-end',
+  },
+  liveBannerTop: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    paddingVertical: 3,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    marginBottom: 6,
+    borderRadius: 2,
+  },
+  liveBannerTopText: {
+    fontFamily: fonts.mono || 'monospace',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    color: '#92400E',
+    textTransform: 'uppercase',
+  },
+  titleBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+  },
+  liveBadge: {
+    borderWidth: 1,
+    borderColor: '#D97706',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  liveBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#92400E',
+    letterSpacing: 0.5,
+  },
+  versionBadge: {
+    borderWidth: 1,
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  versionBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1E40AF',
+    letterSpacing: 0.5,
   },
   copyLabel: {
     alignSelf: 'flex-start',

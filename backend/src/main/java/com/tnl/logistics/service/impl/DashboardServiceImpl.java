@@ -10,6 +10,7 @@ import com.tnl.logistics.repository.ShipmentRepository;
 import com.tnl.logistics.repository.TrackingEventRepository;
 import com.tnl.logistics.service.CollectionsService;
 import com.tnl.logistics.service.DashboardService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -18,9 +19,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
 import java.util.*;
@@ -34,6 +37,7 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class DashboardServiceImpl implements DashboardService {
 
+    private static final ZoneId MANILA_ZONE = ZoneId.of("Asia/Manila");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("MMM d, yyyy");
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("h:mm a");
 
@@ -41,16 +45,19 @@ public class DashboardServiceImpl implements DashboardService {
     private final ParcelUnitRepository parcelUnitRepository;
     private final TrackingEventRepository trackingEventRepository;
     private final CollectionsService collectionsService;
+    private final Clock clock;
 
     public DashboardServiceImpl(
             ShipmentRepository shipmentRepository,
             ParcelUnitRepository parcelUnitRepository,
             TrackingEventRepository trackingEventRepository,
-            CollectionsService collectionsService) {
+            CollectionsService collectionsService,
+            @Autowired(required = false) Clock clock) {
         this.shipmentRepository = shipmentRepository;
         this.parcelUnitRepository = parcelUnitRepository;
         this.trackingEventRepository = trackingEventRepository;
         this.collectionsService = collectionsService;
+        this.clock = (clock != null) ? clock : Clock.system(MANILA_ZONE);
     }
 
     @Override
@@ -61,17 +68,18 @@ public class DashboardServiceImpl implements DashboardService {
     @Override
     public DashboardSummaryResponse getDashboardSummary(LocalDate targetCycleDate) {
         try {
-            LocalDate today = LocalDate.now();
+            LocalDate today = LocalDate.now(clock.withZone(MANILA_ZONE));
             LocalDate activeCycleEnd = (targetCycleDate != null)
                     ? targetCycleDate
                     : collectionsService.calculateActiveCycleDate(today);
 
             LocalDate cycleStartLocalDate = collectionsService.calculateCycleStartDate(activeCycleEnd);
             LocalDateTime cycleStart = cycleStartLocalDate.atStartOfDay();
-            LocalDateTime cycleEnd = activeCycleEnd.atTime(23, 59, 59, 999999999);
+            LocalDateTime cycleEnd = activeCycleEnd.atStartOfDay();
 
             // 1. Cycle-scoped counts and charges consolidated into single aggregate
-            CycleShipmentSummary cycleSummary = shipmentRepository.getCycleShipmentSummary(cycleStart, cycleEnd);
+            CycleShipmentSummary cycleSummary = shipmentRepository.getCycleShipmentSummary(
+                    cycleStart, cycleEnd);
             long shipmentCount = (cycleSummary != null && cycleSummary.getShipmentCount() != null)
                     ? cycleSummary.getShipmentCount() : 0L;
             long parcelCount = (cycleSummary != null && cycleSummary.getParcelCount() != null)
@@ -81,7 +89,7 @@ public class DashboardServiceImpl implements DashboardService {
 
             // 2. Today's shipments
             LocalDateTime todayStart = today.atStartOfDay();
-            LocalDateTime todayEnd = today.atTime(23, 59, 59, 999999999);
+            LocalDateTime todayEnd = today.plusDays(1).atStartOfDay();
             long todayShipmentCount = shipmentRepository.countShipmentsRegisteredBetween(todayStart, todayEnd);
             String todayDateFormatted = today.format(DATE_FORMATTER);
 

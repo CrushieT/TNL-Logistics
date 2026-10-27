@@ -32,7 +32,13 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
                                  FROM payment p WHERE p.shipment_id = s.shipment_id)), 0) AS paid
             FROM shipment s
             JOIN client c ON c.client_id = s.client_id
-            WHERE s.date_registered BETWEEN :cycleStart AND :cycleEnd
+            WHERE (((s.business_registration_date IS NOT NULL AND s.business_registration_date >= :cycleStartDate AND s.business_registration_date < :cycleEndDate)
+                    OR (s.business_registration_date IS NULL AND s.date_registered >= :cycleStart AND s.date_registered < :cycleEnd))
+                   OR (s.statement_id IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM soa cycle_soa
+                        WHERE cycle_soa.soa_no = s.statement_id
+                          AND BINARY cycle_soa.soa_no = BINARY s.statement_id
+                          AND cycle_soa.statement_date = :statementDate)))
               AND (s.statement_id IS NULL OR REGEXP_LIKE(s.statement_id, CONCAT('^[', CHAR(0 USING utf8mb4), '-', CHAR(32 USING utf8mb4), ']*$'))
                    OR EXISTS (SELECT 1 FROM soa cycle_soa
                               WHERE cycle_soa.soa_no = s.statement_id
@@ -42,9 +48,20 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
             ORDER BY MAX(s.date_registered) DESC
             """, nativeQuery = true)
     List<ClientCollectionTotals> aggregateCollectionsByClient(
+            @Param("cycleStartDate") LocalDate cycleStartDate,
+            @Param("cycleEndDate") LocalDate cycleEndDate,
             @Param("cycleStart") java.time.LocalDateTime cycleStart,
             @Param("cycleEnd") java.time.LocalDateTime cycleEnd,
             @Param("statementDate") LocalDate statementDate);
+
+    default List<ClientCollectionTotals> aggregateCollectionsByClient(
+            java.time.LocalDateTime cycleStart,
+            java.time.LocalDateTime cycleEnd,
+            LocalDate statementDate) {
+        LocalDate startDate = (cycleStart != null) ? cycleStart.toLocalDate() : null;
+        LocalDate endDate = (cycleEnd != null) ? cycleEnd.toLocalDate() : null;
+        return aggregateCollectionsByClient(startDate, endDate, cycleStart, cycleEnd, statementDate);
+    }
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM Shipment s WHERE s.shipmentId = :id")
@@ -142,23 +159,43 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
 
     List<Shipment> findByClient_ClientIdAndDateRegisteredBetween(String clientId, java.time.LocalDateTime start, java.time.LocalDateTime end);
 
+    @Query("SELECT s FROM Shipment s WHERE s.client.clientId = :clientId " +
+           "AND (((s.businessRegistrationDate IS NOT NULL AND s.businessRegistrationDate >= :cycleStartDate AND s.businessRegistrationDate < :cycleEndDate) " +
+           "      OR (s.businessRegistrationDate IS NULL AND s.dateRegistered >= :start AND s.dateRegistered < :end)) " +
+           "     OR (:soaNo IS NOT NULL AND s.statementId = :soaNo)) " +
+           "ORDER BY s.dateRegistered DESC")
+    List<Shipment> findCycleShipmentsForClient(
+            @Param("clientId") String clientId,
+            @Param("cycleStartDate") LocalDate cycleStartDate,
+            @Param("cycleEndDate") LocalDate cycleEndDate,
+            @Param("start") java.time.LocalDateTime start,
+            @Param("end") java.time.LocalDateTime end,
+            @Param("soaNo") String soaNo);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM Shipment s WHERE s.client.clientId = :clientId " +
-           "AND s.dateRegistered BETWEEN :start AND :end ORDER BY s.shipmentId")
-    List<Shipment> findByClientAndCycleForUpdate(@Param("clientId") String clientId,
-                                                 @Param("start") java.time.LocalDateTime start,
-                                                 @Param("end") java.time.LocalDateTime end);
+           "AND (((s.businessRegistrationDate IS NOT NULL AND s.businessRegistrationDate >= :cycleStartDate AND s.businessRegistrationDate < :cycleEndDate) " +
+           "      OR (s.businessRegistrationDate IS NULL AND s.dateRegistered >= :start AND s.dateRegistered < :end)) " +
+           "     OR (:soaNo IS NOT NULL AND s.statementId = :soaNo)) " +
+           "ORDER BY s.shipmentId")
+    List<Shipment> findByClientAndCycleForUpdate(
+            @Param("clientId") String clientId,
+            @Param("cycleStartDate") LocalDate cycleStartDate,
+            @Param("cycleEndDate") LocalDate cycleEndDate,
+            @Param("start") java.time.LocalDateTime start,
+            @Param("end") java.time.LocalDateTime end,
+            @Param("soaNo") String soaNo);
 
     @Query("SELECT DISTINCT CAST(s.dateRegistered AS LocalDate) FROM Shipment s WHERE s.dateRegistered IS NOT NULL")
     List<LocalDate> findDistinctRegistrationDates();
 
-    @Query("SELECT COUNT(s) FROM Shipment s WHERE s.dateRegistered >= :startOfDay AND s.dateRegistered <= :endOfDay")
+    @Query("SELECT COUNT(s) FROM Shipment s WHERE s.dateRegistered >= :startOfDay AND s.dateRegistered < :endOfDay")
     long countShipmentsRegisteredBetween(@Param("startOfDay") java.time.LocalDateTime startOfDay, @Param("endOfDay") java.time.LocalDateTime endOfDay);
 
     @Query("SELECT COUNT(s) FROM Shipment s WHERE s.totalAmount > (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s)")
     long countUnpaidShipments();
 
-    @Query("SELECT FUNCTION('DATE', s.dateRegistered), COUNT(s) FROM Shipment s WHERE s.dateRegistered >= :startDate AND s.dateRegistered <= :endDate GROUP BY FUNCTION('DATE', s.dateRegistered)")
+    @Query("SELECT FUNCTION('DATE', s.dateRegistered), COUNT(s) FROM Shipment s WHERE s.dateRegistered >= :startDate AND s.dateRegistered < :endDate GROUP BY FUNCTION('DATE', s.dateRegistered)")
     List<Object[]> countDailyShipmentsBetween(@Param("startDate") java.time.LocalDateTime startDate, @Param("endDate") java.time.LocalDateTime endDate);
 
     @Query("SELECT COALESCE(SUM(s.totalAmount), 0) FROM Shipment s")
@@ -167,22 +204,22 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
     @Query("SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p")
     java.math.BigDecimal sumTotalPayments();
 
-    @Query("SELECT COALESCE(SUM(s.quantity), 0) FROM Shipment s WHERE s.dateRegistered >= :cycleStart AND s.dateRegistered <= :cycleEnd")
+    @Query("SELECT COALESCE(SUM(s.quantity), 0) FROM Shipment s WHERE s.dateRegistered >= :cycleStart AND s.dateRegistered < :cycleEnd")
     long countParcelsRegisteredBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart, @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
 
-    @Query("SELECT COUNT(s) FROM Shipment s WHERE s.dateRegistered >= :cycleStart AND s.dateRegistered <= :cycleEnd AND s.totalAmount > (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s)")
+    @Query("SELECT COUNT(s) FROM Shipment s WHERE s.dateRegistered >= :cycleStart AND s.dateRegistered < :cycleEnd AND s.totalAmount > (SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment = s)")
     long countUnpaidShipmentsBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart, @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
 
-    @Query("SELECT COALESCE(SUM(s.totalAmount), 0) FROM Shipment s WHERE s.dateRegistered >= :cycleStart AND s.dateRegistered <= :cycleEnd")
+    @Query("SELECT COALESCE(SUM(s.totalAmount), 0) FROM Shipment s WHERE s.dateRegistered >= :cycleStart AND s.dateRegistered < :cycleEnd")
     java.math.BigDecimal sumTotalShipmentChargesBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart, @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
 
-    @Query("SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered <= :cycleEnd")
+    @Query("SELECT COALESCE(SUM(p.amountPaid), 0) FROM Payment p WHERE p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered < :cycleEnd")
     java.math.BigDecimal sumTotalPaymentsBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart, @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
 
-    @Query("SELECT COUNT(s) FROM Shipment s WHERE s.dateRegistered >= :cycleStart AND s.dateRegistered <= :cycleEnd AND (s.statementId IS NULL OR TRIM(s.statementId) = '')")
+    @Query("SELECT COUNT(s) FROM Shipment s WHERE s.dateRegistered >= :cycleStart AND s.dateRegistered < :cycleEnd AND (s.statementId IS NULL OR TRIM(s.statementId) = '')")
     long countUnbilledShipmentsBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart, @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
 
-    @Query("SELECT DISTINCT CAST(s.dateRegistered AS LocalDate) FROM Shipment s WHERE s.dateRegistered IS NOT NULL AND (s.statementId IS NULL OR TRIM(s.statementId) = '')")
+    @Query("SELECT DISTINCT COALESCE(s.businessRegistrationDate, CAST(s.dateRegistered AS LocalDate)) FROM Shipment s WHERE s.dateRegistered IS NOT NULL AND (s.statementId IS NULL OR TRIM(s.statementId) = '')")
     List<LocalDate> findDistinctUnbilledRegistrationDates();
 
     @Query("SELECT s.shipmentId, c.clientId, c.name, c.contactNumber, s.dateRegistered, s.totalAmount, COALESCE(SUM(p.amountPaid), 0) " +
@@ -275,12 +312,23 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
                        COALESCE(SUM(p.amount_paid), 0) AS paid
                 FROM shipment s
                 LEFT JOIN payment p ON p.shipment_id = s.shipment_id
-                WHERE s.date_registered BETWEEN :cycleStart AND :cycleEnd
+                WHERE ((s.business_registration_date IS NOT NULL AND s.business_registration_date >= :cycleStartDate AND s.business_registration_date < :cycleEndDate)
+                       OR (s.business_registration_date IS NULL AND s.date_registered >= :cycleStart AND s.date_registered < :cycleEnd))
                 GROUP BY s.shipment_id, s.quantity, s.total_amount
             ) amounts
             """, nativeQuery = true)
     CycleShipmentSummary getCycleShipmentSummary(
+            @Param("cycleStartDate") LocalDate cycleStartDate,
+            @Param("cycleEndDate") LocalDate cycleEndDate,
             @Param("cycleStart") java.time.LocalDateTime cycleStart,
             @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
+
+    default CycleShipmentSummary getCycleShipmentSummary(
+            java.time.LocalDateTime cycleStart,
+            java.time.LocalDateTime cycleEnd) {
+        LocalDate startDate = (cycleStart != null) ? cycleStart.toLocalDate() : null;
+        LocalDate endDate = (cycleEnd != null) ? cycleEnd.toLocalDate() : null;
+        return getCycleShipmentSummary(startDate, endDate, cycleStart, cycleEnd);
+    }
 }
 

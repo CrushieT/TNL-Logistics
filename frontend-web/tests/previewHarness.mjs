@@ -122,11 +122,22 @@ export function mountScreen(name, api = {}, initialAuth = {}, onSubscribe) {
     throw new Error(dependency);
   });
   const Screen = loadProductionModule(name.startsWith('features/') ? `../src/${name}` : `../src/app/${name}.js`, dependency => {
+    if (dependency.endsWith('/components/StatementPaperCard')) {
+      const paper = loadProductionModule('../src/features/collections/components/StatementPaperCard.js', imported => {
+        if (imported === 'react') return react;
+        if (imported === 'react-native') return native;
+        if (imported.endsWith('/api/client')) return authModule;
+        if (imported.endsWith('statementPrintModel.mjs')) return statementModel;
+        if (imported.endsWith('.png')) return 'bundled-logo.png';
+        return { colors: {}, fonts: {}, spacing: {}, radius: {}, formatCurrency: String };
+      });
+      return { __esModule: true, ...paper, default: component('StatementPaperCard') };
+    }
     if (dependency.endsWith('/statementPrintModel.mjs')) return statementModel;
     if (dependency.endsWith('/useCachedPreview')) return cachedHook;
     if (dependency === 'react') return react;
     if (dependency === 'react-native') return native;
-    if (dependency === 'expo-router') return { useRouter: () => ({ push() {} }), useLocalSearchParams: () => searchParams };
+    if (dependency === 'expo-router') return { useRouter: () => ({ push: api.push || (() => {}), back: api.back || (() => {}) }), useLocalSearchParams: () => searchParams };
     if (dependency.endsWith('/responseCache.mjs')) return cache;
     if (dependency.endsWith('/requestCoordinator.mjs')) return requests;
     if (dependency.endsWith('/useRequestCoordinator')) return hook;
@@ -165,7 +176,7 @@ export function mountScreen(name, api = {}, initialAuth = {}, onSubscribe) {
     }
     throw new Error('Screen did not settle');
   }
-  function nodes(node = tree) {
+  function nodes(node) {
     if (Array.isArray(node)) return node.flatMap(item => nodes(item));
     if (!node || typeof node !== 'object') return [];
     return [node, ...nodes(node.props?.children), ...nodes(node.props?.right ?? null)];
@@ -173,8 +184,8 @@ export function mountScreen(name, api = {}, initialAuth = {}, onSubscribe) {
   return {
     render, flush, coordinators,
     changeRoute(next) { searchParams = { ...next }; dirty = true; },
-    allProps: displayName => nodes().filter(node => node.type?.displayName === displayName).map(node => node.props),
-    props: displayName => nodes().find(node => node.type?.displayName === displayName)?.props,
+    allProps: displayName => nodes(tree).filter(node => node.type?.displayName === displayName).map(node => node.props),
+    props: displayName => nodes(tree).find(node => node.type?.displayName === displayName)?.props,
     text: () => JSON.stringify(tree),
     emit: (event = { type: 'STATUS_UPDATE', data: {} }) => {
       cache.invalidateBusinessEvent(event.type);
@@ -196,4 +207,3 @@ export function mountScreen(name, api = {}, initialAuth = {}, onSubscribe) {
     unmount() { slots.forEach(slot => slot?.cleanup?.()); },
   };
 }
-

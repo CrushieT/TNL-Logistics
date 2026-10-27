@@ -106,8 +106,8 @@ public class DashboardIntegrationTest {
                 .andExpect(jsonPath("$.parcelUnitsByStatus").isArray())
                 .andExpect(jsonPath("$.weeklyShipmentVolume").isArray())
                 .andExpect(jsonPath("$.weeklyShipmentVolume.length()").value(7))
-                .andExpect(jsonPath("$.weeklyShipmentVolume[0].label").value("Fri"))
-                .andExpect(jsonPath("$.weeklyShipmentVolume[6].label").value("Thu"))
+                .andExpect(jsonPath("$.weeklyShipmentVolume[0].label").value("Thu"))
+                .andExpect(jsonPath("$.weeklyShipmentVolume[6].label").value("Wed"))
                 .andExpect(jsonPath("$.forCollection.day").value("Thu"))
                 .andExpect(jsonPath("$.outstandingVsCollected").isArray())
                 .andExpect(jsonPath("$.recentActivity").isArray());
@@ -169,14 +169,14 @@ public class DashboardIntegrationTest {
     void preservesFinancialStatesLatePaymentsAndOrderedParcelSegments() {
         LocalDate cycle = LocalDate.of(2036, 1, 10);
         Client client = createClient("DASH-STATES");
-        Shipment unpaid = createShipment("DASH-UNPAID", client, cycle.minusDays(6).atStartOfDay(), 1, "100");
+        Shipment unpaid = createShipment("DASH-UNPAID", client, cycle.minusDays(7).atStartOfDay(), 1, "100");
         Shipment partial = createShipment("DASH-PARTIAL", client, cycle.minusDays(3).atTime(12, 0), 2, "200");
-        Shipment paid = createShipment("DASH-PAID", client, cycle.atTime(23, 59, 59, 999999000), 1, "100");
-        Shipment overpaid = createShipment("DASH-OVERPAID", client, cycle.atTime(12, 0), 1, "50");
-        Shipment zero = createShipment("DASH-ZERO", client, cycle.atTime(12, 0), 1, "0");
-        Shipment zeroPaid = createShipment("DASH-ZERO-PAID", client, cycle.atTime(12, 0), 1, "0");
-        createShipment("DASH-BEFORE", client, cycle.minusDays(7).atTime(23, 59, 59), 9, "999");
-        createShipment("DASH-AFTER", client, cycle.plusDays(1).atTime(0, 0, 1), 9, "999");
+        Shipment paid = createShipment("DASH-PAID", client, cycle.minusDays(1).atTime(23, 59, 59), 1, "100");
+        Shipment overpaid = createShipment("DASH-OVERPAID", client, cycle.minusDays(1).atTime(12, 0), 1, "50");
+        Shipment zero = createShipment("DASH-ZERO", client, cycle.minusDays(1).atTime(12, 0), 1, "0");
+        Shipment zeroPaid = createShipment("DASH-ZERO-PAID", client, cycle.minusDays(1).atTime(12, 0), 1, "0");
+        createShipment("DASH-BEFORE", client, cycle.minusDays(8).atTime(23, 59, 59), 9, "999");
+        createShipment("DASH-AFTER", client, cycle.atStartOfDay(), 9, "999");
         paymentRepository.saveAllAndFlush(List.of(
                 new Payment(partial, new BigDecimal("20"), PaymentMethod.CASH, cycle),
                 new Payment(partial, new BigDecimal("30"), PaymentMethod.CASH, cycle.plusDays(10)),
@@ -209,7 +209,7 @@ public class DashboardIntegrationTest {
     void preservesOptionalSegmentsAndGlobalOverpaymentClamping() {
         LocalDate cycle = LocalDate.of(2036, 2, 7);
         Client client = createClient("DASH-OPTIONAL");
-        Shipment shipment = createShipment("DASH-OPTIONAL-S", client, cycle.atTime(12, 0), 1, "10");
+        Shipment shipment = createShipment("DASH-OPTIONAL-S", client, cycle.minusDays(1).atTime(12, 0), 1, "10");
         paymentRepository.saveAndFlush(new Payment(shipment, new BigDecimal("20"), PaymentMethod.CASH, cycle.plusDays(1)));
         ParcelUnit parcel = createParcel("DASH-OPTIONAL-P", shipment, 1, ParcelStatus.COMPLETED, true);
         DashboardSummaryResponse lostResponse = assertMatchesExistingCalculation(cycle);
@@ -232,10 +232,10 @@ public class DashboardIntegrationTest {
         Client overpaidClient = createClient("DASH-COLL-OVER");
         Client partialClient = createClient("DASH-COLL-PART");
         Client soaOnlyClient = createClient("DASH-COLL-ONLY");
-        Shipment overpaid = createShipment("DASH-COLL-OVER-S", overpaidClient, cycle.atTime(12, 0), 1, "200");
-        Shipment partial = createShipment("DASH-COLL-PART-S", partialClient, cycle.atTime(12, 0), 1, "300");
+        Shipment overpaid = createShipment("DASH-COLL-OVER-S", overpaidClient, cycle.minusDays(1).atTime(12, 0), 1, "200");
+        Shipment partial = createShipment("DASH-COLL-PART-S", partialClient, cycle.minusDays(1).atTime(12, 0), 1, "300");
         Soa historical = createSoa("DASH-COLL-HIST", partialClient, cycle.minusDays(7), "0");
-        Shipment historicalShipment = createShipment("DASH-COLL-HIST-S", partialClient, cycle.atTime(12, 0), 1, "100");
+        Shipment historicalShipment = createShipment("DASH-COLL-HIST-S", partialClient, cycle.minusDays(2).atTime(12, 0), 1, "100");
         historicalShipment.setStatementId(historical.getSoaNo());
         shipmentRepository.saveAndFlush(historicalShipment);
         createSoa("DASH-COLL-CURRENT", partialClient, cycle, "50");
@@ -274,11 +274,11 @@ public class DashboardIntegrationTest {
     void preservesExistingJdbcPrecisionAtNextMidnightBoundary() {
         LocalDate cycle = LocalDate.of(2036, 3, 14);
         Client client = createClient("DASH-BOUNDARY");
-        Shipment boundary = createShipment("DASH-BOUNDARY-S", client, cycle.plusDays(1).atStartOfDay(), 1, "125.25");
+        Shipment boundary = createShipment("DASH-BOUNDARY-S", client, cycle.atStartOfDay(), 1, "125.25");
         createParcel("DASH-BOUNDARY-P", boundary, 1, ParcelStatus.COMPLETED, true);
         DashboardSummaryResponse response = assertMatchesExistingCalculation(cycle);
-        assertEquals(shipmentRepository.countShipmentsRegisteredBetween(cycle.minusDays(6).atStartOfDay(),
-                cycle.atTime(23, 59, 59, 999999999)), response.getShipmentCount());
+        assertEquals(shipmentRepository.countShipmentsRegisteredBetween(cycle.minusDays(7).atStartOfDay(),
+                cycle.atStartOfDay()), response.getShipmentCount());
     }
 
     private DashboardSummaryResponse assertMatchesExistingCalculation(LocalDate cycle) {

@@ -41,7 +41,6 @@ public interface AppUserRepository extends JpaRepository<AppUser, String> {
 
     List<AppUser> findByRoleAndActiveTrue(UserRole role);
 
-
     boolean existsByRole(UserRole role);
 
     // Paginated list — all statuses, filtered by role membership
@@ -63,6 +62,7 @@ public interface AppUserRepository extends JpaRepository<AppUser, String> {
                 OR EXISTS(SELECT 1 FROM parcel_loss_event WHERE actor_id = :userId)
                 OR EXISTS(SELECT 1 FROM parcel_exception_command WHERE actor_id = :userId)
                 OR EXISTS(SELECT 1 FROM waybill_reconciliation_event WHERE actor_id = :userId)
+                OR EXISTS(SELECT 1 FROM soa_version WHERE captured_by_user_id = :userId)
             """, nativeQuery = true)
     long countAuditReferencePresence(@Param("userId") String userId);
 }

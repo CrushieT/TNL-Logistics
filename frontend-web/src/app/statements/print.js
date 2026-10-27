@@ -1,15 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, Platform, ActivityIndicator, TouchableOpacity, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors, fonts, spacing, radius } from '../../theme';
-import { getStatementPreview } from '../../features/collections/services/collectionsApi';
+import { getStatementPreview, ensureV1Snapshot } from '../../features/collections/services/collectionsApi';
 import StatementPaperCard, {
-  STATEMENT_LOGO_SOURCE,
+  useStatementLogo,
 } from '../../features/collections/components/StatementPaperCard';
 import {
   getStatementPrintBlockReason,
   STATEMENT_PRINT_COPY_COUNT,
-  waitForImageReady,
+  parseStatementVersion,
 } from '../../features/collections/utils/statementPrintModel.mjs';
 
 export default function StatementPrintScreen() {
@@ -18,12 +18,16 @@ export default function StatementPrintScreen() {
 
   const clientId = params.clientId || '';
   const cycle = params.cycle || '';
+  const captureRequestRef = useRef(null);
 
   const [statementData, setStatementData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
-  const [logoLoadFailed, setLogoLoadFailed] = useState(false);
-  const canPrint = !loading && Boolean(statementData) && !errorMessage;
+  const selectedVersion = params.version;
+  const documentKey = JSON.stringify([clientId, cycle, selectedVersion]);
+  const [loadedKey, setLoadedKey] = useState(null);
+  const logo = useStatementLogo(statementData, loadedKey === documentKey && !loading);
+  const canPrint = !loading && loadedKey === documentKey && Boolean(statementData) && !errorMessage && (logo.status === 'loaded' || (!statementData.activeVersion && logo.status === 'failed'));
 
   useEffect(() => {
     let isMounted = true;
@@ -36,9 +40,27 @@ export default function StatementPrintScreen() {
 
       try {
         setLoading(true);
-        const data = await getStatementPreview(clientId, cycle || null);
+        const targetVersion = parseStatementVersion(selectedVersion);
+        let data = await getStatementPreview(clientId, cycle || null, { version: targetVersion });
+        if (!isMounted) return;
+
+        // If closed cycle and no snapshot exists, capture V1
+        if (data && data.isCycleClosed && !data.hasSnapshot) {
+          const key = JSON.stringify([clientId, cycle]);
+          if (captureRequestRef.current?.key !== key) captureRequestRef.current = { key, id: crypto.randomUUID() };
+          data = await ensureV1Snapshot({
+            clientId,
+            targetDate: data.cycleThursday || cycle,
+            requestId: captureRequestRef.current.id,
+          });
+        } else if (data && data.isCycleClosed && data.hasSnapshot && !targetVersion && data.latestVersionNumber) {
+          // Closed cycle with snapshots and no specific version passed: default to latest saved version
+          data = await getStatementPreview(clientId, cycle || null, { version: data.latestVersionNumber });
+        }
+
         if (isMounted) {
           setStatementData(data);
+          setLoadedKey(documentKey);
           setErrorMessage(getStatementPrintBlockReason(data));
         }
       } catch (err) {
@@ -56,40 +78,13 @@ export default function StatementPrintScreen() {
     return () => {
       isMounted = false;
     };
-  }, [clientId, cycle]);
+  }, [clientId, cycle, selectedVersion]);
 
-  // Trigger browser print once data is loaded, rendered, and logo is ready
   useEffect(() => {
-    let isMounted = true;
-    if (!loading && statementData && !errorMessage && Platform.OS === 'web' && typeof window !== 'undefined') {
-      const logoUri = typeof STATEMENT_LOGO_SOURCE === 'string'
-        ? STATEMENT_LOGO_SOURCE
-        : (STATEMENT_LOGO_SOURCE?.uri || STATEMENT_LOGO_SOURCE?.default || '');
-
-      const triggerPrint = () => {
-        const timer = setTimeout(() => {
-          if (isMounted) {
-            window.print();
-          }
-        }, 400);
-        return () => clearTimeout(timer);
-      };
-
-      if (logoUri && typeof window.Image === 'function') {
-        waitForImageReady(logoUri, () => new window.Image()).then((status) => {
-          if (isMounted) {
-            setLogoLoadFailed(status === 'failed');
-            triggerPrint();
-          }
-        });
-      } else {
-        triggerPrint();
-      }
-    }
-    return () => {
-      isMounted = false;
-    };
-  }, [loading, statementData, errorMessage]);
+    if (!canPrint || Platform.OS !== 'web') return;
+    const timer = setTimeout(() => window.print(), 400);
+    return () => clearTimeout(timer);
+  }, [canPrint, statementData]);
 
   const handlePrintNow = () => {
     if (canPrint && Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -221,6 +216,9 @@ export default function StatementPrintScreen() {
         </TouchableOpacity>
       </View>
 
+      {logo.status === 'failed' && statementData && (
+        <View><Text>Statement logo failed to load.</Text><TouchableOpacity onPress={logo.retry}><Text>Retry</Text></TouchableOpacity></View>
+      )}
       {/* Main Canvas */}
       <ScrollView
         nativeID="print-scroll-container"
@@ -252,8 +250,9 @@ export default function StatementPrintScreen() {
               data={statementData}
               copies={STATEMENT_PRINT_COPY_COUNT}
               showCopyLabels
+              isPrint
               showLogo={true}
-              logoLoadFailed={logoLoadFailed}
+              resolvedLogo={logo}
             />
           </View>
         )}

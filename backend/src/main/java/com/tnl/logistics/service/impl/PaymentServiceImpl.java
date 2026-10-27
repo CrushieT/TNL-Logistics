@@ -157,6 +157,7 @@ public class PaymentServiceImpl implements PaymentService {
             BigDecimal updatedBalance = statement.getOutstandingBalance().subtract(saved.getAmountPaid());
             statement.setTotalPaid(updatedTotalPaid);
             statement.setOutstandingBalance(updatedBalance);
+            statement.setFinancialRevision(statement.getFinancialRevision() + 1);
             soaRepository.save(statement);
             if (collection != null) {
                 collection.setTotalPaid(updatedTotalPaid);
