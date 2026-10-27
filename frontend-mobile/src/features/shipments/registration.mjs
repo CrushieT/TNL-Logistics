@@ -25,6 +25,8 @@ export function createRegistrationForm() {
     chargeModel: 'PER_KILO',
     otherCharges: '0',
     paidAtRegistration: false,
+    isShippingFeeOverridden: false,
+    shippingFee: undefined,
     parcels: [
       { id: 'unit-1', seq: 1, weightKg: '', lengthCm: '', widthCm: '', heightCm: '' },
     ],
@@ -152,6 +154,14 @@ export function validateRegistration(form) {
     }
   }
 
+  if (form.isShippingFeeOverridden) {
+    if (form.shippingFee === undefined || form.shippingFee === null || String(form.shippingFee).trim() === '') {
+      errors.shippingFee = 'Shipping fee is required.';
+    } else if (!isDecimal(form.shippingFee, 0, 10)) {
+      errors.shippingFee = 'Enter a nonnegative amount, up to 10 digits and 2 decimal places.';
+    }
+  }
+
   if (form.chargeModel && !['FLAT', 'PER_PARCEL', 'PER_KILO'].includes(form.chargeModel)) {
     errors.chargeModel = 'Choose a charge model.';
   }
@@ -193,8 +203,19 @@ export function calculateRegistration(form, divisor, ratePerKilo = null) {
     metrics.unitVolume = unitVolume === null ? null : Number(unitVolume) / 1e18;
   }
 
+  const calculatedShippingFee = metrics.shippingFee;
   let totalCents = null;
-  if (metrics.shippingFee !== null) {
+  if (form?.isShippingFeeOverridden) {
+    const fee = toCents(form?.shippingFee);
+    const other = toCents(form?.otherCharges ?? '0');
+    if (fee !== null && other !== null) {
+      totalCents = fee + other;
+      metrics.shippingFee = fee / 100;
+    } else {
+      totalCents = null;
+      metrics.shippingFee = null;
+    }
+  } else if (metrics.shippingFee !== null) {
     totalCents = metrics.totalCents;
   } else {
     const fee = toCents(form?.shippingFee);
@@ -204,7 +225,7 @@ export function calculateRegistration(form, divisor, ratePerKilo = null) {
       metrics.shippingFee = fee / 100;
     }
   }
-  return { ...metrics, totalCents, totalAmount: totalCents === null ? null : totalCents / 100 };
+  return { ...metrics, calculatedShippingFee, totalCents, totalAmount: totalCents === null ? null : totalCents / 100 };
 }
 
 export function buildShipmentRequest(form, clientId = form.clientId, guards = {}) {
@@ -237,6 +258,15 @@ export function buildShipmentRequest(form, clientId = form.clientId, guards = {}
         heightCm: Number(form.heightCm),
       }));
 
+  const otherCents = toCents(form.otherCharges ?? '0') || 0;
+  let isZeroTotal = false;
+  if (form.isShippingFeeOverridden) {
+    const feeCents = toCents(form.shippingFee);
+    if (feeCents !== null && (feeCents + otherCents) === 0) {
+      isZeroTotal = true;
+    }
+  }
+
   const request = {
     clientId,
     recipientName: recipientName || undefined,
@@ -246,11 +276,15 @@ export function buildShipmentRequest(form, clientId = form.clientId, guards = {}
     quantity: Number(form.quantity),
     route: (form.route || '').trim() || 'Manila to TNL Baguio',
     chargeModel: (hasPerUnitParcels(form) && (!form.chargeModel || form.chargeModel === 'FLAT')) ? 'PER_KILO' : (form.chargeModel || 'PER_KILO'),
-    otherCharges: toCents(form.otherCharges ?? '0') / 100,
-    paidAtRegistration: Boolean(form.paidAtRegistration),
+    otherCharges: otherCents / 100,
+    paidAtRegistration: isZeroTotal ? false : Boolean(form.paidAtRegistration),
     registeredVia: 'MOBILE_FIELD',
     parcels,
   };
+
+  if (form.isShippingFeeOverridden && form.shippingFee !== undefined && form.shippingFee !== null && String(form.shippingFee).trim() !== '') {
+    request.shippingFee = toCents(form.shippingFee) / 100;
+  }
 
   const expectedRate = guards.expectedRatePerKilo !== undefined ? guards.expectedRatePerKilo : form.expectedRatePerKilo;
   if (expectedRate !== undefined && expectedRate !== null) {

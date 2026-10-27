@@ -83,6 +83,10 @@ export async function registerShipment(payload) {
     parcels,
   };
 
+  if (payload.isShippingFeeOverridden && payload.shippingFee !== undefined && payload.shippingFee !== null && String(payload.shippingFee).trim() !== '') {
+    backendRequest.shippingFee = parseFloat(payload.shippingFee);
+  }
+
   const { data } = await apiClient.post('/shipments', backendRequest);
 
   return {

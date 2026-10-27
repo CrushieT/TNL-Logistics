@@ -325,7 +325,6 @@ public class ShipmentIntegrationTest {
         request.setRecipientContact("09181112222");
         request.setQuantity(2);
         request.setChargeModel(ChargeModel.FLAT);
-        request.setShippingFee(new BigDecimal("150.00"));
         request.setOtherCharges(new BigDecimal("50.00"));
         request.setPaidAtRegistration(false);
         request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
@@ -438,7 +437,6 @@ public class ShipmentIntegrationTest {
         request.setRecipientContact("09170000000");
         request.setQuantity(2);
         request.setChargeModel(ChargeModel.FLAT);
-        request.setShippingFee(new BigDecimal("100.10"));
         request.setOtherCharges(new BigDecimal("20.00"));
         request.setRegisteredVia(RegisteredVia.MOBILE_FIELD);
         request.setRoute("Manila to TNL Baguio");
@@ -687,7 +685,6 @@ public class ShipmentIntegrationTest {
         request.setRecipientContact("09193334444");
         request.setQuantity(2);
         request.setChargeModel(ChargeModel.PER_PARCEL);
-        request.setShippingFee(new BigDecimal("100.00"));
         request.setOtherCharges(new BigDecimal("20.00"));
         request.setPaidAtRegistration(true);
         request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
@@ -1928,5 +1925,136 @@ public class ShipmentIntegrationTest {
         // Unauthenticated -> 401 Unauthorized
         mockMvc.perform(get("/api/v1/shipments"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    public void testManualShippingFeeOverrideHonoredAndPreservesSnapshots() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        // Override shipping fee to 350.00 instead of calculated 1200.00
+        request.setShippingFee(new BigDecimal("350.00"));
+        request.setOtherCharges(new BigDecimal("50.00"));
+        request.setPaidAtRegistration(false);
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), ShipmentResponse.class);
+        assertEquals(new BigDecimal("350.00"), response.getShippingFee());
+        assertEquals(new BigDecimal("50.00"), response.getOtherCharges());
+        assertEquals(new BigDecimal("400.00"), response.getTotalAmount());
+        assertFalse(response.getPaidAtRegistration());
+        // Preserves calculated weight snapshots and active settings
+        assertEquals(new BigDecimal("12.00"), response.getBillableWeight());
+        assertEquals(new BigDecimal("100.00"), response.getAppliedRatePerKilo());
+        assertEquals(5000, response.getAppliedVolumetricDivisor());
+
+        Shipment persisted = shipmentRepository.findById(response.getShipmentId()).orElseThrow();
+        assertEquals(new BigDecimal("350.00"), persisted.getShippingFee());
+        assertEquals(new BigDecimal("50.00"), persisted.getOtherCharges());
+        assertEquals(new BigDecimal("400.00"), persisted.getTotalAmount());
+        assertFalse(persisted.getPaidAtRegistration());
+    }
+
+    @Test
+    public void testZeroShippingFeeAndZeroTotalFreeShipment() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setShippingFee(BigDecimal.ZERO);
+        request.setOtherCharges(BigDecimal.ZERO);
+        // Even if client sent paidAtRegistration = true, zero total must persist false with no Payment record
+        request.setPaidAtRegistration(true);
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), ShipmentResponse.class);
+        assertEquals(new BigDecimal("0.00"), response.getShippingFee());
+        assertEquals(new BigDecimal("0.00"), response.getTotalAmount());
+        assertFalse(response.getPaidAtRegistration());
+
+        Shipment persisted = shipmentRepository.findById(response.getShipmentId()).orElseThrow();
+        assertEquals(new BigDecimal("0.00"), persisted.getShippingFee());
+        assertEquals(new BigDecimal("0.00"), persisted.getTotalAmount());
+        assertFalse(persisted.getPaidAtRegistration());
+
+        // Zero total creates no payment record
+        List<Payment> payments = paymentRepository.findByShipment_ShipmentId(response.getShipmentId());
+        assertTrue(payments.isEmpty());
+
+        // Shows as Paid with zero balance because nothing is owed
+        MvcResult detailResult = mockMvc.perform(get("/api/v1/shipments/" + response.getShipmentId())
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.payment").value("Paid"))
+                .andExpect(jsonPath("$.totalAmount").value(0.00))
+                .andExpect(jsonPath("$.balance").value(0.00))
+                .andReturn();
+
+        // Summary listing also reflects Paid status
+        mockMvc.perform(get("/api/v1/shipments?search=" + response.getShipmentId())
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].payment").value("Paid"))
+                .andExpect(jsonPath("$.content[0].totalAmount").value(0.00))
+                .andExpect(jsonPath("$.content[0].balance").value(0.00));
+    }
+
+    @Test
+    public void testZeroShippingFeeWithNonZeroOtherChargesCreatesPaymentWhenPaid() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setShippingFee(BigDecimal.ZERO);
+        request.setOtherCharges(new BigDecimal("75.00"));
+        request.setPaidAtRegistration(true);
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), ShipmentResponse.class);
+        assertEquals(new BigDecimal("0.00"), response.getShippingFee());
+        assertEquals(new BigDecimal("75.00"), response.getOtherCharges());
+        assertEquals(new BigDecimal("75.00"), response.getTotalAmount());
+        assertTrue(response.getPaidAtRegistration());
+
+        List<Payment> payments = paymentRepository.findByShipment_ShipmentId(response.getShipmentId());
+        assertEquals(1, payments.size());
+        assertEquals(new BigDecimal("75.00"), payments.get(0).getAmountPaid());
+    }
+
+    @Test
+    public void testManualShippingFeeRejectsMoreThanTwoDecimalPlaces() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setShippingFee(new BigDecimal("125.456"));
+
+        mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testManualShippingFeeStillRequiresValidAndFreshCalculationSettings() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setShippingFee(new BigDecimal("500.00"));
+        // Stale expected rate per kilo must still trigger 409 CONFLICT
+        request.setExpectedRatePerKilo(new BigDecimal("999.00"));
+
+        mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("STALE_SETTINGS"));
     }
 }

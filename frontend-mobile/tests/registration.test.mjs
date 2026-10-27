@@ -557,4 +557,64 @@ test('client selection and new client inputs auto-fill recipient delivery fields
   assert.equal(newModeRequest.recipientName, 'Brand New Client');
 });
 
+test('mobile manual shipping fee override calculates totals and preserves calculated fee', () => {
+  const form = validForm({
+    isShippingFeeOverridden: true,
+    shippingFee: '250.00',
+    otherCharges: '50.00',
+  });
+  const totals = calculateRegistration(form, 5000, 35.0);
+  assert.equal(totals.shippingFee, 250);
+  assert.equal(totals.totalCents, 30000);
+  assert.equal(totals.totalAmount, 300);
+  // Preserves calculated fee from measurements
+  assert.ok(totals.calculatedShippingFee !== null && totals.calculatedShippingFee !== 250);
+});
 
+test('mobile manual shipping fee override supports zero-fee and free shipment', () => {
+  const form = validForm({
+    isShippingFeeOverridden: true,
+    shippingFee: '0',
+    otherCharges: '0',
+    paidAtRegistration: true, // toggled on before reaching zero
+  });
+  const totals = calculateRegistration(form, 5000, 35.0);
+  assert.equal(totals.shippingFee, 0);
+  assert.equal(totals.totalCents, 0);
+  assert.equal(totals.totalAmount, 0);
+
+  // buildShipmentRequest forces paidAtRegistration=false for zero-total free shipments
+  const request = buildShipmentRequest(form, 'CL-TEST');
+  assert.equal(request.shippingFee, 0);
+  assert.equal(request.paidAtRegistration, false);
+});
+
+test('mobile buildShipmentRequest omits shippingFee when not overridden', () => {
+  const form = validForm({
+    isShippingFeeOverridden: false,
+    shippingFee: '250.00', // stale or unoverridden text
+  });
+  const request = buildShipmentRequest(form, 'CL-TEST');
+  assert.equal(request.shippingFee, undefined);
+});
+
+test('mobile manual shipping fee validation rejects negative, excessive decimals, and oversized amounts', () => {
+  for (const invalidFee of ['', ' ', '-1', '10.999', '10000000000', 'abc']) {
+    const form = validForm({
+      isShippingFeeOverridden: true,
+      shippingFee: invalidFee,
+    });
+    const errors = validateRegistration(form);
+    assert.ok(errors.shippingFee, `Expected error for shippingFee='${invalidFee}'`);
+  }
+
+  // Valid amounts
+  for (const validFee of ['0', '0.00', '150', '99.50', '9999999999.99']) {
+    const form = validForm({
+      isShippingFeeOverridden: true,
+      shippingFee: validFee,
+    });
+    const errors = validateRegistration(form);
+    assert.equal(errors.shippingFee, undefined, `Unexpected error for shippingFee='${validFee}'`);
+  }
+});

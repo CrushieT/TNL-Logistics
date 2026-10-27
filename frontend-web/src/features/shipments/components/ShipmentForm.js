@@ -58,6 +58,8 @@ export default function ShipmentForm({
   const [route, setRoute] = useState('Manila to TNL Labo C.N.');
   const [otherCharges, setOtherCharges] = useState('0');
   const [paidAtRegistration, setPaidAtRegistration] = useState(false);
+  const [isShippingFeeOverridden, setIsShippingFeeOverridden] = useState(false);
+  const [manualShippingFee, setManualShippingFee] = useState('');
 
   // Field Validation Errors
   const [errors, setErrors] = useState({});
@@ -285,9 +287,32 @@ export default function ShipmentForm({
     return calculateShipmentMetrics({ parcels }, volumetricDivisor, ratePerKilo);
   }, [parcels, volumetricDivisor, ratePerKilo]);
 
+  const effectiveShippingFee = isShippingFeeOverridden
+    ? manualShippingFee
+    : shipmentMetrics.shippingFee;
+
   const totalAmount = useMemo(() => {
-    return calculateTotalCents(shipmentMetrics.shippingFee, otherCharges) / 100;
-  }, [shipmentMetrics.shippingFee, otherCharges]);
+    const totalCents = calculateTotalCents(effectiveShippingFee, otherCharges);
+    return totalCents === null ? null : totalCents / 100;
+  }, [effectiveShippingFee, otherCharges]);
+
+  const isZeroTotal = totalAmount !== null && totalAmount === 0;
+
+  function handleShippingFeeChange(value) {
+    setIsShippingFeeOverridden(true);
+    setManualShippingFee(value);
+    if (errors.shippingFee) {
+      setErrors((prev) => ({ ...prev, shippingFee: null }));
+    }
+  }
+
+  function handleResetShippingFee() {
+    setIsShippingFeeOverridden(false);
+    setManualShippingFee('');
+    if (errors.shippingFee) {
+      setErrors((prev) => ({ ...prev, shippingFee: null }));
+    }
+  }
 
   function validateForm() {
     const newErrors = {};
@@ -366,9 +391,45 @@ export default function ShipmentForm({
       if (!p.heightCm || isNaN(hNum) || hNum <= 0) newErrors[`parcel_${idx}_heightCm`] = 'Required (> 0)';
     });
 
-    const otherNum = parseFloat(otherCharges);
-    if (otherCharges !== '' && (isNaN(otherNum) || otherNum < 0)) {
-      newErrors.otherCharges = 'Charges cannot be negative.';
+    if (isShippingFeeOverridden) {
+      const trimmedFee = String(manualShippingFee ?? '').trim();
+      if (!trimmedFee) {
+        newErrors.shippingFee = 'Shipping fee is required.';
+      } else if (!/^\d+(?:\.\d{1,2})?$/.test(trimmedFee)) {
+        if (trimmedFee.startsWith('-')) {
+          newErrors.shippingFee = 'Shipping fee cannot be negative.';
+        } else if (trimmedFee.includes('.') && trimmedFee.split('.')[1].length > 2) {
+          newErrors.shippingFee = 'Shipping fee cannot have more than 2 decimal places.';
+        } else {
+          newErrors.shippingFee = 'Enter a valid nonnegative shipping fee.';
+        }
+      } else {
+        const feeNum = parseFloat(trimmedFee);
+        if (isNaN(feeNum) || feeNum < 0) {
+          newErrors.shippingFee = 'Shipping fee cannot be negative.';
+        } else if (trimmedFee.split('.')[0].length > 10 || feeNum > 9999999999.99) {
+          newErrors.shippingFee = 'Shipping fee exceeds maximum allowable amount.';
+        }
+      }
+    }
+
+    const trimmedOther = String(otherCharges ?? '').trim();
+    if (trimmedOther !== '') {
+      if (!/^\d+(?:\.\d{1,2})?$/.test(trimmedOther)) {
+        if (trimmedOther.startsWith('-')) {
+          newErrors.otherCharges = 'Charges cannot be negative.';
+        } else if (trimmedOther.includes('.') && trimmedOther.split('.')[1].length > 2) {
+          newErrors.otherCharges = 'Charges cannot have more than 2 decimal places.';
+        } else {
+          newErrors.otherCharges = 'Enter a valid nonnegative amount.';
+        }
+      } else if (trimmedOther.split('.')[0].length > 10 || parseFloat(trimmedOther) > 9999999999.99) {
+        newErrors.otherCharges = 'Charges exceed maximum allowable amount.';
+      }
+    }
+
+    if (totalAmount !== null && totalAmount > 9999999999.99) {
+      newErrors.otherCharges = 'Total amount exceeds maximum allowable amount.';
     }
 
     if (calculationSettingsState !== 'ready' || !Number.isFinite(ratePerKilo) || ratePerKilo <= 0) {
@@ -409,8 +470,10 @@ export default function ShipmentForm({
       route: route.trim() || 'Manila to TNL Labo C.N.',
       chargeModel: 'PER_KILO',
       otherCharges: parseFloat(otherCharges) || 0,
-      paidAtRegistration,
+      paidAtRegistration: isZeroTotal ? false : paidAtRegistration,
       totalAmount,
+      isShippingFeeOverridden,
+      shippingFee: isShippingFeeOverridden ? parseFloat(manualShippingFee) : undefined,
       parcels: parcels.map((p, idx) => ({
         seq: idx + 1,
         weightKg: parseFloat(p.weightKg),
@@ -716,6 +779,10 @@ export default function ShipmentForm({
           ratePerKilo={ratePerKilo}
           volumetricDivisor={volumetricDivisor}
           shipmentMetrics={shipmentMetrics}
+          shippingFee={manualShippingFee}
+          isShippingFeeOverridden={isShippingFeeOverridden}
+          onShippingFeeChange={handleShippingFeeChange}
+          onResetShippingFee={handleResetShippingFee}
           otherCharges={otherCharges}
           onOtherChargesChange={setOtherCharges}
           totalAmount={totalAmount}
@@ -728,15 +795,20 @@ export default function ShipmentForm({
         <View style={[styles.footerRow, isMobile && styles.footerRowMobile]}>
           <View style={styles.paidToggleContainer}>
             <Switch
-              value={paidAtRegistration}
+              value={isZeroTotal ? false : paidAtRegistration}
               onValueChange={setPaidAtRegistration}
+              disabled={isZeroTotal || submitting}
               trackColor={{ false: '#D1D5DB', true: colors.black }}
-              thumbColor={paidAtRegistration ? colors.accent : '#FFFFFF'}
+              thumbColor={paidAtRegistration && !isZeroTotal ? colors.accent : '#FFFFFF'}
             />
             <View style={styles.paidToggleLabels}>
               <Text style={styles.paidToggleTitle}>Paid at Registration</Text>
               <Text style={styles.paidToggleSub}>
-                {paidAtRegistration ? 'Immediate Cash Payment (Creates Payment Record)' : 'Unpaid (To be billed in Statement of Account)'}
+                {isZeroTotal
+                  ? 'Free shipment (₱0.00 total) · No payment record created'
+                  : paidAtRegistration
+                    ? 'Immediate Cash Payment (Creates Payment Record)'
+                    : 'Unpaid (To be billed in Statement of Account)'}
               </Text>
             </View>
           </View>
