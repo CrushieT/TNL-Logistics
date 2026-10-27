@@ -3,6 +3,7 @@
 ### Local review artifacts
 
 - `.review/current/`: active plans and deployment guidance, including `post-release-client-changes-plan.md` for QR labels, document copies, shipment fee editing, and courier scanning.
+- `.review/current/soa-cycle-versioning-plan.md`: agreed collection cutoff, SOA versioning, implementation handoff, and verification criteria.
 - `.review/archive/`: completed client-demo, SSE, and release verification artifacts. The final release evidence is grouped in `archive/release-v1.4.0/`.
 - `.review/performance/`: performance investigations and diagnostic scripts, kept at their working paths.
 
@@ -401,3 +402,24 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 - `backend/src/test/java/com/tnl/logistics/service/impl/WaybillNotificationTest.java`: production SSE callback and replay regressions without a database.
 - `backend/src/test/java/com/tnl/logistics/service/impl/UserRetentionTest.java`: database-free retained/unreferenced staff and deletion guard coverage.
 - `frontend-web/tests/waybillDetailRace.test.mjs`: production waybill-detail component regressions for out-of-order responses, route changes, obsolete failures, and loading-state edge cases.
+
+### Statement of Account (SOA) cycle versioning & immutable snapshots
+- `backend/src/main/resources/db/migration/V41__add_soa_cycle_versioning.sql`: adds indexed business_registration_date to shipment, financial_revision to soa, creates soa_logo_asset table with SHA-256 hash PK, and soa_version table with composite key (soa_no, version_number).
+- `backend/src/main/resources/assets/tracking-logo.png`: trusted application logo asset for SHA-256 content addressing.
+- `backend/src/main/java/com/tnl/logistics/model/SoaLogoAsset.java`: entity representing content-addressed logo binary with SHA-256 asset hash PK.
+- `backend/src/main/java/com/tnl/logistics/model/SoaVersion.java`: entity representing immutable SOA snapshot with composite ID, actor audit, financial revision, logo hash, and frozen JSON payload.
+- `backend/src/main/java/com/tnl/logistics/model/SoaVersionId.java`: composite primary key class for SoaVersion.
+- `backend/src/main/java/com/tnl/logistics/repository/SoaLogoAssetRepository.java`: repository for content-addressed logo assets.
+- `backend/src/main/java/com/tnl/logistics/repository/SoaVersionRepository.java`: repository for immutable SOA snapshots and version queries.
+- `backend/src/main/java/com/tnl/logistics/dto/EnsureV1Request.java`: DTO for ensuring V1 snapshot creation before print view on closed cycles.
+- `backend/src/main/java/com/tnl/logistics/dto/SaveStatementVersionRequest.java`: DTO for capturing new immutable version (V2+) with expected financial revision and idempotency requestId.
+- `backend/src/main/java/com/tnl/logistics/dto/SoaVersionSummaryDto.java`: DTO for version history list items.
+- `backend/src/test/java/com/tnl/logistics/controller/SoaCycleVersioningIntegrationTest.java`: integration test suite verifying immutable snapshots, V1 auto-capture, V2+ versioning, optimistic concurrency conflicts, requestId idempotency, and live vs frozen boundaries.
+
+- `backend/src/main/resources/db/migration/V42__bind_soa_version_requests.sql`: additive immutable request-to-version bindings, including Ensure-V1 responses that reuse an existing snapshot. Existing snapshots and V41 are retained.
+
+- `.review/current/soa-remediation.md`: results, per-file manifest, raw evidence references, and manual acceptance checks.
+- `.review/current/soa-print-fixture.cjs` and `.review/current/soa-print-fixture.html`: production paper/print-CSS fixture generator and output.
+- `.review/current/soa-render-pdf.ps1`, `.review/current/soa-print-verification.pdf`, `.review/current/soa-print-verification.png`, and `.review/current/soa-pdf-page-1.png` through `soa-pdf-page-4.png`: PDF inspection evidence.
+- `.review/current/soa-pdf-preview.png`: unsuccessful PDF-viewer screenshot, excluded from acceptance evidence.
+- `.review/current/soa-*.log`: raw baseline, integration, migration, frontend, print, immutability, and export results, enumerated in the remediation report.

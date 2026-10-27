@@ -87,13 +87,13 @@ public class CollectionsIntegrationTest {
     void testFixedSevenDayBillingWindow() {
         LocalDate thursday = LocalDate.of(2026, 9, 17);
         LocalDate start = collectionsService.calculateCycleStartDate(thursday);
-        assertEquals(LocalDate.of(2026, 9, 11), start);
-        assertEquals(6, java.time.temporal.ChronoUnit.DAYS.between(start, thursday));
+        assertEquals(LocalDate.of(2026, 9, 10), start);
+        assertEquals(7, java.time.temporal.ChronoUnit.DAYS.between(start, thursday));
 
         LocalDate monthCrossThursday = LocalDate.of(2026, 10, 1);
         LocalDate monthCrossStart = collectionsService.calculateCycleStartDate(monthCrossThursday);
-        assertEquals(LocalDate.of(2026, 9, 25), monthCrossStart);
-        assertEquals(6, java.time.temporal.ChronoUnit.DAYS.between(monthCrossStart, monthCrossThursday));
+        assertEquals(LocalDate.of(2026, 9, 24), monthCrossStart);
+        assertEquals(7, java.time.temporal.ChronoUnit.DAYS.between(monthCrossStart, monthCrossThursday));
     }
 
     @Test
@@ -214,7 +214,7 @@ public class CollectionsIntegrationTest {
         soaRepository.save(soa);
 
         LocalDate start = collectionsService.calculateCycleStartDate(cycleEnd);
-        assertEquals(LocalDate.of(2026, 8, 26), start, "Start date should anchor to preceding cycle + 1 day");
+        assertEquals(LocalDate.of(2026, 8, 25), start, "Start date should anchor to preceding cycle");
     }
 
     @Test

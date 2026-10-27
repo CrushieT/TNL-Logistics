@@ -295,8 +295,8 @@ public class WorkflowDataSeeder implements CommandLineRunner {
         if (!date.equals(LocalDate.now())) {
             LocalDateTime registrationTime = date.atTime(9, 0);
             entityManager.flush();
-            entityManager.createNativeQuery("UPDATE shipment SET date_registered = :timestamp WHERE shipment_id = :id")
-                    .setParameter("timestamp", registrationTime).setParameter("id", shipment.getShipmentId()).executeUpdate();
+            entityManager.createNativeQuery("UPDATE shipment SET date_registered = :timestamp, business_registration_date = :busDate WHERE shipment_id = :id")
+                    .setParameter("timestamp", registrationTime).setParameter("busDate", date).setParameter("id", shipment.getShipmentId()).executeUpdate();
             entityManager.refresh(shipment);
             for (String trackingId : response.getTrackingIds()) {
                 List<TrackingEvent> events = entityManager.createQuery(

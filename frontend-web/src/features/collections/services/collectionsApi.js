@@ -1,3 +1,4 @@
+import { parseStatementVersion } from '../utils/statementPrintModel.mjs';
 import apiClient from '../../../services/api/client';
 import { formatCycleDateRangeFromDates } from '../utils/collectionsUtils';
 
@@ -62,22 +63,68 @@ export async function listAllClients() {
  * Fetch detailed Statement of Account preview with itemized shipments for a client.
  * @param {string} clientId
  * @param {string} [targetDate] - Target Thursday (YYYY-MM-DD)
+ * @param {Object} [options]
  */
 export async function getStatementPreview(clientId, targetDate, options = {}) {
   const params = { clientId };
   if (targetDate) {
     params.targetDate = targetDate;
   }
+  if (options.version != null) {
+    params.version = parseStatementVersion(options.version);
+  }
   const { data } = await apiClient.get('/soa/preview', { params, signal: options.signal });
   return data;
 }
 
 /**
+ * Generate/prepare a Statement of Account in Weekly Collections without capturing an immutable snapshot.
+ * @param {Object} payload - { clientId, targetDate, cycleThursday, deductionAmount, deductionNote, collectedBy }
+ */
+export async function generateStatement(payload) {
+  const { data } = await apiClient.post('/soa/generate', payload);
+  return data;
+}
+
+/**
  * Persist deductions, note, and collector on an SOA.
- * @param {Object} payload - { clientId, targetDate, deductionAmount, deductionNote, collectedBy }
+ * For open cycles, updates live SOA. For closed cycles without a snapshot, captures Version 1.
+ * @param {Object} payload - { clientId, targetDate, deductionAmount, deductionNote, collectedBy, requestId }
  */
 export async function saveStatement(payload) {
   const { data } = await apiClient.post('/soa/save', payload);
+  return data;
+}
+
+/**
+ * Explicitly capture a new numbered immutable version of an SOA (V2+).
+ * @param {Object} payload - { clientId, targetDate, deductionAmount, deductionNote, collectedBy, expectedFinancialRevision, requestId }
+ */
+export async function saveStatementVersion(payload) {
+  const { data } = await apiClient.post('/soa/version', payload);
+  return data;
+}
+
+/**
+ * Ensure Version 1 snapshot exists before opening printable document for a closed cycle.
+ * @param {Object} payload - { clientId, targetDate, requestId }
+ */
+export async function ensureV1Snapshot(payload) {
+  const { data } = await apiClient.post('/soa/ensure-v1', payload);
+  return data;
+}
+
+/**
+ * List all immutable versions for a Statement of Account.
+ * @param {string} clientId
+ * @param {string} [targetDate]
+ */
+export async function listStatementVersions(clientId, targetDate, options = {}) {
+  const params = { clientId };
+  if (targetDate) {
+    params.targetDate = targetDate;
+  }
+  const { data } = await apiClient.get('/soa/versions', { params, signal: options.signal });
   return data;
 }
 
@@ -108,13 +155,12 @@ export async function getActiveCollectionCycles(options = {}) {
         const end = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
 
         let start = new Date(end);
-        start.setDate(end.getDate() - 6);
+        start.setDate(end.getDate() - 7);
 
         if (index < data.length - 1) {
           const nextParts = data[index + 1].split('-');
           const prevCycleEnd = new Date(Number(nextParts[0]), Number(nextParts[1]) - 1, Number(nextParts[2]));
           const anchoredStart = new Date(prevCycleEnd);
-          anchoredStart.setDate(anchoredStart.getDate() + 1);
 
           if (anchoredStart > start) {
             start = anchoredStart;

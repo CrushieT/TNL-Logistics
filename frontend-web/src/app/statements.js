@@ -17,6 +17,9 @@ import {
   getWeeklyCollections,
   getStatementPreview,
   saveStatement,
+  saveStatementVersion,
+  ensureV1Snapshot,
+  listStatementVersions,
   getAuthorizedCollectors,
   getActiveCollectionCycles,
 } from '../features/collections';
@@ -44,8 +47,14 @@ export default function StatementsScreen() {
   const [deductionAmount, setDeductionAmount] = useState('0');
   const [deductionNote, setDeductionNote] = useState('');
   const [collectedBy, setCollectedBy] = useState('');
+  const [selectedVersion, setSelectedVersion] = useState(null);
+  const [history, setHistory] = useState({ owner: null, versions: [], error: null });
+  const [historyRevision, setHistoryRevision] = useState(0);
   const [review, setReview] = useState(null);
   const baselineRef = useRef(null);
+  const saveRequestRef = useRef(null);
+  const printRequestRef = useRef(null);
+  const [revisionData, setRevisionData] = useState(null);
   const cycles = useCachedPreview({ slot: CACHE_SLOTS.COLLECTION_CYCLES, cache: false,
     fetcher: signal => getActiveCollectionCycles({ signal, strict: true }) });
   const cycleOptions = cycles.data || [];
@@ -70,15 +79,23 @@ export default function StatementsScreen() {
       contactNumber: item.contactNumber, outstanding: item.netAmountDue ?? item.balance ?? 0 }));
   const isRequestedClientUnavailable = selectedStatement.isClientExplicit && metadata.data !== null
     && !clients.some(client => client.clientId === selectedClientId);
-  const query = { clientId: selectedClientId, targetDate: selectedCycle };
+  const query = { clientId: selectedClientId, targetDate: selectedCycle, version: selectedVersion };
   const resource = useCachedPreview({ slot: CACHE_SLOTS.STATEMENTS, query,
     enabled: Boolean(selectedClientId && selectedCycle && !isRequestedClientUnavailable),
     fetcher: async signal => {
-      const data = await getStatementPreview(selectedClientId, selectedCycle, { signal });
+      const targetVer = (selectedVersion === 'live') ? null : selectedVersion;
+      const data = await getStatementPreview(selectedClientId, selectedCycle, { version: targetVer, signal });
       if (!data || !Array.isArray(data.items) || !Number.isFinite(Number(data.totalCharges))) throw new Error('Invalid statement preview.');
       return data;
     } });
   const statementData = resource.data;
+  const historyAuth = getSessionAuthContext();
+  const historyOwner = JSON.stringify([historyAuth.userId, historyAuth.sessionGeneration,
+    selectedClientId, selectedCycle, statementData?.soaNo || clients.find(client => client.clientId === selectedClientId)?.soaNumber]);
+  const historyOwnerRef = useRef(null);
+  historyOwnerRef.current = historyOwner;
+  const versionsList = history.owner === historyOwner ? history.versions : [];
+  const historyError = history.owner === historyOwner ? history.error : null;
   const loading = Boolean(selectedClientId && selectedCycle && !isRequestedClientUnavailable && resource.loading);
   const draft = { deductionAmount, deductionNote, collectedBy };
   const hasUnsavedAdjustments = baselineRef.current ? hasUnsavedStatementAdjustments({ ...baselineRef.current.data, deductionAmount: baselineRef.current.data.deductionAmount ?? 0 }, draft) : false;
@@ -86,7 +103,7 @@ export default function StatementsScreen() {
   const printBlockReason = hasUnsavedAdjustments ? 'Save statement adjustments before printing.' : persistedPrintBlockReason;
   const isPrintDisabled = !resource.isFresh || !statementData || statementData.items?.length === 0 || saving || Boolean(review) || Boolean(printBlockReason);
   const selectionRef = useRef(null);
-  const selection = JSON.stringify([getSessionAuthContext().userId, getSessionAuthContext().sessionGeneration, selectedClientId, selectedCycle]);
+  const selection = JSON.stringify([getSessionAuthContext().userId, getSessionAuthContext().sessionGeneration, selectedClientId, selectedCycle, selectedVersion]);
   selectionRef.current = selection;
   const applyServerValues = data => {
     setDeductionAmount(String(data?.deductionAmount ?? 0));
@@ -107,9 +124,10 @@ export default function StatementsScreen() {
     if (baselineRef.current?.selection !== selection) {
       baselineRef.current = null;
       setReview(null);
+      setRevisionData(null);
       applyServerValues(null);
     }
-    if (!statementData) return;
+    if (!statementData || revisionData) return;
     const previous = baselineRef.current?.data;
     const isDirty = previous && hasUnsavedStatementAdjustments({ ...previous, deductionAmount: previous.deductionAmount ?? 0 }, draft);
     const persistedValues = data => JSON.stringify({ totalCharges: data.totalCharges, totalPaid: data.totalPaid,
@@ -124,13 +142,42 @@ export default function StatementsScreen() {
     }
   }, [statementData, selection]);
   const confirmDiscard = () => !hasUnsavedAdjustments || (typeof window !== 'undefined' && window.confirm('Discard unsaved statement adjustments?'));
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const requestAuth = getSessionAuthContext();
+    const isCurrent = () => active && historyOwnerRef.current === historyOwner
+      && isResponseAcceptable({ requestAuth, currentAuth: getSessionAuthContext(), requestQuery: {}, activeQuery: {} });
+    setHistory(previous => ({ owner: historyOwner,
+      versions: previous.owner === historyOwner ? previous.versions : [], error: null }));
+    if (requestAuth.isAuthenticated && requestAuth.isVerified && selectedClientId && selectedCycle
+      && statementData?.soaNo && statementData?.isCycleClosed) {
+      listStatementVersions(selectedClientId, selectedCycle, { signal: controller.signal })
+        .then(list => {
+          if (isCurrent()) setHistory({ owner: historyOwner, versions: list || [], error: null });
+        })
+        .catch(() => {
+          if (isCurrent()) setHistory(previous => ({ ...previous, error: 'Could not load statement versions.' }));
+        });
+    }
+    return () => { active = false; controller.abort(); };
+  }, [historyOwner, statementData?.isCycleClosed, statementData?.latestVersionNumber, historyRevision]);
+
+  useEffect(() => {
+    if (statementData?.isCycleClosed && statementData?.hasSnapshot && selectedVersion === null && statementData?.latestVersionNumber) {
+      setSelectedVersion(statementData.latestVersionNumber);
+    }
+  }, [statementData?.isCycleClosed, statementData?.hasSnapshot, statementData?.latestVersionNumber, selectedVersion]);
+
   const selectClient = id => {
     if (id !== selectedClientId && !saving && confirmDiscard()) {
+      setSelectedVersion(null);
       setSelectedStatement(previous => ({ ...previous, clientId: id, isClientExplicit: false }));
     }
   };
   const selectCycle = cycle => {
     if (cycle !== selectedCycle && !saving && confirmDiscard()) {
+      setSelectedVersion(null);
       setSelectedStatement({ clientId: null, cycle, isClientExplicit: false });
     }
   };
@@ -139,20 +186,25 @@ export default function StatementsScreen() {
     const requestedClientId = searchParams.clientId || (requestedCycle === selectedCycle ? selectedClientId : null);
     if (requestedCycle === selectedCycle && requestedClientId === selectedClientId) return;
     if (saving || !confirmDiscard()) return;
+    setSelectedVersion(null);
     setSelectedStatement({ clientId: requestedClientId, cycle: requestedCycle, isClientExplicit: Boolean(searchParams.clientId) });
   }, [searchParams.clientId, searchParams.cycle]);
   const resolveReview = useServer => {
-    if (useServer) applyServerValues(statementData);
-    baselineRef.current = { selection, data: statementData };
+    const current = review?.current || statementData;
+    if (useServer) applyServerValues(current);
+    if (revisionData) setRevisionData(current);
+    baselineRef.current = { selection, data: current };
     setReview(null);
   };
+  const reviewedData = revisionData || statementData;
+  const isArchived = Boolean(statementData?.activeVersion);
   const isDraftValid = Number.isFinite(Number(deductionAmount)) && Number(deductionAmount) >= 0
-    && Number(deductionAmount) <= Math.max(0, Number(statementData?.totalCharges || 0) - Number(statementData?.totalPaid || 0))
+    && Number(deductionAmount) <= Math.max(0, Number(reviewedData?.totalCharges || 0) - Number(reviewedData?.totalPaid || 0))
     && /^\d+(\.\d{1,2})?$/.test(deductionAmount) && deductionNote.trim().length <= 255 && collectedBy.trim().length <= 150;
 
   // Handle Save deduction and collector
   const handleSaveDeductions = async () => {
-    if (!resource.isCurrent() || !metadata.isCurrent() || !collectorResource.isCurrent() || review || !isDraftValid || saving) return;
+    if ((isArchived && !revisionData) || !resource.isCurrent() || !metadata.isCurrent() || !collectorResource.isCurrent() || review || !isDraftValid || saving) return;
     const requestSelection = selection;
     const requestAuth = getSessionAuthContext();
     if (!selectedClientId) {
@@ -170,8 +222,8 @@ export default function StatementsScreen() {
       return;
     }
 
-    const totalCharges = Number(statementData?.totalCharges || 0);
-    const totalPaid = Number(statementData?.totalPaid || 0);
+    const totalCharges = Number(reviewedData?.totalCharges || 0);
+    const totalPaid = Number(reviewedData?.totalPaid || 0);
     const remainingBeforeDeduction = Math.max(0, totalCharges - totalPaid);
     if (numDeduction > remainingBeforeDeduction) {
       setErrorMessage(`Deduction amount cannot exceed the remaining statement balance (₱${remainingBeforeDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).`);
@@ -208,27 +260,67 @@ export default function StatementsScreen() {
         deductionNote: trimmedNote,
         collectedBy: trimmedCollector,
       };
+      if (reviewedData?.hasSnapshot) payload.expectedFinancialRevision = reviewedData.financialRevision;
+      const requestKey = JSON.stringify([requestAuth.userId, requestAuth.sessionGeneration, reviewedData?.hasSnapshot ? 'VERSION' : 'SAVE', payload]);
+      if (saveRequestRef.current?.key !== requestKey) {
+        saveRequestRef.current = { key: requestKey, id: crypto.randomUUID() };
+      }
+      payload.requestId = saveRequestRef.current.id;
 
-      const updated = await saveStatement(payload);
+      let updated;
+      let nextVersion = null;
+      if (!statementData?.isCycleClosed) {
+        // Open cycle: live statement save
+        updated = await saveStatement(payload);
+      } else if (!statementData?.hasSnapshot) {
+        // Closed cycle, first save: captures V1
+        updated = await saveStatement(payload);
+        nextVersion = updated.activeVersion;
+      } else {
+        // Closed cycle, subsequent save: captures explicit new version
+        updated = await saveStatementVersion({
+          ...payload,
+          expectedFinancialRevision: reviewedData.financialRevision,
+        });
+        nextVersion = updated.activeVersion;
+      }
+
       if (selectionRef.current !== requestSelection || !isResponseAcceptable({ requestAuth, currentAuth: getSessionAuthContext(), requestQuery: {}, activeQuery: {} })) return;
+      if (nextVersion !== null) setSelectedVersion(nextVersion);
+      setHistoryRevision(previous => previous + 1);
+      saveRequestRef.current = null;
+      setRevisionData(null);
       baselineRef.current = { selection, data: updated };
       applyServerValues(updated);
+      resource.refresh?.();
       setReview(null);
-      setSuccessToast(updated?.status === 'SETTLED'
-        ? 'Statement of Account saved and settled.'
-        : 'Statement of Account deductions and collector saved.');
+
+      const toastMsg = !statementData?.isCycleClosed
+        ? (updated?.status === 'SETTLED' ? 'Statement of Account saved and settled.' : 'Statement of Account deductions saved.')
+        : !statementData?.hasSnapshot
+          ? 'Statement of Account Version 1 captured.'
+          : ('Statement of Account Version ' + (updated.activeVersion || updated.versionNumber || 'new') + ' saved.');
+      setSuccessToast(toastMsg);
       setTimeout(() => setSuccessToast(null), 4000);
     } catch (err) {
       if (selectionRef.current !== requestSelection) return;
       console.error('Failed to save statement:', err);
-      setErrorMessage(err?.response?.data?.message || err?.message || 'Failed to save statement deductions.');
+      if (err?.response?.status === 409) {
+        setErrorMessage('Financial revision conflict: payments or adjustments were made concurrently. Reviewing refreshed data.');
+        if (revisionData) {
+          const current = await getStatementPreview(selectedClientId, selectedCycle);
+          if (selectionRef.current === requestSelection) setReview({ previous: revisionData, current });
+        } else resource.refresh?.();
+      } else {
+        setErrorMessage(err?.response?.data?.message || err?.message || 'Failed to save statement deductions.');
+      }
     } finally {
       setSaving(false);
     }
   };
 
   // Open dedicated printable view
-  const handleDirectPrint = () => {
+  const handleDirectPrint = async () => {
     if (isPrintDisabled || !resource.isCurrent()) return;
     if (!selectedClientId) return;
     if (hasUnsavedAdjustments) {
@@ -241,12 +333,58 @@ export default function StatementsScreen() {
       return;
     }
 
-    const printUrl = buildStatementPrintUrl(selectedClientId, selectedCycle);
+    let printVersion = selectedVersion;
+    if (statementData?.isCycleClosed) {
+      if (!statementData?.hasSnapshot) {
+        try {
+          setSaving(true);
+          const key = JSON.stringify([selection, 'ENSURE']);
+          if (printRequestRef.current?.key !== key) printRequestRef.current = { key, id: crypto.randomUUID() };
+          const captured = await ensureV1Snapshot({
+            clientId: selectedClientId,
+            targetDate: selectedCycle,
+            requestId: printRequestRef.current.id,
+          });
+          if (selectionRef.current !== selection) return;
+          printVersion = captured.activeVersion;
+          setSelectedVersion(printVersion);
+          setHistoryRevision(previous => previous + 1);
+        } catch (err) {
+          setSaving(false);
+          setErrorMessage(err?.response?.data?.message || err?.message || 'Failed to capture Version 1 before printing.');
+          return;
+        } finally {
+          setSaving(false);
+        }
+      } else {
+        if (!printVersion || printVersion === 'live') {
+          printVersion = statementData.latestVersionNumber;
+        }
+      }
+    }
+
+    const printUrl = buildStatementPrintUrl(selectedClientId, selectedCycle, printVersion === 'live' ? null : printVersion);
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       window.open(printUrl, '_blank');
     } else {
       router.push(printUrl);
     }
+  };
+
+  const prepareRevision = async () => {
+    const owner = selection;
+    setSaving(true);
+    setErrorMessage(null);
+    try {
+      const live = await getStatementPreview(selectedClientId, selectedCycle);
+      if (selectionRef.current !== owner) return;
+      setRevisionData(live);
+      baselineRef.current = { selection, data: live };
+      applyServerValues(live);
+      saveRequestRef.current = null;
+    } catch (error) {
+      if (selectionRef.current === owner) setErrorMessage(error?.message || 'Failed to prepare revision.');
+    } finally { setSaving(false); }
   };
 
   return (
@@ -391,8 +529,78 @@ export default function StatementsScreen() {
           </View>
         ) : null}
 
+        {/* Version Selector Bar for Closed Cycles with Snapshots */}
+        {historyError ? (
+          <View>
+            <Text>{historyError}</Text>
+            <TouchableOpacity onPress={() => setHistoryRevision(previous => previous + 1)}>
+              <Text>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+        {statementData?.isCycleClosed && (versionsList.length > 0 || statementData?.hasSnapshot) ? (
+          <View style={styles.versionSelectorBar}>
+            <Text style={styles.versionSelectorLabel}>SOA VERSIONS</Text>
+            <View style={styles.versionButtonGroup}>
+              {versionsList.map(ver => {
+                const isSelected = (selectedVersion === ver.versionNumber) || (selectedVersion === null && statementData.activeVersion === ver.versionNumber);
+                return (
+                  <TouchableOpacity
+                    key={'ver-' + ver.versionNumber}
+                    style={[styles.versionPill, isSelected && styles.versionPillActive]}
+                    onPress={() => { if (!saving && confirmDiscard()) setSelectedVersion(ver.versionNumber); }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.versionPillText, isSelected && styles.versionPillTextActive]}>
+                      V{ver.versionNumber} {ver.versionNumber === statementData.latestVersionNumber ? '(Latest)' : ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                style={[styles.versionPill, selectedVersion === 'live' && styles.versionPillActive]}
+                onPress={() => { if (!saving && confirmDiscard()) setSelectedVersion('live'); }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.versionPillText, selectedVersion === 'live' && styles.versionPillTextActive]}>
+                  Live Preview
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+
+        {/* Frozen Version Balance Comparison Banner */}
+        {statementData && !statementData.isLive ? (
+          <View style={styles.snapshotBanner}>
+            <View style={styles.snapshotBannerLeft}>
+              <Text style={styles.snapshotBannerTitle}>
+                VERSION {statementData.activeVersion || statementData.versionNumber} (IMMUTABLE SNAPSHOT)
+              </Text>
+              <Text style={styles.snapshotBannerSub}>
+                Captured {statementData.capturedAt ? statementData.capturedAt : 'on cycle close'} by {statementData.capturedByName || 'Administrator'}.
+              </Text>
+            </View>
+            <View style={styles.snapshotBalanceComparison}>
+              <View style={styles.balanceMetric}>
+                <Text style={styles.balanceMetricLabel}>FROZEN AMOUNT DUE</Text>
+                <Text style={styles.balanceMetricValue}>
+                  ₱{Number(statementData.amountDue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </Text>
+              </View>
+              <View style={styles.balanceMetric}>
+                <Text style={styles.balanceMetricLabel}>CURRENT LIVE BALANCE</Text>
+                <Text style={[styles.balanceMetricValue, Number(statementData.liveOutstandingBalance) !== Number(statementData.amountDue) && styles.balanceMetricLiveHighlight]}>
+                  ₱{Number(statementData.liveOutstandingBalance ?? statementData.amountDue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
+
         {/* Deductions & Collector Input Card (no-print) */}
         <View style={styles.deductionsBarWrap}>
+          {isArchived && !revisionData && <TouchableOpacity onPress={prepareRevision} disabled={saving}><Text>Prepare New Version</Text></TouchableOpacity>}
           <DeductionsInputCard
             deductionAmount={deductionAmount}
             onDeductionAmountChange={setDeductionAmount}
@@ -403,9 +611,10 @@ export default function StatementsScreen() {
             collectors={collectors}
             onSave={handleSaveDeductions}
             saving={saving}
-            disabled={!statementData || saving}
-            saveDisabled={!resource.isFresh || !metadata.isFresh || !collectorResource.isFresh || Boolean(review) || !isDraftValid}
-            maxDeduction={statementData ? Math.max(0, Number(statementData.totalCharges) - Number(statementData.totalPaid || 0)) : null}
+            disabled={!statementData || saving || (isArchived && !revisionData)}
+            saveDisabled={(isArchived && !revisionData) || !resource.isFresh || !metadata.isFresh || !collectorResource.isFresh || Boolean(review) || !isDraftValid}
+            maxDeduction={reviewedData ? Math.max(0, Number(reviewedData.totalCharges) - Number(reviewedData.totalPaid || 0)) : null}
+            saveButtonLabel={!statementData?.isCycleClosed ? 'Save' : !statementData?.hasSnapshot ? 'Save (Capture V1)' : 'Save New Version'}
           />
         </View>
 
@@ -430,9 +639,9 @@ export default function StatementsScreen() {
           <StatementPaperCard
             data={statementData}
             currentUser={{ name: 'Maria Santos', role: 'Administrator' }}
-            liveDeduction={Number(deductionAmount) || 0}
-            liveDeductionNote={deductionNote}
-            liveCollectedBy={collectedBy}
+            liveDeduction={isArchived ? undefined : Number(deductionAmount) || 0}
+            liveDeductionNote={isArchived ? undefined : deductionNote}
+            liveCollectedBy={isArchived ? undefined : collectedBy}
           />
         ) : null}
       </View>
@@ -511,6 +720,110 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
+  versionSelectorBar: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  versionSelectorLabel: {
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.inkFaint,
+    letterSpacing: 0.8,
+    marginRight: spacing.xs,
+    textTransform: 'uppercase',
+  },
+  versionButtonGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  versionPill: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 4,
+  },
+  versionPillActive: {
+    backgroundColor: '#1E293B',
+    borderColor: '#1E293B',
+  },
+  versionPillText: {
+    fontFamily: fonts.mono,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  versionPillTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  snapshotBanner: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
+  snapshotBannerLeft: {
+    flex: 1,
+    minWidth: 240,
+  },
+  snapshotBannerTitle: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#166534',
+    letterSpacing: 0.4,
+  },
+  snapshotBannerSub: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    color: '#15803D',
+    marginTop: 2,
+  },
+  snapshotBalanceComparison: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
+  },
+  balanceMetric: {
+    alignItems: 'flex-end',
+  },
+  balanceMetricLabel: {
+    fontFamily: fonts.mono,
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#166534',
+    letterSpacing: 0.6,
+  },
+  balanceMetricValue: {
+    fontFamily: fonts.mono,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#14532D',
+    marginTop: 1,
+  },
+  balanceMetricLiveHighlight: {
+    color: '#B45309',
+  },
   selectorsBar: {
     flexDirection: 'row',
     alignItems: 'flex-start',
