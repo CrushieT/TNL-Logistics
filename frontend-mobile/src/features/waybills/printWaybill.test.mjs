@@ -29,6 +29,8 @@ test('prints two complete copies of only the selected manifest with 15-item pagi
   };
   const html = buildWaybillHtml(manifest, 'logo.png');
   assert.equal(html.match(/class="copy"/g).length, 6);
+  assert.deepEqual([...html.matchAll(/class="copy-label(?: client-copy)?">([^<]+)/g)].map(match => match[1]),
+    ['ORIGINAL COPY', 'ORIGINAL COPY', 'ORIGINAL COPY', 'CLIENT COPY', 'CLIENT COPY', 'CLIENT COPY']);
   assert.equal(html.match(/TRK-45/g).length, 2);
   assert.doesNotMatch(html, /TRK-46/);
   assert.match(html, /A4 portrait/);
@@ -43,6 +45,14 @@ test('prints two complete copies of only the selected manifest with 15-item pagi
   assert.match(html, /Page 3 of 3/);
   const payload = getWaybillQrPayload(manifest.waybillId);
   assert.equal(decodeMatrix(generateQRMatrix(payload)), payload);
+});
+
+test('labels additional single-page copies as client copies', () => {
+  const html = buildWaybillHtml({ waybillId: 'WYB-1', parcels: [{ trackingId: 'UNIT' }] }, null, null, 3);
+  assert.deepEqual([...html.matchAll(/class="copy-label(?: client-copy)?">([^<]+)/g)].map(match => match[1]),
+    ['ORIGINAL COPY', 'CLIENT COPY', 'CLIENT COPY']);
+  assert.equal((html.match(/class="copy-label client-copy">CLIENT COPY/g) || []).length, 2);
+  assert.equal((html.match(/CLIENT SIGNATURE AND PRINTED NAME/g) || []).length, 3);
 });
 
 test('escapes manifest text and falls back to the brand name without a logo', () => {

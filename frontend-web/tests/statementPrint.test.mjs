@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { loadProductionModule } from './previewHarness.mjs';
+import * as statementModel from '../src/features/collections/utils/statementPrintModel.mjs';
 import {
   buildStatementPrintUrl,
   createStatementPrintSheetSequence,
@@ -22,6 +25,32 @@ const printableStatement = {
   soaAccountName: 'TNL Test Account',
   soaAccountNumber: '000000123456',
 };
+
+test('statement component labels every print sheet while leaving preview unlabeled', () => {
+  const react = { createElement: (type, props, ...children) => ({ type, props: props || {}, children }), useMemo: callback => callback() };
+  const native = { View: 'View', Text: 'Text', Image: 'Image', Platform: { OS: 'web', select: options => options.web }, StyleSheet: { create: styles => styles } };
+  const themeValues = new Proxy({}, { get: () => 'sans-serif' });
+  const component = loadProductionModule('../src/features/collections/components/StatementPaperCard.js', dependency => {
+    if (dependency === 'react') return { __esModule: true, default: react, ...react };
+    if (dependency === 'react-native') return native;
+    if (dependency === '../../../theme') return { colors: themeValues, fonts: themeValues, spacing: themeValues, radius: themeValues };
+    if (dependency.endsWith('collectionsUtils')) return { formatCurrency: value => String(value) };
+    if (dependency.endsWith('statementPrintModel.mjs')) return statementModel;
+    if (dependency.endsWith('.png')) return 'logo.png';
+    throw new Error(`Unexpected import ${dependency}`);
+  }).default;
+  const text = node => typeof node === 'string' || typeof node === 'number' ? String(node) : Array.isArray(node) ? node.map(text).join(' ') : node?.children ? node.children.map(text).join(' ') : '';
+  for (const count of [1, 12]) {
+    const data = { ...printableStatement, items: Array.from({ length: count }, (_, index) => ({ shipmentId: `S${index}` })) };
+    const preview = text(component({ data, showLogo: false }));
+    assert.doesNotMatch(preview, /ORIGINAL COPY|CLIENT COPY/);
+    const printed = text(component({ data, copies: 2, showCopyLabels: true, showLogo: false }));
+    const pages = Math.ceil(count / 11);
+    assert.deepEqual(printed.match(/ORIGINAL COPY|CLIENT COPY/g), [...Array(pages).fill('ORIGINAL COPY'), ...Array(pages).fill('CLIENT COPY')]);
+    assert.equal((printed.match(/Page\s+1\s+of/g) || []).length, 2);
+  }
+  assert.match(readFileSync(new URL('../src/app/statements/print.js', import.meta.url), 'utf8'), /copies=\{STATEMENT_PRINT_COPY_COUNT\}\s+showCopyLabels/);
+});
 
 test('SOA bank details normalize values and preserve leading zeroes', () => {
   assert.deepEqual(normalizeSoaBankDetails({

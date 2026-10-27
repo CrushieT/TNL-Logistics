@@ -251,6 +251,7 @@ export default function StatementPrintScreen() {
             <StatementPaperCard
               data={statementData}
               copies={STATEMENT_PRINT_COPY_COUNT}
+              showCopyLabels
               showLogo={true}
               logoLoadFailed={logoLoadFailed}
             />

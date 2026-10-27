@@ -92,6 +92,7 @@ export default function StatementPaperCard({
   liveCollectedBy,
   companyBranding = null,
   copies = 1,
+  showCopyLabels = false,
   showLogo = true,
   logoLoadFailed = false,
 }) {
@@ -157,6 +158,7 @@ export default function StatementPaperCard({
             className="soa-paper-sheet"
             nativeID={`soa-printable-sheet-${copyIndex}-${pageIndex}`}
           >
+
             {/* Top-Centered Letterhead Brand Header (Rendered on Every Page) */}
             <View style={styles.letterheadBlock}>
               {showLogo && (
@@ -175,6 +177,7 @@ export default function StatementPaperCard({
             <View style={styles.metaRow}>
               <View style={styles.titleCol}>
                 <Text style={styles.documentTitle}>STATEMENT OF ACCOUNT</Text>
+                {showCopyLabels && <Text style={[styles.copyLabel, copyIndex > 0 && styles.clientCopyLabel]}>{copyIndex === 0 ? 'ORIGINAL COPY' : 'CLIENT COPY'}</Text>}
               </View>
 
               <View style={styles.metaCol}>
@@ -432,6 +435,21 @@ const styles = StyleSheet.create({
   },
   titleCol: {
     justifyContent: 'flex-end',
+  },
+  copyLabel: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#182b60',
+    backgroundColor: '#fff',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#182b60',
+  },
+  clientCopyLabel: {
+    borderColor: '#c94c12',
+    color: '#c94c12',
   },
   logoFallback: {
     width: 150,
