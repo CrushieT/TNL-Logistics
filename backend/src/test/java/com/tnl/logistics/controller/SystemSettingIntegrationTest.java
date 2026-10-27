@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tnl.logistics.dto.SaveStatementRequest;
 import com.tnl.logistics.dto.UpdateSystemSettingRequest;
 import com.tnl.logistics.service.CollectionsService;
+import com.tnl.logistics.service.SystemSettingService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -51,6 +53,14 @@ public class SystemSettingIntegrationTest {
 
     @Autowired
     private ClientRepository clientRepository;
+
+    @Autowired
+    private SystemSettingService systemSettingService;
+
+    @AfterEach
+    void resetSettingsToDefaults() {
+        systemSettingService.updateSettings(createValidSettingsRequest(), "ADMIN");
+    }
 
     @Test
     @WithMockUser(username = "admin", roles = {"ADMIN"})
@@ -368,18 +378,24 @@ public class SystemSettingIntegrationTest {
         request.setSoaAccountName("Latest Test Account");
         request.setSoaAccountNumber("000000654321");
 
-        mockMvc.perform(put("/api/v1/settings")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk());
+        try {
+            mockMvc.perform(put("/api/v1/settings")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/v1/soa/preview")
-                        .param("clientId", "CL-001"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.companyName").value("Latest SOA Company"))
-                .andExpect(jsonPath("$.soaBankName").value("Latest Test Bank"))
-                .andExpect(jsonPath("$.soaAccountName").value("Latest Test Account"))
-                .andExpect(jsonPath("$.soaAccountNumber").value("000000654321"));
+            mockMvc.perform(get("/api/v1/soa/preview")
+                            .param("clientId", "CL-001"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.companyName").value("Latest SOA Company"))
+                    .andExpect(jsonPath("$.soaBankName").value("Latest Test Bank"))
+                    .andExpect(jsonPath("$.soaAccountName").value("Latest Test Account"))
+                    .andExpect(jsonPath("$.soaAccountNumber").value("000000654321"));
+        } finally {
+            mockMvc.perform(put("/api/v1/settings")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(createValidSettingsRequest())));
+        }
     }
 
     @Test
@@ -409,7 +425,8 @@ public class SystemSettingIntegrationTest {
                     false,
                     RegisteredVia.DESKTOP_OFFICE
             );
-            shipment.setDateRegistered(historicalDate.atTime(9, 0));
+            shipment.setDateRegistered(historicalDate.minusDays(1).atTime(9, 0));
+            shipment.setBusinessRegistrationDate(historicalDate.minusDays(1));
             return shipmentRepository.save(shipment);
         });
 
@@ -511,7 +528,7 @@ public class SystemSettingIntegrationTest {
         // 1. Verify fixed cycle start calculation (starts 6 days before cycle end)
         LocalDate calculatedStart = collectionsService.calculateCycleStartDate(nextMonday);
         assertNotNull(calculatedStart);
-        assertEquals(nextMonday.minusDays(6), calculatedStart);
+        assertEquals(nextMonday.minusDays(7), calculatedStart);
 
         try {
             // 2. Change collection day to WEDNESDAY

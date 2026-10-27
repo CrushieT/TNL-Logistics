@@ -470,6 +470,7 @@ public class SoaServiceImpl implements SoaService {
         SoaBatch batch = soaBatchRepository.findById(batchId)
                 .orElseGet(() -> {
                     AppUser creator = appUserRepository.findById(actingUserId)
+                            .or(() -> appUserRepository.findByUsername(actingUserId))
                             .orElseGet(() -> appUserRepository.findAll().stream().findFirst().orElse(null));
 
                     SoaBatch newBatch = new SoaBatch(
@@ -697,6 +698,7 @@ public class SoaServiceImpl implements SoaService {
         }
 
         AppUser actor = appUserRepository.findById(actingUserId)
+                .or(() -> appUserRepository.findByUsername(actingUserId))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Capture actor was not found"));
 
         String requestId = (explicitRequestId != null && !explicitRequestId.isBlank())

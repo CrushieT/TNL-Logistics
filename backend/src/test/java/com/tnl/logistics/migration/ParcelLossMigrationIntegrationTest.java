@@ -55,7 +55,7 @@ class ParcelLossMigrationIntegrationTest {
         flyway.validate();
         JdbcTemplate database = new JdbcTemplate(dataSource);
         assertEquals(3, database.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = ? AND table_name IN ('parcel_loss_event', 'waybill_reconciliation_event', 'parcel_exception_command')", Integer.class, schema));
-        assertEquals("40", flyway.info().current().getVersion().toString());
+        assertEquals("42", flyway.info().current().getVersion().toString());
         assertPersonalTrackingIndexes(database);
     }
 
@@ -68,7 +68,7 @@ class ParcelLossMigrationIntegrationTest {
         database.update("INSERT INTO waybill (waybill_id, shipment_id, generated_by, hauler_name, status) VALUES ('WYB-LOSS', 'SHP-LOSS', 'USR-LOSS', 'Fixture', 'SENT_TO_HAULER')");
         database.update("INSERT INTO parcel_unit (tracking_id, shipment_id, waybill_id, seq, current_status, label_status) VALUES ('TRK-LOSS', 'SHP-LOSS', 'WYB-LOSS', 1, 'LOADED_TO_HAULER', 'PRINTED')");
         Flyway flyway = Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load();
-        assertEquals(2, flyway.migrate().migrationsExecuted);
+        assertEquals(4, flyway.migrate().migrationsExecuted);
         flyway.validate();
         assertFalse(Boolean.TRUE.equals(database.queryForObject("SELECT is_lost FROM parcel_unit WHERE tracking_id = 'TRK-LOSS'", Boolean.class)));
         assertEquals(0L, database.queryForObject("SELECT revision FROM parcel_unit WHERE tracking_id = 'TRK-LOSS'", Long.class));
