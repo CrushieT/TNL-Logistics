@@ -1,12 +1,28 @@
 package com.tnl.logistics.service.impl;
 
 import com.tnl.logistics.model.ParcelStatus;
+import com.tnl.logistics.model.UserRole;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class TrackingTransitionPolicyTest {
     private final TrackingTransitionPolicy policy = new TrackingTransitionPolicy(null);
+
+    @Test
+    void courierLoadsOnlyAndDispatchReceivesArrivals() {
+        for (ParcelStatus target : ParcelStatus.values()) {
+            assertEquals(target == ParcelStatus.LOADED_ON_TRUCK
+                            ? TrackingTransitionPolicy.StaffAuthorizationDecision.ALLOWED
+                            : TrackingTransitionPolicy.StaffAuthorizationDecision.DENIED,
+                    policy.decideStaffAuthorization(UserRole.COURIER_STAFF, target));
+            assertEquals(target == ParcelStatus.ARRIVED_AT_TNL || target == ParcelStatus.LOADED_TO_HAULER
+                            || target == ParcelStatus.COMPLETED
+                            ? TrackingTransitionPolicy.StaffAuthorizationDecision.ALLOWED
+                            : TrackingTransitionPolicy.StaffAuthorizationDecision.DENIED,
+                    policy.decideStaffAuthorization(UserRole.DISPATCH_STAFF, target));
+        }
+    }
 
     @Test
     void appliesOnlyTheNextTransition() {

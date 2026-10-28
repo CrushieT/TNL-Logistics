@@ -49,10 +49,10 @@ public class TrackingTransitionPolicy {
         return switch (role) {
             case ADMIN, RECEIVING_STAFF -> StaffAuthorizationDecision.ALLOWED;
             case COURIER_STAFF -> targetStatus == ParcelStatus.LOADED_ON_TRUCK
-                    || targetStatus == ParcelStatus.ARRIVED_AT_TNL
                     ? StaffAuthorizationDecision.ALLOWED
                     : StaffAuthorizationDecision.DENIED;
-            case DISPATCH_STAFF -> targetStatus == ParcelStatus.LOADED_TO_HAULER
+            case DISPATCH_STAFF -> targetStatus == ParcelStatus.ARRIVED_AT_TNL
+                    || targetStatus == ParcelStatus.LOADED_TO_HAULER
                     || targetStatus == ParcelStatus.COMPLETED
                     ? StaffAuthorizationDecision.ALLOWED
                     : StaffAuthorizationDecision.DENIED;

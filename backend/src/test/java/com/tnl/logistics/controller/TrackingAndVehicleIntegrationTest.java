@@ -269,7 +269,7 @@ public class TrackingAndVehicleIntegrationTest {
         // 4. Scan: LOADED_ON_TRUCK -> ARRIVED_AT_TNL (Clears vehicle assignment)
         TrackingScanRequest scan2 = new TrackingScanRequest(trackingId, ParcelStatus.ARRIVED_AT_TNL, null, "Unloaded at Baguio Hub");
         MvcResult res2 = mockMvc.perform(post("/api/v1/tracking-events/scan")
-                        .header("Authorization", fieldToken)
+                        .header("Authorization", haulerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(scan2)))
                 .andExpect(status().isOk())
@@ -425,7 +425,7 @@ public class TrackingAndVehicleIntegrationTest {
         // 7. Scan first parcel to ARRIVED_AT_TNL (unloaded from truck)
         TrackingScanRequest scan3 = new TrackingScanRequest(t1, ParcelStatus.ARRIVED_AT_TNL, null, "Unloaded box 1");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
-                        .header("Authorization", fieldToken)
+                        .header("Authorization", haulerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(scan3)))
                 .andExpect(status().isOk());

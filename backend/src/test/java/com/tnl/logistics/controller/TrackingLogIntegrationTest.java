@@ -821,11 +821,13 @@ public class TrackingLogIntegrationTest {
                 .andExpect(jsonPath("$.loadedOnTruckToday").value(1))
                 .andExpect(jsonPath("$.handedToHaulerToday").value(0));
 
-        // 3. Courier 1 scans ARRIVED_AT_TNL (total operational scans = 2, loaded on truck = 1, active couriers = 1)
-        trackingService.processStatusScan(
-                new TrackingScanRequest(tracking1, ParcelStatus.ARRIVED_AT_TNL, null, "Arrived"),
-                "USR-FIELD"
-        );
+        // Historical courier arrivals remain part of operational metrics.
+        ParcelUnit historicalParcel = parcelUnitRepository.findById(tracking1).orElseThrow();
+        historicalParcel.setCurrentStatus(ParcelStatus.ARRIVED_AT_TNL);
+        historicalParcel.setCurrentVehicle(null);
+        parcelUnitRepository.saveAndFlush(historicalParcel);
+        trackingEventRepository.saveAndFlush(new TrackingEvent(historicalParcel, ParcelStatus.ARRIVED_AT_TNL,
+                appUserRepository.findById("USR-FIELD").orElseThrow(), "Historical arrival"));
 
         mockMvc.perform(get("/api/v1/tracking-events/metrics")
                 .contentType(MediaType.APPLICATION_JSON))

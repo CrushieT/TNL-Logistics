@@ -1,5 +1,10 @@
 # Project Structure
 
+### Dispatch arrival and courier truck loading
+
+- `frontend-mobile/tests/dispatchArrival.test.mjs`: executes the production dispatch screen with mocked native/API boundaries; covers camera/manual arrival queueing, capacity, duplicates, eligibility, retries, offline/busy controls, discard/navigation, session ownership, and obsolete requests.
+- `.review/current/dispatch-arrival-verification.md`: scoped implementation evidence, verification commands, fixture adjustments, and device acceptance checklist.
+
 ### Local review artifacts
 
 - `.review/current/`: active plans and deployment guidance, including `post-release-client-changes-plan.md` for QR labels, document copies, shipment fee editing, and courier scanning.
@@ -423,3 +428,9 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 - `.review/current/soa-render-pdf.ps1`, `.review/current/soa-print-verification.pdf`, `.review/current/soa-print-verification.png`, and `.review/current/soa-pdf-page-1.png` through `soa-pdf-page-4.png`: PDF inspection evidence.
 - `.review/current/soa-pdf-preview.png`: unsuccessful PDF-viewer screenshot, excluded from acceptance evidence.
 - `.review/current/soa-*.log`: raw baseline, integration, migration, frontend, print, immutability, and export results, enumerated in the remediation report.
+
+### Mobile scanning feedback
+
+- `frontend-mobile/src/features/scanner/components/ScanFeedbackBanner.js`: shared accessible checking, success, warning, and error feedback; short success/info expiry with timer cleanup.
+- `frontend-mobile/tests/scanFeedback.test.mjs`: production banner timer/accessibility and barcode modal lifecycle/feedback tests.
+- `.review/current/mobile-scan-feedback.md`: implementation evidence and manual acceptance for courier, dispatch, and reusable barcode scanning.
