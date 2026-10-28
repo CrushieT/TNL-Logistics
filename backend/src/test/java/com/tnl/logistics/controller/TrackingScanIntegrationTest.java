@@ -375,7 +375,7 @@ public class TrackingScanIntegrationTest {
         // LOADED_ON_TRUCK -> ARRIVED_AT_TNL
         TrackingScanRequest req2 = new TrackingScanRequest(trackingId, ParcelStatus.ARRIVED_AT_TNL, null, "Arrived");
         mockMvc.perform(post("/api/v1/tracking-events/scan")
-                        .header("Authorization", fieldToken)
+                        .header("Authorization", haulerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req2)))
                 .andExpect(status().isOk())
@@ -1028,7 +1028,7 @@ public class TrackingScanIntegrationTest {
                 new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-SCAN-001", "Loaded"),
                 new TrackingScanRequest(trackingId, ParcelStatus.ARRIVED_AT_TNL, null, "Arrived"))) {
             mockMvc.perform(post("/api/v1/tracking-events/scan")
-                            .header("Authorization", generalFieldToken)
+                            .header("Authorization", request.getTargetStatus() == ParcelStatus.ARRIVED_AT_TNL ? haulerToken : generalFieldToken)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
@@ -1112,9 +1112,9 @@ public class TrackingScanIntegrationTest {
         assertTransitionAuthority(UserRole.ADMIN, Set.of(ParcelStatus.values()));
         assertTransitionAuthority(UserRole.RECEIVING_STAFF, Set.of(ParcelStatus.values()));
         assertTransitionAuthority(UserRole.COURIER_STAFF,
-                Set.of(ParcelStatus.LOADED_ON_TRUCK, ParcelStatus.ARRIVED_AT_TNL));
+                Set.of(ParcelStatus.LOADED_ON_TRUCK));
         assertTransitionAuthority(UserRole.DISPATCH_STAFF,
-                Set.of(ParcelStatus.LOADED_TO_HAULER, ParcelStatus.COMPLETED));
+                Set.of(ParcelStatus.ARRIVED_AT_TNL, ParcelStatus.LOADED_TO_HAULER, ParcelStatus.COMPLETED));
     }
 
     @Test
@@ -1164,6 +1164,128 @@ public class TrackingScanIntegrationTest {
                 .andReturn();
         assertTrue(objectMapper.readTree(result.getResponse().getContentAsString())
                 .get("activeCouriersCount").asLong() >= 2);
+    }
+
+    @Test
+    public void testCourierCannotArriveOrPerformLaterTransitionsThroughEitherEndpoint() throws Exception {
+        String trackingId = createTestShipment(1);
+        ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+        long eventCountBefore = trackingEventRepository.count();
+        for (ParcelStatus target : List.of(ParcelStatus.ARRIVED_AT_TNL,
+                ParcelStatus.LOADED_TO_HAULER, ParcelStatus.COMPLETED)) {
+            parcel.setCurrentStatus(target == ParcelStatus.ARRIVED_AT_TNL ? ParcelStatus.LOADED_ON_TRUCK
+                    : target == ParcelStatus.LOADED_TO_HAULER ? ParcelStatus.ARRIVED_AT_TNL : ParcelStatus.LOADED_TO_HAULER);
+            parcelUnitRepository.saveAndFlush(parcel);
+            mockMvc.perform(post("/api/v1/tracking-events/scan")
+                            .header("Authorization", fieldToken).contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(new TrackingScanRequest(trackingId, target, null, "Denied"))))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
+                            .header("Authorization", fieldToken).contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(new BatchTrackingScanRequest(List.of(trackingId), target, null, "Denied"))))
+                    .andExpect(status().isForbidden());
+        }
+        assertEquals(eventCountBefore, trackingEventRepository.count());
+    }
+
+    @Test
+    public void testDispatchArrivalAcrossShipmentsClearsTrucksAndReplaysWithoutDuplicateEvents() throws Exception {
+        Vehicle truck = vehicleRepository.saveAndFlush(new Vehicle("VH-SCAN-001", "ARRIVAL-001", "Arrival Truck"));
+        List<String> trackingIds = List.of(createTestShipment(1), createTestShipment(1));
+        java.util.Map<String, List<Object>> originalState = new java.util.HashMap<>();
+        for (String trackingId : trackingIds) {
+            trackingService.processStatusScan(new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK,
+                    truck.getVehicleId(), "Courier loaded"), "USR-FIELD");
+            ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+            Shipment shipment = parcel.getShipment();
+            originalState.put(trackingId, java.util.Arrays.asList(parcel.getLabelStatus(), shipment.getShippingFee(),
+                    shipment.getTotalAmount(), shipment.getStatementId(), shipment.getPaidAtRegistration()));
+        }
+        long eventCountBefore = trackingEventRepository.count();
+        long waybillCountBefore = waybillRepository.count();
+        long paymentCountBefore = paymentRepository.count();
+        BatchTrackingScanRequest request = new BatchTrackingScanRequest(trackingIds, ParcelStatus.ARRIVED_AT_TNL, null, "Dispatch arrival");
+        for (boolean isFirstAttempt : List.of(true, false)) {
+            mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
+                            .header("Authorization", haulerToken).contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].transitionApplied").value(isFirstAttempt))
+                    .andExpect(jsonPath("$[1].transitionApplied").value(isFirstAttempt));
+        }
+        assertEquals(eventCountBefore + 2, trackingEventRepository.count());
+        assertEquals(waybillCountBefore, waybillRepository.count());
+        assertEquals(paymentCountBefore, paymentRepository.count());
+        for (String trackingId : trackingIds) {
+            ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+            assertEquals(ParcelStatus.ARRIVED_AT_TNL, parcel.getCurrentStatus());
+            assertNull(parcel.getCurrentVehicle());
+            assertNull(parcel.getWaybill());
+            Shipment shipment = parcel.getShipment();
+            assertEquals(originalState.get(trackingId), java.util.Arrays.asList(parcel.getLabelStatus(),
+                    shipment.getShippingFee(), shipment.getTotalAmount(), shipment.getStatementId(), shipment.getPaidAtRegistration()));
+            List<TrackingEvent> arrivalEvents = trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(trackingId)
+                    .stream().filter(event -> event.getStatus() == ParcelStatus.ARRIVED_AT_TNL).toList();
+            assertEquals(1, arrivalEvents.size());
+            assertEquals("USR-HAULER", arrivalEvents.get(0).getStaff().getUserId());
+        }
+    }
+
+    @Test
+    public void testInvalidDispatchArrivalBatchRollsBackEveryParcel() throws Exception {
+        List<String> trackingIds = createTestShipmentAllIds(2);
+        ParcelUnit eligibleParcel = parcelUnitRepository.findById(trackingIds.get(0)).orElseThrow();
+        eligibleParcel.setCurrentStatus(ParcelStatus.LOADED_ON_TRUCK);
+        parcelUnitRepository.saveAndFlush(eligibleParcel);
+        long eventCountBefore = trackingEventRepository.count();
+        mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
+                        .header("Authorization", haulerToken).contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new BatchTrackingScanRequest(
+                                trackingIds, ParcelStatus.ARRIVED_AT_TNL, null, "Invalid arrival"))))
+                .andExpect(status().isBadRequest());
+        assertEquals(ParcelStatus.LOADED_ON_TRUCK,
+                parcelUnitRepository.findById(trackingIds.get(0)).orElseThrow().getCurrentStatus());
+        assertEquals(ParcelStatus.QR_GENERATED,
+                parcelUnitRepository.findById(trackingIds.get(1)).orElseThrow().getCurrentStatus());
+        assertEquals(eventCountBefore, trackingEventRepository.count());
+    }
+
+    @Test
+    public void testDispatchArrivalRejectsLostParcelsMalformedBatchesAndUnauthenticatedRequests() throws Exception {
+        List<String> trackingIds = createTestShipmentAllIds(2);
+        for (String trackingId : trackingIds) {
+            ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+            parcel.setCurrentStatus(ParcelStatus.LOADED_ON_TRUCK);
+            parcel.setLost(trackingId.equals(trackingIds.get(1)));
+            parcelUnitRepository.saveAndFlush(parcel);
+        }
+        long eventCountBefore = trackingEventRepository.count();
+        BatchTrackingScanRequest request = new BatchTrackingScanRequest(trackingIds, ParcelStatus.ARRIVED_AT_TNL, null, "Lost arrival");
+        mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
+                        .header("Authorization", haulerToken).contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/v1/tracking-events/scan")
+                        .header("Authorization", haulerToken).contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new TrackingScanRequest(
+                                trackingIds.get(1), ParcelStatus.ARRIVED_AT_TNL, null, "Lost arrival"))))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized());
+        for (List<String> invalidIds : List.of(List.<String>of(), List.of(" "),
+                List.of(trackingIds.get(0), trackingIds.get(0)), List.of("not-a-parcel"))) {
+            request.setTrackingIds(invalidIds);
+            mockMvc.perform(post("/api/v1/tracking-events/batch-scan")
+                            .header("Authorization", haulerToken).contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isBadRequest());
+        }
+        assertEquals(eventCountBefore, trackingEventRepository.count());
+        for (String trackingId : trackingIds) {
+            assertEquals(ParcelStatus.LOADED_ON_TRUCK,
+                    parcelUnitRepository.findById(trackingId).orElseThrow().getCurrentStatus());
+        }
     }
 
     private void assertTransitionAuthority(UserRole role, Set<ParcelStatus> allowedStatuses) {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Modal,
   StyleSheet,
@@ -9,6 +9,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import ScanFeedbackBanner from '../../scanner/components/ScanFeedbackBanner';
+import { safeHaptics } from '../../scanner/utils/haptics';
 import { colors, spacing, typography } from '../../../theme';
 
 export function BarcodeScannerModal({ visible, onClose, onScan }) {
@@ -16,21 +18,47 @@ export function BarcodeScannerModal({ visible, onClose, onScan }) {
   const [scanned, setScanned] = useState(false);
   const [manualCode, setManualCode] = useState('');
 
+  const [feedback, setFeedback] = useState(null);
+  const requestVersionRef = useRef(0);
+  const scanLockRef = useRef(false);
+  useEffect(() => {
+    requestVersionRef.current += 1;
+    scanLockRef.current = false;
+    setScanned(false);
+    setManualCode('');
+    setFeedback(null);
+    return () => { requestVersionRef.current += 1; };
+  }, [visible]);
+
   if (!visible) return null;
 
-  const handleBarcodeScanned = ({ data }) => {
-    if (scanned) return;
+  const handleBarcodeScanned = async ({ data }) => {
+    if (scanLockRef.current) return;
+    const code = String(data || '').trim();
+    if (!code) {
+      setFeedback({ kind: 'error', message: 'No code detected. Scan again or enter a code.' });
+      safeHaptics.error();
+      return;
+    }
+    scanLockRef.current = true;
+    const requestVersion = requestVersionRef.current;
     setScanned(true);
-    if (data && data.trim()) {
-      onScan(data.trim());
+    setFeedback({ kind: 'loading', message: 'Checking code...' });
+    try {
+      await onScan(code);
+      if (requestVersionRef.current !== requestVersion) return;
+      setFeedback({ kind: 'success', message: 'Code read. Check the lookup result.' });
+      safeHaptics.selection();
+    } catch (error) {
+      if (requestVersionRef.current !== requestVersion) return;
+      scanLockRef.current = false;
+      setScanned(false);
+      setFeedback({ kind: 'error', message: error?.response?.data?.message || error?.message || 'Lookup failed. Try again.' });
+      safeHaptics.error();
     }
   };
 
-  const handleManualSubmit = () => {
-    if (manualCode.trim()) {
-      onScan(manualCode.trim());
-    }
-  };
+  const handleManualSubmit = () => handleBarcodeScanned({ data: manualCode });
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -64,6 +92,16 @@ export function BarcodeScannerModal({ visible, onClose, onScan }) {
           </View>
         )}
 
+        <ScanFeedbackBanner kind={feedback?.kind} message={feedback?.message} onDismiss={() => setFeedback(null)} />
+        {scanned && feedback?.kind !== 'loading' && (
+          <TouchableOpacity accessibilityRole="button" onPress={() => {
+            scanLockRef.current = false;
+            setScanned(false);
+            setFeedback(null);
+          }} style={styles.lookupBtn}>
+            <Text style={styles.lookupText}>Scan another code</Text>
+          </TouchableOpacity>
+        )}
         <View style={styles.manualBox}>
           <Text style={styles.manualLabel}>OR ENTER CODE MANUALLY</Text>
           <View style={styles.inputRow}>
@@ -79,7 +117,7 @@ export function BarcodeScannerModal({ visible, onClose, onScan }) {
             <TouchableOpacity
               accessibilityRole="button"
               onPress={handleManualSubmit}
-              disabled={!manualCode.trim()}
+              disabled={scanned || !manualCode.trim()}
               style={[styles.lookupBtn, !manualCode.trim() && styles.btnDisabled]}
             >
               <Text style={styles.lookupText}>Look up</Text>

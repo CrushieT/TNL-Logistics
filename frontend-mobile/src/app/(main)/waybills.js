@@ -18,16 +18,17 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon } from 'react-native-paper';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useNavigation, useFocusEffect } from 'expo-router';
 import { useCameraPermissions } from 'expo-camera';
 import { useNetInfo } from '@react-native-community/netinfo';
 import * as Crypto from 'expo-crypto';
 import * as Print from 'expo-print';
 import { useAuth } from '../../features/auth/context/AuthContext';
 import { trackingScanApi } from '../../features/scanner/services/trackingScanApi';
+import ScanFeedbackBanner from '../../features/scanner/components/ScanFeedbackBanner';
 import ScanViewfinder from '../../features/scanner/components/ScanViewfinder';
 import { safeHaptics } from '../../features/scanner/utils/haptics';
-import { MAX_BATCH_SIZE, normalizeTrackingId } from '../../features/scanner/scannerFlow.mjs';
+import { MAX_BATCH_SIZE, normalizeTrackingId, validateBatchCandidate, buildBatchScanRequest } from '../../features/scanner/scannerFlow.mjs';
 import {
   listShipmentOptions,
   listWaybillOptions,
@@ -82,12 +83,30 @@ function findNearestCameraHeightIndex(height) {
 
 export default function DispatchWaybillsScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { user, isLoading: authLoading } = useAuth();
   const netInfo = useNetInfo();
   const isOnline = netInfo.isConnected === true && netInfo.isInternetReachable !== false;
   const [permission, requestPermission] = useCameraPermissions();
 
-  const [mode, setMode] = useState('load'); // 'load' | 'return'
+  const [mode, setMode] = useState('load'); // 'load' | 'arrival' | 'return'
+  const [arrivalQueue, setArrivalQueue] = useState([]);
+  const [arrivalInput, setArrivalInput] = useState('');
+  const [arrivalLookups, setArrivalLookups] = useState(0);
+  const [pendingArrivalLeave, setPendingArrivalLeave] = useState(null);
+  const [pendingShipmentSwitch, setPendingShipmentSwitch] = useState(null);
+  const loadRequestRef = useRef(null);
+  const arrivalQueueRef = useRef([]);
+  const arrivalPendingRef = useRef(new Set());
+  const arrivalVersionRef = useRef(0);
+  const arrivalSubmittingRef = useRef(false);
+  const arrivalOwnerRef = useRef(null);
+  const arrivalOwner = `${user?.userId || ''}:${user?.role || ''}`;
+  if (arrivalOwnerRef.current !== arrivalOwner) {
+    arrivalOwnerRef.current = arrivalOwner;
+    arrivalVersionRef.current += 1;
+    loadRequestRef.current = null;
+  }
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [isScreenFocused, setIsScreenFocused] = useState(true);
 
@@ -131,8 +150,12 @@ export default function DispatchWaybillsScreen() {
 
   // UI state
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setErrorState] = useState('');
   const [notice, setNotice] = useState('');
+  const setError = useCallback((message) => {
+    setErrorState(message);
+    if (message) setNotice('');
+  }, []);
   const [showGenerationConfirmation, setShowGenerationConfirmation] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [cameraHeightIndex, setCameraHeightIndex] = useState(DEFAULT_CAMERA_HEIGHT_INDEX);
@@ -269,6 +292,15 @@ export default function DispatchWaybillsScreen() {
         keyboardHideSubscription.remove();
         animatedCameraHeight.stopAnimation();
         animatedCameraHeight.setValue(CAMERA_HEIGHTS[cameraHeightIndexRef.current]);
+        arrivalVersionRef.current += 1;
+        if (loadRequestRef.current) setBusy(false);
+        loadRequestRef.current = null;
+        arrivalPendingRef.current.clear();
+        setArrivalLookups(0);
+        if (arrivalSubmittingRef.current) {
+          arrivalSubmittingRef.current = false;
+          setBusy(false);
+        }
         returnContextVersionRef.current += 1;
         setIsScreenFocused(false);
         setIsKeyboardVisible(false);
@@ -298,6 +330,30 @@ export default function DispatchWaybillsScreen() {
       setShowGenerationConfirmation(false);
     }
   }, [user]);
+
+  useEffect(() => {
+    arrivalQueueRef.current = [];
+    arrivalPendingRef.current.clear();
+    arrivalSubmittingRef.current = false;
+    setArrivalQueue([]);
+    setArrivalInput('');
+    setArrivalLookups(0);
+    setPendingArrivalLeave(null);
+    setPendingShipmentSwitch(null);
+    setNotice('');
+    setError('');
+    setBusy(false);
+    return () => {
+      arrivalVersionRef.current += 1;
+      loadRequestRef.current = null;
+    };
+  }, [arrivalOwner]);
+
+  useEffect(() => navigation.addListener('beforeRemove', (event) => {
+    if (mode !== 'arrival' || arrivalQueueRef.current.length === 0) return;
+    event.preventDefault();
+    if (!arrivalSubmittingRef.current) setPendingArrivalLeave({ action: event.data.action });
+  }), [mode, navigation]);
 
   const loadRecentShipmentOptions = useCallback(async () => {
     if (!isOnline || user?.role !== 'DISPATCH_STAFF' || mode !== 'load') return;
@@ -357,7 +413,7 @@ export default function DispatchWaybillsScreen() {
   }, [hasMoreShipments, isOnline, mode, shipmentPage]);
 
   useEffect(() => {
-    if (mode === 'load' && !shipmentId) {
+    if (mode === 'load') {
       loadRecentShipmentOptions();
     }
   }, [loadRecentShipmentOptions, mode, shipmentId]);
@@ -551,52 +607,81 @@ export default function DispatchWaybillsScreen() {
   // Refresh data for selected shipment
   const refreshShipmentData = useCallback(async (targetShipmentId) => {
     if (!targetShipmentId) return;
+    const requestVersion = arrivalVersionRef.current;
     try {
       const [units, records] = await Promise.all([
         listAvailableUnits(targetShipmentId),
         listShipmentWaybills(targetShipmentId)
       ]);
+      if (arrivalVersionRef.current !== requestVersion) return;
       setAvailableUnits(Array.isArray(units) ? units : []);
       setShipmentWaybills(Array.isArray(records) ? records : []);
     } catch {
+      if (arrivalVersionRef.current !== requestVersion) return;
       setError('Could not refresh shipment waybill data.');
     }
   }, []);
 
-  const handleSelectShipment = async (chosenId) => {
-    const cleanId = String(chosenId || '').trim().toUpperCase();
-    if (!cleanId) return;
+  const getManifestCandidateError = (context, units) => {
+    if (context.lost) return context.scanBlockedReason || 'Parcel is lost. Admin must mark it found before scanning.';
+    if (!['ARRIVED_AT_TNL', 'LOADED_TO_HAULER'].includes(context.currentStatusCode)) {
+      return `${context.trackingId} must be arrived at TNL Hub.`;
+    }
+    if (!units.some((unit) => unit.trackingId === context.trackingId)) return `${context.trackingId} is not available for this manifest.`;
+    return null;
+  };
+
+  const selectShipment = async (cleanId, context, request) => {
+    const [units, records] = await Promise.all([listAvailableUnits(cleanId), listShipmentWaybills(cleanId)]);
+    if (arrivalVersionRef.current !== request.version || loadRequestRef.current !== request) return;
+    const available = Array.isArray(units) ? units : [];
+    const candidateError = context ? getManifestCandidateError(context, available) : null;
     Keyboard.dismiss();
     shipmentOptionCoordinatorRef.current.cancelAll();
-    setIsLoadingShipments(false);
-    setIsLoadingMoreShipments(false);
-    setIsLoadingRecommendations(false);
-    setShipmentRecommendations([]);
-    setRecommendationError('');
     returnContextVersionRef.current += 1;
     setShipmentId(cleanId);
     setShipmentIdInput(cleanId);
-    setBatchQueue([]);
+    setSelectedShipment([...shipmentRecommendations, ...shipments].find((shipment) => shipment.shipmentId === cleanId) || { shipmentId: cleanId });
+    setAvailableUnits(available);
+    setShipmentWaybills(Array.isArray(records) ? records : []);
+    setBatchQueue(context && !candidateError ? [context.trackingId] : []);
     setShowGenerationConfirmation(false);
     setManifest(null);
     setConfirmedWaybillId(null);
-    setError('');
-    setNotice('');
     setGenerationKey(Crypto.randomUUID());
+    setPendingShipmentSwitch(null);
+    setError(candidateError || '');
+    if (context) {
+      if (candidateError) safeHaptics.error();
+      else safeHaptics.success();
+    }
+    setNotice(context && !candidateError ? `${context.trackingId} added to manifest queue. 1 queued.` : '');
+  };
 
-    const matched = [...shipmentRecommendations, ...shipments]
-      .find((shipment) => shipment.shipmentId === cleanId);
-    setSelectedShipment(matched || { shipmentId: cleanId });
-
+  const handleSelectShipment = async (chosenId, context = null, isConfirmed = false) => {
+    const cleanId = String(chosenId || '').trim().toUpperCase();
+    if (!cleanId || mode !== 'load' || !isOnline || busy || loadRequestRef.current) return;
+    if (!isConfirmed && shipmentId && cleanId !== shipmentId && batchQueue.length > 0) {
+      setPendingShipmentSwitch({ shipmentId: cleanId, context });
+      return;
+    }
+    const request = { version: arrivalVersionRef.current };
+    loadRequestRef.current = request;
     setBusy(true);
     try {
-      await refreshShipmentData(cleanId);
+      await selectShipment(cleanId, context, request);
+    } catch (err) {
+      if (arrivalVersionRef.current === request.version) setError(err?.response?.data?.message || 'Could not open shipment. Try again.');
     } finally {
-      setBusy(false);
+      if (loadRequestRef.current === request) { loadRequestRef.current = null; setBusy(false); }
     }
   };
 
   const handleClearShipment = () => {
+    arrivalVersionRef.current += 1;
+    loadRequestRef.current = null;
+    setPendingShipmentSwitch(null);
+    setBusy(false);
     shipmentOptionCoordinatorRef.current.cancelAll();
     setIsLoadingShipments(false);
     setIsLoadingMoreShipments(false);
@@ -632,7 +717,18 @@ export default function DispatchWaybillsScreen() {
   };
 
   const handleModeChange = (nextMode) => {
-    if (nextMode === mode) return;
+    if (nextMode === mode || (busy && !loadRequestRef.current) || arrivalSubmittingRef.current) return;
+    if (mode === 'arrival' && arrivalQueueRef.current.length > 0) {
+      setPendingArrivalLeave({ mode: nextMode });
+      return;
+    }
+    arrivalVersionRef.current += 1;
+    loadRequestRef.current = null;
+    arrivalPendingRef.current.clear();
+    setArrivalLookups(0);
+    setArrivalInput('');
+    setPendingShipmentSwitch(null);
+    setBusy(false);
     shipmentOptionCoordinatorRef.current.cancelAll();
     waybillOptionCoordinatorRef.current.cancelAll();
     setIsLoadingShipments(false);
@@ -647,12 +743,108 @@ export default function DispatchWaybillsScreen() {
     setWaybillRecommendationError('');
     returnContextVersionRef.current += 1;
     setMode(nextMode);
+    setNotice('');
     setShowGenerationConfirmation(false);
     setManifest(null);
     setConfirmedWaybillId(null);
     setError('');
+    if (nextMode === 'load' && shipmentId) refreshShipmentData(shipmentId);
     if (nextMode === 'return') {
       setWaybillInput('');
+    }
+  };
+
+  const discardArrivalQueue = () => {
+    const destination = pendingArrivalLeave;
+    arrivalQueueRef.current = [];
+    setArrivalQueue([]);
+    setPendingArrivalLeave(null);
+    if (destination?.action) {
+      arrivalVersionRef.current += 1;
+    loadRequestRef.current = null;
+      navigation.dispatch(destination.action);
+    } else if (destination?.mode) {
+      handleModeChange(destination.mode);
+    }
+  };
+
+  const processArrivalScan = async (rawValue) => {
+    if (mode !== 'arrival' || user?.role !== 'DISPATCH_STAFF' || !isOnline
+        || busy || arrivalSubmittingRef.current || pendingArrivalLeave) return;
+    const normalized = normalizeTrackingId(rawValue);
+    if (!normalized.isValid) { safeHaptics.error(); setError(normalized.error); return; }
+    const trackingId = normalized.trackingId;
+    if (arrivalQueueRef.current.some((parcel) => parcel.trackingId === trackingId)
+        || arrivalPendingRef.current.has(trackingId)) {
+      safeHaptics.warning();
+      setError(`${trackingId} is already in the arrival queue or being verified.`);
+      return;
+    }
+    if (arrivalQueueRef.current.length + arrivalPendingRef.current.size >= MAX_BATCH_SIZE) {
+      safeHaptics.warning();
+      setError(`Arrival queue limit reached (maximum ${MAX_BATCH_SIZE} parcels).`);
+      return;
+    }
+    const requestVersion = arrivalVersionRef.current;
+    arrivalPendingRef.current.add(trackingId);
+    setArrivalLookups(arrivalPendingRef.current.size);
+    setError('');
+    setNotice('');
+    try {
+      const context = await trackingScanApi.getScanContext(trackingId);
+      if (arrivalVersionRef.current !== requestVersion) return;
+      const validation = validateBatchCandidate(context, 'ARRIVED_AT_TNL', user.role);
+      if (!validation.isValid || context.lost || context.currentStatusCode !== 'LOADED_ON_TRUCK'
+          || context.trackingId !== trackingId) {
+        safeHaptics.error();
+        setError(validation.error || 'Only non-lost parcels loaded on a truck can arrive at TNL.');
+        return;
+      }
+      arrivalQueueRef.current = [...arrivalQueueRef.current, context];
+      setArrivalQueue(arrivalQueueRef.current);
+      setArrivalInput('');
+      setError('');
+      setNotice(`${trackingId} added to arrival queue. ${arrivalQueueRef.current.length} queued.`);
+      safeHaptics.success();
+    } catch (err) {
+      if (arrivalVersionRef.current !== requestVersion) return;
+      safeHaptics.error();
+      setError(err?.response?.data?.message || `Failed to verify ${trackingId}. Try again.`);
+    } finally {
+      if (arrivalVersionRef.current === requestVersion) {
+        arrivalPendingRef.current.delete(trackingId);
+        setArrivalLookups(arrivalPendingRef.current.size);
+      }
+    }
+  };
+
+  const confirmArrival = async () => {
+    if (mode !== 'arrival' || user?.role !== 'DISPATCH_STAFF' || !isOnline || busy
+        || arrivalSubmittingRef.current || arrivalPendingRef.current.size > 0
+        || arrivalQueueRef.current.length === 0 || pendingArrivalLeave) return;
+    const requestVersion = arrivalVersionRef.current;
+    arrivalSubmittingRef.current = true;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      await trackingScanApi.submitBatchScan(buildBatchScanRequest(
+        arrivalQueueRef.current.map((parcel) => parcel.trackingId), 'ARRIVED_AT_TNL', null, user.role
+      ));
+      if (arrivalVersionRef.current !== requestVersion) return;
+      arrivalQueueRef.current = [];
+      setArrivalQueue([]);
+      setArrivalInput('');
+      setNotice('Arrival at TNL confirmed.');
+      safeHaptics.success();
+    } catch (err) {
+      if (arrivalVersionRef.current !== requestVersion) return;
+      setError(err?.response?.data?.message || 'Arrival failed. Queue retained; try again.');
+    } finally {
+      if (arrivalVersionRef.current === requestVersion) {
+        arrivalSubmittingRef.current = false;
+        setBusy(false);
+      }
     }
   };
 
@@ -702,7 +894,9 @@ export default function DispatchWaybillsScreen() {
     scanLockRef.current = true;
 
     try {
-      if (mode === 'return') {
+      if (mode === 'arrival') {
+        await processArrivalScan(rawValue);
+      } else if (mode === 'return') {
         await processReturnWaybillScan(rawValue);
       } else {
         await processQueueScan(String(rawValue).trim().toUpperCase());
@@ -716,74 +910,41 @@ export default function DispatchWaybillsScreen() {
 
   // Process adding a parcel unit to the Waybill Manifest Queue (Rapid Batch)
   const processQueueScan = async (candidateId) => {
-    if (!shipmentId) {
-      safeHaptics.warning();
-      setError('Select a shipment below before scanning units.');
-      return;
-    }
+    if (mode !== 'load' || !isOnline || busy || loadRequestRef.current || pendingShipmentSwitch) return;
     const normalized = normalizeTrackingId(candidateId);
-    if (!normalized.isValid) {
-      safeHaptics.error();
-      setError(normalized.error || 'Invalid tracking ID format.');
-      return;
-    }
+    if (!normalized.isValid) { safeHaptics.error(); setError(normalized.error); return; }
     const cleanId = normalized.trackingId;
-
-    if (batchQueue.includes(cleanId)) {
-      safeHaptics.warning();
-      setError(`${cleanId} is already in the manifest queue.`);
-      return;
-    }
-    if (batchQueue.length >= MAX_BATCH_SIZE) {
-      safeHaptics.error();
-      setError(`Batch queue limit reached (${MAX_BATCH_SIZE} units).`);
-      return;
-    }
-
+    if (batchQueue.includes(cleanId)) { safeHaptics.warning(); setError(`${cleanId} is already in the manifest queue.`); return; }
+    const request = { version: arrivalVersionRef.current };
+    loadRequestRef.current = request;
+    setBusy(true);
+    setError('');
     try {
       const context = await trackingScanApi.getScanContext(cleanId);
+      if (arrivalVersionRef.current !== request.version) return;
+      if (context?.trackingId !== cleanId || !context.shipmentId) throw new Error('Invalid parcel scan context.');
       if (context.shipmentId !== shipmentId) {
-        safeHaptics.error();
-        setError(`${cleanId} belongs to ${context.shipmentId}, not ${shipmentId}.`);
-        return;
-      }
-      if (context.lost) {
-        safeHaptics.error();
-        setError(context.scanBlockedReason || 'Parcel is lost. Admin must mark it found before scanning.');
-        return;
-      }
-      const statusCode = context.currentStatusCode;
-      const isLoaded = statusCode === 'LOADED_TO_HAULER';
-      const isArrived = statusCode === 'ARRIVED_AT_TNL';
-
-      if (!isLoaded && !isArrived) {
-        safeHaptics.error();
-        const displayStatus = context.currentStatusLabel || context.currentStatusCode || 'in transit';
-        setError(`${cleanId} is currently ${displayStatus}. Must be arrived at TNL Hub.`);
-        return;
-      }
-
-      if (isLoaded) {
-        if (context.canScan === false) {
-          safeHaptics.error();
-          setError(`${cleanId} is already assigned to a waybill.`);
-          return;
+        if (shipmentId && batchQueue.length > 0) {
+          safeHaptics.warning();
+          setPendingShipmentSwitch({ shipmentId: context.shipmentId, context });
+        } else {
+          await selectShipment(context.shipmentId, context, request);
         }
-        const isStillUnassigned = availableUnits.length === 0 || availableUnits.some((u) => u.trackingId === cleanId);
-        if (!isStillUnassigned) {
-          safeHaptics.error();
-          setError(`${cleanId} is already assigned to a waybill.`);
-          return;
-        }
+        return;
       }
-
-      setBatchQueue((prev) => [...prev, cleanId]);
-      safeHaptics.selection();
-      setNotice(`${cleanId} added to manifest queue.`);
-      setError('');
+      const candidateError = getManifestCandidateError(context, availableUnits);
+      if (candidateError) { safeHaptics.error(); setError(candidateError); return; }
+      if (batchQueue.length >= MAX_BATCH_SIZE) { safeHaptics.warning(); setError(`Batch queue limit reached (${MAX_BATCH_SIZE} units).`); return; }
+      setBatchQueue((previous) => previous.includes(cleanId) ? previous : [...previous, cleanId]);
+      safeHaptics.success();
+      setNotice(`${cleanId} added to manifest queue. ${batchQueue.length + 1} queued.`);
     } catch (err) {
-      safeHaptics.error();
-      setError(err?.response?.data?.message || err?.message || `Failed to verify ${cleanId}.`);
+      if (arrivalVersionRef.current === request.version) {
+        safeHaptics.error();
+        setError(err?.response?.data?.message || err?.message || 'Could not verify parcel. Try again.');
+      }
+    } finally {
+      if (loadRequestRef.current === request) { loadRequestRef.current = null; setBusy(false); }
     }
   };
 
@@ -812,17 +973,15 @@ export default function DispatchWaybillsScreen() {
     try {
       const record = await getWaybill(parsed.waybillId);
       if (returnContextVersionRef.current !== requestVersion) return;
-      if (record.status !== 'SENT_TO_HAULER') {
-        safeHaptics.warning();
-        setError('Only a waybill in Sent to Hauler status can be completed.');
-        return;
-      }
+      const isSentToHauler = record.status === 'SENT_TO_HAULER';
       setManifest(record);
       setWaybillInput(record.waybillId);
-      setConfirmedWaybillId(record.waybillId);
-      setConfirmedManifestRevision(record.manifestRevision);
+      setConfirmedWaybillId(isSentToHauler ? record.waybillId : null);
+      setConfirmedManifestRevision(isSentToHauler ? record.manifestRevision : null);
       safeHaptics.success();
-      setNotice(`${record.waybillId} return confirmed. Review the manifest, then complete the waybill.`);
+      setNotice(isSentToHauler
+        ? `${record.waybillId} return confirmed. Review the manifest, then complete the waybill.`
+        : `${record.waybillId} opened for review. Status: ${record.statusLabel || record.status}.`);
     } catch {
       if (returnContextVersionRef.current !== requestVersion) return;
       safeHaptics.error();
@@ -988,10 +1147,10 @@ export default function DispatchWaybillsScreen() {
   }
 
   const viewfinderHeight = CAMERA_HEIGHTS[cameraHeightIndex] || CAMERA_HEIGHTS[1];
-  const cameraActive = !isKeyboardVisible && cameraHeightIndex > 0 && isOnline && !busy && isScreenFocused && (
-    (mode === 'load' && Boolean(shipmentId)) ||
-    mode === 'return'
-  );
+  const cameraActive = !isKeyboardVisible && cameraHeightIndex > 0 && isOnline && (!busy || (mode === 'load' && loadRequestRef.current !== null)) && isScreenFocused && (
+    mode === 'load' ||
+    mode === 'return' || mode === 'arrival'
+  ) && !pendingArrivalLeave && !pendingShipmentSwitch;
 
   const canGenerate = Boolean(shipmentId) && batchQueue.length > 0 && isOnline && !busy;
   const canComplete = isWaybillCompletionUnlocked(manifest, confirmedWaybillId, confirmedManifestRevision)
@@ -999,23 +1158,109 @@ export default function DispatchWaybillsScreen() {
     && !busy;
 
   const getInstructionText = () => {
+    if (mode === 'arrival') return `Arrival: ${arrivalQueue.length} / ${MAX_BATCH_SIZE} parcels queued`;
     if (mode === 'load') {
-      if (!shipmentId) return 'Select a shipment below to start scanning';
+      if (!shipmentId) return 'Scan a parcel QR to open its shipment';
       return `Rapid Batch: ${batchQueue.length} / ${MAX_BATCH_SIZE} units queued`;
     }
     if (!manifest) return 'Scan the return confirmation QR printed on the waybill';
+    if (manifest.status !== 'SENT_TO_HAULER') return `${manifest.waybillId} opened for review`;
     if (canComplete) return `${manifest.waybillId} confirmed. Review manifest and complete below`;
     return `Scan the printed return QR for ${manifest.waybillId}`;
   };
 
   const getPausedText = () => {
     if (!isOnline) return 'Internet connection required for waybill operations';
-    if (mode === 'load' && !shipmentId) return 'Select a shipment below to activate camera';
     return 'Camera preview paused';
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <Modal
+        visible={Boolean(pendingShipmentSwitch)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { if (!busy) setPendingShipmentSwitch(null); }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.generationReviewCard}>
+            <View style={styles.generationReviewHeader}>
+              <View style={styles.generationReviewIcon}>
+                <Icon source="swap-horizontal" size={24} color={colors.accent} />
+              </View>
+              <View style={styles.generationReviewTitleGroup}>
+                <Text style={styles.generationReviewTitle}>Switch Active Shipment?</Text>
+                <Text style={styles.generationReviewSubtitle}>
+                  Scanned parcel belongs to a different shipment. Switching will discard the current manifest queue.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.generationReviewSummary}>
+              <View style={styles.generationReviewSummaryItem}>
+                <Text style={styles.generationReviewLabel}>CURRENT SHIPMENT</Text>
+                <Text style={styles.generationReviewValue}>{shipmentId || 'None'}</Text>
+                <Text style={styles.actionHint}>{batchQueue.length} queued unit(s)</Text>
+              </View>
+              <View style={styles.generationReviewSummaryItem}>
+                <Text style={styles.generationReviewLabel}>TARGET SHIPMENT</Text>
+                <Text style={styles.generationReviewValue}>{pendingShipmentSwitch?.shipmentId}</Text>
+                <Text style={styles.actionHint}>New manifest</Text>
+              </View>
+            </View>
+
+            <View style={styles.switchModalActions}>
+              <TouchableOpacity
+                disabled={busy || !isOnline}
+                onPress={() => handleSelectShipment(pendingShipmentSwitch.shipmentId, pendingShipmentSwitch.context, true)}
+                style={[styles.primaryButton, (busy || !isOnline) && styles.buttonDisabled]}
+              >
+                <Text style={styles.primaryButtonText}>Switch shipment</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                disabled={busy}
+                onPress={() => setPendingShipmentSwitch(null)}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={Boolean(pendingArrivalLeave)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPendingArrivalLeave(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.generationReviewCard}>
+            <View style={styles.generationReviewHeader}>
+              <View style={[styles.generationReviewIcon, { backgroundColor: colors.warningSoft }]}>
+                <Icon source="alert-outline" size={24} color={colors.warning} />
+              </View>
+              <View style={styles.generationReviewTitleGroup}>
+                <Text style={styles.generationReviewTitle}>Discard Arrival Queue?</Text>
+                <Text style={styles.generationReviewSubtitle}>
+                  Leaving will discard {arrivalQueue.length} queued parcel(s) without updating their status.
+                </Text>
+              </View>
+            </View>
+            <View style={styles.switchModalActions}>
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => setPendingArrivalLeave(null)}>
+                <Text style={styles.secondaryButtonText}>Keep arrival queue</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, { backgroundColor: colors.danger }]}
+                onPress={discardArrivalQueue}
+              >
+                <Text style={styles.primaryButtonText}>Discard arrival queue</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
@@ -1081,34 +1326,38 @@ export default function DispatchWaybillsScreen() {
           </View>
         )}
 
-        {/* Error Notification Banner */}
-        {Boolean(error) && (
-          <View style={styles.errorBanner}>
-            <Icon source="alert-circle-outline" size={18} color={colors.danger} />
-            <Text style={styles.errorBannerText}>{error}</Text>
-            <TouchableOpacity onPress={() => setError('')}>
-              <Icon source="close" size={16} color={colors.danger} />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Success Notice Banner */}
-        {Boolean(notice) && (
-          <View style={styles.noticeBanner}>
-            <Icon source="check-circle-outline" size={18} color={colors.success} />
-            <Text style={styles.noticeBannerText}>{notice}</Text>
-            <TouchableOpacity onPress={() => setNotice('')}>
-              <Icon source="close" size={16} color={colors.success} />
-            </TouchableOpacity>
-          </View>
-        )}
+        <ScanFeedbackBanner
+          kind={error ? (/already|limit reached/.test(error) ? 'warning' : 'error')
+            : (arrivalLookups > 0 || busy) ? 'loading' : 'success'}
+          message={error || (arrivalLookups > 0 ? 'Checking parcel...'
+            : busy ? (loadRequestRef.current ? 'Checking parcel...'
+              : mode === 'return' ? 'Processing waybill...' : 'Processing request...') : notice)}
+          onDismiss={() => { setError(''); setNotice(''); }}
+        />
 
         {/* Bottom Operations Panel */}
         <View style={styles.bottomPanel}>
           {/* Mode Switcher Tabs */}
           <View style={styles.modeSwitcherRow}>
             <TouchableOpacity
-              style={[styles.modeTab, mode === 'load' && styles.modeTabActive]}
+              style={[
+                styles.modeTab,
+                styles.modeTabBorderRight,
+                mode === 'arrival' && styles.modeTabActive
+              ]}
+              onPress={() => handleModeChange('arrival')}
+              disabled={busy}
+            >
+              <Text style={[styles.modeTabText, mode === 'arrival' && styles.modeTabTextActive]}>
+                ARRIVE AT TNL
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.modeTab,
+                styles.modeTabBorderRight,
+                mode === 'load' && styles.modeTabActive
+              ]}
               onPress={() => handleModeChange('load')}
               disabled={busy}
             >
@@ -1117,7 +1366,10 @@ export default function DispatchWaybillsScreen() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.modeTab, mode === 'return' && styles.modeTabActive]}
+              style={[
+                styles.modeTab,
+                mode === 'return' && styles.modeTabActive
+              ]}
               onPress={() => handleModeChange('return')}
               disabled={busy}
             >
@@ -1136,7 +1388,116 @@ export default function DispatchWaybillsScreen() {
             }
             nestedScrollEnabled
           >
-            {mode === 'load' ? (
+            {mode === 'arrival' ? (
+              <View style={styles.sectionCard}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionEyebrow}>ARRIVAL QUEUE ({arrivalQueue.length}/{MAX_BATCH_SIZE})</Text>
+                  {arrivalQueue.length > 0 && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        arrivalQueueRef.current = [];
+                        setArrivalQueue([]);
+                      }}
+                      disabled={busy || Boolean(pendingArrivalLeave)}
+                    >
+                      <Text style={styles.clearLinkText}>CLEAR</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <Text style={styles.actionHint}>
+                  Scan parcel QR codes with camera or enter tracking IDs below. Status changes only after confirmation.
+                </Text>
+
+                {arrivalQueue.length === 0 ? (
+                  <View style={styles.emptyQueueBox}>
+                    <Icon source="truck-check-outline" size={32} color={colors.inkFaint} />
+                    <Text style={styles.emptyQueueTitle}>No arrivals queued</Text>
+                    <Text style={styles.emptyQueueText}>
+                      Scan loaded-on-truck parcel QR codes or enter tracking IDs below to record arrival at TNL Hub.
+                    </Text>
+                  </View>
+                ) : (
+                  <ScrollView
+                    style={styles.queueItemsList}
+                    contentContainerStyle={styles.queueItemsContent}
+                    keyboardShouldPersistTaps="handled"
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator
+                  >
+                    {arrivalQueue.map((parcel, index) => (
+                      <View key={parcel.trackingId} style={styles.queueItemRow}>
+                        <Text style={styles.queueIndex}>#{index + 1}</Text>
+                        <View style={styles.arrivalParcelInfo}>
+                          <Text style={styles.queueTrackingId}>{parcel.trackingId}</Text>
+                          <Text style={styles.historyMeta}>
+                            {parcel.shipmentId} / {parcel.currentStatusLabel || parcel.currentStatusCode}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          accessibilityLabel={`Remove arrival ${parcel.trackingId}`}
+                          style={styles.queueRemoveButton}
+                          disabled={busy || Boolean(pendingArrivalLeave)}
+                          onPress={() => {
+                            arrivalQueueRef.current = arrivalQueueRef.current.filter((item) => item.trackingId !== parcel.trackingId);
+                            setArrivalQueue(arrivalQueueRef.current);
+                          }}
+                        >
+                          <Icon source="close" size={16} color={colors.inkFaint} />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </ScrollView>
+                )}
+
+                {arrivalLookups > 0 && (
+                  <View style={styles.inlineStateRow}>
+                    <ActivityIndicator size="small" color={colors.accent} accessibilityLabel="Verifying arrival parcels" />
+                    <Text style={styles.inlineStateText}>Verifying arrival parcel eligibility...</Text>
+                  </View>
+                )}
+
+                <View style={styles.manualInputRow}>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="TRK-YYYY-NNNNNN"
+                    placeholderTextColor={colors.inkFaint}
+                    accessibilityLabel="Arrival tracking ID"
+                    value={arrivalInput}
+                    onChangeText={setArrivalInput}
+                    onFocus={handleManualInputFocus}
+                    onSubmitEditing={() => processArrivalScan(arrivalInput)}
+                    autoCapitalize="characters"
+                    maxLength={15}
+                    editable={!busy && !pendingArrivalLeave}
+                  />
+                  <TouchableOpacity
+                    style={[
+                      styles.actionButtonCompact,
+                      styles.arrivalAddButton,
+                      (!isOnline || busy || !arrivalInput.trim() || Boolean(pendingArrivalLeave)) && styles.buttonDisabled
+                    ]}
+                    disabled={!isOnline || busy || !arrivalInput.trim() || Boolean(pendingArrivalLeave)}
+                    onPress={() => processArrivalScan(arrivalInput)}
+                  >
+                    <Text style={styles.actionButtonText}>ADD ARRIVAL</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.primaryButton,
+                    (!isOnline || busy || arrivalLookups > 0 || arrivalQueue.length === 0 || Boolean(pendingArrivalLeave)) && styles.buttonDisabled
+                  ]}
+                  disabled={!isOnline || busy || arrivalLookups > 0 || arrivalQueue.length === 0 || Boolean(pendingArrivalLeave)}
+                  onPress={confirmArrival}
+                >
+                  <Text style={styles.primaryButtonText}>Confirm Arrival at TNL</Text>
+                </TouchableOpacity>
+                <Text style={styles.actionHint}>
+                  Atomic batch update. Parcels transition to Arrived at TNL and their truck assignments are cleared.
+                </Text>
+              </View>
+            ) : mode === 'load' ? (
               <>
                 {/* 1. Shipment Selector */}
                 {!shipmentId ? (
@@ -1877,38 +2238,6 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontWeight: '600'
   },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.dangerSoft,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border
-  },
-  errorBannerText: {
-    flex: 1,
-    fontSize: 12,
-    color: colors.danger,
-    fontWeight: '600'
-  },
-  noticeBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.successSoft,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border
-  },
-  noticeBannerText: {
-    flex: 1,
-    fontSize: 12,
-    color: colors.success,
-    fontWeight: '600'
-  },
   cameraDivider: {
     height: 28,
     justifyContent: 'center',
@@ -1932,29 +2261,40 @@ const styles = StyleSheet.create({
   },
   modeSwitcherRow: {
     flexDirection: 'row',
+    borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderColor: colors.border,
     backgroundColor: colors.canvas
   },
   modeTab: {
     flex: 1,
+    minHeight: 44,
     paddingVertical: 10,
+    paddingHorizontal: 4,
     alignItems: 'center',
+    justifyContent: 'center',
     borderBottomWidth: 2,
-    borderBottomColor: 'transparent'
+    borderBottomColor: 'transparent',
+    backgroundColor: colors.canvas
+  },
+  modeTabBorderRight: {
+    borderRightWidth: 1,
+    borderRightColor: colors.border
   },
   modeTabActive: {
     borderBottomColor: colors.accent,
     backgroundColor: colors.surface
   },
   modeTabText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.inkFaint,
-    letterSpacing: 0.8
+    letterSpacing: 0.5,
+    textAlign: 'center'
   },
   modeTabTextActive: {
-    color: colors.accent
+    color: colors.accent,
+    fontWeight: '800'
   },
   panelScrollView: {
     flex: 1,
@@ -2166,11 +2506,25 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     gap: spacing.xs
   },
+  emptyQueueTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.inkSoft,
+    textAlign: 'center',
+    marginTop: spacing.xs
+  },
   emptyQueueText: {
     ...typography.bodySmall,
     color: colors.inkFaint,
     textAlign: 'center',
     paddingHorizontal: spacing.md
+  },
+  arrivalParcelInfo: {
+    flex: 1,
+    gap: 2
+  },
+  arrivalAddButton: {
+    paddingHorizontal: spacing.sm
   },
   queueItemsList: {
     maxHeight: 180
@@ -2519,6 +2873,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
     color: colors.inkSoft
+  },
+  switchModalActions: {
+    gap: spacing.sm,
+    marginTop: spacing.xs
   },
   modalActionsRow: {
     flexDirection: 'row',
