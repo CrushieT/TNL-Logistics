@@ -307,7 +307,7 @@ public class LoadTestDataSeeder implements CommandLineRunner {
     }
 
     private void advance(List<String> ids, ParcelStatus status, int index) {
-        boolean isCourierStep = status == ParcelStatus.LOADED_ON_TRUCK || status == ParcelStatus.ARRIVED_AT_TNL;
+        boolean isCourierStep = status == ParcelStatus.LOADED_ON_TRUCK;
         trackingService.processBatchScan(new BatchTrackingScanRequest(ids, status,
                 status == ParcelStatus.LOADED_ON_TRUCK ? vehicleId(1 + index % (VEHICLE_COUNT - 1)) : null,
                 "Synthetic load-test scan"), isCourierStep ? "LT-FIELD" : "LT-DISPATCH");
