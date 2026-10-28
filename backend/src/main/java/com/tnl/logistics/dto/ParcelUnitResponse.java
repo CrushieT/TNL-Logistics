@@ -17,6 +17,13 @@ public class ParcelUnitResponse {
     private String trackingId;
     private String currentVehicleId;
     private String currentVehiclePlate;
+    private String displayVehicleId;
+    private String displayVehiclePlate;
+
+    public String getDisplayVehicleId() { return displayVehicleId; }
+    public void setDisplayVehicleId(String displayVehicleId) { this.displayVehicleId = displayVehicleId; }
+    public String getDisplayVehiclePlate() { return displayVehiclePlate; }
+    public void setDisplayVehiclePlate(String displayVehiclePlate) { this.displayVehiclePlate = displayVehiclePlate; }
 
     public String getCurrentVehicleId() { return currentVehicleId; }
     public void setCurrentVehicleId(String currentVehicleId) { this.currentVehicleId = currentVehicleId; }

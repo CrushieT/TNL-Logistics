@@ -241,7 +241,7 @@ export default function ShipmentDetailScreen() {
                     {u.lost && <Text style={styles.lastConfirmedStatus}>Last confirmed: {u.status}</Text>}
                   </View>
                   <Text style={[styles.unitCell, styles.unitVehicle]}>
-                    {u.lost ? '—' : u.currentVehiclePlate?.trim() || u.currentVehicleId || '—'}
+                    {u.lost ? '—' : u.displayVehiclePlate?.trim() || u.displayVehicleId || '—'}
                   </Text>
                   <View style={styles.unitActions}>
                     <Pressable onPress={() => router.push(`/shipments/${shipmentId}/units/${u.trackingId}`)}>

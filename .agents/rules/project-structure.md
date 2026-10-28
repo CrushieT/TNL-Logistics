@@ -397,8 +397,9 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 - `load-tests/count-free-history-results.md`: count-free contract, verification evidence, exact/count-free diagnostic comparison, baseline shutdown limitation, and pending device checks.
 
 ### Shipment current vehicle columns
-- `frontend-web/tests/shipmentVehicles.test.mjs`: executes shipment table and detail screen rendering for current vehicle columns, missing fields, lost packages, pagination, View, and Reprint actions.
-- Existing `ShipmentIntegrationTest` includes cold-context SQL capture and assignment/history regressions; no new backend package or endpoint.
+- `frontend-web/tests/shipmentVehicles.test.mjs`: executes shipment table and detail screen rendering for current and historical display vehicles, blank plates, missing fields, lost packages, pagination, View, and Reprint actions.
+- Existing `ShipmentIntegrationTest` includes cold-context SQL capture, separate custody/display assignments, and deterministic bulk truck-history regressions. `TrackingAndVehicleIntegrationTest` verifies retained display through arrival and hauler loading alongside decreased fleet occupancy; no new backend package or endpoint.
+- `.review/current/transport-truck-display.md`: local transport truck display verification report, changed-file rationale, and pending browser/device acceptance checklist.
 
 ### Release checkpoint remediation
 - `backend/src/main/java/com/tnl/logistics/service/PaymentCollectibility.java`: shared shipment/SOA collectible balance calculation.

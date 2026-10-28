@@ -37,6 +37,16 @@ public class ShipmentSummaryResponse {
     private int currentVehicleCount;
     private String currentVehicleId;
     private String currentVehiclePlate;
+    private String displayVehicleId;
+    private String displayVehiclePlate;
+    private int displayVehicleCount;
+
+    public String getDisplayVehicleId() { return displayVehicleId; }
+    public void setDisplayVehicleId(String displayVehicleId) { this.displayVehicleId = displayVehicleId; }
+    public String getDisplayVehiclePlate() { return displayVehiclePlate; }
+    public void setDisplayVehiclePlate(String displayVehiclePlate) { this.displayVehiclePlate = displayVehiclePlate; }
+    public int getDisplayVehicleCount() { return displayVehicleCount; }
+    public void setDisplayVehicleCount(int displayVehicleCount) { this.displayVehicleCount = displayVehicleCount; }
 
     public int getCurrentVehicleCount() { return currentVehicleCount; }
     public void setCurrentVehicleCount(int currentVehicleCount) { this.currentVehicleCount = currentVehicleCount; }
