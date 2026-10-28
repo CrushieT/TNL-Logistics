@@ -61,13 +61,15 @@ function rowWith(view, value) {
     && node.props.children.some(child => child?.type === 'Text' && text(child) === value));
 }
 
-test('shipment table places current vehicles after Status and preserves View and paging actions', () => {
+test('shipment table places display vehicles after Status and preserves View and paging actions', () => {
   const cases = [
-    [{ currentVehicleCount: 0 }, '—'],
-    [{ currentVehicleCount: 1, currentVehiclePlate: 'ABC-123', currentVehicleId: 'TRK-A' }, 'ABC-123'],
-    [{ currentVehicleCount: 1, currentVehiclePlate: '   ', currentVehicleId: 'TRK-A' }, 'TRK-A'],
-    [{ currentVehicleCount: 2, currentVehiclePlate: 'must not appear' }, 'Multiple vehicles'],
-    [{ vehiclePlate: 'HISTORICAL', vehicleId: 'OLD' }, '—'],
+    [{ displayVehicleCount: 0 }, '—'],
+    [{ displayVehicleCount: 1, displayVehiclePlate: '  ABC-123  ', displayVehicleId: 'TRK-A' }, 'ABC-123'],
+    [{ displayVehicleCount: 1, displayVehiclePlate: '   ', displayVehicleId: 'TRK-A' }, 'TRK-A'],
+    [{ displayVehicleCount: 2, displayVehiclePlate: 'must not appear' }, 'Multiple vehicles'],
+    [{ displayVehicleCount: 1, displayVehiclePlate: 'HISTORICAL', displayVehicleId: 'OLD' }, 'HISTORICAL'],
+    [{ displayVehicleCount: 1, displayVehicleId: 'OLD', currentVehicleCount: 0 }, 'OLD'],
+    [{ currentVehicleCount: 1, currentVehiclePlate: 'LEGACY' }, '—'],
   ];
   for (const [assignment, expected] of cases) {
     const shipment = { shipmentId: 'SHP-1', status: 'Loaded on Truck', ...assignment };
@@ -84,7 +86,7 @@ test('shipment table places current vehicles after Status and preserves View and
     assert.deepEqual(header.props.children[0].map(text), ['SHIPMENT', 'RECIPIENT', 'CLIENT', 'QTY', 'STATUS', 'VEHICLE', 'PAYMENT', 'BALANCE', '']);
     const row = view.nodes().find(node => node.type === 'View' && node.props.children[0]?.props?.children?.[0]?.props?.children?.[0] === 'SHP-1');
     assert.equal(text(row.props.children[5]), expected);
-    assert.equal(text(row).includes('HISTORICAL'), false);
+    assert.equal(text(row).includes('HISTORICAL'), expected === 'HISTORICAL');
     view.nodes().find(node => node.type === 'Pressable' && text(node) === 'View').props.onPress();
     assert.equal(selected, shipment);
     view.nodes().find(node => node.type === 'Button' && node.props.label === 'Next').props.onPress();
@@ -96,18 +98,18 @@ test('shipment table places current vehicles after Status and preserves View and
 
 test('detail screen renders package assignments and keeps View and Reprint tied to the package', async () => {
   const units = [
-    { trackingId: 'PKG-1', currentVehicleId: 'TRK-A', currentVehiclePlate: 'ABC-123' },
-    { trackingId: 'PKG-2', currentVehicleId: 'TRK-B', currentVehiclePlate: '  ' },
+    { trackingId: 'PKG-1', displayVehicleId: 'TRK-A', displayVehiclePlate: 'ABC-123' },
+    { trackingId: 'PKG-2', displayVehicleId: 'TRK-B', displayVehiclePlate: '  ' },
     { trackingId: 'PKG-3' },
-    { trackingId: 'PKG-4', lost: true, currentVehicleId: 'TRK-A', currentVehiclePlate: 'ABC-123' },
-    { trackingId: 'PKG-5', currentVehicleId: null, currentVehiclePlate: null },
+    { trackingId: 'PKG-4', lost: true, displayVehicleId: 'TRK-A', displayVehiclePlate: 'ABC-123' },
+    { trackingId: 'PKG-5', displayVehicleId: 'OLD', displayVehiclePlate: '  OLD-PLATE  ', currentVehicleId: null },
   ].map((unit, index) => ({ ...unit, packageIndex: index + 1, packageCount: 5, status: 'Registered' }));
   const view = mount('../src/app/shipments/[shipmentId]/index.js', {}, { shipmentId: 'SHP-1', units });
   await view.load();
   assert.deepEqual(view.reads, ['SHP-1']);
   const header = rowWith(view, 'TRACKING ID');
   assert.deepEqual(header.props.children.map(text), ['PACKAGE', 'TRACKING ID', 'STATUS', 'VEHICLE', '']);
-  for (const [index, expected] of ['ABC-123', 'TRK-B', '—', '—', '—'].entries()) {
+  for (const [index, expected] of ['ABC-123', 'TRK-B', '—', '—', 'OLD-PLATE'].entries()) {
     assert.equal(text(rowWith(view, `PKG-${index + 1}`).props.children[3]), expected);
   }
   const packageRow = rowWith(view, 'PKG-2');

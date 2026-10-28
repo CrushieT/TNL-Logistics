@@ -265,6 +265,7 @@ public class TrackingAndVehicleIntegrationTest {
         assertEquals(ParcelStatus.LOADED_ON_TRUCK, unitAfterScan1.getCurrentStatus());
         assertNotNull(unitAfterScan1.getCurrentVehicle());
         assertEquals("VH-001", unitAfterScan1.getCurrentVehicle().getVehicleId());
+        assertEquals("VH-001", shipmentService.getShipmentById(shipResp.getShipmentId()).getUnits().get(0).getDisplayVehicleId());
 
         // 4. Scan: LOADED_ON_TRUCK -> ARRIVED_AT_TNL (Clears vehicle assignment)
         TrackingScanRequest scan2 = new TrackingScanRequest(trackingId, ParcelStatus.ARRIVED_AT_TNL, null, "Unloaded at Baguio Hub");
@@ -283,6 +284,10 @@ public class TrackingAndVehicleIntegrationTest {
         ParcelUnit unitAfterScan2 = parcelUnitRepository.findById(trackingId).orElseThrow();
         assertEquals(ParcelStatus.ARRIVED_AT_TNL, unitAfterScan2.getCurrentStatus());
         assertNull(unitAfterScan2.getCurrentVehicle());
+        var arrivedUnit = shipmentService.getShipmentById(shipResp.getShipmentId()).getUnits().get(0);
+        assertNull(arrivedUnit.getCurrentVehicleId());
+        assertEquals("VH-001", arrivedUnit.getDisplayVehicleId());
+        assertEquals("ABC-1234", arrivedUnit.getDisplayVehiclePlate());
 
         // 5. Scan: ARRIVED_AT_TNL -> LOADED_TO_HAULER (Final terminal dispatch)
         TrackingScanRequest scan3 = new TrackingScanRequest(trackingId, ParcelStatus.LOADED_TO_HAULER, null, "Dispatched to 3rd party hauler");
@@ -296,6 +301,7 @@ public class TrackingAndVehicleIntegrationTest {
         TrackingScanResponse scanResp3 = objectMapper.readValue(res3.getResponse().getContentAsString(), TrackingScanResponse.class);
         assertEquals("Loaded to Hauler", scanResp3.getNewStatus());
         assertEquals("1 / 1 Loaded to Hauler", scanResp3.getStatusRollup());
+        assertEquals("VH-001", shipmentService.getShipmentById(shipResp.getShipmentId()).getUnits().get(0).getDisplayVehicleId());
 
         // 6. Verify audit event log entries
         List<TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(trackingId);
@@ -437,6 +443,10 @@ public class TrackingAndVehicleIntegrationTest {
                 .andReturn();
         VehicleResponse vAfter3 = objectMapper.readValue(getRes3.getResponse().getContentAsString(), VehicleResponse.class);
         assertEquals(1L, vAfter3.getOnTruckCount());
+        var shipmentDetail = shipmentService.getShipmentById(shipResp.getShipmentId());
+        assertEquals(v.getVehicleId(), shipmentDetail.getUnits().get(0).getDisplayVehicleId());
+        assertNull(shipmentDetail.getUnits().get(0).getCurrentVehicleId());
+        assertEquals(v.getVehicleId(), shipmentDetail.getUnits().get(1).getCurrentVehicleId());
 
         // 9. Smart Delete: Soft-deactivates when vehicle has past tracking history
         mockMvc.perform(delete("/api/v1/vehicles/" + v.getVehicleId())

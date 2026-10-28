@@ -388,7 +388,7 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         Map<String, TrackingEvent> latestEventWithVehicleByTrackingId = new HashMap<>();
         if (!trackingIdsNeedingVehicle.isEmpty()) {
-            List<TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdInAndVehicleNotNullOrderByEventTimestampAsc(trackingIdsNeedingVehicle);
+            List<TrackingEvent> events = trackingEventRepository.findLatestVehicleEvents(trackingIdsNeedingVehicle);
             for (TrackingEvent ev : events) {
                 if (ev.getParcelUnit() != null) {
                     latestEventWithVehicleByTrackingId.put(ev.getParcelUnit().getTrackingId(), ev);
@@ -396,12 +396,14 @@ public class ShipmentServiceImpl implements ShipmentService {
             }
         }
 
+        Map<String, Vehicle> historicalDisplayVehicles = findHistoricalDisplayVehicles(allParcels);
         List<ShipmentSummaryResponse> summaries = shipments.stream()
                 .map(s -> mapToSummaryResponse(
                         s,
                         parcelsByShipment.getOrDefault(s.getShipmentId(), Collections.emptyList()),
                         paymentsByShipment.getOrDefault(s.getShipmentId(), Collections.emptyList()),
                         latestEventWithVehicleByTrackingId,
+                        historicalDisplayVehicles,
                         statementsById.get(s.getStatementId())
                 ))
                 .collect(Collectors.toList());
@@ -606,11 +608,17 @@ public class ShipmentServiceImpl implements ShipmentService {
         )).collect(Collectors.toList());
 
         resp.setUnits(unitResponses);
+        Map<String, Vehicle> historicalDisplayVehicles = findHistoricalDisplayVehicles(parcels);
         Map<String, ParcelUnit> parcelsById = parcels.stream().collect(Collectors.toMap(ParcelUnit::getTrackingId, parcel -> parcel));
         for (ParcelUnitResponse unit : unitResponses) {
             ParcelUnit parcel = parcelsById.get(unit.getTrackingId());
             unit.setLost(parcel.isLost());
             unit.setRevision(parcel.getRevision());
+            Vehicle displayVehicle = resolveDisplayVehicle(parcel, historicalDisplayVehicles);
+            if (displayVehicle != null) {
+                unit.setDisplayVehicleId(displayVehicle.getVehicleId());
+                unit.setDisplayVehiclePlate(displayVehicle.getPlateNumber());
+            }
             if (!parcel.isLost() && parcel.getCurrentVehicle() != null) {
                 unit.setCurrentVehicleId(parcel.getCurrentVehicle().getVehicleId());
                 unit.setCurrentVehiclePlate(parcel.getCurrentVehicle().getPlateNumber());
@@ -853,6 +861,7 @@ public class ShipmentServiceImpl implements ShipmentService {
             List<ParcelUnit> parcels,
             List<Payment> payments,
             Map<String, TrackingEvent> latestEventWithVehicleByTrackingId,
+            Map<String, Vehicle> historicalDisplayVehicles,
             Soa statement
     ) {
         if (parcels == null) parcels = Collections.emptyList();
@@ -939,6 +948,19 @@ public class ShipmentServiceImpl implements ShipmentService {
             }
         }
         response.setCurrentVehicleCount(currentVehicles.size());
+        Map<String, Vehicle> displayVehicles = new HashMap<>();
+        for (ParcelUnit parcel : parcels) {
+            Vehicle displayVehicle = resolveDisplayVehicle(parcel, historicalDisplayVehicles);
+            if (displayVehicle != null) {
+                displayVehicles.putIfAbsent(displayVehicle.getVehicleId(), displayVehicle);
+            }
+        }
+        response.setDisplayVehicleCount(displayVehicles.size());
+        if (displayVehicles.size() == 1) {
+            Vehicle displayVehicle = displayVehicles.values().iterator().next();
+            response.setDisplayVehicleId(displayVehicle.getVehicleId());
+            response.setDisplayVehiclePlate(displayVehicle.getPlateNumber());
+        }
         if (currentVehicles.size() == 1) {
             Vehicle currentVehicle = currentVehicles.values().iterator().next();
             response.setCurrentVehicleId(currentVehicle.getVehicleId());
@@ -957,7 +979,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         Map<String, TrackingEvent> eventMap = new HashMap<>();
         if (!parcels.isEmpty()) {
             List<String> tIds = parcels.stream().map(ParcelUnit::getTrackingId).collect(Collectors.toList());
-            List<TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdInAndVehicleNotNullOrderByEventTimestampAsc(tIds);
+            List<TrackingEvent> events = trackingEventRepository.findLatestVehicleEvents(tIds);
             for (TrackingEvent ev : events) {
                 if (ev.getParcelUnit() != null) {
                     eventMap.put(ev.getParcelUnit().getTrackingId(), ev);
@@ -967,7 +989,26 @@ public class ShipmentServiceImpl implements ShipmentService {
         Soa statement = s.getStatementId() != null && !s.getStatementId().isBlank()
                 ? soaRepository.findById(s.getStatementId()).orElse(null)
                 : null;
-        return mapToSummaryResponse(s, parcels, payments, eventMap, statement);
+        return mapToSummaryResponse(s, parcels, payments, eventMap, findHistoricalDisplayVehicles(parcels), statement);
+    }
+
+    private Map<String, Vehicle> findHistoricalDisplayVehicles(List<ParcelUnit> parcels) {
+        List<String> trackingIds = parcels.stream()
+                .filter(parcel -> !parcel.isLost() && parcel.getCurrentVehicle() == null)
+                .filter(parcel -> parcel.getCurrentStatus() == ParcelStatus.ARRIVED_AT_TNL
+                        || parcel.getCurrentStatus() == ParcelStatus.LOADED_TO_HAULER
+                        || parcel.getCurrentStatus() == ParcelStatus.COMPLETED)
+                .map(ParcelUnit::getTrackingId)
+                .toList();
+        if (trackingIds.isEmpty()) return Collections.emptyMap();
+        return trackingEventRepository.findLatestTruckLoadingEvents(trackingIds).stream()
+                .collect(Collectors.toMap(event -> event.getParcelUnit().getTrackingId(), TrackingEvent::getVehicle));
+    }
+
+    private Vehicle resolveDisplayVehicle(ParcelUnit parcel, Map<String, Vehicle> historicalDisplayVehicles) {
+        if (parcel.isLost()) return null;
+        return parcel.getCurrentVehicle() != null
+                ? parcel.getCurrentVehicle() : historicalDisplayVehicles.get(parcel.getTrackingId());
     }
 
     private static class RollupStatus {
