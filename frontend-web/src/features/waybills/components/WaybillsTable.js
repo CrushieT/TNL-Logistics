@@ -5,14 +5,13 @@ import StatusBadge from '../../../components/common/StatusBadge';
 import { colors, fonts, radius, spacing } from '../../../theme';
 
 const COLUMNS = [
-  { key: 'waybill', label: 'WAYBILL', flex: 1.5 },
-  { key: 'shipment', label: 'SHIPMENT', flex: 1.2 },
-  { key: 'parties', label: 'CLIENT / RECIPIENT', flex: 1.8 },
-  { key: 'destination', label: 'DESTINATION', flex: 1.5 },
+  { key: 'waybill', label: 'WAYBILL', flex: 1.4 },
+  { key: 'shipment', label: 'SHIPMENT', flex: 1.1 },
+  { key: 'parties', label: 'CLIENT / RECIPIENT', flex: 2.35 },
+  { key: 'destination', label: 'DESTINATION', flex: 2.15 },
   { key: 'quantity', label: 'QTY', flex: 0.6 },
-  { key: 'hauler', label: 'HAULER', flex: 1.3 },
-  { key: 'status', label: 'STATUS', flex: 1.3 },
-  { key: 'action', label: '', flex: 0.6 },
+  { key: 'status', label: 'STATUS', flex: 1.0, minWidth: 125 },
+  { key: 'action', label: '', flex: 0.25, minWidth: 44 },
 ];
 
 export default function WaybillsTable({
@@ -31,7 +30,7 @@ export default function WaybillsTable({
       <View style={styles.table}>
         <View style={styles.headerRow}>
           {COLUMNS.map((column) => (
-            <Text key={column.key} style={[styles.headerCell, { flex: column.flex }]}>
+            <Text key={column.key} style={[styles.headerCell, { flex: column.flex }, column.minWidth ? { minWidth: column.minWidth } : null]}>
               {column.label}
             </Text>
           ))}
@@ -77,13 +76,10 @@ export default function WaybillsTable({
               <View style={[styles.cell, { flex: COLUMNS[4].flex }]}>
                 <Text style={styles.identifierSmall}>{waybill.quantity ?? 0}</Text>
               </View>
-              <View style={[styles.cell, { flex: COLUMNS[5].flex }]}>
-                <Text style={styles.primaryText} numberOfLines={2}>{waybill.haulerName || '-'}</Text>
-              </View>
-              <View style={[styles.cell, { flex: COLUMNS[6].flex }]}>
+              <View style={[styles.cell, { flex: COLUMNS[5].flex, minWidth: COLUMNS[5].minWidth }]}>
                 <StatusBadge value={waybill.statusLabel || waybill.status} kind="waybill" />
               </View>
-              <View style={[styles.cell, styles.actionCell, { flex: COLUMNS[7].flex }]}>
+              <View style={[styles.cell, styles.actionCell, { flex: COLUMNS[6].flex, minWidth: COLUMNS[6].minWidth }]}>
                 <Pressable
                   accessibilityRole="link"
                   accessibilityLabel={`View waybill ${waybill.waybillId}`}
@@ -156,7 +152,7 @@ const webSelectStyle = {
 const styles = StyleSheet.create({
   scrollContent: { flexGrow: 1 },
   table: {
-    minWidth: 1120,
+    minWidth: 900,
     flex: 1,
     backgroundColor: colors.surface,
     borderWidth: 1,
