@@ -30,7 +30,8 @@ function loadPrinterService(isDevelopment, savedValues = {}, scheduleTimeout = s
     .replace(/^import .*;\r?\n/gm, '').replace(/^export /gm, '');
   const storage = new Map(Object.entries(savedValues));
   return runInNewContext(`${source}\n({ service: bluetoothPrinterService, VirtualPrinterDriver, VIRTUAL_PRINTERS, IS_VIRTUAL_PRINTER_ENABLED });`, {
-    __DEV__: isDevelopment, Platform: { OS: 'web' }, PermissionsAndroid: {}, Uint8Array, setTimeout: scheduleTimeout,
+    __DEV__: isDevelopment, Platform: { OS: 'web' }, PermissionsAndroid: {}, Uint8Array, clearTimeout,
+    setTimeout: (callback, delay) => delay === 15000 ? setTimeout(callback, delay) : scheduleTimeout(callback, delay),
     secureStore: {
       getItem: async (key) => storage.get(key) ?? null,
       setItem: async (key, value) => storage.set(key, value),
@@ -50,6 +51,7 @@ function loadAndroidPrinter(apiLevel, nativeResult, isGranted = true) {
         return nativeResult;
       },
       connect: async () => { calls.connections += 1; },
+      disconnect: async () => {},
     },
     BluetoothTscPrinter: { printLabel: async () => { calls.prints += 1; } },
   };
@@ -198,7 +200,7 @@ test('Bluetooth connection retries a transient native failure once after a clean
   const delays = [];
   const { service } = loadPrinterService(false, {}, (callback, delay) => { delays.push(delay); queueMicrotask(callback); });
   let attempts = 0;
-  service.bluetoothDriver.nativeModule = { BluetoothManager: { connect: async () => {
+  service.bluetoothDriver.nativeModule = { BluetoothManager: { disconnect: async () => {}, connect: async () => {
     attempts += 1;
     if (attempts === 1) throw Object.assign(new Error('Unable to connect device'), { code: 'Unable to connect device' });
   } } };
@@ -213,7 +215,7 @@ test('Bluetooth connection reports the second failure and releases the connectio
   const { service } = loadPrinterService(false, {}, (callback) => queueMicrotask(callback));
   let attempts = 0;
   const failure = Object.assign(new Error('Unable to connect device'), { code: 'Unable to connect device' });
-  service.bluetoothDriver.nativeModule = { BluetoothManager: { connect: async () => { attempts += 1; throw failure; } } };
+  service.bluetoothDriver.nativeModule = { BluetoothManager: { disconnect: async () => {}, connect: async () => { attempts += 1; throw failure; } } };
   const device = { type: 'BLUETOOTH', address: 'PRINTER-1' };
   await assert.rejects(service.connect(device), (error) => error === failure);
   assert.equal(attempts, 2);
@@ -229,7 +231,7 @@ test('Bluetooth connection does not retry permission or other native failures', 
   for (const code of ['PERMISSION_DENIED', 'BT NOT ENABLED', 'UNKNOWN_ERROR']) {
     const { service } = loadPrinterService(false, {}, () => assert.fail('Unexpected retry delay'));
     let attempts = 0;
-    service.bluetoothDriver.nativeModule = { BluetoothManager: { connect: async () => {
+    service.bluetoothDriver.nativeModule = { BluetoothManager: { disconnect: async () => {}, connect: async () => {
       attempts += 1;
       throw Object.assign(new Error(code), { code });
     } } };
@@ -243,7 +245,7 @@ test('overlapping Bluetooth connects share the same device attempt and reject sw
   let finishConnection;
   let attempts = 0;
   const pending = new Promise((resolve) => { finishConnection = resolve; });
-  service.bluetoothDriver.nativeModule = { BluetoothManager: { connect: async () => { attempts += 1; await pending; } } };
+  service.bluetoothDriver.nativeModule = { BluetoothManager: { disconnect: async () => {}, connect: async () => { attempts += 1; await pending; } } };
   const device = { type: 'BLUETOOTH', address: 'PRINTER-1' };
   const first = service.connect(device);
   const second = service.connect(device);
@@ -313,7 +315,7 @@ test('Bluetooth printing is never retried after a native failure', async () => {
   const { service } = loadPrinterService(false, {}, () => assert.fail('Unexpected print retry delay'));
   let printAttempts = 0;
   service.bluetoothDriver.nativeModule = {
-    BluetoothManager: { connect: async () => {} },
+    BluetoothManager: { disconnect: async () => {}, connect: async () => {} },
     BluetoothTscPrinter: { printLabel: async () => {
       printAttempts += 1;
       throw Object.assign(new Error('Unable to connect device'), { code: 'Unable to connect device' });
