@@ -38,3 +38,41 @@ These checks require explicit approval for the release build and installation. U
 5. If an accepted scan never produces a completion broadcast, wait at most 45 seconds. Expect an explicit timeout error and an enabled Scan control; a retry should work. If permission is revoked or Bluetooth turns off during the scan, expect the corresponding permission or Bluetooth-off error instead. This requires a controlled native test setup; ordinary scans should complete before the deadline.
 
 There are no scan API payloads or database writes to verify. The Printer screen may read branding and pending print-audit entries during normal initialization; it must not submit a print-audit request merely because a scan or Connect action ran. Hardware and signed-APK results should be added here after the approved test.
+
+
+## Remembered-printer reconnection (2026-10-29)
+
+Implementation and automated verification: [COMPLETED]. Physical Android acceptance: [UPCOMING].
+
+The authenticated, active app attempts the saved physical Bluetooth address after preference initialization and on a transition back to active. Repeated active events do not trigger another attempt. There is no discovery, permission request, Bluetooth-enable dialog, proximity check, periodic retry, print transmission, or new print-audit submission in this path. The existing single transient native connection retry shares the same 15-second deadline.
+
+The device-local `tnl_paired_printer` preference remains separate from authentication and audit ownership. Initialization validates physical addresses and handles malformed or unreadable storage without connecting. A missing `tnl_printer_auto_reconnect` preference defaults eligible for an existing valid physical printer; `false` pauses automation. Disconnect persists that pause before native cancellation. Successful manual Connect/Reconnect persists `true`. Confirmed Forget disconnects and removes both preferences without unpairing the Android device.
+
+Connection operations coalesce the same target and reject competing targets. Cancellation invalidates operation ownership, clears deadline/retry timers, calls the existing native disconnect, and waits for its completion before releasing the connection guard. A bridge without disconnect support cannot begin a connection. Cleanup failure blocks replacement and exposes Disconnect as recovery. Connection-loss events clear the connected state, including loss while a native success is awaiting preference storage. Backgrounding cancels unfinished automatic operations; authentication changes and provider cleanup cancel pending operations without persisting a user pause. Printing guards cover the whole explicit label job and individual native transmissions.
+
+### Automated evidence
+
+- From the repository root: `node --test frontend-mobile/tests/printer.test.mjs frontend-mobile/tests/printerDiscoveryFlows.test.mjs` passed 80/80 tests.
+- From the repository root: `node --test frontend-mobile/tests/*.test.mjs` passed 341/341 tests across 13 suites, including the existing native-disconnect harness, discovery permissions, label geometry, QR decoding, and audit-outbox checks.
+- From `frontend-mobile`: `npx.cmd --no-install expo export --platform android` succeeded (1,552 modules).
+- From the repository root: `git diff --check` passed.
+- Production service/provider/screen checks exercise restart restoration, missing/malformed preferences, API 30/31/36, missing bridge/cancellation support, denied permission, Bluetooth off, retryable failures, duplicate active events, same-target coalescing, target contention, timeout cleanup acknowledgement, transient-retry deadlines, late success, storage races, connection loss, account change, locked authentication, logout, backgrounding, unmount, persisted Disconnect, manual resume, Forget confirmation, and printing guards.
+- Reconnect-only checks observed zero transmissions and zero new audit entries. A separate existing-outbox fixture still synchronizes only the authenticated owner's pending entries on initialization/foreground. A partial-print fixture audits only the acknowledged first parcel; reconnection neither retransmits the uncertain parcel nor attempts the remaining parcel.
+- Existing test expectations were retained. Service test boundaries now provide native disconnect and clearable deadline timers required by the connection contract; no success/denial assertion was reversed.
+
+These checks use mocked native boundaries for connection lifecycle races. The Android export verifies JavaScript bundling, not radio reachability, actual socket teardown timing, printer output, or Android system-print interaction. No dependencies, native bridge, manifests, build configuration, authentication storage, backend, or database code changed.
+
+### What to Test
+
+Automated commands and results are listed above. Physical checks below remain unexecuted; use an approved Android development build containing the existing native printer patch and an approved sample/test parcel.
+
+1. Manually connect once to a powered printer. Restart the authenticated app nearby. Expect the saved name/address, connection progress, then Connected without Scan, permission prompts, or label output. Background and return while connected; expect no extra connection or print job.
+2. Start with the saved printer powered off. Expect a recoverable error and enabled Reconnect after the 15-second connection deadline plus native cleanup. Power it on and return from the background; expect one new attempt to the same address. Repeated active notifications must not form a retry loop.
+3. Disable Bluetooth or deny Nearby Devices, then open/foreground the app. Expect guidance without enable/permission dialogs. Restore Bluetooth/permission and foreground again, or use manual Reconnect; manual actions may request permission. No discovery or automatic print should occur.
+4. Tap Disconnect, restart, and foreground repeatedly. Expect the saved printer to remain visible and disconnected with automation paused. Tap Reconnect; expect connection and automation restored after success. Verify a subsequent loss followed by foreground reconnects.
+5. Tap Forget printer, cancel once, then confirm. Expect the saved name/address and Reconnect to disappear after confirmation, and no startup attempt after restart. Android Settings must still list its existing pairing.
+6. Background or sign out during connection progress, then return/sign in. Expect the obsolete result to be ignored and no user pause preference to be created. Change accounts during progress; expect only the current session to publish connection state. Disconnect or Forget during progress must prevent late success from restoring the connection.
+7. Explicitly print an approved parcel label after reconnection. During printing, verify Connect/replacement, Scan, Disconnect, Forget, and mode changes are blocked. Cause a controlled connection failure mid-job; reconnect and verify no automatic resend or duplicate label. Inspect acknowledged, uncertain, and unattempted tracking IDs before deciding whether to reprint explicitly.
+8. Check virtual printing in development and the existing Android system-print flow. Expect existing simulation/system-print behavior and explicit confirmation for parcel audit recording.
+
+Expected API/database behavior: reconnect, Disconnect, and Forget have no label-print payload or database mutation. Normal branding reads and synchronization of pre-existing audit-outbox entries may still run. For an explicit physical parcel print, expect the existing print-label audit request with the original job ID, authenticated owner, and only acknowledged tracking IDs. Reconnecting must not create a new job, change label counters, submit untransmitted IDs, or change tracking, payment, or waybill state. The sample action uses `auditMode: 'NONE'` and should change no parcel records.
