@@ -3,7 +3,7 @@
 ### Dispatch arrival and courier truck loading
 
 - `frontend-mobile/tests/dispatchArrival.test.mjs`: executes the production dispatch screen with mocked native/API boundaries; covers camera/manual arrival queueing, capacity, duplicates, eligibility, retries, offline/busy controls, discard/navigation, session ownership, and obsolete requests.
-- `.review/current/dispatch-arrival-verification.md`: scoped implementation evidence, verification commands, fixture adjustments, and device acceptance checklist.
+- `.review/archive/dispatch-arrival-verification.md`: scoped implementation evidence, verification commands, fixture adjustments, and device acceptance checklist.
 
 ### Local review artifacts
 
@@ -399,7 +399,7 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 ### Shipment current vehicle columns
 - `frontend-web/tests/shipmentVehicles.test.mjs`: executes shipment table and detail screen rendering for current and historical display vehicles, blank plates, missing fields, lost packages, pagination, View, and Reprint actions.
 - Existing `ShipmentIntegrationTest` includes cold-context SQL capture, separate custody/display assignments, and deterministic bulk truck-history regressions. `TrackingAndVehicleIntegrationTest` verifies retained display through arrival and hauler loading alongside decreased fleet occupancy; no new backend package or endpoint.
-- `.review/current/transport-truck-display.md`: local transport truck display verification report, changed-file rationale, and pending browser/device acceptance checklist.
+- `.review/archive/transport-truck-display.md`: local transport truck display verification report, changed-file rationale, and pending browser/device acceptance checklist.
 
 ### Release checkpoint remediation
 - `backend/src/main/java/com/tnl/logistics/service/PaymentCollectibility.java`: shared shipment/SOA collectible balance calculation.
@@ -434,4 +434,4 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 
 - `frontend-mobile/src/features/scanner/components/ScanFeedbackBanner.js`: shared accessible checking, success, warning, and error feedback; short success/info expiry with timer cleanup.
 - `frontend-mobile/tests/scanFeedback.test.mjs`: production banner timer/accessibility and barcode modal lifecycle/feedback tests.
-- `.review/current/mobile-scan-feedback.md`: implementation evidence and manual acceptance for courier, dispatch, and reusable barcode scanning.
+- `.review/archive/mobile-scan-feedback.md`: implementation evidence and manual acceptance for courier, dispatch, and reusable barcode scanning.

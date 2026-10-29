@@ -104,15 +104,8 @@ export function buildEscPosCommands(labelData, branding = null) {
   appendLine('--------------------------------');
 
   // 5. Footer Metadata
-  if (labelData.contents) appendLine(`CONTENTS: ${labelData.contents}`);
-  if (labelData.clientName) appendLine(`CLIENT:   ${labelData.clientName}`);
+  if (labelData.contents) appendLine(`NOTES: ${labelData.contents}`);
   appendLine(`SHIPMENT: ${labelData.shipmentId}`);
-  if (labelData.totalAmount !== null && labelData.totalAmount !== undefined) {
-    append(ESC, 0x61, 0x02); // Right align
-    append(ESC, 0x45, 0x01); // Bold ON
-    appendLine(`TOTAL: PHP ${formatFiniteNumber(labelData.totalAmount, 'totalAmount', { maximumFractionDigits: 2 })}`);
-    append(ESC, 0x45, 0x00); // Bold OFF
-  }
 
   // 6. Paper Feed & Cut
   append(ESC, 0x64, 0x03); // Feed 3 lines
@@ -154,11 +147,7 @@ export function buildLabelHtml(labelOrLabels, branding = null) {
     const address = escapeHtml(label.address);
     const contents = escapeHtml(label.contents);
     const shipmentId = escapeHtml(label.shipmentId);
-    const clientName = escapeHtml(label.clientName);
     const route = escapeHtml(label.route);
-    const formattedTotal = label.totalAmount === null || label.totalAmount === undefined
-      ? null
-      : formatFiniteNumber(label.totalAmount, 'totalAmount', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
     return `  <div class="label-card">
     <div class="header">
@@ -187,13 +176,11 @@ export function buildLabelHtml(labelOrLabels, branding = null) {
     </div>
     <div class="footer">
       <div class="footer-row">
-        <div class="contents-field">${contents ? `<span class="muted">Contents:</span> ${contents}` : ''}</div>
+        <div class="contents-field">${contents ? `<span class="muted">Notes:</span> ${contents}` : ''}</div>
       </div>
       <div class="footer-row">
-        <div class="client-field">${clientName ? `<span class="muted">Client:</span> ${clientName}` : ''}</div>
         <div class="shipment-field"><span class="muted">Shipment:</span> ${shipmentId}</div>
       </div>
-      ${formattedTotal !== null ? `<div class="total-row"><span class="muted">Total:</span> PHP ${formattedTotal}</div>` : ''}
     </div>
   </div>`;
   }).join('\n');
@@ -328,20 +315,14 @@ export function buildLabelHtml(labelOrLabels, branding = null) {
     .muted {
       color: #555555;
     }
-    .contents-field, .client-field {
+    .contents-field {
       flex: 1;
       min-width: 0;
       overflow-wrap: anywhere;
     }
     .shipment-field {
-      flex: none;
-      white-space: nowrap;
-    }
-    .total-row {
-      text-align: right;
-      font-size: 13.5px;
-      font-weight: 900;
-      margin-top: 4px;
+      min-width: 0;
+      overflow-wrap: anywhere;
     }
     @media print {
       body {

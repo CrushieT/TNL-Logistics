@@ -643,7 +643,7 @@ test('buildLabelHtml generates printable HTML matching prototype layout', () => 
   assert.ok(html.includes('Juan Dela Cruz'), 'Should include recipient name');
   assert.ok(html.includes('<div class="hub">Manila to TNL Baguio</div>'), 'Should show the entered route below the address');
   assert.ok(html.includes('Assorted office supplies'), 'Should include contents');
-  assert.ok(html.includes('PHP 450'), 'Should format total amount in PHP');
+  assert.equal(html.includes('PHP '), false, 'Intentional presentation change: omit price');
   assert.ok(html.includes('<svg'), 'Should include SVG QR code');
 });
 
@@ -810,7 +810,7 @@ test('buildTsplOptions generates landscape TSPL payload with border, divider lin
   assert.ok(Array.isArray(tspl.reverse), 'Should include reverse blocks for solid lines');
   assert.equal(tspl.reverse.filter((block) => block.width === 4 || block.width === 680).length, 5);
 
-  for (const [dividerX, startY] of [[250, 85], [125, 630]]) {
+  for (const [dividerX, startY] of [[250, 85]]) {
     const dashes = tspl.reverse.filter((block) => block.x === dividerX);
     assert.ok(dashes.length > 1, 'Each divider must contain separated dashes');
     assert.equal(dashes[0].y, startY);
@@ -827,77 +827,39 @@ test('buildTsplOptions generates landscape TSPL payload with border, divider lin
   const withoutTotal = buildTsplOptions({ ...labelData, totalAmount: null });
   assert.equal(withoutTotal.reverse.some((block) => block.x === 125), false, 'Total divider must be omitted when there is no total');
 
-  // Total amount
-  const totalItem = tspl.text.find((t) => t.text.includes('Total: PHP 500'));
-  assert.ok(totalItem);
-  assert.equal(totalItem.fonttype, '4', 'Total must be prominent font 4');
-  assert.equal(totalItem.bold, true);
+  assert.equal(tspl.text.some(item => /^(Total|Client|Contents):/.test(item.text)), false);
+  assert.equal(tspl.reverse.some(block => block.x === 125), false);
 });
 
-test('Bluetooth footer uses full-width contents and places shipment beside the client above the total', () => {
-  const contents = 'General goods, workflow fixture Testing test Test and testing again';
-  const payload = buildTsplOptions({
-    trackingId: 'TRK-2026-000058', recipientName: 'Northbridge Trading',
-    address: 'Unit 402, Trade Tower, Binondo, Manila', destinationHub: 'TNL Labo C.N.',
-    contents, shipmentId: 'SHP-2026-014', clientName: 'Northbridge Trading',
-    route: 'Manila to TNL Labo C.N.', totalAmount: 1249.85,
-  });
-  const shipment = payload.text.find((item) => item.text.startsWith('Shipment:'));
-  const client = payload.text.find((item) => item.text.startsWith('Client:'));
-  const contentsLines = payload.text.filter((item) => item.y === 85 && item.x > client.x && item.x < 340);
-  assert.equal(contentsLines.map((item) => item.text).join(' '), `Contents: ${contents}`);
-  assert.ok(contentsLines.length > 1);
-  const characterWidths = { '1': 8, '2': 12, '3': 16 };
-  for (const line of contentsLines) {
-    assert.ok(line.y + line.text.length * characterWidths[line.fonttype] <= 1111);
+test('Bluetooth Notes and Shipment use the full footer without price or client space', () => {
+  for (const contents of ['', 'General goods, workflow fixture Testing test Test and testing again', 'A'.repeat(150)]) {
+    const shipmentId = 'SHP-' + '1234567890'.repeat(12);
+    const payload = buildTsplOptions({ contents, shipmentId, clientName: 'Hidden Client', totalAmount: 1249.85,
+      address: 'Unit 402, Trade Tower, Binondo, Manila', route: 'Manila to TNL Labo C.N. via regional distribution warehouse' });
+    const start = payload.text.findIndex(item => /^(Notes|Shipment):/.test(item.text));
+    const footer = payload.text.slice(start);
+    const shipmentIndex = footer.findIndex(item => item.text.startsWith('Shipment:'));
+    assert.equal(footer.slice(0, shipmentIndex).map(item => item.text).join('').replace(/\s/g, ''),
+      contents ? `Notes:${contents.replace(/\s/g, '')}` : '');
+    assert.equal(footer.slice(shipmentIndex).map(item => item.text).join('').replace(/\s/g, ''), `Shipment:${shipmentId}`);
+    assert.equal(payload.text.some(item => /^(Client|Total|Contents):/.test(item.text)), false);
+    assert.equal(payload.reverse.some(block => block.x === 125), false);
+    const metrics = { '1': [8, 12], '2': [12, 20], '3': [16, 24] };
+    const dividerX = payload.reverse.find(block => block.width === 2 && block.y === 85).x;
+    assert.ok(dividerX < 313);
+    for (const item of footer) {
+      const [width, height] = metrics[item.fonttype];
+      assert.ok(item.y >= 85 && item.y + item.text.length * width <= 1111);
+      assert.ok(item.x - height >= 75 && item.x < dividerX);
+    }
+    if (shipmentIndex > 0) assert.ok(footer[shipmentIndex].x < footer[shipmentIndex - 1].x - 24);
   }
-  assert.ok(contentsLines.some((line) => line.y + line.text.length * characterWidths[line.fonttype] > shipment.y));
-  assert.ok(client.x < contentsLines.at(-1).x - 24, 'Client must be below the last contents line');
-  assert.equal(shipment.x, client.x, 'Shipment must share the client row');
-  assert.equal(shipment.y + shipment.text.length * characterWidths[shipment.fonttype], 1111);
-  const total = payload.text.find((item) => item.text.startsWith('Total:'));
-  assert.ok(shipment.x > total.x, 'Shipment must be above the total');
 });
 
-test('Bluetooth total keeps a fixed right edge as the amount grows', () => {
-  const totals = [500, 1249.85, 1234567890.99].map((totalAmount) => {
-    const payload = buildTsplOptions({ totalAmount });
-    return payload.text.find((item) => item.text.startsWith('Total:'));
-  });
-  for (const total of totals) {
-    assert.equal(total.y + total.text.length * 24 + 1, 1111);
-    assert.ok(total.y >= 85);
-  }
-  assert.ok(totals[1].y < totals[0].y);
-  assert.ok(totals[2].y < totals[1].y);
-  assert.equal(totals[1].text, 'Total: PHP 1,249.85');
-});
-
-test('Bluetooth footer fits long words and wrapped client fields without duplicating the body route', () => {
-  const labelData = {
-    address: 'Unit 402, Trade Tower, Binondo, Manila', destinationHub: 'TNL Labo C.N.',
-    contents: 'A'.repeat(150), shipmentId: 'SHP-2026-014',
-    clientName: 'Northbridge Trading Company Warehouse and Distribution Services',
-    route: 'Manila to TNL Labo C.N. via regional distribution warehouse', totalAmount: 1249.85,
-  };
-  const payload = buildTsplOptions(labelData);
-  const footerStart = payload.text.findIndex((item) => item.text.startsWith('Contents:'));
-  const footerEnd = payload.text.findIndex((item) => item.text.startsWith('Total:'));
-  const footer = payload.text.slice(footerStart, footerEnd);
-  const shipmentIndex = footer.findIndex((item) => item.text.startsWith('Shipment:'));
-  assert.equal(footer.slice(0, shipmentIndex).map((item) => item.text).join('').replace(/\s/g, ''),
-    `Contents:${labelData.contents}`);
-  assert.equal(footer.slice(shipmentIndex + 1).map((item) => item.text).join(' '),
-    `Client: ${labelData.clientName}`);
-  assert.equal(footer.some((item) => item.text.startsWith('Route:')), false);
-  const metrics = { '1': [8, 12], '2': [12, 20], '3': [16, 24] };
-  const dividerX = payload.reverse.find((block) => block.width === 2 && block.y === 85).x;
-  assert.ok(dividerX < 313, 'Footer divider must stay below the destination hub');
-  for (const item of footer) {
-    const [characterWidth, characterHeight] = metrics[item.fonttype];
-    assert.ok(item.y + item.text.length * characterWidth <= (item.text.startsWith('Client:') ? 610 : 1111));
-    assert.ok(item.x - characterHeight >= 133, 'Footer text must stay above the total divider');
-    assert.ok(item.x < dividerX, 'Footer text must stay below the body divider');
+test('Bluetooth geometry is independent of hidden price and client values', () => {
+  const baseline = buildTsplOptions({ contents: 'Goods' });
+  for (const totalAmount of [null, 0, 500, 1234567890.99]) {
+    assert.deepEqual(buildTsplOptions({ contents: 'Goods', totalAmount, clientName: 'C'.repeat(500) }), baseline);
   }
 });
 
@@ -931,10 +893,10 @@ test('Bluetooth label fits registration text limits together without truncating 
     clientName: 'C'.repeat(150), route: 'R'.repeat(150), shipmentId: 'SHP-2026-014', totalAmount: 1249.85 });
   const addressLines = payload.text.filter((item) => item.y === 440 && item.x <= 430 && item.x >= 378);
   assert.equal(addressLines.map((item) => item.text).join(''), 'A'.repeat(80));
-  const contentsStart = payload.text.findIndex((item) => item.text.startsWith('Contents:'));
+  const contentsStart = payload.text.findIndex((item) => item.text.startsWith('Notes:'));
   const shipmentStart = payload.text.findIndex((item) => item.text.startsWith('Shipment:'));
   assert.equal(payload.text.slice(contentsStart, shipmentStart).map((item) => item.text).join('').replace(/\s/g, ''),
-    `Contents:${'D'.repeat(120)}`);
+    `Notes:${'D'.repeat(120)}`);
   const widths = { '1': 8, '2': 12, '3': 16, '4': 24 };
   for (const item of payload.text.slice(contentsStart)) {
     assert.ok(item.y + item.text.length * widths[item.fonttype] + (item.bold ? 1 : 0) <= 1111);
@@ -962,9 +924,45 @@ test('mobile HTML labels show the escaped entered route instead of a destination
   assert.ok(html.includes('<div class="hub">Quezon &lt;City&gt; to Cebu</div>'));
   assert.equal(html.split('Quezon &lt;City&gt; to Cebu').length - 1, 1, 'Route must appear only once');
   assert.equal(html.includes('UNRELATED HUB'), false);
-  assert.ok(html.indexOf('class="contents-field"') < html.indexOf('class="client-field"'));
-  assert.ok(html.indexOf('class="client-field"') < html.indexOf('class="shipment-field"'), 'Shipment must follow full-width contents on the client row');
-  assert.ok(html.indexOf('class="shipment-field"') < html.indexOf('class="total-row"'));
+  assert.ok(html.indexOf('class="contents-field"') < html.indexOf('class="shipment-field"'));
+  assert.equal(html.includes('class="client-field"'), false);
+  assert.equal(html.includes('class="total-row"'), false);
+  assert.ok(html.includes('>Notes:</span>'));
+  assert.equal(html.includes('>Contents:</span>'), false);
   assert.ok(html.includes('D'.repeat(120)), 'Complete contents must be retained');
   assert.equal(buildLabelHtml({ ...label, route: null }).includes('<div class="hub">'), false);
+});
+
+
+test('HTML Notes retain empty, long, and escaped descriptions in single and batch labels', () => {
+  for (const contents of ['', 'D'.repeat(120), '<script>"fragile" & safe</script>']) {
+    const label = { trackingId: 'TRK-2026-000058', packageIndex: 2, packageCount: 3,
+      contents, shipmentId: 'SHP-' + '9'.repeat(120), clientName: 'HIDDEN_CLIENT', totalAmount: 987654 };
+    for (const labels of [label, [label, { ...label, trackingId: 'TRK-2026-000059', packageIndex: 3 }]]) {
+      const html = buildLabelHtml(labels);
+      assert.doesNotMatch(html, /HIDDEN_CLIENT|987654|>Client:|>Total:|>Contents:/);
+      assert.ok(html.includes(label.shipmentId));
+      assert.ok(html.includes('PKG 2 / 3'));
+      assert.ok(html.includes('overflow-wrap: anywhere'));
+      if (contents.startsWith('<')) {
+        assert.ok(html.includes('&lt;script&gt;&quot;fragile&quot; &amp; safe&lt;/script&gt;'));
+        assert.equal(html.includes(contents), false);
+      } else assert.ok(html.includes(contents));
+    }
+  }
+});
+
+
+test('ESC/POS footer keeps original Notes and shipment while omitting populated price and client', () => {
+  for (const contents of ['', 'Original notes & fragile', 'D'.repeat(120)]) {
+    const label = { trackingId: 'TRK-2026-000058', recipientName: 'Recipient', packageIndex: 2, packageCount: 3,
+      contents, shipmentId: 'SHP-2026-014', clientName: 'HIDDEN_CLIENT', totalAmount: 987654 };
+    const bytes = buildEscPosCommands(label);
+    const text = Buffer.from(bytes).toString('ascii');
+    assert.doesNotMatch(text, /CONTENTS:|CLIENT:|TOTAL:|HIDDEN_CLIENT|987654/);
+    if (contents) assert.ok(text.includes(`NOTES: ${contents}`));
+    assert.ok(text.includes(`SHIPMENT: ${label.shipmentId}`));
+    assert.ok(text.includes(label.trackingId));
+    assert.ok(text.includes('PKG 2 / 3'));
+  }
 });
