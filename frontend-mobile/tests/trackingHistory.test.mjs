@@ -64,6 +64,7 @@ describe('Field Personal Scan and Tracking History Logic', () => {
       'loaded on truck': 'LOADED_ON_TRUCK',
       'load on truck': 'LOADED_ON_TRUCK',
       'arrived at tnl': 'ARRIVED_AT_TNL',
+      'arrived in daet': 'ARRIVED_AT_TNL',
       'outload / arrive tnl': 'ARRIVED_AT_TNL',
       'OUTLOAD / ARRIVE TNL': 'ARRIVED_AT_TNL',
       'loaded to hauler': 'LOADED_TO_HAULER',
@@ -230,7 +231,7 @@ describe('Field Personal Scan and Tracking History Logic', () => {
     assert.strictEqual(STATUS_LABELS.REGISTERED, 'Registered');
     assert.strictEqual(STATUS_LABELS.QR_GENERATED, 'QR Generated');
     assert.strictEqual(STATUS_LABELS.LOADED_ON_TRUCK, 'Loaded on Truck');
-    assert.strictEqual(STATUS_LABELS.ARRIVED_AT_TNL, 'Outload / Arrive TNL');
+    assert.strictEqual(STATUS_LABELS.ARRIVED_AT_TNL, 'Arrived in Daet');
     assert.strictEqual(STATUS_LABELS.LOADED_TO_HAULER, 'Loaded to Hauler');
     assert.strictEqual(STATUS_LABELS.COMPLETED, 'Completed');
   });

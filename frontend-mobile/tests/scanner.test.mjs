@@ -70,7 +70,7 @@ describe('Scanner Flow & State Machine', () => {
     assert.strictEqual(formatStatusLabel('REGISTERED'), 'Registered');
     assert.strictEqual(formatStatusLabel('QR_GENERATED'), 'QR Generated');
     assert.strictEqual(formatStatusLabel('LOADED_ON_TRUCK'), 'Loaded on Truck');
-    assert.strictEqual(formatStatusLabel('ARRIVED_AT_TNL'), 'Outload / Arrive TNL');
+    assert.strictEqual(formatStatusLabel('ARRIVED_AT_TNL'), 'Arrived in Daet');
     assert.strictEqual(formatStatusLabel('LOADED_TO_HAULER'), 'Loaded to Hauler');
     assert.strictEqual(formatStatusLabel('COMPLETED'), 'Completed');
   });
@@ -663,7 +663,7 @@ describe('Scanner Flow & State Machine', () => {
       currentStatusCode: 'LOADED_ON_TRUCK',
       currentStatusLabel: 'Loaded on Truck',
       nextStatusCode: 'ARRIVED_AT_TNL',
-      nextStatusLabel: 'Outload / Arrive TNL',
+      nextStatusLabel: 'Arrived in Daet',
       canScan: true
     };
     const result = validateBatchCandidate(context, 'ARRIVED_AT_TNL', 'DISPATCH_STAFF');
@@ -684,7 +684,7 @@ describe('Scanner Flow & State Machine', () => {
     assert.strictEqual(result.isValid, false);
     assert.match(result.error, /Cannot add TRK-2026-000103/);
     assert.match(result.error, /current status is "QR Generated"/);
-    assert.match(result.error, /Expected next status is "Outload \/ Arrive TNL"/);
+    assert.match(result.error, /Expected next status is "Arrived in Daet"/);
   });
 
   it('44. Terminal parcel is rejected as unscannable', () => {
@@ -716,7 +716,7 @@ describe('Scanner Flow & State Machine', () => {
     const context = {
       trackingId: 'TRK-2026-000106',
       currentStatusCode: 'ARRIVED_AT_TNL',
-      currentStatusLabel: 'Outload / Arrive TNL',
+      currentStatusLabel: 'Arrived in Daet',
       nextStatusCode: 'LOADED_TO_HAULER',
       nextStatusLabel: 'Loaded to Hauler',
       canScan: true
@@ -736,7 +736,7 @@ describe('Scanner Flow & State Machine', () => {
     const context = {
       trackingId: 'TRK-2026-000107',
       currentStatusCode: 'ARRIVED_AT_TNL',
-      currentStatusLabel: 'Outload / Arrive TNL',
+      currentStatusLabel: 'Arrived in Daet',
       nextStatusCode: 'LOADED_TO_HAULER',
       nextStatusLabel: 'Loaded to Hauler',
       canScan: true

@@ -435,3 +435,4 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 - `frontend-mobile/src/features/scanner/components/ScanFeedbackBanner.js`: shared accessible checking, success, warning, and error feedback; short success/info expiry with timer cleanup.
 - `frontend-mobile/tests/scanFeedback.test.mjs`: production banner timer/accessibility and barcode modal lifecycle/feedback tests.
 - `.review/archive/mobile-scan-feedback.md`: implementation evidence and manual acceptance for courier, dispatch, and reusable barcode scanning.
+- `.github/PR_DRAFT.md`: arrival display terminology PR description, verification, scoped audit, and manual acceptance checklist.

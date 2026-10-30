@@ -21,7 +21,7 @@ export function PersonalScanMetrics({ metrics, isLoading = false, error = null, 
       <View style={styles.row}>
         <View style={styles.card}>
           <Text style={styles.metricValue}>{normalized.arrivedAtTnl}</Text>
-          <Text style={styles.metricLabel}>ARRIVED AT TNL</Text>
+          <Text style={styles.metricLabel}>ARRIVED IN DAET</Text>
         </View>
         <View style={styles.card}>
           <Text style={styles.metricValue}>{normalized.handedToHauler}</Text>

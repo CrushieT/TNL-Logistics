@@ -159,7 +159,7 @@ async function add(screen, value) {
 async function arrival() {
   const screen = mount(); screen.render(); await screen.flush();
   assert.ok(button(screen, 'LOAD & GENERATE'));
-  button(screen, 'ARRIVE AT TNL').onPress(); screen.render();
+  button(screen, 'ARRIVE IN DAET').onPress(); screen.render();
   return screen;
 }
 
@@ -172,7 +172,7 @@ test('production dispatch screen queues manual and camera parcels across shipmen
   assert.match(text(screen.render()), /SHP-TRK-2026-000001/);
   assert.match(text(screen.render()), /LOADED_ON_TRUCK/);
   assert.equal(screen.calls.batches.length, 0);
-  await button(screen, 'Confirm Arrival at TNL').onPress(); screen.render();
+  await button(screen, 'Confirm Arrival in Daet').onPress(); screen.render();
   assert.deepEqual(screen.calls.batches[0].trackingIds, [parcelId(1), parcelId(2)]);
   assert.equal(screen.calls.batches[0].targetStatus, 'ARRIVED_AT_TNL');
   assert.equal(screen.calls.batches[0].vehicleId, undefined);
@@ -203,19 +203,19 @@ test('production arrival rejects malformed, missing, lost, ineligible, duplicate
 test('arrival preserves failed queues, blocks offline and busy submissions, and prevents same-render duplicate submits', async () => {
   const screen = await arrival(); await add(screen, parcelId(1));
   screen.setSubmit(async () => { throw new Error('Timeout'); });
-  await button(screen, 'Confirm Arrival at TNL').onPress(); screen.render();
+  await button(screen, 'Confirm Arrival in Daet').onPress(); screen.render();
   assert.match(text(screen.render()), /Queue retained/);
   screen.setOnline(false);
-  assert.equal(button(screen, 'Confirm Arrival at TNL').disabled, true);
-  await button(screen, 'Confirm Arrival at TNL').onPress();
+  assert.equal(button(screen, 'Confirm Arrival in Daet').disabled, true);
+  await button(screen, 'Confirm Arrival in Daet').onPress();
   assert.equal(screen.calls.batches.length, 1);
   screen.setOnline(true);
   const request = deferred(); screen.setSubmit(() => request.promise);
-  const handler = button(screen, 'Confirm Arrival at TNL').onPress;
+  const handler = button(screen, 'Confirm Arrival in Daet').onPress;
   const pending = handler(); await handler(); screen.render();
   assert.equal(screen.calls.batches.length, 2);
   assert.equal(button(screen, 'LOAD & GENERATE').disabled, true);
-  assert.equal(button(screen, 'Confirm Arrival at TNL').disabled, true);
+  assert.equal(button(screen, 'Confirm Arrival in Daet').disabled, true);
   request.resolve([]); await pending; screen.render();
   assert.match(text(screen.render()), /ARRIVAL QUEUE \(0\/100\)/);
 });
@@ -253,7 +253,7 @@ test('obsolete arrival submission success and failure cannot clear another accou
   for (const shouldReject of [false, true]) {
     const screen = await arrival(); await add(screen, parcelId(1));
     const request = deferred(); screen.setSubmit(() => request.promise);
-    const pending = button(screen, 'Confirm Arrival at TNL').onPress();
+    const pending = button(screen, 'Confirm Arrival in Daet').onPress();
     screen.setUser({ userId: 'OTHER', role: 'DISPATCH_STAFF' });
     await add(screen, parcelId(2));
     if (shouldReject) request.reject(new Error('Obsolete failure')); else request.resolve([]);
@@ -263,7 +263,7 @@ test('obsolete arrival submission success and failure cannot clear another accou
   }
   const screen = await arrival(); await add(screen, parcelId(1));
   const request = deferred(); screen.setSubmit(() => request.promise);
-  const pending = button(screen, 'Confirm Arrival at TNL').onPress();
+  const pending = button(screen, 'Confirm Arrival in Daet').onPress();
   screen.unmount(); request.resolve([]); await pending;
 });
 
@@ -275,13 +275,13 @@ test('arrival discard invalidates pending lookups and remove restores queue capa
   button(screen, 'LOAD & GENERATE').onPress(); screen.render();
   button(screen, 'Discard arrival queue').onPress(); screen.render();
   request.resolve(context(parcelId(2))); await pending;
-  button(screen, 'ARRIVE AT TNL').onPress(); screen.render();
+  button(screen, 'ARRIVE IN DAET').onPress(); screen.render();
   assert.match(text(screen.render()), /ARRIVAL QUEUE \(0\/100\)/);
   screen.setLookup(async (trackingId) => context(trackingId));
   await add(screen, parcelId(1));
   nodes(screen.render()).find((node) => node.props.accessibilityLabel === `Remove arrival ${parcelId(1)}`).props.onPress();
   screen.render();
-  assert.equal(button(screen, 'Confirm Arrival at TNL').disabled, true);
+  assert.equal(button(screen, 'Confirm Arrival in Daet').disabled, true);
   await add(screen, parcelId(1));
   assert.match(text(screen.render()), /ARRIVAL QUEUE \(1\/100\)/);
 });
@@ -293,7 +293,7 @@ test('arrival reserves pending IDs and capacity before lookups settle, and never
   const handler = button(screen, 'ADD ARRIVAL').onPress;
   const pending = handler(); await handler(); screen.render();
   assert.equal(screen.calls.lookups.length, 1);
-  assert.equal(button(screen, 'Confirm Arrival at TNL').disabled, true);
+  assert.equal(button(screen, 'Confirm Arrival in Daet').disabled, true);
   request.resolve(context(parcelId(1))); await pending; screen.render();
   assert.match(text(screen.render()), /ARRIVAL QUEUE \(1\/100\)/);
 });
@@ -422,8 +422,8 @@ test('arrival reports checking, queue count, duplicates, and confirmed arrival s
   assert.equal(feedback(screen).kind, 'warning');
   assert.deepEqual(screen.haptics, ['success', 'warning']);
   feedback(screen).onDismiss(); screen.render();
-  await button(screen, 'Confirm Arrival at TNL').onPress();
-  assert.equal(feedback(screen).message, 'Arrival at TNL confirmed.');
+  await button(screen, 'Confirm Arrival in Daet').onPress();
+  assert.equal(feedback(screen).message, 'Arrival in Daet confirmed.');
 });
 
 test('courier single scan reports checking and review before a confirmed status update', async () => {

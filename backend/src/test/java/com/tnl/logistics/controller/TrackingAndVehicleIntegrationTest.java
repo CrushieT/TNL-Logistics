@@ -277,9 +277,9 @@ public class TrackingAndVehicleIntegrationTest {
                 .andReturn();
 
         TrackingScanResponse scanResp2 = objectMapper.readValue(res2.getResponse().getContentAsString(), TrackingScanResponse.class);
-        assertEquals("Arrived at TNL", scanResp2.getNewStatus());
+        assertEquals("Arrived in Daet", scanResp2.getNewStatus());
         assertNull(scanResp2.getVehicleId());
-        assertEquals("1 / 1 Arrived at TNL", scanResp2.getStatusRollup());
+        assertEquals("1 / 1 Arrived in Daet", scanResp2.getStatusRollup());
 
         ParcelUnit unitAfterScan2 = parcelUnitRepository.findById(trackingId).orElseThrow();
         assertEquals(ParcelStatus.ARRIVED_AT_TNL, unitAfterScan2.getCurrentStatus());

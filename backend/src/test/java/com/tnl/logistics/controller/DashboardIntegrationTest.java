@@ -198,7 +198,7 @@ public class DashboardIntegrationTest {
         assertAmount("220", response.getOutstandingVsCollected().get(0).getValue());
         assertAmount("230", response.getOutstandingVsCollected().get(1).getValue());
         var segments = response.getParcelUnitsByStatus();
-        assertEquals(List.of("Registered", "QR Generated", "Loaded on Truck", "Outload / Arrive TNL",
+        assertEquals(List.of("Registered", "QR Generated", "Loaded on Truck", "Arrived in Daet",
                 "Loaded to Hauler", "Completed", "Lost"), segments.stream().map(segment -> segment.getLabel()).toList());
         assertEquals(List.of(1L, 1L, 0L, 1L, 1L, 1L, 2L), segments.stream().map(segment -> segment.getValue()).toList());
         assertEquals(List.of("#2563EB", "#0D9488", "#D97706", "#16A34A", "#7C3AED", "#059669", "#B91C1C"),
@@ -216,12 +216,12 @@ public class DashboardIntegrationTest {
         assertEquals(0, lostResponse.getUnpaidTransactionCount());
         assertAmount("0", lostResponse.getOutstandingVsCollected().get(0).getValue());
         assertAmount("20", lostResponse.getOutstandingVsCollected().get(1).getValue());
-        assertEquals(List.of("Registered", "QR Generated", "Loaded on Truck", "Outload / Arrive TNL",
+        assertEquals(List.of("Registered", "QR Generated", "Loaded on Truck", "Arrived in Daet",
                 "Loaded to Hauler", "Lost"), lostResponse.getParcelUnitsByStatus().stream().map(segment -> segment.getLabel()).toList());
         parcel.setLost(false);
         parcelUnitRepository.saveAndFlush(parcel);
         DashboardSummaryResponse recoveredResponse = assertMatchesExistingCalculation(cycle);
-        assertEquals(List.of("Registered", "QR Generated", "Loaded on Truck", "Outload / Arrive TNL",
+        assertEquals(List.of("Registered", "QR Generated", "Loaded on Truck", "Arrived in Daet",
                 "Loaded to Hauler", "Completed"), recoveredResponse.getParcelUnitsByStatus().stream().map(segment -> segment.getLabel()).toList());
         assertEquals(1L, recoveredResponse.getParcelUnitsByStatus().get(5).getValue());
     }

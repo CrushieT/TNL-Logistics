@@ -109,6 +109,7 @@ export function getParcelStatusColor(status, isLost = false) {
     case 'LOADED_TO_HAULER':
       return colors.purple;
     case 'Arrived at TNL':
+    case 'Arrived in Daet':
     case 'ARRIVED_AT_TNL':
       return colors.teal;
     case 'Loaded on Truck':
