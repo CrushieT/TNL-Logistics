@@ -625,7 +625,7 @@ export default function DispatchWaybillsScreen() {
   const getManifestCandidateError = (context, units) => {
     if (context.lost) return context.scanBlockedReason || 'Parcel is lost. Admin must mark it found before scanning.';
     if (!['ARRIVED_AT_TNL', 'LOADED_TO_HAULER'].includes(context.currentStatusCode)) {
-      return `${context.trackingId} must be arrived at TNL Hub.`;
+      return `${context.trackingId} must be arrived in Daet.`;
     }
     if (!units.some((unit) => unit.trackingId === context.trackingId)) return `${context.trackingId} is not available for this manifest.`;
     return null;
@@ -797,7 +797,7 @@ export default function DispatchWaybillsScreen() {
       if (!validation.isValid || context.lost || context.currentStatusCode !== 'LOADED_ON_TRUCK'
           || context.trackingId !== trackingId) {
         safeHaptics.error();
-        setError(validation.error || 'Only non-lost parcels loaded on a truck can arrive at TNL.');
+        setError(validation.error || 'Only non-lost parcels loaded on a truck can arrive in Daet.');
         return;
       }
       arrivalQueueRef.current = [...arrivalQueueRef.current, context];
@@ -835,7 +835,7 @@ export default function DispatchWaybillsScreen() {
       arrivalQueueRef.current = [];
       setArrivalQueue([]);
       setArrivalInput('');
-      setNotice('Arrival at TNL confirmed.');
+      setNotice('Arrival in Daet confirmed.');
       safeHaptics.success();
     } catch (err) {
       if (arrivalVersionRef.current !== requestVersion) return;
@@ -1349,7 +1349,7 @@ export default function DispatchWaybillsScreen() {
               disabled={busy}
             >
               <Text style={[styles.modeTabText, mode === 'arrival' && styles.modeTabTextActive]}>
-                ARRIVE AT TNL
+                ARRIVE IN DAET
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -1413,7 +1413,7 @@ export default function DispatchWaybillsScreen() {
                     <Icon source="truck-check-outline" size={32} color={colors.inkFaint} />
                     <Text style={styles.emptyQueueTitle}>No arrivals queued</Text>
                     <Text style={styles.emptyQueueText}>
-                      Scan loaded-on-truck parcel QR codes or enter tracking IDs below to record arrival at TNL Hub.
+                      Scan loaded-on-truck parcel QR codes or enter tracking IDs below to record arrival in Daet.
                     </Text>
                   </View>
                 ) : (
@@ -1491,10 +1491,10 @@ export default function DispatchWaybillsScreen() {
                   disabled={!isOnline || busy || arrivalLookups > 0 || arrivalQueue.length === 0 || Boolean(pendingArrivalLeave)}
                   onPress={confirmArrival}
                 >
-                  <Text style={styles.primaryButtonText}>Confirm Arrival at TNL</Text>
+                  <Text style={styles.primaryButtonText}>Confirm Arrival in Daet</Text>
                 </TouchableOpacity>
                 <Text style={styles.actionHint}>
-                  Atomic batch update. Parcels transition to Arrived at TNL and their truck assignments are cleared.
+                  Atomic batch update. Parcels transition to Arrived in Daet and their truck assignments are cleared.
                 </Text>
               </View>
             ) : mode === 'load' ? (

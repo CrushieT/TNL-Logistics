@@ -448,7 +448,7 @@ export default function UsersScreen() {
         <View style={[styles.capabilityCard, { flex: 1 }]}>
           <Text style={styles.capabilityTitle}>COURIER STAFF</Text>
           {[
-            'Moves cargo: QR Generated -> Loaded on Truck -> Arrived at TNL',
+            'Moves cargo: QR Generated -> Loaded on Truck -> Arrived in Daet',
             'Dedicated Scan QR transit camera & Rapid Batch',
             'Active vehicle selection with debounced fleet search',
             'Hub arrival check-in for incoming pickup cargo',
@@ -467,7 +467,7 @@ export default function UsersScreen() {
         <View style={[styles.capabilityCard, { flex: 1 }]}>
           <Text style={styles.capabilityTitle}>DISPATCH STAFF</Text>
           {[
-            'Moves cargo: Arrived at TNL -> Loaded to Hauler -> Sent to Hauler -> Completed',
+            'Moves cargo: Arrived in Daet -> Loaded to Hauler -> Sent to Hauler -> Completed',
             'Dedicated Waybills management console & hub queueing',
             'Split waybill generation with shipment discovery rails',
             '2-copy A4 manifest printing with carrier signature blocks',

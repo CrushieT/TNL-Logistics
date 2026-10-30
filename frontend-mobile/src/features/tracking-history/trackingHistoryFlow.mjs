@@ -9,7 +9,7 @@ export const STATUS_LABELS = Object.freeze({
   REGISTERED: 'Registered',
   QR_GENERATED: 'QR Generated',
   LOADED_ON_TRUCK: 'Loaded on Truck',
-  ARRIVED_AT_TNL: 'Outload / Arrive TNL',
+  ARRIVED_AT_TNL: 'Arrived in Daet',
   LOADED_TO_HAULER: 'Loaded to Hauler',
   COMPLETED: 'Completed',
 });
@@ -19,6 +19,7 @@ const STATUS_SEARCH_ALIASES = Object.freeze({
   'qr generated': 'QR_GENERATED',
   'loaded on truck': 'LOADED_ON_TRUCK',
   'load on truck': 'LOADED_ON_TRUCK',
+  'arrived in daet': 'ARRIVED_AT_TNL',
   'arrived at tnl': 'ARRIVED_AT_TNL',
   'outload / arrive tnl': 'ARRIVED_AT_TNL',
   'loaded to hauler': 'LOADED_TO_HAULER',
@@ -217,6 +218,7 @@ function parsePositiveInteger(value) {
 }
 
 export function resolveTrackingStatusDisplay(statusDisplay, statusCode) {
+  if (statusCode === 'ARRIVED_AT_TNL') return STATUS_LABELS.ARRIVED_AT_TNL;
   if (typeof statusDisplay === 'string' && statusDisplay.trim()) {
     return statusDisplay.trim();
   }

@@ -500,7 +500,7 @@ public class TrackingServiceImpl implements TrackingService {
             return counts.get(ParcelStatus.LOADED_TO_HAULER) + " / " + total + " Loaded to Hauler";
         }
         if (counts.containsKey(ParcelStatus.ARRIVED_AT_TNL)) {
-            return counts.get(ParcelStatus.ARRIVED_AT_TNL) + " / " + total + " Arrived at TNL";
+            return counts.get(ParcelStatus.ARRIVED_AT_TNL) + " / " + total + " Arrived in Daet";
         }
         if (counts.containsKey(ParcelStatus.LOADED_ON_TRUCK)) {
             return counts.get(ParcelStatus.LOADED_ON_TRUCK) + " / " + total + " Loaded on Truck";
@@ -749,7 +749,7 @@ public class TrackingServiceImpl implements TrackingService {
         switch (status) {
             case QR_GENERATED: return "QR Generated";
             case LOADED_ON_TRUCK: return "Loaded on Truck";
-            case ARRIVED_AT_TNL: return "Arrived at TNL";
+            case ARRIVED_AT_TNL: return "Arrived in Daet";
             case LOADED_TO_HAULER: return "Loaded to Hauler";
             case COMPLETED: return "Completed";
             case REGISTERED:
@@ -762,7 +762,7 @@ public class TrackingServiceImpl implements TrackingService {
         switch (status) {
             case QR_GENERATED: return "QR Generated";
             case LOADED_ON_TRUCK: return "Loaded on Truck";
-            case ARRIVED_AT_TNL: return "Outload / Arrive TNL";
+            case ARRIVED_AT_TNL: return "Arrived in Daet";
             case LOADED_TO_HAULER: return "Loaded to Hauler";
             case COMPLETED: return "Completed";
             case REGISTERED:

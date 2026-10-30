@@ -125,6 +125,7 @@ export const statusStyles = {
   'Loaded on Truck': { fg: colors.amber, bg: colors.amberSoft, border: '#FDE68A', dot: colors.amber, outline: true },
   LOADED_ON_TRUCK: { fg: colors.amber, bg: colors.amberSoft, border: '#FDE68A', dot: colors.amber, outline: true },
   'Arrived at TNL': { fg: colors.teal, bg: colors.tealSoft, border: '#99F6E4', dot: colors.teal, outline: true },
+  'Arrived in Daet': { fg: colors.teal, bg: colors.tealSoft, border: '#99F6E4', dot: colors.teal, outline: true },
   ARRIVED_AT_TNL: { fg: colors.teal, bg: colors.tealSoft, border: '#99F6E4', dot: colors.teal, outline: true },
 
   // Phase 3: Dispatch Staff Custody (Carrier Linehaul & Final Delivery)

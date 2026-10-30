@@ -422,6 +422,9 @@ public class ShipmentServiceImpl implements ShipmentService {
         if (status == null || status.trim().isEmpty() || status.equalsIgnoreCase("ALL")) {
             return null;
         }
+        if (status.trim().equalsIgnoreCase("Arrived in Daet")) {
+            return ParcelStatus.ARRIVED_AT_TNL.name();
+        }
         return status.trim().toUpperCase().replace(" ", "_");
     }
 
@@ -1044,7 +1047,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
         if (counts.containsKey(ParcelStatus.ARRIVED_AT_TNL)) {
             long c = counts.get(ParcelStatus.ARRIVED_AT_TNL);
-            return new RollupStatus("Arrived at TNL", c + " / " + total + " Arrived at TNL");
+            return new RollupStatus("Arrived in Daet", c + " / " + total + " Arrived in Daet");
         }
         if (counts.containsKey(ParcelStatus.LOADED_ON_TRUCK)) {
             long c = counts.get(ParcelStatus.LOADED_ON_TRUCK);
@@ -1064,7 +1067,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         switch (status) {
             case QR_GENERATED: return "QR Generated";
             case LOADED_ON_TRUCK: return "Loaded on Truck";
-            case ARRIVED_AT_TNL: return "Arrived at TNL";
+            case ARRIVED_AT_TNL: return "Arrived in Daet";
             case LOADED_TO_HAULER: return "Loaded to Hauler";
             case COMPLETED: return "Completed";
             case REGISTERED:

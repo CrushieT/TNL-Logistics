@@ -160,7 +160,7 @@ public class ClientServiceImpl implements ClientService {
             RollupStatus rollup = computeRollupStatus(parcels);
             if ("Completed".equalsIgnoreCase(rollup.overallStatus)
                     || "Loaded to Hauler".equalsIgnoreCase(rollup.overallStatus)
-                    || "Arrived at TNL".equalsIgnoreCase(rollup.overallStatus)) {
+                    || "Arrived in Daet".equalsIgnoreCase(rollup.overallStatus)) {
                 completedDeliveries++;
             }
 
@@ -405,7 +405,7 @@ public class ClientServiceImpl implements ClientService {
         }
         if (counts.containsKey(ParcelStatus.ARRIVED_AT_TNL)) {
             long c = counts.get(ParcelStatus.ARRIVED_AT_TNL);
-            return new RollupStatus("Arrived at TNL", c + " / " + total + " Arrived at TNL");
+            return new RollupStatus("Arrived in Daet", c + " / " + total + " Arrived in Daet");
         }
         if (counts.containsKey(ParcelStatus.LOADED_ON_TRUCK)) {
             long c = counts.get(ParcelStatus.LOADED_ON_TRUCK);

@@ -46,7 +46,7 @@ export const STATUS_LABELS = {
   REGISTERED: 'Registered',
   QR_GENERATED: 'QR Generated',
   LOADED_ON_TRUCK: 'Loaded on Truck',
-  ARRIVED_AT_TNL: 'Outload / Arrive TNL',
+  ARRIVED_AT_TNL: 'Arrived in Daet',
   LOADED_TO_HAULER: 'Loaded to Hauler',
   COMPLETED: 'Completed'
 };

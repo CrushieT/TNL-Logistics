@@ -109,6 +109,9 @@ export function getParcelStatusColor(status, isLost = false) {
     case 'LOADED_TO_HAULER':
       return colors.purple;
     case 'Arrived at TNL':
+    case 'Arrived at TNL Hub':
+    case 'Outload / Arrive TNL':
+    case 'Arrived in Daet':
     case 'ARRIVED_AT_TNL':
       return colors.teal;
     case 'Loaded on Truck':
@@ -122,5 +125,24 @@ export function getParcelStatusColor(status, isLost = false) {
     default:
       return colors.slate;
   }
+}
+
+export function formatParcelStatusDisplay(status) {
+  return ['Arrived at TNL', 'Arrived at TNL Hub', 'Outload / Arrive TNL', 'ARRIVED_AT_TNL'].includes(status)
+    ? 'Arrived in Daet'
+    : status;
+}
+
+export function getParcelStatusBadgeStyle(status) {
+  const foreground = getParcelStatusColor(status);
+  const palette = {
+    [colors.slate]: { backgroundColor: colors.slateSoft, borderColor: '#CBD5E1' },
+    [colors.info]: { backgroundColor: colors.infoSoft, borderColor: '#BFDBFE' },
+    [colors.amber]: { backgroundColor: colors.amberSoft, borderColor: '#FDE68A' },
+    [colors.teal]: { backgroundColor: colors.tealSoft, borderColor: '#99F6E4' },
+    [colors.purple]: { backgroundColor: colors.purpleSoft, borderColor: '#DDD6FE' },
+    [colors.success]: { backgroundColor: colors.successSoft, borderColor: '#B8E2C8' },
+  };
+  return { color: foreground, ...palette[foreground] };
 }
 

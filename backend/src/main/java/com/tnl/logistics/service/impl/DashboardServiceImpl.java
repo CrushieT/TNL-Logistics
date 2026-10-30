@@ -130,7 +130,7 @@ public class DashboardServiceImpl implements DashboardService {
             parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto(
                     "Loaded on Truck", statusCounts.getOrDefault(ParcelStatus.LOADED_ON_TRUCK, 0L), "#D97706"));
             parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto(
-                    "Outload / Arrive TNL", statusCounts.getOrDefault(ParcelStatus.ARRIVED_AT_TNL, 0L), "#16A34A"));
+                    "Arrived in Daet", statusCounts.getOrDefault(ParcelStatus.ARRIVED_AT_TNL, 0L), "#16A34A"));
             parcelUnitsByStatus.add(new DashboardSummaryResponse.StatusSegmentDto(
                     "Loaded to Hauler", statusCounts.getOrDefault(ParcelStatus.LOADED_TO_HAULER, 0L), "#7C3AED"));
             if (statusCounts.getOrDefault(ParcelStatus.COMPLETED, 0L) > 0) {
@@ -224,7 +224,7 @@ public class DashboardServiceImpl implements DashboardService {
         switch (status) {
             case QR_GENERATED: return "QR Generated";
             case LOADED_ON_TRUCK: return "Loaded on Truck";
-            case ARRIVED_AT_TNL: return "Arrived at TNL";
+            case ARRIVED_AT_TNL: return "Arrived in Daet";
             case LOADED_TO_HAULER: return "Loaded to Hauler";
             case COMPLETED: return "Completed";
             case REGISTERED:

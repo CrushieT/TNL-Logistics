@@ -643,7 +643,7 @@ function formatStatusLabel(status) {
     case 'LOADED_ON_TRUCK':
       return 'Loaded on Truck';
     case 'ARRIVED_AT_TNL':
-      return 'Outload / Arrive TNL';
+      return 'Arrived in Daet';
     case 'LOADED_TO_HAULER':
       return 'Loaded to Hauler';
     case 'COMPLETED':

@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { colors, getParcelStatusColor } from '../src/theme/index.js';
+import { colors, formatParcelStatusDisplay, getParcelStatusBadgeStyle, getParcelStatusColor } from '../src/theme/index.js';
+
+test('receiving shipment status badge matches web progression colors and arrival wording', () => {
+  assert.deepEqual(getParcelStatusBadgeStyle('Arrived in Daet'), {
+    color: colors.teal, backgroundColor: colors.tealSoft, borderColor: '#99F6E4',
+  });
+  assert.equal(getParcelStatusBadgeStyle('LOADED_TO_HAULER').color, colors.purple);
+  assert.equal(getParcelStatusBadgeStyle('Completed').backgroundColor, colors.successSoft);
+  assert.equal(formatParcelStatusDisplay('Arrived at TNL'), 'Arrived in Daet');
+  assert.equal(formatParcelStatusDisplay('ARRIVED_AT_TNL'), 'Arrived in Daet');
+});
 
 test('mobile getParcelStatusColor returns role-paired progression colors', () => {
   // Exception (Red)

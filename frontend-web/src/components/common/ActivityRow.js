@@ -6,7 +6,7 @@ const ACTION_COLOR = {
   Registered: colors.accent,
   'QR Generated': colors.inkSoft,
   'Loaded on Truck': colors.warning,
-  'Arrived at TNL': colors.success,
+  'Arrived in Daet': colors.success,
   'Loaded to Hauler': colors.success,
 };
 
