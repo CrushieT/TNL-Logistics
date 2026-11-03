@@ -158,6 +158,158 @@ class PaymentConcurrencyIntegrationTest {
         }
     }
 
+
+    @Autowired SoaVersionRepository versions;
+    @Autowired com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+
+    @Test
+    void twoFirstSavesLeaveLiveLedgerEqualToCapturedWinner() throws Exception {
+        Fixture fixture = closedFixture();
+        assertEquals(List.of(200, 409), race(() -> saveClosed(fixture, "10.00"),
+                () -> saveClosed(fixture, "20.00")).stream().sorted().toList());
+        assertCapturedLedger(fixture, 1);
+    }
+
+    @Test
+    void twoFirstPrintsProduceOneSnapshot() throws Exception {
+        Fixture fixture = closedFixture();
+        assertEquals(List.of(200, 200), race(() -> capture(fixture, UUID.randomUUID().toString()),
+                () -> capture(fixture, UUID.randomUUID().toString())));
+        assertCapturedLedger(fixture, 1);
+    }
+
+    @Test
+    void identicalConcurrentCapturesReplayTheWinner() throws Exception {
+        Fixture fixture = closedFixture();
+        String requestId = UUID.randomUUID().toString();
+        assertEquals(List.of(200, 200), race(() -> capture(fixture, requestId), () -> capture(fixture, requestId)));
+        assertCapturedLedger(fixture, 1);
+    }
+
+    @Test
+    void paymentAndCaptureReconcileAgainstCommittedLedger() throws Exception {
+        Fixture fixture = closedFixture();
+        assertEquals(List.of(201, 200), race(() -> pay(fixture.shipmentIds().getFirst(), "100.00"),
+                () -> capture(fixture, UUID.randomUUID().toString())));
+        assertTotals(fixture, "100.00", "400.00");
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            SoaVersion version = versions.findBySoaNoAndVersionNumber(fixture.statementId(), 1).orElseThrow();
+            try {
+                var document = objectMapper.readTree(version.getPrintableData());
+                BigDecimal paid = document.get("totalPaid").decimalValue();
+                assertTrue(paid.signum() == 0 || paid.compareTo(new BigDecimal("100.00")) == 0);
+                assertEquals(0, new BigDecimal("500.00").subtract(paid).compareTo(document.get("amountDue").decimalValue()));
+            } catch (java.io.IOException exception) { throw new AssertionError(exception); }
+            assertEquals(1, versions.countBySoaNo(fixture.statementId()));
+        });
+    }
+
+    @Test
+    void competingRevisionsCannotBothUseTheSameReviewedRevision() throws Exception {
+        Fixture fixture = closedFixture();
+        assertEquals(200, capture(fixture, UUID.randomUUID().toString()));
+        int revision = statements.findById(fixture.statementId()).orElseThrow().getFinancialRevision();
+        assertEquals(List.of(200, 409), race(() -> revise(fixture, revision, "10.00", UUID.randomUUID().toString()),
+                () -> revise(fixture, revision, "20.00", UUID.randomUUID().toString())).stream().sorted().toList());
+        assertCapturedLedger(fixture, 2);
+    }
+
+    @Test
+    void identicalConcurrentRevisionsCaptureExactlyOneNewVersion() throws Exception {
+        Fixture fixture = closedFixture();
+        capture(fixture, UUID.randomUUID().toString());
+        int revision = statements.findById(fixture.statementId()).orElseThrow().getFinancialRevision();
+        String requestId = UUID.randomUUID().toString();
+        assertEquals(List.of(200, 200), race(() -> revise(fixture, revision, "10.00", requestId),
+                () -> revise(fixture, revision, "10.00", requestId)));
+        assertCapturedLedger(fixture, 2);
+    }
+
+    @Test
+    void firstPrintsSerializeEvenWithoutShipmentsOrAnExistingStatement() throws Exception {
+        Fixture fixture = createFixture(0, "0.00");
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> statements.deleteById(fixture.statementId()));
+        assertEquals(List.of(200, 200), race(() -> capture(fixture, UUID.randomUUID().toString()),
+                () -> capture(fixture, UUID.randomUUID().toString())));
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            Soa soa = statements.findByClient_ClientIdAndStatementDate(fixture.clientId(), closedCycle()).orElseThrow();
+            assertEquals(1, versions.countBySoaNo(soa.getSoaNo()));
+            assertEquals(1, soa.getFinancialRevision());
+            assertEquals(0, soa.getOutstandingBalance().signum());
+        });
+    }
+
+    @Test
+    void concurrentRequestIdReuseAcrossStatementsIsAConflictWithoutAnotherSnapshot() throws Exception {
+        Fixture first = closedFixture();
+        Fixture second = closedFixture();
+        String requestId = UUID.randomUUID().toString();
+        assertEquals(List.of(200, 409), race(() -> capture(first, requestId),
+                () -> capture(second, requestId)).stream().sorted().toList());
+        assertEquals(1, versions.countBySoaNo(first.statementId()) + versions.countBySoaNo(second.statementId()));
+        assertTotals(first, "0.00", "500.00");
+        assertTotals(second, "0.00", "500.00");
+    }
+
+    private Fixture closedFixture() {
+        Fixture fixture = createFixture(1, "0.00");
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            LocalDate cycle = closedCycle();
+            Soa soa = statements.findById(fixture.statementId()).orElseThrow();
+            soa.setStatementDate(cycle);
+            WeeklyCollection collection = collections.findById(fixture.collectionId()).orElseThrow();
+            collection.setCollectionDate(cycle);
+        });
+        return fixture;
+    }
+
+    private LocalDate closedCycle() {
+        return LocalDate.now(java.time.ZoneId.of("Asia/Manila"))
+                .with(java.time.temporal.TemporalAdjusters.previous(java.time.DayOfWeek.THURSDAY));
+    }
+
+    private String adminId() { return users.findByRoleAndActiveTrue(UserRole.ADMIN).getFirst().getUserId(); }
+
+    private int saveClosed(Fixture fixture, String deduction) {
+        try {
+            soaService.saveStatement(new SaveStatementRequest(fixture.clientId(), closedCycle(),
+                    new BigDecimal(deduction), "Saved", "Collector"), adminId());
+            return 200;
+        } catch (ResponseStatusException exception) { return exception.getStatusCode().value(); }
+    }
+
+    private int capture(Fixture fixture, String requestId) {
+        try {
+            soaService.ensureV1Snapshot(new com.tnl.logistics.dto.EnsureV1Request(fixture.clientId(), closedCycle(), requestId), adminId());
+            return 200;
+        } catch (ResponseStatusException exception) { return exception.getStatusCode().value(); }
+    }
+
+    private int revise(Fixture fixture, int revision, String deduction, String requestId) {
+        try {
+            soaService.saveStatementVersion(new com.tnl.logistics.dto.SaveStatementVersionRequest(fixture.clientId(), closedCycle(),
+                    new BigDecimal(deduction), "Saved", "Collector", revision, requestId), adminId());
+            return 200;
+        } catch (ResponseStatusException exception) { return exception.getStatusCode().value(); }
+    }
+
+    private void assertCapturedLedger(Fixture fixture, int count) {
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            Soa soa = statements.findById(fixture.statementId()).orElseThrow();
+            WeeklyCollection collection = collections.findById(fixture.collectionId()).orElseThrow();
+            assertEquals(count, versions.countBySoaNo(fixture.statementId()));
+            SoaVersion latest = versions.findBySoaNoAndVersionNumber(fixture.statementId(), count).orElseThrow();
+            try {
+                var document = objectMapper.readTree(latest.getPrintableData());
+                assertEquals(0, document.get("deductionAmount").decimalValue().compareTo(soa.getDeductions()));
+                assertEquals(0, document.get("amountDue").decimalValue().compareTo(soa.getOutstandingBalance()));
+                assertEquals(soa.getFinancialRevision(), latest.getFinancialRevision());
+                assertEquals(0, collection.getBalance().compareTo(soa.getOutstandingBalance()));
+                assertEquals(0, collection.getTotalPaid().compareTo(soa.getTotalPaid()));
+            } catch (java.io.IOException exception) { throw new AssertionError(exception); }
+        });
+    }
+
     private int pay(String shipmentId, String amount) {
         try {
             paymentService.recordPayment(new PaymentRecordRequest(shipmentId, new BigDecimal(amount),

@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { colors, spacing, typography } from '../../../theme';
+import { colors, formatParcelStatusDisplay, getParcelStatusBadgeStyle, spacing, typography } from '../../../theme';
 import { shipmentApi } from '../services/shipmentApi';
 import { BackButton } from '../../../components/common/BackButton';
 
@@ -206,6 +206,8 @@ export function FindParcelScreen({ initialFilter = 'ALL' }) {
         renderItem={({ item }) => {
           const isPc = item.registeredVia === 'DESKTOP_OFFICE';
           const isAllPrinted = item.allLabelsPrinted === true;
+          const status = item.status || 'Registered';
+          const statusStyle = getParcelStatusBadgeStyle(status);
           return (
             <Pressable
               accessibilityRole="button"
@@ -225,8 +227,9 @@ export function FindParcelScreen({ initialFilter = 'ALL' }) {
               </Text>
 
               <View style={styles.cardFooter}>
-                <View style={styles.statusBox}>
-                  <Text style={styles.statusText}>{item.status || 'Registered'}</Text>
+                <View style={[styles.statusBox, { backgroundColor: statusStyle.backgroundColor, borderColor: statusStyle.borderColor }]}>
+                  <View style={[styles.statusDot, { backgroundColor: statusStyle.color }]} />
+                  <Text style={[styles.statusText, { color: statusStyle.color }]}>{formatParcelStatusDisplay(status)}</Text>
                 </View>
                 <Text style={[styles.labelText, isAllPrinted ? styles.labelPrinted : styles.labelNeeds]}>
                   {isAllPrinted ? 'labels printed' : 'needs label'}
@@ -353,12 +356,13 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
   },
   statusBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: colors.borderStrong,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    backgroundColor: colors.surface,
+    paddingVertical: 3,
   },
+  statusDot: { width: 6, height: 6, borderRadius: 3, marginRight: 8 },
   statusText: {
     ...typography.mono,
     fontSize: 11,

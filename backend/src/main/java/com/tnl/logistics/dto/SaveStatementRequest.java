@@ -14,6 +14,7 @@ import java.time.LocalDate;
 public class SaveStatementRequest {
 
     @NotBlank(message = "Client ID is required")
+    @Size(max = 20, message = "Client ID must not exceed 20 characters")
     private String clientId;
 
     @NotNull(message = "Target date is required")
@@ -28,6 +29,9 @@ public class SaveStatementRequest {
 
     @Size(max = 150, message = "Collected by must not exceed 150 characters")
     private String collectedBy;
+
+    @Size(max = 64, message = "Request ID must not exceed 64 characters")
+    private String requestId;
 
     public SaveStatementRequest() {}
 
@@ -61,4 +65,7 @@ public class SaveStatementRequest {
 
     public String getCollectedBy() { return collectedBy; }
     public void setCollectedBy(String collectedBy) { this.collectedBy = collectedBy; }
+
+    public String getRequestId() { return requestId; }
+    public void setRequestId(String requestId) { this.requestId = requestId; }
 }

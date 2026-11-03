@@ -257,7 +257,7 @@ public class WorkflowDataSeeder implements CommandLineRunner {
         print(shipment, "first", trackingIds(shipment));
         for (ParcelStatus status : List.of(ParcelStatus.LOADED_ON_TRUCK, ParcelStatus.ARRIVED_AT_TNL,
                 ParcelStatus.LOADED_TO_HAULER, ParcelStatus.COMPLETED)) {
-            boolean isCourierStep = status == ParcelStatus.LOADED_ON_TRUCK || status == ParcelStatus.ARRIVED_AT_TNL;
+            boolean isCourierStep = status == ParcelStatus.LOADED_ON_TRUCK;
             String actor = isCourierStep ? (client % 2 == 0 ? "U-007" : "U-003") : dispatchActor(shipment);
             trackingService.processBatchScan(new BatchTrackingScanRequest(trackingIds(shipment), status,
                     status == ParcelStatus.LOADED_ON_TRUCK ? "VH-WF-001" : null, "Cargo count verified"), actor);
@@ -295,8 +295,8 @@ public class WorkflowDataSeeder implements CommandLineRunner {
         if (!date.equals(LocalDate.now())) {
             LocalDateTime registrationTime = date.atTime(9, 0);
             entityManager.flush();
-            entityManager.createNativeQuery("UPDATE shipment SET date_registered = :timestamp WHERE shipment_id = :id")
-                    .setParameter("timestamp", registrationTime).setParameter("id", shipment.getShipmentId()).executeUpdate();
+            entityManager.createNativeQuery("UPDATE shipment SET date_registered = :timestamp, business_registration_date = :busDate WHERE shipment_id = :id")
+                    .setParameter("timestamp", registrationTime).setParameter("busDate", date).setParameter("id", shipment.getShipmentId()).executeUpdate();
             entityManager.refresh(shipment);
             for (String trackingId : response.getTrackingIds()) {
                 List<TrackingEvent> events = entityManager.createQuery(

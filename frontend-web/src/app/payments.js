@@ -3,6 +3,7 @@ import { TableRowSkeleton, SkeletonBlock } from '../components/common/Skeleton';
 import { useCachedPreview, requirePage } from '../services/api/useCachedPreview';
 import { CACHE_SLOTS } from '../services/api/responseCache.mjs';
 import React, { useState } from 'react';
+import { useSavedPageState } from '../services/navigation/useSavedPageState';
 import { View, Text, StyleSheet } from 'react-native';
 import AppShell from '../components/layout/AppShell';
 import PageHeader from '../components/layout/PageHeader';
@@ -28,12 +29,18 @@ const PAYMENT_FILTER_OPTIONS = [
 export default function PaymentsScreen() {
 
   // Search & Filter State
-  const [search, setSearch] = useState('');
-  const [paymentFilter, setPaymentFilter] = useState('ALL');
+  const [filterState, updateFilterState] = useSavedPageState('payments_directory', {
+    search: '',
+    paymentFilter: 'ALL',
+    page: 0,
+    pageSize: 20,
+  });
+  const { search, paymentFilter, page, pageSize } = filterState;
+
 
   // Pagination State
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(20);
+
+
 
   // Modal & Toast State
   const [selectedShipment, setSelectedShipment] = useState(null);
@@ -50,9 +57,9 @@ export default function PaymentsScreen() {
   const totalPages = resource.data?.page?.totalPages ?? resource.data?.totalPages ?? 1;
   const totalElements = resource.data?.page?.totalElements ?? resource.data?.totalElements ?? shipments.length;
   const totalOutstanding = shipments.reduce((sum, item) => sum + Math.max(0, Number(item.collectibleBalance ?? item.balance ?? 0)), 0);
-  const handleSearchChange = value => { setSearch(value); setPage(0); };
-  const handlePaymentFilterChange = value => { setPaymentFilter(value); setPage(0); };
-  const handlePageSizeChange = value => { setPageSize(value); setPage(0); };
+  const handleSearchChange = value => { updateFilterState({ search: value, page: 0 }); };
+  const handlePaymentFilterChange = value => { updateFilterState({ paymentFilter: value, page: 0 }); };
+  const handlePageSizeChange = value => { updateFilterState({ pageSize: value, page: 0 }); };
 
   // Open Record Payment Modal
   const handleOpenRecordModal = (shipment) => {
@@ -132,7 +139,7 @@ export default function PaymentsScreen() {
           totalPages={totalPages}
           totalElements={totalElements}
           pageSize={pageSize}
-          onPageChange={setPage}
+          onPageChange={(newPage) => updateFilterState({ page: newPage })}
           onPageSizeChange={handlePageSizeChange}
           canRecordPayment={resource.isFresh}
           onRecordPayment={handleOpenRecordModal}

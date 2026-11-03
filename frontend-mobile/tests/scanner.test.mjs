@@ -70,7 +70,7 @@ describe('Scanner Flow & State Machine', () => {
     assert.strictEqual(formatStatusLabel('REGISTERED'), 'Registered');
     assert.strictEqual(formatStatusLabel('QR_GENERATED'), 'QR Generated');
     assert.strictEqual(formatStatusLabel('LOADED_ON_TRUCK'), 'Loaded on Truck');
-    assert.strictEqual(formatStatusLabel('ARRIVED_AT_TNL'), 'Outload / Arrive TNL');
+    assert.strictEqual(formatStatusLabel('ARRIVED_AT_TNL'), 'Arrived in Daet');
     assert.strictEqual(formatStatusLabel('LOADED_TO_HAULER'), 'Loaded to Hauler');
     assert.strictEqual(formatStatusLabel('COMPLETED'), 'Completed');
   });
@@ -531,11 +531,8 @@ describe('Scanner Flow & State Machine', () => {
   });
 
   it('34. Batch operations are filtered by role and never include COMPLETED', () => {
-    assert.deepStrictEqual(getAllowedBatchOperations('COURIER_STAFF'), [
-      'LOADED_ON_TRUCK',
-      'ARRIVED_AT_TNL'
-    ]);
-    assert.deepStrictEqual(getAllowedBatchOperations('DISPATCH_STAFF'), ['LOADED_TO_HAULER']);
+    assert.deepStrictEqual(getAllowedBatchOperations('COURIER_STAFF'), ['LOADED_ON_TRUCK']);
+    assert.deepStrictEqual(getAllowedBatchOperations('DISPATCH_STAFF'), ['ARRIVED_AT_TNL', 'LOADED_TO_HAULER']);
     assert.deepStrictEqual(getAllowedBatchOperations('RECEIVING_STAFF'), BATCH_OPERATIONS);
     assert.deepStrictEqual(getAllowedBatchOperations('UNKNOWN_ROLE'), []);
     for (const role of ['RECEIVING_STAFF', 'COURIER_STAFF', 'DISPATCH_STAFF', null, 'UNKNOWN_ROLE']) {
@@ -551,11 +548,11 @@ describe('Scanner Flow & State Machine', () => {
       'LOADED_TO_HAULER',
       'COMPLETED'
     ]);
-    assert.deepStrictEqual(getAllowedTransitions('COURIER_STAFF'), ['LOADED_ON_TRUCK', 'ARRIVED_AT_TNL']);
-    assert.deepStrictEqual(getAllowedTransitions('DISPATCH_STAFF'), ['LOADED_TO_HAULER', 'COMPLETED']);
+    assert.deepStrictEqual(getAllowedTransitions('COURIER_STAFF'), ['LOADED_ON_TRUCK']);
+    assert.deepStrictEqual(getAllowedTransitions('DISPATCH_STAFF'), ['ARRIVED_AT_TNL', 'LOADED_TO_HAULER', 'COMPLETED']);
     assert.strictEqual(isRoleTransitionAllowed('RECEIVING_STAFF', 'QR_GENERATED'), true);
     assert.strictEqual(isRoleTransitionAllowed('COURIER_STAFF', 'LOADED_TO_HAULER'), false);
-    assert.strictEqual(isRoleTransitionAllowed('DISPATCH_STAFF', 'ARRIVED_AT_TNL'), false);
+    assert.strictEqual(isRoleTransitionAllowed('DISPATCH_STAFF', 'ARRIVED_AT_TNL'), true);
     assert.strictEqual(isRoleTransitionAllowed('UNKNOWN_ROLE', 'LOADED_ON_TRUCK'), false);
 
     const permission = getSingleScanPermission({
@@ -581,9 +578,9 @@ describe('Scanner Flow & State Machine', () => {
     );
 
     const queue = ['TRK-2026-000101'];
-    assert.strictEqual(canSubmitBatch(queue, 'ARRIVED_AT_TNL', null, 'DISPATCH_STAFF'), false);
+    assert.strictEqual(canSubmitBatch(queue, 'ARRIVED_AT_TNL', null, 'COURIER_STAFF'), false);
     assert.throws(
-      () => buildBatchScanRequest(queue, 'ARRIVED_AT_TNL', null, 'DISPATCH_STAFF'),
+      () => buildBatchScanRequest(queue, 'ARRIVED_AT_TNL', null, 'COURIER_STAFF'),
       /not permitted/
     );
   });
@@ -660,16 +657,16 @@ describe('Scanner Flow & State Machine', () => {
     assert.strictEqual(result.error, null);
   });
 
-  it('42. Batch candidate matching ARRIVED_AT_TNL passes validation for COURIER_STAFF', () => {
+  it('42. Batch candidate matching ARRIVED_AT_TNL passes validation for DISPATCH_STAFF', () => {
     const context = {
       trackingId: 'TRK-2026-000102',
       currentStatusCode: 'LOADED_ON_TRUCK',
       currentStatusLabel: 'Loaded on Truck',
       nextStatusCode: 'ARRIVED_AT_TNL',
-      nextStatusLabel: 'Outload / Arrive TNL',
+      nextStatusLabel: 'Arrived in Daet',
       canScan: true
     };
-    const result = validateBatchCandidate(context, 'ARRIVED_AT_TNL', 'COURIER_STAFF');
+    const result = validateBatchCandidate(context, 'ARRIVED_AT_TNL', 'DISPATCH_STAFF');
     assert.strictEqual(result.isValid, true);
     assert.strictEqual(result.error, null);
   });
@@ -683,11 +680,11 @@ describe('Scanner Flow & State Machine', () => {
       nextStatusLabel: 'Loaded on Truck',
       canScan: true
     };
-    const result = validateBatchCandidate(context, 'ARRIVED_AT_TNL', 'COURIER_STAFF');
+    const result = validateBatchCandidate(context, 'ARRIVED_AT_TNL', 'DISPATCH_STAFF');
     assert.strictEqual(result.isValid, false);
     assert.match(result.error, /Cannot add TRK-2026-000103/);
     assert.match(result.error, /current status is "QR Generated"/);
-    assert.match(result.error, /Expected next status is "Outload \/ Arrive TNL"/);
+    assert.match(result.error, /Expected next status is "Arrived in Daet"/);
   });
 
   it('44. Terminal parcel is rejected as unscannable', () => {
@@ -719,7 +716,7 @@ describe('Scanner Flow & State Machine', () => {
     const context = {
       trackingId: 'TRK-2026-000106',
       currentStatusCode: 'ARRIVED_AT_TNL',
-      currentStatusLabel: 'Outload / Arrive TNL',
+      currentStatusLabel: 'Arrived in Daet',
       nextStatusCode: 'LOADED_TO_HAULER',
       nextStatusLabel: 'Loaded to Hauler',
       canScan: true
@@ -739,7 +736,7 @@ describe('Scanner Flow & State Machine', () => {
     const context = {
       trackingId: 'TRK-2026-000107',
       currentStatusCode: 'ARRIVED_AT_TNL',
-      currentStatusLabel: 'Outload / Arrive TNL',
+      currentStatusLabel: 'Arrived in Daet',
       nextStatusCode: 'LOADED_TO_HAULER',
       nextStatusLabel: 'Loaded to Hauler',
       canScan: true

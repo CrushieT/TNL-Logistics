@@ -32,9 +32,16 @@ function enqueueSerialized(jobId, operation) {
 }
 
 export function PrinterProvider({ children }) {
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const ownerUserId = user?.userId;
   const [connectedDevice, setConnectedDevice] = useState(null);
+  const [rememberedDevice, setRememberedDevice] = useState(null);
+  const [connectionError, setConnectionError] = useState(null);
+  const [autoReconnectEnabled, setAutoReconnectEnabled] = useState(false);
+  const lifecycleRef = useRef(0);
+  const appStateRef = useRef(AppState.currentState);
+  const initializedRef = useRef(false);
+  const sessionCleanupRef = useRef(Promise.resolve());
   const [branding, setBranding] = useState(null);
   const [brandingLoading, setBrandingLoading] = useState(false);
   const [brandingError, setBrandingError] = useState(null);
@@ -44,7 +51,6 @@ export function PrinterProvider({ children }) {
   const scanGenerationRef = useRef(0);
   const isScanningRef = useRef(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const isConnectingRef = useRef(false);
   const [availableDevices, setAvailableDevices] = useState([]);
   const [isPrinting, setIsPrinting] = useState(false);
   const [pendingAuditCount, setPendingAuditCount] = useState(0);
@@ -99,16 +105,78 @@ export function PrinterProvider({ children }) {
     return results;
   }, [ownerUserId, syncAuditEntry]);
 
+  const refreshConnection = useCallback(() => {
+    setConnectedDevice(bluetoothPrinterService.getConnectedDevice());
+    setRememberedDevice(bluetoothPrinterService.getRememberedDevice());
+    setAutoReconnectEnabled(bluetoothPrinterService.autoReconnectEnabled);
+  }, []);
+
+  const runConnection = useCallback(async (device, automatic = false) => {
+    const lifecycle = lifecycleRef.current;
+    setIsConnecting(true);
+    setConnectionError(null);
+    try {
+      const connected = await bluetoothPrinterService.connect(device, { automatic });
+      if (lifecycle === lifecycleRef.current) setConnectionError(null);
+      return connected;
+    } catch (error) {
+      if (lifecycle === lifecycleRef.current && error?.code !== 'CANCELLED') {
+        setConnectionError(error?.message || 'Unable to connect. Check the printer and tap Reconnect.');
+      }
+      throw error;
+    } finally {
+      if (lifecycle === lifecycleRef.current) {
+        setIsConnecting(Boolean(bluetoothPrinterService.pendingConnection));
+        refreshConnection();
+      }
+    }
+  }, [refreshConnection]);
+
   useEffect(() => {
-    let isMounted = true;
-    bluetoothPrinterService.initialize().then((savedDevice) => {
-      if (!isMounted) return;
-      setConnectedDevice(savedDevice);
+    const lifecycle = ++lifecycleRef.current;
+    initializedRef.current = false;
+    const isCurrent = () => lifecycle === lifecycleRef.current;
+    const reconnectAutomatically = () => {
+      const service = bluetoothPrinterService;
+      if (!isCurrent() || !initializedRef.current || !isAuthenticated || !ownerUserId || appStateRef.current !== 'active'
+        || !service.autoReconnectEnabled || service.isVirtualMode || service.isConnected()
+        || isScanningRef.current || service.isScanning || service.pendingConnection || service.controlOperation
+        || service.isPrinting || service.isTransmitting) return;
+      const saved = service.getRememberedDevice();
+      if (saved?.type === 'BLUETOOTH') runConnection(saved, true).catch(() => {});
+    };
+    const lostSubscription = bluetoothPrinterService.observeConnectionLoss(() => {
+      if (!isCurrent()) return;
+      refreshConnection();
+      setConnectionError('Printer connection lost. Check the printer and tap Reconnect.');
+    });
+    const appSubscription = AppState.addEventListener('change', (state) => {
+      const previousState = appStateRef.current;
+      appStateRef.current = state;
+      if (state !== 'active') {
+        bluetoothPrinterService.cancelPendingConnection({ automaticOnly: true }).catch(() => {});
+      } else if (previousState !== 'active') reconnectAutomatically();
+    });
+    Promise.all([bluetoothPrinterService.initialize(), sessionCleanupRef.current]).then(() => {
+      if (!isCurrent()) return;
+      initializedRef.current = true;
+      refreshConnection();
+      setIsConnecting(false);
+      setConnectionError(null);
       setIsVirtualMode(bluetoothPrinterService.isVirtualMode);
       setAvailableDevices(bluetoothPrinterService.isVirtualMode ? VIRTUAL_PRINTERS : []);
+      reconnectAutomatically();
+    }).catch((error) => {
+      if (isCurrent()) setConnectionError(error?.message || 'Unable to restore the saved printer.');
     });
-    return () => { isMounted = false; };
-  }, []);
+    return () => {
+      lifecycleRef.current += 1;
+      initializedRef.current = false;
+      lostSubscription.remove();
+      appSubscription.remove();
+      sessionCleanupRef.current = bluetoothPrinterService.cancelPendingConnection();
+    };
+  }, [isAuthenticated, ownerUserId, refreshConnection, runConnection]);
 
   useEffect(() => {
     retryPendingAudits();
@@ -138,32 +206,42 @@ export function PrinterProvider({ children }) {
   }, []);
 
   const connectPrinter = useCallback(async (device) => {
-    if (isConnectingRef.current) return bluetoothPrinterService.connect(device);
-    isConnectingRef.current = true;
-    setIsConnecting(true);
-    try {
-      const connected = await bluetoothPrinterService.connect(device);
-      setConnectedDevice(connected);
-      return connected;
-    } finally {
-      isConnectingRef.current = false;
-      setIsConnecting(false);
-    }
-  }, []);
+    if (!isAuthenticated || !ownerUserId) throw new Error('Sign in before connecting a printer.');
+    const lifecycle = lifecycleRef.current;
+    await Promise.all([bluetoothPrinterService.initialize(), sessionCleanupRef.current]);
+    if (lifecycle !== lifecycleRef.current) throw new Error('The signed-in session changed. Reconnect again.');
+    return runConnection(device);
+  }, [isAuthenticated, ownerUserId, runConnection]);
+
+  const reconnectPrinter = useCallback(() => connectPrinter(bluetoothPrinterService.getRememberedDevice()), [connectPrinter]);
 
   const disconnectPrinter = useCallback(async () => {
-    await bluetoothPrinterService.disconnect();
-    setConnectedDevice(null);
-  }, []);
+    try {
+      await bluetoothPrinterService.disconnect();
+      setConnectionError(null);
+    } finally {
+      refreshConnection();
+    }
+  }, [refreshConnection]);
+
+  const forgetPrinter = useCallback(async () => {
+    try {
+      await bluetoothPrinterService.forgetPrinter();
+      setConnectionError(null);
+      setAvailableDevices([]);
+    } finally {
+      refreshConnection();
+    }
+  }, [refreshConnection]);
 
   const toggleVirtualMode = useCallback(async (enabled) => {
     scanGenerationRef.current += 1;
     setScanNotice(null);
     await bluetoothPrinterService.setVirtualMode(enabled);
     setIsVirtualMode(Boolean(enabled));
-    setConnectedDevice(bluetoothPrinterService.getConnectedDevice());
+    refreshConnection();
     setAvailableDevices(enabled ? VIRTUAL_PRINTERS : []);
-  }, []);
+  }, [refreshConnection]);
 
   const auditTrackingIds = useCallback(async ({ printJobId, shipmentId, trackingIds, printerId }) => {
     if (!ownerUserId) return 'FAILED';
@@ -200,10 +278,14 @@ export function PrinterProvider({ children }) {
       const isVirtual = connectedDevice?.type === 'VIRTUAL' || bluetoothPrinterService.isVirtualMode;
       const shouldAudit = !isVirtual && options.auditMode !== 'NONE';
 
-      if (shouldAudit) await assertCanRecordPrintAudit();
+      if (bluetoothPrinterService.pendingConnection || bluetoothPrinterService.controlOperation) {
+        throw new Error('Wait for the printer connection to finish before printing.');
+      }
+      bluetoothPrinterService.isPrinting = true;
       setIsPrinting(true);
 
       try {
+        if (shouldAudit) await assertCanRecordPrintAudit();
         const resolvedBranding = await resolveCurrentLabelBranding(fetchBranding);
 
         for (let index = 0; index < units.length; index += 1) {
@@ -254,6 +336,7 @@ export function PrinterProvider({ children }) {
           device: connectedDevice?.name || null,
         };
       } finally {
+        bluetoothPrinterService.isPrinting = false;
         setIsPrinting(false);
       }
     });
@@ -262,6 +345,7 @@ export function PrinterProvider({ children }) {
   return (
     <PrinterContext.Provider value={{
       isConnected: Boolean(connectedDevice), connectedDevice, isVirtualMode, isScanning, isConnecting,
+      rememberedDevice, connectionError, autoReconnectEnabled, reconnectPrinter, forgetPrinter,
       availableDevices, scanNotice, isPrinting, pendingAuditCount, scanDevices, connectPrinter,
       disconnectPrinter, toggleVirtualMode, printParcelLabels, confirmSystemPrint,
       retryPendingAudits, assertCanRecordPrintAudit, branding, brandingLoading,

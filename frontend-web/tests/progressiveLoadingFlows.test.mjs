@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import * as cache from '../src/services/api/responseCache.mjs';
 import * as requests from '../src/services/api/requestCoordinator.mjs';
 import * as sessionCore from '../src/services/api/sessionCore.mjs';
+import * as navigationState from '../src/services/navigation/navigationState.mjs';
 
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core');
@@ -121,7 +122,14 @@ function mountScreen(name, api = {}, initialAuth = {}, onSubscribe) {
     if (dependency === './responseCache.mjs') return cache;
     throw new Error(`Unexpected preview dependency ${dependency}`);
   });
+  const savedPageHook = loadProductionModule('../src/services/navigation/useSavedPageState.js', dependency => {
+    if (dependency === 'react') return react;
+    if (dependency.endsWith('/navigationState.mjs')) return navigationState;
+    throw new Error(`Unhandled useSavedPageState dependency: ${dependency}`);
+  });
   const Screen = loadProductionModule(`../src/app/${name}.js`, dependency => {
+    if (dependency.endsWith('/useSavedPageState')) return savedPageHook;
+    if (dependency.endsWith('/navigationState.mjs')) return navigationState;
     if (dependency.endsWith('/useCachedPreview')) return cachedHook;
     if (dependency === 'react') return react;
     if (dependency === 'react-native') return native;
@@ -181,7 +189,10 @@ function mountScreen(name, api = {}, initialAuth = {}, onSubscribe) {
   };
 }
 
-beforeEach(() => cache.clearAllCache());
+beforeEach(() => {
+  cache.clearAllCache();
+  navigationState.clearAllNavigationState();
+});
 
 for (const name of ['index', 'reports', 'weekly-collections', 'tracking-logs']) {
   test(`${name}: actual screen renders without coordinator initialization errors`, async () => {

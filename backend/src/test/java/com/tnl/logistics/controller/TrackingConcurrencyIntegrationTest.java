@@ -110,6 +110,15 @@ public class TrackingConcurrencyIntegrationTest {
 
     @Test
     public void testConcurrentStatusScansAreSerializedWithNoDuplicateEvents() throws Exception {
+        verifyConcurrentScans(false);
+    }
+
+    @Test
+    public void testConcurrentDispatchArrivalBatchesDoNotDuplicateEvents() throws Exception {
+        verifyConcurrentScans(true);
+    }
+
+    private void verifyConcurrentScans(boolean isArrival) throws Exception {
         Vehicle vehicle = vehicleRepository.saveAndFlush(new Vehicle(testVehicleId, "CONC-1234", "Concurrency Van"));
 
         ShipmentRegistrationRequest regReq = new ShipmentRegistrationRequest();
@@ -135,7 +144,17 @@ public class TrackingConcurrencyIntegrationTest {
                 vehicle.getVehicleId(),
                 "Concurrent Load on Truck"
         );
-        String payload = objectMapper.writeValueAsString(scanRequest);
+        String endpoint = isArrival ? "/api/v1/tracking-events/batch-scan" : "/api/v1/tracking-events/scan";
+        String token = isArrival ? "Bearer " + sessionTokens.generateToken("USR-HAULER", "DISPATCH_STAFF") : fieldToken;
+        if (isArrival) {
+            mockMvc.perform(post("/api/v1/tracking-events/scan")
+                            .header("Authorization", fieldToken).contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(scanRequest)))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
+        }
+        String payload = objectMapper.writeValueAsString(isArrival
+                ? new BatchTrackingScanRequest(List.of(createdTrackingId), ParcelStatus.ARRIVED_AT_TNL, null, "Concurrent arrival")
+                : scanRequest);
 
         int threadCount = 2;
         CountDownLatch readyLatch = new CountDownLatch(threadCount);
@@ -148,8 +167,8 @@ public class TrackingConcurrencyIntegrationTest {
                 readyLatch.countDown();
                 try {
                     startGate.await();
-                    MvcResult mvcResult = mockMvc.perform(post("/api/v1/tracking-events/scan")
-                                    .header("Authorization", fieldToken)
+                    MvcResult mvcResult = mockMvc.perform(post(endpoint)
+                                    .header("Authorization", token)
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .content(payload))
                             .andReturn();
@@ -172,15 +191,22 @@ public class TrackingConcurrencyIntegrationTest {
         }
 
         List<TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(createdTrackingId);
-        assertEquals(3, events.size(), "Expected exactly 3 tracking events: REGISTERED, QR_GENERATED, and serialized LOADED_ON_TRUCK");
+        assertEquals(isArrival ? 4 : 3, events.size(), "Concurrent scans must add exactly one event");
         assertEquals(ParcelStatus.REGISTERED, events.get(0).getStatus());
         assertEquals(ParcelStatus.QR_GENERATED, events.get(1).getStatus());
         assertEquals(ParcelStatus.LOADED_ON_TRUCK, events.get(2).getStatus());
 
         ParcelUnit unit = parcelUnitRepository.findById(createdTrackingId).orElseThrow();
-        assertEquals(ParcelStatus.LOADED_ON_TRUCK, unit.getCurrentStatus());
-        assertNotNull(unit.getCurrentVehicle());
-        assertEquals(testVehicleId, unit.getCurrentVehicle().getVehicleId());
+        if (isArrival) {
+            assertEquals(ParcelStatus.ARRIVED_AT_TNL, unit.getCurrentStatus());
+            assertNull(unit.getCurrentVehicle());
+            assertEquals(ParcelStatus.ARRIVED_AT_TNL, events.get(3).getStatus());
+            assertEquals("USR-HAULER", events.get(3).getStaff().getUserId());
+        } else {
+            assertEquals(ParcelStatus.LOADED_ON_TRUCK, unit.getCurrentStatus());
+            assertNotNull(unit.getCurrentVehicle());
+            assertEquals(testVehicleId, unit.getCurrentVehicle().getVehicleId());
+        }
     }
 
     @Test

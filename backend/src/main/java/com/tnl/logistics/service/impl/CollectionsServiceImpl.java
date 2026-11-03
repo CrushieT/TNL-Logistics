@@ -9,6 +9,7 @@ import com.tnl.logistics.repository.ClientCollectionTotals;
 import com.tnl.logistics.repository.SoaRepository;
 import com.tnl.logistics.service.CollectionsService;
 import com.tnl.logistics.dto.CollectionTotals;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -16,9 +17,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -28,16 +31,21 @@ import java.util.stream.Collectors;
 @Service
 public class CollectionsServiceImpl implements CollectionsService {
 
+    private static final ZoneId MANILA_ZONE = ZoneId.of("Asia/Manila");
+
     private final ShipmentRepository shipmentRepository;
     private final SoaRepository soaRepository;
     private final com.tnl.logistics.service.SystemSettingService systemSettingService;
+    private final Clock clock;
 
     public CollectionsServiceImpl(ShipmentRepository shipmentRepository,
                                   SoaRepository soaRepository,
-                                  com.tnl.logistics.service.SystemSettingService systemSettingService) {
+                                  com.tnl.logistics.service.SystemSettingService systemSettingService,
+                                  @Autowired(required = false) Clock clock) {
         this.shipmentRepository = shipmentRepository;
         this.soaRepository = soaRepository;
         this.systemSettingService = systemSettingService;
+        this.clock = (clock != null) ? clock : Clock.system(MANILA_ZONE);
     }
 
     @Override
@@ -81,13 +89,14 @@ public class CollectionsServiceImpl implements CollectionsService {
     }
 
     private Object computeWeeklyCollections(LocalDate targetDate, LocalDate explicitCycleStartDate, boolean includeItems) {
-        LocalDate targetThursday = (targetDate != null) ? targetDate : calculateActiveCycleDate(LocalDate.now());
+        LocalDate today = LocalDate.now(clock.withZone(MANILA_ZONE));
+        LocalDate targetThursday = (targetDate != null) ? targetDate : calculateActiveCycleDate(today);
 
         LocalDate cycleStartLocalDate = (explicitCycleStartDate != null)
                 ? explicitCycleStartDate
                 : calculateCycleStartDate(targetThursday);
         LocalDateTime cycleStart = cycleStartLocalDate.atStartOfDay();
-        LocalDateTime cycleEnd = targetThursday.atTime(23, 59, 59, 999999999);
+        LocalDateTime cycleEnd = targetThursday.atStartOfDay();
 
         List<ClientCollectionTotals> clientTotals = shipmentRepository.aggregateCollectionsByClient(
                 cycleStart, cycleEnd, targetThursday);
@@ -193,13 +202,13 @@ public class CollectionsServiceImpl implements CollectionsService {
         if (cycleEndDate == null) {
             return null;
         }
-        LocalDate defaultStart = cycleEndDate.minusDays(6);
+        LocalDate defaultStart = cycleEndDate.minusDays(7);
         if (knownCycles != null) {
             Optional<LocalDate> prevCycleOpt = knownCycles.stream()
                     .filter(d -> d != null && d.isBefore(cycleEndDate))
                     .max(LocalDate::compareTo);
             if (prevCycleOpt.isPresent()) {
-                LocalDate anchoredStart = prevCycleOpt.get().plusDays(1);
+                LocalDate anchoredStart = prevCycleOpt.get();
                 if (anchoredStart.isAfter(defaultStart)) {
                     return anchoredStart;
                 }
@@ -220,12 +229,18 @@ public class CollectionsServiceImpl implements CollectionsService {
     @Transactional(readOnly = true)
     public List<LocalDate> getActiveCycleDates() {
         try {
-            LocalDate currentCycleEnd = calculateActiveCycleDate(LocalDate.now());
+            LocalDate today = LocalDate.now(clock.withZone(MANILA_ZONE));
+            LocalDate currentCycleEnd = calculateActiveCycleDate(today);
 
             Set<LocalDate> activeCycles = new TreeSet<>(Comparator.reverseOrder());
 
             // 1. Always include the current ongoing cycle closing day
             activeCycles.add(currentCycleEnd);
+
+            // If today is collection day, also include today's closed cycle so staff can view/settle it
+            if (today.getDayOfWeek() == getCollectionDayOfWeek()) {
+                activeCycles.add(today);
+            }
 
             // 2. Add all immutable historical statement dates from generated SOAs
             List<LocalDate> soaDates = soaRepository.findDistinctStatementDates();
@@ -271,10 +286,16 @@ public class CollectionsServiceImpl implements CollectionsService {
 
     @Override
     public LocalDate calculateActiveCycleDate(LocalDate baseDate) {
+        if (baseDate == null) {
+            baseDate = LocalDate.now(clock.withZone(MANILA_ZONE));
+        }
         DayOfWeek collectionDay = getCollectionDayOfWeek();
         int currentDayValue = baseDate.getDayOfWeek().getValue();
         int targetDayValue = collectionDay.getValue();
         int daysUntilTarget = (targetDayValue - currentDayValue + 7) % 7;
+        if (daysUntilTarget == 0) {
+            daysUntilTarget = 7;
+        }
         return baseDate.plusDays(daysUntilTarget);
     }
 }

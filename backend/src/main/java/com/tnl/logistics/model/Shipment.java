@@ -2,11 +2,12 @@ package com.tnl.logistics.model;
 
 import jakarta.persistence.*;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Objects;
 import org.hibernate.annotations.CreationTimestamp;
 import org.springframework.data.domain.Persistable;
-
 
 /**
  * Entity mapping to the shipment database table.
@@ -79,13 +80,20 @@ public class Shipment implements Persistable<String> {
     @Column(name = "date_registered", nullable = false, updatable = false)
     private LocalDateTime dateRegistered;
 
+    @Column(name = "business_registration_date")
+    private LocalDate businessRegistrationDate;
+
     @Transient
     private boolean isNew = true;
 
     @PrePersist
     protected void onCreate() {
+        ZoneId manilaZone = ZoneId.of("Asia/Manila");
         if (this.dateRegistered == null) {
-            this.dateRegistered = LocalDateTime.now();
+            this.dateRegistered = LocalDateTime.now(manilaZone);
+        }
+        if (this.businessRegistrationDate == null && this.dateRegistered != null) {
+            this.businessRegistrationDate = this.dateRegistered.toLocalDate();
         }
     }
 
@@ -188,6 +196,9 @@ public class Shipment implements Persistable<String> {
 
     public LocalDateTime getDateRegistered() { return dateRegistered; }
     public void setDateRegistered(LocalDateTime dateRegistered) { this.dateRegistered = dateRegistered; }
+
+    public LocalDate getBusinessRegistrationDate() { return businessRegistrationDate; }
+    public void setBusinessRegistrationDate(LocalDate businessRegistrationDate) { this.businessRegistrationDate = businessRegistrationDate; }
 
     public String getStatementId() { return statementId; }
     public void setStatementId(String statementId) { this.statementId = statementId; }

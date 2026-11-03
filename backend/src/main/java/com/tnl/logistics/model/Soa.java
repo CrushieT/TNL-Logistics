@@ -51,6 +51,9 @@ public class Soa {
     @Column(name = "pdf_path", length = 255)
     private String pdfPath;
 
+    @Column(name = "financial_revision", nullable = false)
+    private Integer financialRevision = 1;
+
     public Soa() {}
 
     public Soa(String soaNo, SoaBatch batch, WeeklyCollection collection, Client client,
@@ -70,6 +73,7 @@ public class Soa {
         this.collectedBy = collectedBy;
         this.statementDate = statementDate;
         this.pdfPath = pdfPath;
+        this.financialRevision = 1;
     }
 
     public String getSoaNo() { return soaNo; }
@@ -110,4 +114,7 @@ public class Soa {
 
     public String getPdfPath() { return pdfPath; }
     public void setPdfPath(String pdfPath) { this.pdfPath = pdfPath; }
+
+    public Integer getFinancialRevision() { return financialRevision != null ? financialRevision : 1; }
+    public void setFinancialRevision(Integer financialRevision) { this.financialRevision = financialRevision; }
 }

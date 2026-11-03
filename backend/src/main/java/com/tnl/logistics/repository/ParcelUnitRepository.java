@@ -49,23 +49,23 @@ public interface ParcelUnitRepository extends JpaRepository<ParcelUnit, String> 
     List<Object[]> countParcelsGroupedByStatus();
 
     @Query("SELECT p.currentStatus, COUNT(p) FROM ParcelUnit p " +
-           "WHERE p.lost = false AND p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered <= :cycleEnd " +
+           "WHERE p.lost = false AND p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered < :cycleEnd " +
            "GROUP BY p.currentStatus")
     List<Object[]> countParcelsGroupedByStatusBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart, @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
 
     @Query("SELECT p.lost, p.currentStatus, COUNT(p) FROM ParcelUnit p " +
-           "WHERE p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered <= :cycleEnd " +
+           "WHERE p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered < :cycleEnd " +
            "GROUP BY p.lost, p.currentStatus")
     List<Object[]> countParcelsGroupedByLossAndStatusBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart,
                                                           @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
 
     @Query("SELECT COUNT(p) FROM ParcelUnit p WHERE p.lost = true " +
-           "AND p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered <= :cycleEnd")
+           "AND p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered < :cycleEnd")
     long countLostParcelsBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart,
                                  @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
 
     @Query("SELECT COUNT(p) FROM ParcelUnit p WHERE p.currentStatus = com.tnl.logistics.model.ParcelStatus.COMPLETED " +
-           "AND p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered <= :cycleEnd")
+           "AND p.shipment.dateRegistered >= :cycleStart AND p.shipment.dateRegistered < :cycleEnd")
     long countCompletedParcelsBetween(@Param("cycleStart") java.time.LocalDateTime cycleStart,
                                       @Param("cycleEnd") java.time.LocalDateTime cycleEnd);
 

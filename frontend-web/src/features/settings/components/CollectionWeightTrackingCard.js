@@ -115,7 +115,7 @@ export default function CollectionWeightTrackingCard({
 
       {/* Explanatory System Note */}
       <Text style={styles.systemNote}>
-        Tracking: Registered to QR Generated to Loaded on Truck to Outload / Arrive TNL to Loaded to Hauler (per unit).
+        Tracking: Registered to QR Generated to Loaded on Truck to Arrived in Daet to Loaded to Hauler (per unit).
         Payment, Label & Waybill statuses are tracked separately. History is append-only.
       </Text>
 

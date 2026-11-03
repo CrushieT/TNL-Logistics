@@ -545,7 +545,7 @@ public class PersonalTrackingHistoryIntegrationTest {
     public void testResultsSortByTimestampDescendingAndEventIdDescending() throws Exception {
         String trackingId = createTestShipment(1);
         trackingService.processStatusScan(new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Scan 1"), "USR-FIELD-1");
-        trackingService.processStatusScan(new TrackingScanRequest(trackingId, ParcelStatus.ARRIVED_AT_TNL, null, "Scan 2"), "USR-FIELD-1");
+        recordHistoricalCourierArrival(trackingId, fieldUser1, "Scan 2");
 
         MvcResult result = mockMvc.perform(get("/api/v1/tracking-events/mine")
                         .header("Authorization", field1Token))
@@ -724,7 +724,7 @@ public class PersonalTrackingHistoryIntegrationTest {
         String trackingId = createTestShipment(1);
         String otherTrackingId = createTestShipment(1);
         trackingService.processStatusScan(new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "First"), "USR-FIELD-1");
-        trackingService.processStatusScan(new TrackingScanRequest(trackingId, ParcelStatus.ARRIVED_AT_TNL, null, "Second"), "USR-FIELD-1");
+        recordHistoricalCourierArrival(trackingId, fieldUser1, "Second");
         trackingService.processStatusScan(new TrackingScanRequest(otherTrackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Other staff"), "USR-FIELD-2");
         String shipmentId = parcelUnitRepository.findById(trackingId).orElseThrow().getShipment().getShipmentId();
 
@@ -796,7 +796,7 @@ public class PersonalTrackingHistoryIntegrationTest {
 
         // Field 1 scans: LOADED_ON_TRUCK, ARRIVED_AT_TNL
         trackingService.processStatusScan(new TrackingScanRequest(trackingId1, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "Scan 1"), "USR-FIELD-1");
-        trackingService.processStatusScan(new TrackingScanRequest(trackingId1, ParcelStatus.ARRIVED_AT_TNL, null, "Scan 2"), "USR-FIELD-1");
+        recordHistoricalCourierArrival(trackingId1, fieldUser1, "Scan 2");
 
         // Field 1 QR_GENERATED event today (counts toward totalScans only)
         ParcelUnit parcel1 = parcelUnitRepository.findById(trackingId1).orElseThrow();
@@ -863,7 +863,7 @@ public class PersonalTrackingHistoryIntegrationTest {
         trackingService.processStatusScan(new TrackingScanRequest(trackingId, ParcelStatus.LOADED_ON_TRUCK, "VH-001", "By Field 1"), "USR-FIELD-1");
 
         // Field 2 scans ARRIVED_AT_TNL
-        trackingService.processStatusScan(new TrackingScanRequest(trackingId, ParcelStatus.ARRIVED_AT_TNL, null, "By Field 2"), "USR-FIELD-2");
+        recordHistoricalCourierArrival(trackingId, fieldUser2, "By Field 2");
 
         // Field 1 requests parcel history
         MvcResult result = mockMvc.perform(get("/api/v1/tracking-events/mine/parcels/" + trackingId)
@@ -951,7 +951,7 @@ public class PersonalTrackingHistoryIntegrationTest {
                 .andReturn();
 
         // 2. Next transition without vehicle
-        trackingService.processStatusScan(new TrackingScanRequest(trackingId, ParcelStatus.ARRIVED_AT_TNL, null, "Without vehicle"), "USR-FIELD-1");
+        recordHistoricalCourierArrival(trackingId, fieldUser1, "Without vehicle");
 
         mockMvc.perform(get("/api/v1/tracking-events/mine/parcels/" + trackingId)
                         .header("Authorization", field1Token))
@@ -1001,4 +1001,13 @@ public class PersonalTrackingHistoryIntegrationTest {
                 .andExpect(jsonPath("$.packageCount").value(1))
                 .andExpect(jsonPath("$.events[0].packageIndex").value(1));
     }
+
+    private void recordHistoricalCourierArrival(String trackingId, AppUser courier, String remarks) {
+        ParcelUnit parcel = parcelUnitRepository.findById(trackingId).orElseThrow();
+        parcel.setCurrentStatus(ParcelStatus.ARRIVED_AT_TNL);
+        parcel.setCurrentVehicle(null);
+        parcelUnitRepository.saveAndFlush(parcel);
+        trackingEventRepository.saveAndFlush(new TrackingEvent(parcel, ParcelStatus.ARRIVED_AT_TNL, courier, remarks));
+    }
+
 }

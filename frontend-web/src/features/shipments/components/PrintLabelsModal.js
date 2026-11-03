@@ -233,6 +233,7 @@ export default function PrintLabelsModal({
           <Text style={styles.destinationHubText} numberOfLines={1}>
             to {shipment.destination || shipment.destinationHub || 'TNL Baguio Hub'}
           </Text>
+          {shipment.route ? <Text style={styles.recipientSubText}>{shipment.route}</Text> : null}
         </View>
       </View>
 
@@ -240,28 +241,14 @@ export default function PrintLabelsModal({
       <View style={styles.labelFooter}>
         <View style={styles.footerRow}>
           <Text style={styles.footerItem}>
-            <Text style={styles.footerMuted}>Contents: </Text>
+            <Text style={styles.footerMuted}>Notes: </Text>
             {shipment.description || ''}
-          </Text>
-          <Text style={styles.footerItem}>
-            <Text style={styles.footerMuted}>Shipment: </Text>
-            <Text style={styles.footerMono}>{shipment.shipmentId}</Text>
           </Text>
         </View>
         <View style={styles.footerRow}>
-          <Text style={styles.footerItem} numberOfLines={1}>
-            <Text style={styles.footerMuted}>Client: </Text>
-            {shipment.client}
-          </Text>
           <Text style={styles.footerItem}>
-            <Text style={styles.footerMuted}>Route: </Text>
-            {shipment.route || ''}
-          </Text>
-        </View>
-        <View style={styles.totalRow}>
-          <Text style={styles.totalText}>
-            <Text style={styles.footerMuted}>Total: </Text>PHP{' '}
-            {Number(shipment.totalAmount || 0).toLocaleString()}
+            <Text style={styles.footerMuted}>Shipment: </Text>
+            <Text style={styles.footerMono}>{shipment.shipmentId}</Text>
           </Text>
         </View>
       </View>
@@ -633,6 +620,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   footerItem: {
+    flex: 1,
+    minWidth: 0,
+    overflowWrap: 'anywhere',
     fontFamily: fonts.sans,
     fontSize: 10,
     color: '#111111',
@@ -644,16 +634,6 @@ const styles = StyleSheet.create({
   },
   footerMuted: {
     color: '#6B7280',
-  },
-  totalRow: {
-    alignItems: 'flex-end',
-    marginTop: 2,
-  },
-  totalText: {
-    fontFamily: fonts.sans,
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#111111',
   },
   hardwareBar: {
     flexDirection: 'row',

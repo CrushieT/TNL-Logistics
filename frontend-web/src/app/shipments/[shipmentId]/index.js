@@ -13,6 +13,7 @@ import {
   subscribeRealtimeEvents,
 } from '../../../features/shipments';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
+import { clearSectionRoute } from '../../../services/navigation/navigationState.mjs';
 
 export default function ShipmentDetailScreen() {
   const router = useRouter();
@@ -66,6 +67,11 @@ export default function ShipmentDetailScreen() {
     };
   }, [loadShipment, shipmentId]);
 
+  const handleBackToShipments = () => {
+    clearSectionRoute('/shipments');
+    router.push('/shipments');
+  };
+
   const handlePrintAll = () => {
     setInitialPrintTrackingId(null);
     setPrintModalVisible(true);
@@ -74,7 +80,7 @@ export default function ShipmentDetailScreen() {
   if (loading) {
     return (
       <AppShell>
-        <Pressable onPress={() => router.push('/shipments')}>
+        <Pressable onPress={handleBackToShipments}>
           <Text style={styles.backLink}>Back to Shipments</Text>
         </Pressable>
         <View style={styles.loadingContainer}>
@@ -88,7 +94,7 @@ export default function ShipmentDetailScreen() {
   if (!shipment) {
     return (
       <AppShell>
-        <Pressable onPress={() => router.push('/shipments')}>
+        <Pressable onPress={handleBackToShipments}>
           <Text style={styles.backLink}>Back to Shipments</Text>
         </Pressable>
         <Card>
@@ -103,7 +109,7 @@ export default function ShipmentDetailScreen() {
 
   return (
     <AppShell>
-      <Pressable onPress={() => router.push('/shipments')}>
+      <Pressable onPress={handleBackToShipments}>
         <Text style={styles.backLink}>Back to Shipments</Text>
       </Pressable>
 
@@ -241,7 +247,7 @@ export default function ShipmentDetailScreen() {
                     {u.lost && <Text style={styles.lastConfirmedStatus}>Last confirmed: {u.status}</Text>}
                   </View>
                   <Text style={[styles.unitCell, styles.unitVehicle]}>
-                    {u.lost ? '—' : u.currentVehiclePlate?.trim() || u.currentVehicleId || '—'}
+                    {u.lost ? '—' : u.displayVehiclePlate?.trim() || u.displayVehicleId || '—'}
                   </Text>
                   <View style={styles.unitActions}>
                     <Pressable onPress={() => router.push(`/shipments/${shipmentId}/units/${u.trackingId}`)}>

@@ -22,6 +22,7 @@ export default function DeductionsInputCard({
   disabled = false,
   saveDisabled = false,
   maxDeduction = null,
+  saveButtonLabel = 'Save',
 }) {
   const [collectorMode, setCollectorMode] = useState('select'); // 'select' | 'custom'
   const [customCollector, setCustomCollector] = useState('');
@@ -201,7 +202,7 @@ export default function DeductionsInputCard({
             {saving ? (
               <ActivityIndicator size="small" color={colors.ink} />
             ) : (
-              <Text style={styles.saveButtonText}>Save</Text>
+              <Text style={styles.saveButtonText}>{saveButtonLabel}</Text>
             )}
           </TouchableOpacity>
         </View>

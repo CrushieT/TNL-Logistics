@@ -191,7 +191,18 @@ public class ShipmentServiceImpl implements ShipmentService {
         BigDecimal roundedActualWeight = totalActualWeight.setScale(2, RoundingMode.HALF_UP);
         BigDecimal totalVolumetricWeight = totalVolumeCm3.divide(divisorBd, 2, RoundingMode.HALF_UP);
         BigDecimal billableWeight = roundedActualWeight.max(totalVolumetricWeight);
-        BigDecimal shippingFee = billableWeight.multiply(effectiveRatePerKilo).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal calculatedShippingFee = billableWeight.multiply(effectiveRatePerKilo).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal shippingFee;
+        if (request.getShippingFee() != null) {
+            BigDecimal manualFee = request.getShippingFee();
+            if (manualFee.compareTo(BigDecimal.ZERO) < 0 || manualFee.scale() > 2) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "INVALID_SHIPPING_FEE: Shipping fee must be non-negative with at most 2 decimal places.");
+            }
+            shippingFee = manualFee.setScale(2, RoundingMode.HALF_UP);
+        } else {
+            shippingFee = calculatedShippingFee;
+        }
         BigDecimal otherCharges = request.getOtherCharges() != null ? request.getOtherCharges() : BigDecimal.ZERO;
         BigDecimal totalAmount = shippingFee.add(otherCharges);
 
@@ -205,6 +216,9 @@ public class ShipmentServiceImpl implements ShipmentService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "CALCULATION_OVERFLOW: Calculated shipping fee or total amount exceeds maximum allowed capacity.");
         }
+
+        boolean isFreeShipment = totalAmount.compareTo(BigDecimal.ZERO) == 0;
+        boolean paidAtRegistration = !isFreeShipment && Boolean.TRUE.equals(request.getPaidAtRegistration());
 
         // 2. Generate Sequential Shipment ID: SHP-YYYY-XXX
         String currentYear = String.valueOf(LocalDate.now().getYear());
@@ -224,7 +238,7 @@ public class ShipmentServiceImpl implements ShipmentService {
                 shippingFee,
                 otherCharges,
                 totalAmount,
-                request.getPaidAtRegistration() != null ? request.getPaidAtRegistration() : false,
+                paidAtRegistration,
                 request.getRegisteredVia()
         );
         shipment.setDescription(request.getDescription());
@@ -290,7 +304,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
 
         // 5. Process Auto-Payment if Paid at Registration
-        if (Boolean.TRUE.equals(request.getPaidAtRegistration())) {
+        if (paidAtRegistration) {
             Payment payment = new Payment(
                     shipment,
                     totalAmount,
@@ -374,7 +388,7 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         Map<String, TrackingEvent> latestEventWithVehicleByTrackingId = new HashMap<>();
         if (!trackingIdsNeedingVehicle.isEmpty()) {
-            List<TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdInAndVehicleNotNullOrderByEventTimestampAsc(trackingIdsNeedingVehicle);
+            List<TrackingEvent> events = trackingEventRepository.findLatestVehicleEvents(trackingIdsNeedingVehicle);
             for (TrackingEvent ev : events) {
                 if (ev.getParcelUnit() != null) {
                     latestEventWithVehicleByTrackingId.put(ev.getParcelUnit().getTrackingId(), ev);
@@ -382,12 +396,14 @@ public class ShipmentServiceImpl implements ShipmentService {
             }
         }
 
+        Map<String, Vehicle> historicalDisplayVehicles = findHistoricalDisplayVehicles(allParcels);
         List<ShipmentSummaryResponse> summaries = shipments.stream()
                 .map(s -> mapToSummaryResponse(
                         s,
                         parcelsByShipment.getOrDefault(s.getShipmentId(), Collections.emptyList()),
                         paymentsByShipment.getOrDefault(s.getShipmentId(), Collections.emptyList()),
                         latestEventWithVehicleByTrackingId,
+                        historicalDisplayVehicles,
                         statementsById.get(s.getStatementId())
                 ))
                 .collect(Collectors.toList());
@@ -405,6 +421,9 @@ public class ShipmentServiceImpl implements ShipmentService {
     private String normalizeStatus(String status) {
         if (status == null || status.trim().isEmpty() || status.equalsIgnoreCase("ALL")) {
             return null;
+        }
+        if (status.trim().equalsIgnoreCase("Arrived in Daet")) {
+            return ParcelStatus.ARRIVED_AT_TNL.name();
         }
         return status.trim().toUpperCase().replace(" ", "_");
     }
@@ -592,11 +611,17 @@ public class ShipmentServiceImpl implements ShipmentService {
         )).collect(Collectors.toList());
 
         resp.setUnits(unitResponses);
+        Map<String, Vehicle> historicalDisplayVehicles = findHistoricalDisplayVehicles(parcels);
         Map<String, ParcelUnit> parcelsById = parcels.stream().collect(Collectors.toMap(ParcelUnit::getTrackingId, parcel -> parcel));
         for (ParcelUnitResponse unit : unitResponses) {
             ParcelUnit parcel = parcelsById.get(unit.getTrackingId());
             unit.setLost(parcel.isLost());
             unit.setRevision(parcel.getRevision());
+            Vehicle displayVehicle = resolveDisplayVehicle(parcel, historicalDisplayVehicles);
+            if (displayVehicle != null) {
+                unit.setDisplayVehicleId(displayVehicle.getVehicleId());
+                unit.setDisplayVehiclePlate(displayVehicle.getPlateNumber());
+            }
             if (!parcel.isLost() && parcel.getCurrentVehicle() != null) {
                 unit.setCurrentVehicleId(parcel.getCurrentVehicle().getVehicleId());
                 unit.setCurrentVehiclePlate(parcel.getCurrentVehicle().getPlateNumber());
@@ -839,6 +864,7 @@ public class ShipmentServiceImpl implements ShipmentService {
             List<ParcelUnit> parcels,
             List<Payment> payments,
             Map<String, TrackingEvent> latestEventWithVehicleByTrackingId,
+            Map<String, Vehicle> historicalDisplayVehicles,
             Soa statement
     ) {
         if (parcels == null) parcels = Collections.emptyList();
@@ -925,6 +951,19 @@ public class ShipmentServiceImpl implements ShipmentService {
             }
         }
         response.setCurrentVehicleCount(currentVehicles.size());
+        Map<String, Vehicle> displayVehicles = new HashMap<>();
+        for (ParcelUnit parcel : parcels) {
+            Vehicle displayVehicle = resolveDisplayVehicle(parcel, historicalDisplayVehicles);
+            if (displayVehicle != null) {
+                displayVehicles.putIfAbsent(displayVehicle.getVehicleId(), displayVehicle);
+            }
+        }
+        response.setDisplayVehicleCount(displayVehicles.size());
+        if (displayVehicles.size() == 1) {
+            Vehicle displayVehicle = displayVehicles.values().iterator().next();
+            response.setDisplayVehicleId(displayVehicle.getVehicleId());
+            response.setDisplayVehiclePlate(displayVehicle.getPlateNumber());
+        }
         if (currentVehicles.size() == 1) {
             Vehicle currentVehicle = currentVehicles.values().iterator().next();
             response.setCurrentVehicleId(currentVehicle.getVehicleId());
@@ -943,7 +982,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         Map<String, TrackingEvent> eventMap = new HashMap<>();
         if (!parcels.isEmpty()) {
             List<String> tIds = parcels.stream().map(ParcelUnit::getTrackingId).collect(Collectors.toList());
-            List<TrackingEvent> events = trackingEventRepository.findByParcelUnit_TrackingIdInAndVehicleNotNullOrderByEventTimestampAsc(tIds);
+            List<TrackingEvent> events = trackingEventRepository.findLatestVehicleEvents(tIds);
             for (TrackingEvent ev : events) {
                 if (ev.getParcelUnit() != null) {
                     eventMap.put(ev.getParcelUnit().getTrackingId(), ev);
@@ -953,7 +992,26 @@ public class ShipmentServiceImpl implements ShipmentService {
         Soa statement = s.getStatementId() != null && !s.getStatementId().isBlank()
                 ? soaRepository.findById(s.getStatementId()).orElse(null)
                 : null;
-        return mapToSummaryResponse(s, parcels, payments, eventMap, statement);
+        return mapToSummaryResponse(s, parcels, payments, eventMap, findHistoricalDisplayVehicles(parcels), statement);
+    }
+
+    private Map<String, Vehicle> findHistoricalDisplayVehicles(List<ParcelUnit> parcels) {
+        List<String> trackingIds = parcels.stream()
+                .filter(parcel -> !parcel.isLost() && parcel.getCurrentVehicle() == null)
+                .filter(parcel -> parcel.getCurrentStatus() == ParcelStatus.ARRIVED_AT_TNL
+                        || parcel.getCurrentStatus() == ParcelStatus.LOADED_TO_HAULER
+                        || parcel.getCurrentStatus() == ParcelStatus.COMPLETED)
+                .map(ParcelUnit::getTrackingId)
+                .toList();
+        if (trackingIds.isEmpty()) return Collections.emptyMap();
+        return trackingEventRepository.findLatestTruckLoadingEvents(trackingIds).stream()
+                .collect(Collectors.toMap(event -> event.getParcelUnit().getTrackingId(), TrackingEvent::getVehicle));
+    }
+
+    private Vehicle resolveDisplayVehicle(ParcelUnit parcel, Map<String, Vehicle> historicalDisplayVehicles) {
+        if (parcel.isLost()) return null;
+        return parcel.getCurrentVehicle() != null
+                ? parcel.getCurrentVehicle() : historicalDisplayVehicles.get(parcel.getTrackingId());
     }
 
     private static class RollupStatus {
@@ -989,7 +1047,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
         if (counts.containsKey(ParcelStatus.ARRIVED_AT_TNL)) {
             long c = counts.get(ParcelStatus.ARRIVED_AT_TNL);
-            return new RollupStatus("Arrived at TNL", c + " / " + total + " Arrived at TNL");
+            return new RollupStatus("Arrived in Daet", c + " / " + total + " Arrived in Daet");
         }
         if (counts.containsKey(ParcelStatus.LOADED_ON_TRUCK)) {
             long c = counts.get(ParcelStatus.LOADED_ON_TRUCK);
@@ -1009,7 +1067,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         switch (status) {
             case QR_GENERATED: return "QR Generated";
             case LOADED_ON_TRUCK: return "Loaded on Truck";
-            case ARRIVED_AT_TNL: return "Arrived at TNL";
+            case ARRIVED_AT_TNL: return "Arrived in Daet";
             case LOADED_TO_HAULER: return "Loaded to Hauler";
             case COMPLETED: return "Completed";
             case REGISTERED:

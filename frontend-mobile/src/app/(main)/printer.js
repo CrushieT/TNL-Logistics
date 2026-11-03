@@ -24,6 +24,11 @@ export default function PrinterSetupScreen() {
   const {
     isConnected,
     connectedDevice,
+    rememberedDevice,
+    connectionError,
+    autoReconnectEnabled,
+    reconnectPrinter,
+    forgetPrinter,
     isVirtualMode,
     isScanning,
     isConnecting,
@@ -93,8 +98,34 @@ export default function PrinterSetupScreen() {
   };
 
   const handleDisconnect = async () => {
-    await disconnectPrinter();
+    try {
+      await disconnectPrinter();
+    } catch (error) {
+      setStatusDialog({ title: 'Disconnect Failed', message: error?.message || 'Unable to disconnect. Try again.' });
+    }
   };
+
+  const handleReconnect = async () => {
+    try {
+      await reconnectPrinter();
+    } catch (error) {
+      setStatusDialog({ title: 'Connection Failed', message: error?.message || 'Check the printer and try again.' });
+    }
+  };
+
+  const handleForget = () => setStatusDialog({
+    title: 'Forget printer?',
+    message: 'Remove the saved printer from this app. Android Bluetooth pairing will remain unchanged.',
+    confirmText: 'Forget printer',
+    onConfirm: async () => {
+      setStatusDialog(null);
+      try {
+        await forgetPrinter();
+      } catch (error) {
+        setStatusDialog({ title: 'Forget Failed', message: error?.message || 'Unable to forget the printer. Try again.' });
+      }
+    },
+  });
 
   const handleTestPrint = async () => {
     if (isConnected) {
@@ -140,46 +171,163 @@ export default function PrinterSetupScreen() {
     }
   };
 
+  const hasSecondaryActions = Boolean(
+    (isConnected || isConnecting || connectionError || (rememberedDevice && autoReconnectEnabled)) ||
+    rememberedDevice
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <BackButton />
         <Text style={styles.headerTitle}>THERMAL PRINTER</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {/* Active Connection Card */}
+        {/* Active Connection Hero Card */}
         <View style={styles.card}>
-          <Text style={styles.cardEyebrow}>CURRENT HARDWARE STATUS</Text>
-          <View style={styles.statusRow}>
+          <View style={styles.cardHeaderRow}>
+            <Text style={styles.cardEyebrow}>CURRENT HARDWARE STATUS</Text>
             <View
               style={[
-                styles.statusDot,
-                { backgroundColor: isConnected ? colors.success : colors.danger },
+                styles.heroPill,
+                isConnected
+                  ? styles.heroPillSuccess
+                  : isConnecting
+                  ? styles.heroPillInfo
+                  : styles.heroPillMuted,
               ]}
-            />
-            <View style={styles.statusTextCol}>
+            >
+              <View
+                style={[
+                  styles.heroPillDot,
+                  {
+                    backgroundColor: isConnected
+                      ? colors.success
+                      : isConnecting
+                      ? colors.info
+                      : colors.inkFaint,
+                  },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.heroPillText,
+                  {
+                    color: isConnected
+                      ? colors.success
+                      : isConnecting
+                      ? colors.info
+                      : colors.inkSoft,
+                  },
+                ]}
+              >
+                {isConnected ? 'CONNECTED' : isConnecting ? 'CONNECTING' : 'OFFLINE'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.heroDeviceRow}>
+            <View
+              style={[
+                styles.heroIconBox,
+                isConnected && styles.heroIconBoxConnected,
+              ]}
+            >
+              <Icon
+                source="printer"
+                size={24}
+                color={isConnected ? colors.accent : colors.inkSoft}
+              />
+            </View>
+            <View style={styles.heroTextCol}>
               <Text style={styles.statusTitle}>
-                {isConnected ? connectedDevice?.name : 'Thermal printer not connected'}
+                {connectedDevice?.name || rememberedDevice?.name || 'Thermal printer not connected'}
               </Text>
               <Text style={styles.statusSubtitle}>
                 {isConnected
                   ? `${connectedDevice?.paperWidth || '58mm continuous roll'} · Status: Ready`
                   : 'Pair or select a Bluetooth thermal printer below'}
               </Text>
+              {rememberedDevice ? (
+                <Text style={styles.deviceAddressMono}>{rememberedDevice.address}</Text>
+              ) : null}
             </View>
           </View>
 
-          {isConnected ? (
+          {isConnecting ? (
+            <View style={styles.connectingBanner}>
+              <ActivityIndicator size="small" color={colors.ink} />
+              <Text style={styles.connectingText}>Connecting to printer...</Text>
+            </View>
+          ) : null}
+
+          {connectionError ? (
+            <View style={styles.errorBanner}>
+              <Icon source="alert-circle-outline" size={16} color={colors.danger} />
+              <Text style={styles.errorBannerText} accessibilityRole="alert">
+                {connectionError}
+              </Text>
+            </View>
+          ) : null}
+
+          {rememberedDevice && !autoReconnectEnabled && !isVirtualMode ? (
+            <View style={styles.pausedBanner}>
+              <Icon source="pause-circle-outline" size={16} color={colors.warning} />
+              <Text style={styles.pausedBannerText}>
+                Automatic reconnection paused. Reconnect to resume.
+              </Text>
+            </View>
+          ) : null}
+
+          {/* Reconnect Action */}
+          {!isConnected && rememberedDevice ? (
             <PressableScale
-              style={styles.disconnectBtnWrapper}
-              contentStyle={styles.disconnectBtn}
-              onPress={handleDisconnect}
-              disabled={isConnecting}
+              style={styles.reconnectBtnWrapper}
+              contentStyle={styles.reconnectBtn}
+              onPress={handleReconnect}
+              disabled={isPrinting || isScanning || isConnecting}
             >
-              <Text style={styles.disconnectBtnText}>Disconnect</Text>
+              <View style={styles.btnRow}>
+                <Icon source="bluetooth-connect" size={16} color="#FFFFFF" />
+                <Text style={styles.reconnectBtnText}>Reconnect</Text>
+              </View>
             </PressableScale>
+          ) : null}
+
+          {/* Secondary Actions (Disconnect & Forget) */}
+          {hasSecondaryActions ? (
+            <View style={styles.secondaryActionsRow}>
+              {isConnected || isConnecting || connectionError || (rememberedDevice && autoReconnectEnabled) ? (
+                <PressableScale
+                  style={styles.secondaryBtnFlex}
+                  contentStyle={styles.disconnectBtn}
+                  onPress={handleDisconnect}
+                  disabled={isPrinting}
+                >
+                  <View style={styles.btnRow}>
+                    <Icon source="link-variant-off" size={15} color={colors.ink} />
+                    <Text style={styles.disconnectBtnText}>Disconnect</Text>
+                  </View>
+                </PressableScale>
+              ) : null}
+
+              {rememberedDevice ? (
+                <PressableScale
+                  style={styles.secondaryBtnFlex}
+                  contentStyle={styles.forgetBtn}
+                  onPress={handleForget}
+                  disabled={isPrinting}
+                >
+                  <View style={styles.btnRow}>
+                    <Icon source="trash-can-outline" size={15} color={colors.danger} />
+                    <Text style={styles.forgetBtnText}>Forget printer</Text>
+                  </View>
+                </PressableScale>
+              ) : null}
+            </View>
           ) : null}
         </View>
 
@@ -197,7 +345,7 @@ export default function PrinterSetupScreen() {
               <Switch
                 value={isVirtualMode}
                 onValueChange={toggleVirtualMode}
-                disabled={isConnecting}
+                disabled={isConnecting || isPrinting}
                 trackColor={{ false: colors.border, true: colors.ink }}
                 thumbColor="#FFFFFF"
               />
@@ -218,18 +366,36 @@ export default function PrinterSetupScreen() {
             disabled={isConnecting || isPrinting}
           >
             {isPrinting ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
+              <View style={styles.btnRow}>
+                <ActivityIndicator color="#FFFFFF" size="small" />
+                <Text style={styles.testPrintBtnText}>Printing Sample Label...</Text>
+              </View>
             ) : (
-              <Text style={styles.testPrintBtnText}>Test Print Sample Label</Text>
+              <View style={styles.btnRow}>
+                <Icon source={isConnected ? 'printer-check' : 'eye-outline'} size={18} color="#FFFFFF" />
+                <Text style={styles.testPrintBtnText}>Test Print Sample Label</Text>
+              </View>
             )}
           </PressableScale>
-          <Text style={styles.pendingAuditText}>Pending print audits: {pendingAuditCount}</Text>
-          <PressableScale
-            contentStyle={styles.retryAuditBtn}
-            onPress={retryPendingAudits}
-          >
-            <Text style={styles.retryAuditText}>Retry Pending Audits</Text>
-          </PressableScale>
+
+          <View style={styles.auditDivider} />
+
+          <View style={styles.auditRow}>
+            <View style={styles.auditTextCol}>
+              <Text style={styles.auditEyebrow}>OUTBOX AUDIT QUEUE</Text>
+              <Text style={styles.pendingAuditText}>Pending print audits: {pendingAuditCount}</Text>
+            </View>
+            <PressableScale
+              contentStyle={styles.retryAuditBtn}
+              onPress={retryPendingAudits}
+              disabled={isPrinting}
+            >
+              <View style={styles.btnRow}>
+                <Icon source="sync" size={14} color={colors.ink} />
+                <Text style={styles.retryAuditText}>Retry Pending Audits</Text>
+              </View>
+            </PressableScale>
+          </View>
         </View>
 
         {/* Available Devices Section */}
@@ -240,26 +406,44 @@ export default function PrinterSetupScreen() {
               style={styles.scanBtnWrapper}
               contentStyle={styles.scanBtn}
               onPress={handleScan}
-              disabled={isScanning || isConnecting}
+              disabled={isScanning || isConnecting || isPrinting}
             >
               {isScanning ? (
                 <ActivityIndicator color={colors.ink} size="small" />
               ) : (
                 <View style={styles.scanBtnInner}>
-                  <Icon source="refresh" size={16} color={colors.ink} />
+                  <Icon source="refresh" size={15} color={colors.ink} />
                   <Text style={styles.scanBtnText}>Scan</Text>
                 </View>
               )}
             </PressableScale>
           </View>
 
-          {scanNotice ? <Text style={styles.statusSubtitle} accessibilityRole="alert">{scanNotice}</Text> : null}
+          {scanNotice ? (
+            <View style={styles.scanNoticeBanner}>
+              <Icon source="information-outline" size={16} color={colors.info} />
+              <Text style={styles.scanNoticeText} accessibilityRole="alert">
+                {scanNotice}
+              </Text>
+            </View>
+          ) : null}
+
+          {availableDevices.length === 0 && !isScanning ? (
+            <View style={styles.emptyCard}>
+              <Icon source="bluetooth-audio" size={32} color={colors.inkFaint} />
+              <Text style={styles.emptyTitle}>NO PRINTERS DISCOVERED</Text>
+              <Text style={styles.emptySubtitle}>
+                Tap Scan above to search for nearby Bluetooth printers. Make sure the printer is turned on and paired in Android Settings.
+              </Text>
+            </View>
+          ) : null}
+
           {availableDevices.map((device) => {
             const isThisConnected = connectedDevice?.address === device.address;
             return (
               <View key={device.address} style={styles.deviceCard}>
                 <View style={styles.deviceIconCol}>
-                  <Icon source="printer" size={24} color={colors.ink} />
+                  <Icon source="printer" size={22} color={colors.ink} />
                 </View>
                 <View style={styles.deviceInfoCol}>
                   <Text style={styles.deviceName}>{device.name}</Text>
@@ -269,13 +453,14 @@ export default function PrinterSetupScreen() {
                 </View>
                 {isThisConnected ? (
                   <View style={styles.connectedBadge}>
+                    <Icon source="check" size={13} color={colors.success} />
                     <Text style={styles.connectedBadgeText}>CONNECTED</Text>
                   </View>
                 ) : (
                   <PressableScale
                     contentStyle={styles.connectBtn}
                     onPress={() => handleConnect(device)}
-                    disabled={isConnecting || isScanning}
+                    disabled={isConnecting || isScanning || isPrinting}
                   >
                     <Text style={styles.connectBtnText}>{isConnecting ? 'Connecting...' : 'Connect'}</Text>
                   </PressableScale>
@@ -284,6 +469,13 @@ export default function PrinterSetupScreen() {
             );
           })}
         </View>
+
+        {/* Industrial Dispatch Engine Note */}
+        <View style={styles.footerNote}>
+          <Text style={styles.footerNoteText}>
+            TNL LOGISTICS · THERMAL HARDWARE DISPATCH ENGINE
+          </Text>
+        </View>
       </ScrollView>
 
       {/* Status Feedback Modal */}
@@ -291,7 +483,11 @@ export default function PrinterSetupScreen() {
         visible={Boolean(statusDialog)}
         title={statusDialog?.title}
         message={statusDialog?.message}
-        onConfirm={() => setStatusDialog(null)}
+        confirmText={statusDialog?.confirmText || 'OK'}
+        cancelText={statusDialog?.onConfirm ? 'Cancel' : undefined}
+        confirmVariant={statusDialog?.confirmText === 'Forget printer' ? 'danger' : 'primary'}
+        onCancel={() => setStatusDialog(null)}
+        onConfirm={statusDialog?.onConfirm || (() => setStatusDialog(null))}
       />
 
       {/* Sample Label Preview Modal (Option A) */}
@@ -316,6 +512,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
@@ -324,16 +521,21 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     ...typography.eyebrow,
-    fontSize: 13,
+    fontSize: 12,
     color: colors.ink,
     letterSpacing: 1.5,
     fontWeight: '800',
-    marginLeft: 8,
+  },
+  headerSpacer: {
+    width: 40,
   },
   content: {
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
     padding: 16,
     paddingBottom: 40,
-    gap: 12,
+    gap: 16,
   },
   card: {
     backgroundColor: colors.surface,
@@ -342,25 +544,71 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     padding: 16,
   },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   cardEyebrow: {
     fontSize: 10.5,
     fontFamily: 'monospace',
     fontWeight: '700',
     letterSpacing: 1.2,
     color: colors.inkFaint,
-    marginBottom: 8,
   },
-  statusRow: {
+  heroPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 3,
+    borderWidth: 1,
+    gap: 6,
   },
-  statusDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+  heroPillSuccess: {
+    backgroundColor: colors.successSoft,
+    borderColor: colors.success,
   },
-  statusTextCol: {
+  heroPillInfo: {
+    backgroundColor: colors.infoSoft,
+    borderColor: colors.info,
+  },
+  heroPillMuted: {
+    backgroundColor: colors.canvas,
+    borderColor: colors.border,
+  },
+  heroPillDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  heroPillText: {
+    fontSize: 9.5,
+    fontFamily: 'monospace',
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  heroDeviceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  heroIconBox: {
+    width: 46,
+    height: 46,
+    borderRadius: 4,
+    backgroundColor: colors.canvas,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroIconBoxConnected: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
+  heroTextCol: {
     flex: 1,
   },
   statusTitle: {
@@ -371,25 +619,130 @@ const styles = StyleSheet.create({
   },
   statusSubtitle: {
     fontSize: 11.5,
+    color: colors.inkSoft,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  deviceAddressMono: {
+    fontSize: 11,
+    fontFamily: 'monospace',
     color: colors.inkFaint,
     marginTop: 2,
-    fontFamily: 'monospace',
+    letterSpacing: 0.5,
   },
-  disconnectBtnWrapper: {
-    marginTop: 14,
-  },
-  disconnectBtn: {
-    height: 38,
+  connectingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    padding: 10,
+    backgroundColor: colors.infoSoft,
     borderWidth: 1,
-    borderColor: colors.danger,
+    borderColor: '#BFDBFE',
+    borderRadius: 4,
+  },
+  connectingText: {
+    fontSize: 11.5,
+    fontFamily: 'monospace',
+    color: colors.info,
+    fontWeight: '600',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    padding: 10,
+    backgroundColor: colors.dangerSoft,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 4,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 11.5,
+    fontFamily: 'monospace',
+    color: colors.danger,
+    lineHeight: 16,
+    fontWeight: '600',
+  },
+  pausedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    padding: 10,
+    backgroundColor: colors.warningSoft,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 4,
+  },
+  pausedBannerText: {
+    flex: 1,
+    fontSize: 11.5,
+    fontFamily: 'monospace',
+    color: colors.warning,
+    lineHeight: 16,
+    fontWeight: '600',
+  },
+  reconnectBtnWrapper: {
+    marginTop: 14,
+    width: '100%',
+  },
+  reconnectBtn: {
+    height: 40,
+    backgroundColor: colors.black,
     borderRadius: 4,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  disconnectBtnText: {
+  reconnectBtnText: {
+    color: '#FFFFFF',
     fontSize: 12.5,
     fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  secondaryActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  secondaryBtnFlex: {
+    flex: 1,
+  },
+  disconnectBtn: {
+    height: 38,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+  },
+  disconnectBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.ink,
+  },
+  forgetBtn: {
+    height: 38,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.dangerSoft,
+  },
+  forgetBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
     color: colors.danger,
+  },
+  btnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
   toggleRow: {
     flexDirection: 'row',
@@ -425,14 +778,14 @@ const styles = StyleSheet.create({
   diagnosticsDesc: {
     fontSize: 12,
     color: colors.inkSoft,
-    lineHeight: 16,
-    marginBottom: 12,
+    lineHeight: 17,
+    marginBottom: 14,
   },
   testPrintBtnWrapper: {
     width: '100%',
   },
   testPrintBtn: {
-    height: 44,
+    height: 42,
     backgroundColor: colors.black,
     borderRadius: 4,
     justifyContent: 'center',
@@ -440,39 +793,61 @@ const styles = StyleSheet.create({
   },
   testPrintBtnText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '700',
     letterSpacing: 0.3,
   },
-  pendingAuditText: {
-    marginTop: 12,
+  auditDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 14,
+  },
+  auditRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  auditTextCol: {
+    flex: 1,
+  },
+  auditEyebrow: {
+    fontSize: 9.5,
     fontFamily: 'monospace',
-    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
     color: colors.inkFaint,
   },
+  pendingAuditText: {
+    marginTop: 2,
+    fontFamily: 'monospace',
+    fontSize: 11,
+    color: colors.inkSoft,
+    fontWeight: '500',
+  },
   retryAuditBtn: {
-    marginTop: 8,
-    height: 38,
+    paddingHorizontal: 12,
+    height: 34,
     borderWidth: 1,
     borderColor: colors.borderStrong,
-    borderRadius: 4,
+    borderRadius: 3,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: colors.surface,
   },
   retryAuditText: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.ink,
   },
   devicesSection: {
-    marginTop: 8,
-    gap: 8,
+    gap: 10,
   },
   devicesHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    paddingHorizontal: 2,
   },
   sectionTitle: {
     fontSize: 11,
@@ -483,21 +858,67 @@ const styles = StyleSheet.create({
   },
   scanBtnWrapper: {},
   scanBtn: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
+    height: 30,
+    paddingHorizontal: 12,
     borderRadius: 3,
     borderWidth: 1,
     borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scanBtnInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
   },
   scanBtnText: {
     fontSize: 11.5,
     fontWeight: '700',
     color: colors.ink,
+  },
+  scanNoticeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    backgroundColor: colors.infoSoft,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 4,
+  },
+  scanNoticeText: {
+    flex: 1,
+    fontSize: 11.5,
+    fontFamily: 'monospace',
+    color: colors.info,
+    lineHeight: 16,
+    fontWeight: '600',
+  },
+  emptyCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 4,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: {
+    fontSize: 12,
+    fontFamily: 'monospace',
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    color: colors.ink,
+    marginTop: 10,
+  },
+  emptySubtitle: {
+    fontSize: 11.5,
+    color: colors.inkFaint,
+    textAlign: 'center',
+    lineHeight: 16,
+    marginTop: 6,
+    maxWidth: 320,
   },
   deviceCard: {
     flexDirection: 'row',
@@ -510,11 +931,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   deviceIconCol: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.canvas,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: 4,
   },
   deviceInfoCol: {
@@ -529,7 +952,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: 'monospace',
     color: colors.inkFaint,
-    marginTop: 1,
+    marginTop: 2,
   },
   connectBtn: {
     paddingVertical: 6,
@@ -543,10 +966,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   connectedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 2,
-    backgroundColor: colors.canvas,
+    backgroundColor: colors.successSoft,
     borderWidth: 1,
     borderColor: colors.success,
   },
@@ -555,5 +981,16 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontFamily: 'monospace',
     color: colors.success,
+  },
+  footerNote: {
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  footerNoteText: {
+    fontSize: 10,
+    fontFamily: 'monospace',
+    fontWeight: '700',
+    letterSpacing: 1,
+    color: colors.inkFaint,
   },
 });

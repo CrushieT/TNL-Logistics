@@ -16,6 +16,7 @@ import PageHeader from '../components/layout/PageHeader';
 import {
   getWeeklyCollections,
   generateBatchSoa,
+  generateStatement,
   saveStatement,
   getRecentThursdays,
   getActiveCollectionCycles,
@@ -40,6 +41,7 @@ import {
   onSessionInvalidated,
 } from '../services/api/client';
 import { SkeletonBlock } from '../components/common/Skeleton';
+import { useSavedPageState } from '../services/navigation/useSavedPageState';
 import { colors, fonts, spacing, radius, type } from '../theme';
 
 const STATUS_FILTERS = [
@@ -55,15 +57,18 @@ export default function WeeklyCollectionsScreen() {
   const { width } = useWindowDimensions();
   const isMobile = width < 900;
 
-  const [selectedCycle, setSelectedCycle] = useState('');
+  const [filterState, updateFilterState] = useSavedPageState('weekly_collections_directory', {
+    selectedCycle: '',
+    searchQuery: '',
+    statusFilter: 'ALL',
+  });
+  const { selectedCycle, searchQuery, statusFilter } = filterState;
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isPreview, setIsPreview] = useState(false);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const [isStale, setIsStale] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
   const [batchModalVisible, setBatchModalVisible] = useState(false);
   const [successBanner, setSuccessBanner] = useState(null);
   const [errorBanner, setErrorBanner] = useState(null);
@@ -139,7 +144,7 @@ export default function WeeklyCollectionsScreen() {
       cycleResource.cancel();
       setDashboardData(null);
       setBatchModalVisible(false);
-      setSelectedCycle('');
+      updateFilterState({ selectedCycle: '' });
       setIsStale(false);
       setIsPreview(false);
       setInitialLoadFailed(false);
@@ -167,8 +172,13 @@ export default function WeeklyCollectionsScreen() {
 
   useEffect(() => {
     if (cycleResource.data === null) return;
-    setSelectedCycle(previous => cycles.some(cycle => cycle.isoDate === previous) ? previous : cycles[0]?.isoDate || '');
-  }, [cycleResource.data]);
+    updateFilterState((prev) => {
+      const isStillValid = prev.selectedCycle && cycles.some((cycle) => cycle.isoDate === prev.selectedCycle);
+      const targetCycle = isStillValid ? prev.selectedCycle : (cycles[0]?.isoDate || '');
+      if (prev.selectedCycle === targetCycle) return prev;
+      return { ...prev, selectedCycle: targetCycle };
+    });
+  }, [cycleResource.data, cycles, updateFilterState]);
 
   const loadData = useCallback((showSpinner = true, debounce = false) => {
     if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey() || cyclesSessionKey !== sessionKey || !selectedCycle) return;
@@ -304,7 +314,7 @@ export default function WeeklyCollectionsScreen() {
 
     if (!isAlreadyGenerated) {
       try {
-        await saveStatement({
+        await generateStatement({
           clientId: id,
           targetDate: selectedCycle,
           cycleThursday: selectedCycle,
@@ -334,7 +344,7 @@ export default function WeeklyCollectionsScreen() {
       for (const client of unbilledClients) {
         const id = client.clientId || client.clientCode;
         try {
-          await saveStatement({
+          await generateStatement({
             clientId: id,
             targetDate: selectedCycle,
             cycleThursday: selectedCycle,
@@ -426,7 +436,7 @@ export default function WeeklyCollectionsScreen() {
           }
         />
 
-        <PreviewStatus resource={cycleResource} label="Collection cycles" />
+        <PreviewStatus resource={cycleResource} label="Collection cycles" errorOnly />
 
         {/* Notifications & Alerts */}
         {loading && isPreview ? (
@@ -472,8 +482,8 @@ export default function WeeklyCollectionsScreen() {
             <SearchableClientDropdown
               clients={allItems}
               value={searchQuery}
-              onChangeSearch={setSearchQuery}
-              onSelectClient={(c) => setSearchQuery(c.name || c.clientName || '')}
+              onChangeSearch={(q) => updateFilterState({ searchQuery: q })}
+              onSelectClient={(c) => updateFilterState({ searchQuery: c.name || c.clientName || '' })}
               placeholder="Search clients..."
               maxWidth={360}
             />
@@ -485,7 +495,7 @@ export default function WeeklyCollectionsScreen() {
             <CycleDropdown
               cycles={cycles}
               selectedCycle={selectedCycle}
-              onSelectCycle={setSelectedCycle}
+              onSelectCycle={(cycle) => updateFilterState({ selectedCycle: cycle })}
               minWidth={280}
               style={{ width: 280 }}
             />
@@ -494,7 +504,7 @@ export default function WeeklyCollectionsScreen() {
             {Platform.OS === 'web' ? (
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(e) => updateFilterState({ statusFilter: e.target.value })}
                 style={{
                   backgroundColor: '#FAF9F5',
                   border: `1px solid ${colors.border}`,

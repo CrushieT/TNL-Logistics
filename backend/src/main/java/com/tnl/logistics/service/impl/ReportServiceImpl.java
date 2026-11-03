@@ -358,7 +358,7 @@ public class ReportServiceImpl implements ReportService {
             case REGISTERED: return "Registered";
             case QR_GENERATED: return "QR Generated";
             case LOADED_ON_TRUCK: return "Loaded on Truck";
-            case ARRIVED_AT_TNL: return "Arrived at TNL Hub";
+            case ARRIVED_AT_TNL: return "Arrived in Daet";
             case LOADED_TO_HAULER: return "Loaded to Hauler";
             case COMPLETED: return "Completed Delivery";
             default: return status.name();

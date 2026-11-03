@@ -24,6 +24,7 @@ import {
 } from '../../features/clients';
 import { subscribeRealtimeEvents } from '../../features/shipments';
 import { colors, fonts, spacing, radius, type } from '../../theme';
+import { clearSectionRoute } from '../../services/navigation/navigationState.mjs';
 
 export default function ClientProfileScreen() {
   const router = useRouter();
@@ -90,9 +91,14 @@ export default function ClientProfileScreen() {
     await loadClientData(false);
   };
 
+  const handleBackToClients = () => {
+    clearSectionRoute('/clients');
+    handleBackToClients();
+  };
+
   const handleDeactivateClient = async (clientId) => {
     await deleteClient(clientId);
-    router.push('/clients');
+    handleBackToClients();
   };
 
   const handleSaveClientRate = async () => {
@@ -120,7 +126,7 @@ export default function ClientProfileScreen() {
   if (loading) {
     return (
       <AppShell>
-        <Pressable onPress={() => router.push('/clients')}>
+        <Pressable onPress={handleBackToClients}>
           <Text style={styles.backLink}>Back to Clients</Text>
         </Pressable>
         <View style={styles.loadingContainer}>
@@ -134,7 +140,7 @@ export default function ClientProfileScreen() {
   if (!client) {
     return (
       <AppShell>
-        <Pressable onPress={() => router.push('/clients')}>
+        <Pressable onPress={handleBackToClients}>
           <Text style={styles.backLink}>Back to Clients</Text>
         </Pressable>
         <Card>
@@ -149,7 +155,7 @@ export default function ClientProfileScreen() {
   return (
     <AppShell>
       {/* Header Row */}
-      <Pressable onPress={() => router.push('/clients')}>
+      <Pressable onPress={handleBackToClients}>
         <Text style={styles.backLink}>Back to Clients</Text>
       </Pressable>
 

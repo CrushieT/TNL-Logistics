@@ -7,7 +7,7 @@ const STATUS_OPTIONS = [
   { label: 'Registered', value: 'REGISTERED' },
   { label: 'QR Generated', value: 'QR_GENERATED' },
   { label: 'Loaded on Truck', value: 'LOADED_ON_TRUCK' },
-  { label: 'Outload / Arrive TNL', value: 'ARRIVED_AT_TNL' },
+  { label: 'Arrived in Daet', value: 'ARRIVED_AT_TNL' },
   { label: 'Loaded to Hauler', value: 'LOADED_TO_HAULER' },
 ];
 

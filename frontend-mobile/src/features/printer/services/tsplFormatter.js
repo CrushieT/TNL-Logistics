@@ -71,13 +71,9 @@ export function buildTsplOptions(labelData, branding = null, options = {}) {
   const address = cleanStr(labelData.address);
   const contents = cleanStr(labelData.contents);
   const shipmentId = cleanStr(labelData.shipmentId);
-  const clientName = cleanStr(labelData.clientName);
   const route = cleanStr(labelData.route);
   const packageIndex = labelData.packageIndex ?? 1;
   const packageCount = labelData.packageCount ?? 1;
-  const totalAmount = labelData.totalAmount !== null && labelData.totalAmount !== undefined
-    ? Number(labelData.totalAmount).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
-    : null;
 
   // In 90-degree rotated mode on 203 DPI (8 dots/mm):
   // Physical Roll: 100mm wide (800 dots), 150mm feed length (1200 dots).
@@ -141,31 +137,25 @@ export function buildTsplOptions(labelData, branding = null, options = {}) {
     });
   }
 
-  // Contents span the footer; client and shipment share the row above the total.
+  // Notes and shipment use the full footer width below the body divider.
   let footerLayout = null;
   for (const font of FOOTER_FONTS) {
-    const leftCapacity = Math.floor((630 - 85 - 20) / font.width);
-    const rightCapacity = Math.floor((1111 - 630) / font.width);
-    const contentsCapacity = Math.floor((1111 - 85) / font.width);
-    const contentsLines = wrapTextLines(contents ? `Contents: ${contents}` : '', contentsCapacity);
-    const clientLines = wrapTextLines(clientName ? `Client: ${clientName}` : '', leftCapacity);
+    const capacity = Math.floor((1111 - 85) / font.width);
+    const contentsLines = wrapTextLines(contents ? `Notes: ${contents}` : '', capacity);
+    const shipmentLines = wrapTextLines(`Shipment: ${shipmentId}`, capacity);
     const firstRowLines = Math.max(1, contentsLines.length);
-    const secondRowLines = Math.max(1, clientLines.length);
-    const rowGap = secondRowLines > 0 ? 13 : 0;
-    const minimumLastLineX = (totalAmount !== null ? 133 : 75) + font.height;
+    const rowGap = 13;
     const firstRowX = Math.max(200,
-      minimumLastLineX + (firstRowLines + secondRowLines - 1) * font.lineHeight + rowGap);
-
-    if (`Shipment: ${shipmentId}`.length > rightCapacity || firstRowX > hubX - routeHeight - 44) continue;
+      75 + font.height + (firstRowLines + shipmentLines.length - 1) * font.lineHeight + rowGap);
+    if (firstRowX > hubX - routeHeight - 44) continue;
     footerLayout = { font, firstRowX };
     const secondRowX = firstRowX - firstRowLines * font.lineHeight - rowGap;
     for (const field of [
-      { lines: contentsLines, x: firstRowX, y: 85 },
-      { lines: [`Shipment: ${shipmentId}`], x: secondRowX, y: 1111 - `Shipment: ${shipmentId}`.length * font.width },
-      { lines: clientLines, x: secondRowX, y: 85 },
+      { lines: contentsLines, x: firstRowX },
+      { lines: shipmentLines, x: secondRowX },
     ]) {
       field.lines.forEach((text, lineIndex) => {
-        texts.push({ text, x: field.x - lineIndex * font.lineHeight, y: field.y,
+        texts.push({ text, x: field.x - lineIndex * font.lineHeight, y: 85,
           fonttype: font.type, rotation: 90, xscal: 1, yscal: 1, bold: false });
       });
     }
@@ -173,18 +163,6 @@ export function buildTsplOptions(labelData, branding = null, options = {}) {
   }
   if (!footerLayout) {
     throw new RangeError('Label footer is too long to fit on this label. Use system printing for this shipment.');
-  }
-
-  if (totalAmount !== null) {
-    const totalText = `Total: PHP ${totalAmount}`;
-    const totalFont = [{ type: '4', width: 24 }, ...FOOTER_FONTS]
-      .find((font) => totalText.length * font.width + 1 <= 1111 - 85);
-    if (!totalFont) {
-      throw new RangeError('Label total is too long to fit on this label. Use system printing for this shipment.');
-    }
-    // Include the native driver's one-dot bold offset in the fixed right edge.
-    texts.push({ text: totalText, x: 90, y: 1111 - totalText.length * totalFont.width - 1,
-      fonttype: totalFont.type, rotation: 90, xscal: 1, yscal: 1, bold: true });
   }
 
   return {
@@ -218,7 +196,6 @@ export function buildTsplOptions(labelData, branding = null, options = {}) {
 
       // End at the inside edge of the right border without reversing its pixels.
       ...buildDashedDivider(Math.max(250, footerLayout.firstRowX + 28), 85, 1131),
-      ...(totalAmount !== null ? buildDashedDivider(125, 630, 1131) : []),
     ],
   };
 }

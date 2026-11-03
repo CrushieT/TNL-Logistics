@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateShipmentMetrics } from '../src/features/shipments/registrationCalculations.mjs';
+import { calculateTotalCents } from '../src/features/shipments/fixedPointPricing.mjs';
 import { generatePaginationItems } from '../src/features/shipments/parcelPagination.mjs';
 
 const baseShipment = {
@@ -139,4 +140,17 @@ test('generatePaginationItems produces windowed pagination with max 7 items and 
   assert.deepEqual(start.map((i) => i.label), ['1', '2', '3', '4', '5', '...', '100']);
   const end = generatePaginationItems(99, 100);
   assert.deepEqual(end.map((i) => i.label), ['1', '...', '96', '97', '98', '99', '100']);
+});
+
+test('calculateTotalCents returns null for negative or non-decimal amounts and never silently coerces to zero', () => {
+  assert.equal(calculateTotalCents('-10', '0'), null);
+  assert.equal(calculateTotalCents('10.123', '0'), null);
+  assert.equal(calculateTotalCents('abc', '0'), null);
+  assert.equal(calculateTotalCents('10', '-5'), null);
+  assert.equal(calculateTotalCents('10', '1.999'), null);
+  assert.equal(calculateTotalCents('10', 'invalid'), null);
+  // Valid zero amounts compute zero
+  assert.equal(calculateTotalCents('0', '0'), 0);
+  assert.equal(calculateTotalCents(0, 0), 0);
+  assert.equal(calculateTotalCents('125.50', '24.50'), 15000);
 });

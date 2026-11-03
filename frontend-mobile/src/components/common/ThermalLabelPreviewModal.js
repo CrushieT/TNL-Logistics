@@ -303,28 +303,18 @@ export function ThermalLabelPreviewModal({
               {/* Dashed divider */}
               <View style={styles.dashedDivider} />
 
-              {/* Footer: Metadata & Total */}
+              {/* Footer: Metadata */}
               <View style={styles.labelFooter}>
                 <View style={[styles.footerRow, styles.contentsRow]}>
                   <Text style={[styles.footerItem, styles.contentsField]}>
-                    <Text style={styles.footerLabel}>Contents: </Text>
+                    <Text style={styles.footerLabel}>Notes: </Text>
                     {currentLabel.contents}
                   </Text>
                 </View>
                 <View style={[styles.footerRow, styles.contentsRow]}>
-                  <Text style={[styles.footerItem, styles.contentsField]}>
-                    <Text style={styles.footerLabel}>Client: </Text>
-                    {currentLabel.clientName}
-                  </Text>
                   <Text style={[styles.footerItem, styles.shipmentField]}>
                     <Text style={styles.footerLabel}>Shipment: </Text>
                     {currentLabel.shipmentId}
-                  </Text>
-                </View>
-                <View style={styles.totalRow}>
-                  <Text style={styles.totalText}>
-                    <Text style={styles.footerLabel}>Total: </Text>
-                    PHP {Number(currentLabel.totalAmount || 0).toLocaleString()}
                   </Text>
                 </View>
               </View>
@@ -657,20 +647,11 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? { overflowWrap: 'anywhere' } : {}),
   },
   shipmentField: {
-    flexShrink: 0,
-    ...(Platform.OS === 'web' ? { whiteSpace: 'nowrap' } : {}),
+    flexShrink: 1,
+    ...(Platform.OS === 'web' ? { overflowWrap: 'anywhere' } : {}),
   },
   footerLabel: {
     color: '#6B7280',
-  },
-  totalRow: {
-    alignItems: 'flex-end',
-    marginTop: 2,
-  },
-  totalText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#000000',
   },
   hardwareBar: {
     flexDirection: 'row',

@@ -276,7 +276,8 @@ public class DataSeeder implements CommandLineRunner {
         List<ParcelStatus> statuses = List.of(ParcelStatus.REGISTERED, ParcelStatus.QR_GENERATED, ParcelStatus.LOADED_ON_TRUCK, ParcelStatus.ARRIVED_AT_TNL, ParcelStatus.LOADED_TO_HAULER, ParcelStatus.COMPLETED);
         for (int index = 0; index <= statuses.indexOf(finalStatus); index++) {
             ParcelStatus status = statuses.get(index);
-            AppUser actor = status == ParcelStatus.REGISTERED || status == ParcelStatus.QR_GENERATED || status == ParcelStatus.COMPLETED ? office : status == ParcelStatus.LOADED_TO_HAULER ? hauler : courier;
+            AppUser actor = status == ParcelStatus.REGISTERED || status == ParcelStatus.QR_GENERATED ? office :
+                    status == ParcelStatus.LOADED_ON_TRUCK ? courier : hauler;
             TrackingEvent event = new TrackingEvent(parcel, status, status == ParcelStatus.LOADED_ON_TRUCK ? truck : null, actor, "Workflow fixture " + status.name());
             event.setEventTimestamp(startedAt.plusMinutes(index * 15L));
             trackingEventRepository.save(event);

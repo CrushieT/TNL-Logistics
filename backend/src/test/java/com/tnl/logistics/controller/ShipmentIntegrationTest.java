@@ -149,13 +149,17 @@ public class ShipmentIntegrationTest {
         assertEquals(expectedCount, summary.getCurrentVehicleCount());
         assertEquals(expectedCount == 1 ? "CURRENT-A" : null, summary.getCurrentVehicleId());
         assertEquals(expectedCount == 1 ? firstPlate : null, summary.getCurrentVehiclePlate());
+        int expectedDisplayCount = scenario.equals("CLEARED") ? 1 : expectedCount;
+        assertEquals(expectedDisplayCount, summary.getDisplayVehicleCount());
+        assertEquals(expectedDisplayCount == 1 ? "CURRENT-A" : null, summary.getDisplayVehicleId());
+        assertEquals(expectedDisplayCount == 1 ? firstPlate : null, summary.getDisplayVehiclePlate());
         if (scenario.equals("CLEARED")) assertEquals("CURRENT-A", summary.getVehicleId());
         assertTrue(SqlCapture.statements.get().stream().allMatch(sql -> sql.startsWith("select ")),
                 "Read-only list must not modify business records");
         entityManager.clear();
         SqlCapture.statements.get().clear();
         var detail = shipmentService.getShipmentById(shipmentId);
-        assertEquals(5, SqlCapture.statements.get().size(), SqlCapture.statements.get().toString());
+        assertEquals(scenario.equals("CLEARED") ? 6 : 5, SqlCapture.statements.get().size(), SqlCapture.statements.get().toString());
         assertFalse(SqlCapture.statements.get().stream().anyMatch(sql -> sql.contains(" from vehicle ")));
         assertEquals(parcels.stream().map(ParcelUnit::getSeq).toList(),
                 detail.getUnits().stream().map(unit -> unit.getPackageIndex()).toList());
@@ -165,6 +169,9 @@ public class ShipmentIntegrationTest {
             Vehicle expectedVehicle = fixture.isLost() ? null : fixture.getCurrentVehicle();
             assertEquals(expectedVehicle == null ? null : expectedVehicle.getVehicleId(), unit.getCurrentVehicleId());
             assertEquals(expectedVehicle == null ? null : expectedVehicle.getPlateNumber(), unit.getCurrentVehiclePlate());
+            Vehicle expectedDisplayVehicle = scenario.equals("CLEARED") && parcelIndex == 0 ? firstVehicle : expectedVehicle;
+            assertEquals(expectedDisplayVehicle == null ? null : expectedDisplayVehicle.getVehicleId(), unit.getDisplayVehicleId());
+            assertEquals(expectedDisplayVehicle == null ? null : expectedDisplayVehicle.getPlateNumber(), unit.getDisplayVehiclePlate());
         }
         assertTrue(SqlCapture.statements.get().stream().allMatch(sql -> sql.startsWith("select ")),
                 "Read-only list and detail must not modify business records");
@@ -173,6 +180,8 @@ public class ShipmentIntegrationTest {
         JsonNode detailJson = objectMapper.readTree(detailResult.getResponse().getContentAsString());
         assertTrue(detailJson.get("units").get(0).has("currentVehicleId"));
         assertTrue(detailJson.get("units").get(0).has("currentVehiclePlate"));
+        assertTrue(detailJson.get("units").get(0).has("displayVehicleId"));
+        assertTrue(detailJson.get("units").get(0).has("displayVehiclePlate"));
         MvcResult listResult = mockMvc.perform(get("/api/v1/shipments").header("Authorization", officeToken))
                 .andExpect(status().isOk()).andReturn();
         assertEquals(expectedCount, objectMapper.readTree(listResult.getResponse().getContentAsString())
@@ -185,6 +194,109 @@ public class ShipmentIntegrationTest {
             assertEquals(1, trackingEventRepository.findByParcelUnit_TrackingIdOrderByEventTimestampAsc(
                     parcels.get(0).getTrackingId()).stream().filter(event -> event.getVehicle() != null).count());
         }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = ParcelStatus.class,
+            names = {"ARRIVED_AT_TNL", "LOADED_TO_HAULER", "COMPLETED"})
+    void displayVehiclesCombineCurrentAndHistoricalTrucksWithoutChangingCustody(ParcelStatus status) throws Exception {
+        MvcResult created = mockMvc.perform(post("/api/v1/shipments").header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createMobileRegistrationRequest())))
+                .andExpect(status().isCreated()).andReturn();
+        String shipmentId = objectMapper.readTree(created.getResponse().getContentAsString()).get("shipmentId").asText();
+        List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
+        Vehicle truckA = vehicleRepository.save(new Vehicle("DISPLAY-A", "DISPLAY-PLATE-A", "Transport truck"));
+        Vehicle truckB = vehicleRepository.save(new Vehicle("DISPLAY-B", "DISPLAY-PLATE-B", "Transport truck"));
+        AppUser staff = entityManager.find(AppUser.class, "USR-OFFICE");
+        parcels.get(0).setCurrentStatus(ParcelStatus.LOADED_ON_TRUCK);
+        parcels.get(0).setCurrentVehicle(truckA);
+        parcels.get(1).setCurrentStatus(status);
+        trackingEventRepository.save(new TrackingEvent(parcels.get(0), ParcelStatus.LOADED_ON_TRUCK, truckB, staff, "Older assignment"));
+        trackingEventRepository.save(new TrackingEvent(parcels.get(1), ParcelStatus.LOADED_ON_TRUCK, truckB, staff, "Transport assignment"));
+        parcelUnitRepository.saveAllAndFlush(parcels);
+        entityManager.clear();
+        SqlCapture.statements.get().clear();
+        var summary = shipmentService.getShipments(null, null, null, null, null,
+                org.springframework.data.domain.PageRequest.of(0, 10)).getContent().get(0);
+        assertEquals(1, summary.getCurrentVehicleCount());
+        assertEquals("DISPLAY-A", summary.getCurrentVehicleId());
+        assertEquals(2, summary.getDisplayVehicleCount());
+        assertNull(summary.getDisplayVehicleId());
+        assertNull(summary.getDisplayVehiclePlate());
+        List<String> historySql = SqlCapture.statements.get().stream()
+                .filter(sql -> sql.contains(" from tracking_event ") && sql.contains("LOADED_ON_TRUCK")).toList();
+        assertEquals(1, historySql.size(), historySql.toString());
+        assertTrue(historySql.get(0).contains("tracking_id in (?)"), historySql.toString());
+        assertFalse(SqlCapture.statements.get().stream().anyMatch(sql -> sql.contains(" from vehicle ")));
+        var detail = shipmentService.getShipmentById(shipmentId);
+        assertEquals("DISPLAY-A", detail.getUnits().get(0).getDisplayVehicleId());
+        assertEquals("DISPLAY-B", detail.getUnits().get(1).getDisplayVehicleId());
+        assertNull(detail.getUnits().get(1).getCurrentVehicleId());
+        assertEquals(0, summary.getTotalAmount().compareTo(detail.getTotalAmount()));
+        assertEquals(0, summary.getBalance().compareTo(detail.getBalance()));
+        assertFalse(SqlCapture.statements.get().stream().anyMatch(sql -> !sql.startsWith("select ")));
+        assertNull(parcelUnitRepository.findById(parcels.get(1).getTrackingId()).orElseThrow().getCurrentVehicle());
+        var firstParcel = parcelUnitRepository.findById(parcels.get(0).getTrackingId()).orElseThrow();
+        firstParcel.setCurrentVehicle(null);
+        firstParcel.setCurrentStatus(status);
+        parcelUnitRepository.saveAndFlush(firstParcel);
+        var unloadedSummary = shipmentService.getShipments(null, null, null, null, null,
+                org.springframework.data.domain.PageRequest.of(0, 10)).getContent().get(0);
+        assertEquals(0, unloadedSummary.getCurrentVehicleCount());
+        assertEquals(1, unloadedSummary.getDisplayVehicleCount());
+        assertEquals("DISPLAY-B", unloadedSummary.getDisplayVehicleId());
+    }
+
+    @Test
+    void latestTruckHistoryUsesTimestampThenIdAndIgnoresOtherStatusesAndNullVehicles() throws Exception {
+        MvcResult created = mockMvc.perform(post("/api/v1/shipments").header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createMobileRegistrationRequest())))
+                .andExpect(status().isCreated()).andReturn();
+        String shipmentId = objectMapper.readTree(created.getResponse().getContentAsString()).get("shipmentId").asText();
+        List<ParcelUnit> parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
+        Vehicle truckA = vehicleRepository.save(new Vehicle("HISTORY-A", "HISTORY-PLATE-A", "Transport truck"));
+        Vehicle truckB = vehicleRepository.save(new Vehicle("HISTORY-B", " ", "Transport truck"));
+        AppUser staff = entityManager.find(AppUser.class, "USR-OFFICE");
+        var older = trackingEventRepository.saveAndFlush(new TrackingEvent(parcels.get(0), ParcelStatus.LOADED_ON_TRUCK, truckA, staff, "Older"));
+        var winner = trackingEventRepository.saveAndFlush(new TrackingEvent(parcels.get(0), ParcelStatus.LOADED_ON_TRUCK, truckB, staff, "Equal timestamp, higher ID"));
+        var laterId = trackingEventRepository.saveAndFlush(new TrackingEvent(parcels.get(0), ParcelStatus.LOADED_ON_TRUCK, truckA, staff, "Higher ID, older timestamp"));
+        jdbcTemplate.update("UPDATE tracking_event SET event_timestamp = ? WHERE event_id IN (?, ?)",
+                java.time.LocalDateTime.of(2026, 1, 2, 12, 0), older.getEventId(), winner.getEventId());
+        jdbcTemplate.update("UPDATE tracking_event SET event_timestamp = ? WHERE event_id = ?",
+                java.time.LocalDateTime.of(2026, 1, 1, 12, 0), laterId.getEventId());
+        trackingEventRepository.save(new TrackingEvent(parcels.get(0), ParcelStatus.ARRIVED_AT_TNL, truckA, staff, "Later non-loading event"));
+        trackingEventRepository.save(new TrackingEvent(parcels.get(0), ParcelStatus.LOADED_ON_TRUCK, staff, "Later event without truck"));
+        parcels.forEach(parcel -> parcel.setCurrentStatus(ParcelStatus.COMPLETED));
+        parcelUnitRepository.saveAllAndFlush(parcels);
+        entityManager.clear();
+        SqlCapture.statements.get().clear();
+        var latest = trackingEventRepository.findLatestTruckLoadingEvents(parcels.stream().map(ParcelUnit::getTrackingId).toList());
+        assertEquals(1, latest.size());
+        assertEquals(winner.getEventId(), latest.get(0).getEventId());
+        assertEquals(" ", latest.get(0).getVehicle().getPlateNumber());
+        assertEquals(1, SqlCapture.statements.get().size(), "Vehicle must be hydrated in the bulk query");
+        var detail = shipmentService.getShipmentById(shipmentId);
+        assertEquals("HISTORY-B", detail.getUnits().get(0).getDisplayVehicleId());
+        assertNull(detail.getUnits().get(1).getDisplayVehicleId(), "Missing history stays empty");
+        var summary = shipmentService.getShipments(null, null, null, null, null,
+                org.springframework.data.domain.PageRequest.of(0, 10)).getContent().get(0);
+        assertEquals(0, summary.getCurrentVehicleCount());
+        assertEquals(1, summary.getDisplayVehicleCount());
+        assertEquals("HISTORY-B", summary.getDisplayVehicleId());
+        assertEquals("HISTORY-A", summary.getVehicleId(), "Legacy fallback still accepts non-loading vehicle events");
+        parcels = parcelUnitRepository.findByShipment_ShipmentIdOrderBySeqAsc(shipmentId);
+        parcels.forEach(parcel -> parcel.setCurrentStatus(ParcelStatus.QR_GENERATED));
+        parcelUnitRepository.saveAllAndFlush(parcels);
+        assertTrue(shipmentService.getShipmentById(shipmentId).getUnits().stream().allMatch(unit -> unit.getDisplayVehicleId() == null),
+                "History must not populate display before arrival");
+        parcels.forEach(parcel -> parcel.setCurrentStatus(ParcelStatus.COMPLETED));
+        parcels.forEach(parcel -> parcel.setLost(true));
+        parcelUnitRepository.saveAllAndFlush(parcels);
+        assertTrue(shipmentService.getShipmentById(shipmentId).getUnits().stream().allMatch(unit -> unit.getDisplayVehicleId() == null));
+        assertEquals(0, shipmentService.getShipments(null, null, null, null, null,
+                org.springframework.data.domain.PageRequest.of(0, 10)).getContent().get(0).getDisplayVehicleCount());
     }
 
     @Autowired
@@ -325,7 +437,6 @@ public class ShipmentIntegrationTest {
         request.setRecipientContact("09181112222");
         request.setQuantity(2);
         request.setChargeModel(ChargeModel.FLAT);
-        request.setShippingFee(new BigDecimal("150.00"));
         request.setOtherCharges(new BigDecimal("50.00"));
         request.setPaidAtRegistration(false);
         request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
@@ -438,7 +549,6 @@ public class ShipmentIntegrationTest {
         request.setRecipientContact("09170000000");
         request.setQuantity(2);
         request.setChargeModel(ChargeModel.FLAT);
-        request.setShippingFee(new BigDecimal("100.10"));
         request.setOtherCharges(new BigDecimal("20.00"));
         request.setRegisteredVia(RegisteredVia.MOBILE_FIELD);
         request.setRoute("Manila to TNL Baguio");
@@ -687,7 +797,6 @@ public class ShipmentIntegrationTest {
         request.setRecipientContact("09193334444");
         request.setQuantity(2);
         request.setChargeModel(ChargeModel.PER_PARCEL);
-        request.setShippingFee(new BigDecimal("100.00"));
         request.setOtherCharges(new BigDecimal("20.00"));
         request.setPaidAtRegistration(true);
         request.setRegisteredVia(RegisteredVia.DESKTOP_OFFICE);
@@ -1928,5 +2037,136 @@ public class ShipmentIntegrationTest {
         // Unauthenticated -> 401 Unauthorized
         mockMvc.perform(get("/api/v1/shipments"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    public void testManualShippingFeeOverrideHonoredAndPreservesSnapshots() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        // Override shipping fee to 350.00 instead of calculated 1200.00
+        request.setShippingFee(new BigDecimal("350.00"));
+        request.setOtherCharges(new BigDecimal("50.00"));
+        request.setPaidAtRegistration(false);
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), ShipmentResponse.class);
+        assertEquals(new BigDecimal("350.00"), response.getShippingFee());
+        assertEquals(new BigDecimal("50.00"), response.getOtherCharges());
+        assertEquals(new BigDecimal("400.00"), response.getTotalAmount());
+        assertFalse(response.getPaidAtRegistration());
+        // Preserves calculated weight snapshots and active settings
+        assertEquals(new BigDecimal("12.00"), response.getBillableWeight());
+        assertEquals(new BigDecimal("100.00"), response.getAppliedRatePerKilo());
+        assertEquals(5000, response.getAppliedVolumetricDivisor());
+
+        Shipment persisted = shipmentRepository.findById(response.getShipmentId()).orElseThrow();
+        assertEquals(new BigDecimal("350.00"), persisted.getShippingFee());
+        assertEquals(new BigDecimal("50.00"), persisted.getOtherCharges());
+        assertEquals(new BigDecimal("400.00"), persisted.getTotalAmount());
+        assertFalse(persisted.getPaidAtRegistration());
+    }
+
+    @Test
+    public void testZeroShippingFeeAndZeroTotalFreeShipment() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setShippingFee(BigDecimal.ZERO);
+        request.setOtherCharges(BigDecimal.ZERO);
+        // Even if client sent paidAtRegistration = true, zero total must persist false with no Payment record
+        request.setPaidAtRegistration(true);
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), ShipmentResponse.class);
+        assertEquals(new BigDecimal("0.00"), response.getShippingFee());
+        assertEquals(new BigDecimal("0.00"), response.getTotalAmount());
+        assertFalse(response.getPaidAtRegistration());
+
+        Shipment persisted = shipmentRepository.findById(response.getShipmentId()).orElseThrow();
+        assertEquals(new BigDecimal("0.00"), persisted.getShippingFee());
+        assertEquals(new BigDecimal("0.00"), persisted.getTotalAmount());
+        assertFalse(persisted.getPaidAtRegistration());
+
+        // Zero total creates no payment record
+        List<Payment> payments = paymentRepository.findByShipment_ShipmentId(response.getShipmentId());
+        assertTrue(payments.isEmpty());
+
+        // Shows as Paid with zero balance because nothing is owed
+        MvcResult detailResult = mockMvc.perform(get("/api/v1/shipments/" + response.getShipmentId())
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.payment").value("Paid"))
+                .andExpect(jsonPath("$.totalAmount").value(0.00))
+                .andExpect(jsonPath("$.balance").value(0.00))
+                .andReturn();
+
+        // Summary listing also reflects Paid status
+        mockMvc.perform(get("/api/v1/shipments?search=" + response.getShipmentId())
+                        .header("Authorization", officeToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].payment").value("Paid"))
+                .andExpect(jsonPath("$.content[0].totalAmount").value(0.00))
+                .andExpect(jsonPath("$.content[0].balance").value(0.00));
+    }
+
+    @Test
+    public void testZeroShippingFeeWithNonZeroOtherChargesCreatesPaymentWhenPaid() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setShippingFee(BigDecimal.ZERO);
+        request.setOtherCharges(new BigDecimal("75.00"));
+        request.setPaidAtRegistration(true);
+
+        MvcResult result = mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        ShipmentResponse response = objectMapper.readValue(result.getResponse().getContentAsString(), ShipmentResponse.class);
+        assertEquals(new BigDecimal("0.00"), response.getShippingFee());
+        assertEquals(new BigDecimal("75.00"), response.getOtherCharges());
+        assertEquals(new BigDecimal("75.00"), response.getTotalAmount());
+        assertTrue(response.getPaidAtRegistration());
+
+        List<Payment> payments = paymentRepository.findByShipment_ShipmentId(response.getShipmentId());
+        assertEquals(1, payments.size());
+        assertEquals(new BigDecimal("75.00"), payments.get(0).getAmountPaid());
+    }
+
+    @Test
+    public void testManualShippingFeeRejectsMoreThanTwoDecimalPlaces() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setShippingFee(new BigDecimal("125.456"));
+
+        mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testManualShippingFeeStillRequiresValidAndFreshCalculationSettings() throws Exception {
+        ShipmentRegistrationRequest request = createMobileRegistrationRequest();
+        request.setShippingFee(new BigDecimal("500.00"));
+        // Stale expected rate per kilo must still trigger 409 CONFLICT
+        request.setExpectedRatePerKilo(new BigDecimal("999.00"));
+
+        mockMvc.perform(post("/api/v1/shipments")
+                        .header("Authorization", officeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("STALE_SETTINGS"));
     }
 }

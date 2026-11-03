@@ -46,6 +46,7 @@ import {
 } from '../../features/scanner/vehicleOptionsFlow.mjs';
 import { trackingScanApi } from '../../features/scanner/services/trackingScanApi';
 import { safeHaptics } from '../../features/scanner/utils/haptics';
+import ScanFeedbackBanner from '../../features/scanner/components/ScanFeedbackBanner';
 import ScanViewfinder from '../../features/scanner/components/ScanViewfinder';
 import SingleScanReview from '../../features/scanner/components/SingleScanReview';
 import BatchScanPanel from '../../features/scanner/components/BatchScanPanel';
@@ -73,6 +74,7 @@ export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
 
   const [state, dispatch] = useReducer(scannerReducer, initialScannerState);
+  const [scanFeedback, setScanFeedback] = useState(null);
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [isScreenFocused, setIsScreenFocused] = useState(true);
   const [cameraMountKey, setCameraMountKey] = useState(0);
@@ -229,6 +231,7 @@ export default function ScanScreen() {
         keyboardHideSubscription.remove();
         animatedCameraHeight.stopAnimation();
         animatedCameraHeight.setValue(CAMERA_HEIGHTS[cameraHeightIndexRef.current]);
+        setScanFeedback(null);
         setIsScreenFocused(false);
         setIsKeyboardVisible(false);
         setTorchEnabled(false);
@@ -465,6 +468,12 @@ export default function ScanScreen() {
     setTorchEnabled((prev) => !prev);
   };
 
+  useEffect(() => {
+    setScanFeedback(null);
+    abortControllerRef.current?.abort();
+    scanLockRef.current = false;
+  }, [user?.userId, state.mode]);
+
   const handleScanCandidate = async (rawValue) => {
     if (!rawValue || scanLockRef.current) return;
 
@@ -488,7 +497,7 @@ export default function ScanScreen() {
         return;
       }
 
-      void safeHaptics.selection();
+      setScanFeedback({ kind: 'loading', message: 'Checking parcel...' });
       dispatch({ type: 'LOOKUP_STARTED', payload: normalized.trackingId });
 
       if (abortControllerRef.current) {
@@ -499,6 +508,12 @@ export default function ScanScreen() {
 
       try {
         const context = await trackingScanApi.getScanContext(normalized.trackingId, controller.signal);
+        if (controller.signal.aborted) return;
+        const isAllowed = context.canScan && isRoleTransitionAllowed(user?.role, context.nextStatusCode);
+        setScanFeedback({ kind: isAllowed ? 'info' : 'error', message: isAllowed
+          ? `${context.trackingId} found. Review truck loading; status unchanged.`
+          : context.scanBlockedReason || 'This parcel is not eligible for courier truck loading.' });
+        if (isAllowed) void safeHaptics.selection(); else void safeHaptics.warning();
         dispatch({ type: 'SET_CONTEXT', payload: context });
         if (context.requiresVehicle
           && isRoleTransitionAllowed(user?.role, context.nextStatusCode)
@@ -506,7 +521,8 @@ export default function ScanScreen() {
           loadRecentVehicleOptions();
         }
       } catch (err) {
-        if (err.name === 'CanceledError' || err.name === 'AbortError') return;
+        if (controller.signal.aborted || err.name === 'CanceledError' || err.name === 'AbortError') return;
+        setScanFeedback(null);
         void safeHaptics.error();
         const msg = err.response?.data?.message || err.message || 'Failed to retrieve scan context.';
         dispatch({
@@ -566,26 +582,32 @@ export default function ScanScreen() {
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
+      dispatch({ type: 'CLEAR_ERROR' });
+      setScanFeedback({ kind: 'loading', message: 'Checking parcel...' });
       try {
         const context = await trackingScanApi.getScanContext(normalized.trackingId, controller.signal);
+        if (controller.signal.aborted) return;
         const validation = validateBatchCandidate(context, state.batchOperation, user?.role);
 
         if (!validation.isValid) {
           void safeHaptics.warning();
+          setScanFeedback(null);
           dispatch({ type: 'SET_ERROR', payload: validation.error });
           cooldownTimerRef.current = setTimeout(() => { scanLockRef.current = false; }, 750);
           return;
         }
 
-        void safeHaptics.selection();
+        void safeHaptics.success();
         dispatch({ type: 'ADD_TO_BATCH', payload: normalized.trackingId });
+        setScanFeedback({ kind: 'success', message: `${normalized.trackingId} added to queue. ${state.batchQueue.length + 1} queued.` });
 
         // 750ms cooldown before accepting next scan
         cooldownTimerRef.current = setTimeout(() => {
           scanLockRef.current = false;
         }, 750);
       } catch (err) {
-        if (err.name === 'CanceledError' || err.name === 'AbortError') return;
+        if (controller.signal.aborted || err.name === 'CanceledError' || err.name === 'AbortError') return;
+        setScanFeedback(null);
         void safeHaptics.error();
         const msg = err.response?.data?.message || err.message || 'Failed to verify parcel status.';
         dispatch({ type: 'SET_ERROR', payload: msg });
@@ -613,6 +635,7 @@ export default function ScanScreen() {
       return;
     }
     submitLockRef.current = true;
+    dispatch({ type: 'CLEAR_ERROR' });
     dispatch({ type: 'SET_SUBMITTING', payload: true });
     try {
       const payload = buildSingleScanRequest(
@@ -623,6 +646,7 @@ export default function ScanScreen() {
       const res = await trackingScanApi.submitSingleScan(payload);
       void safeHaptics.success();
       dispatch({ type: 'SET_SINGLE_RESULT', payload: res });
+      setScanFeedback({ kind: 'success', message: res.transitionApplied === false ? 'Truck loading was already recorded.' : 'Truck loading recorded.' });
     } catch (err) {
       void safeHaptics.error();
       const msg = err.response?.data?.message || err.message || 'Status update failed.';
@@ -640,6 +664,7 @@ export default function ScanScreen() {
       return;
     }
     submitLockRef.current = true;
+    dispatch({ type: 'CLEAR_ERROR' });
     dispatch({ type: 'SET_SUBMITTING', payload: true });
     try {
       const payload = buildBatchScanRequest(
@@ -650,6 +675,7 @@ export default function ScanScreen() {
       );
       const responses = await trackingScanApi.submitBatchScan(payload);
       void safeHaptics.success();
+      setScanFeedback({ kind: 'success', message: 'Batch processed. Review the recorded results below.' });
       const transitionedCount = responses.filter((r) => r.transitionApplied).length;
       const idempotentCount = responses.filter((r) => !r.transitionApplied).length;
       const assignedVehicle = vehicles.find((v) => v.vehicleId === state.batchVehicleId);
@@ -832,16 +858,12 @@ export default function ScanScreen() {
           </View>
         )}
 
-        {/* Error Notification Banner (non-lookup errors) */}
-        {state.error && !state.failedLookupTrackingId && (
-          <View style={styles.errorBanner}>
-            <Icon source="alert-circle-outline" size={18} color={colors.danger} />
-            <Text style={styles.errorBannerText}>{state.error}</Text>
-            <TouchableOpacity onPress={() => dispatch({ type: 'CLEAR_ERROR' })}>
-              <Icon source="close" size={16} color={colors.danger} />
-            </TouchableOpacity>
-          </View>
-        )}
+        <ScanFeedbackBanner
+          kind={state.error ? (/already|limit reached|select/.test(state.error) ? 'warning' : 'error')
+            : state.isSubmitting ? 'loading' : scanFeedback?.kind}
+          message={state.error || (state.isSubmitting ? 'Recording truck loading...' : scanFeedback?.message)}
+          onDismiss={() => { dispatch({ type: 'CLEAR_ERROR' }); setScanFeedback(null); }}
+        />
 
         {/* 3. Light Bottom Operations Panel */}
         <View style={styles.bottomPanel}>
@@ -1086,22 +1108,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.ink,
     letterSpacing: 1.5
-  },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.dangerSoft,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border
-  },
-  errorBannerText: {
-    flex: 1,
-    fontSize: 12,
-    color: colors.danger,
-    fontWeight: '600'
   },
   networkBanner: {
     flexDirection: 'row',

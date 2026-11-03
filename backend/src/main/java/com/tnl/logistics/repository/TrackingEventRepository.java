@@ -21,8 +21,33 @@ public interface TrackingEventRepository extends JpaRepository<TrackingEvent, Lo
 
     List<TrackingEvent> findByParcelUnit_TrackingIdOrderByEventTimestampAsc(String trackingId);
 
-    @Query("SELECT e FROM TrackingEvent e LEFT JOIN FETCH e.vehicle WHERE e.parcelUnit.trackingId IN :trackingIds AND e.vehicle IS NOT NULL ORDER BY e.eventTimestamp ASC")
-    List<TrackingEvent> findByParcelUnit_TrackingIdInAndVehicleNotNullOrderByEventTimestampAsc(@Param("trackingIds") Collection<String> trackingIds);
+    @Query("""
+            SELECT event FROM TrackingEvent event JOIN FETCH event.vehicle
+            WHERE event.parcelUnit.trackingId IN :trackingIds
+              AND NOT EXISTS (
+                  SELECT newer.eventId FROM TrackingEvent newer
+                  WHERE newer.parcelUnit = event.parcelUnit AND newer.vehicle IS NOT NULL
+                    AND (newer.eventTimestamp > event.eventTimestamp
+                         OR (newer.eventTimestamp = event.eventTimestamp AND newer.eventId > event.eventId))
+              )
+            """)
+    List<TrackingEvent> findLatestVehicleEvents(@Param("trackingIds") Collection<String> trackingIds);
+
+    @Query("""
+            SELECT event FROM TrackingEvent event
+            JOIN FETCH event.vehicle
+            WHERE event.parcelUnit.trackingId IN :trackingIds
+              AND event.status = com.tnl.logistics.model.ParcelStatus.LOADED_ON_TRUCK
+              AND NOT EXISTS (
+                  SELECT newer.eventId FROM TrackingEvent newer
+                  WHERE newer.parcelUnit = event.parcelUnit
+                    AND newer.status = com.tnl.logistics.model.ParcelStatus.LOADED_ON_TRUCK
+                    AND newer.vehicle IS NOT NULL
+                    AND (newer.eventTimestamp > event.eventTimestamp
+                         OR (newer.eventTimestamp = event.eventTimestamp AND newer.eventId > event.eventId))
+              )
+            """)
+    List<TrackingEvent> findLatestTruckLoadingEvents(@Param("trackingIds") Collection<String> trackingIds);
 
     long countByVehicle_VehicleId(String vehicleId);
 

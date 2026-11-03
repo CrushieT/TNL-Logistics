@@ -41,19 +41,22 @@ test('the production Dispatch queue rejects lost arrivals and loaded parcels bef
   let error = '';
   const bindings = {
     shipmentId: 'SHP-TEST', batchQueue: queue, availableUnits: [], normalizeTrackingId, MAX_BATCH_SIZE,
-    safeHaptics: { warning() {}, error() {}, selection() {} },
+    mode: 'load', isOnline: true, busy: false, pendingShipmentSwitch: null,
+    loadRequestRef: { current: null }, arrivalVersionRef: { current: 0 }, setBusy() {},
+    getManifestCandidateError: (candidate) => candidate.lost ? candidate.scanBlockedReason : null,
+    safeHaptics: { warning() {}, error() {}, selection() {}, success() {} },
     trackingScanApi: { getScanContext: async () => context },
     setError(value) { error = value; }, setNotice() {},
     setBatchQueue(update) { queue = update(queue); },
   };
   const processQueueScan = new Function(...Object.keys(bindings), `${handlerSource}; return processQueueScan;`)(...Object.values(bindings));
   for (const currentStatusCode of ['ARRIVED_AT_TNL', 'LOADED_TO_HAULER']) {
-    context = { shipmentId: 'SHP-TEST', currentStatusCode, lost: true, canScan: false, scanBlockedReason: 'Parcel is lost. Admin must mark it found before scanning.' };
+    context = { trackingId: 'TRK-2026-000001', shipmentId: 'SHP-TEST', currentStatusCode, lost: true, canScan: false, scanBlockedReason: 'Parcel is lost. Admin must mark it found before scanning.' };
     await processQueueScan('TRK-2026-000001');
     assert.deepEqual(queue, []);
     assert.match(error, /lost/);
   }
-  context = { shipmentId: 'SHP-TEST', currentStatusCode: 'ARRIVED_AT_TNL', lost: false, canScan: true };
+  context = { trackingId: 'TRK-2026-000001', shipmentId: 'SHP-TEST', currentStatusCode: 'ARRIVED_AT_TNL', lost: false, canScan: true };
   await processQueueScan('TRK-2026-000001');
   assert.deepEqual(queue, ['TRK-2026-000001']);
   assert.equal(error, '');

@@ -9,7 +9,11 @@ import ExceptionAction from '../../../../components/common/ExceptionAction';
 import { getParcelUnit, getShipment, PrintLabelsModal, subscribeRealtimeEvents } from '../../../../features/shipments';
 import { colors, fonts, spacing, radius, type } from '../../../../theme';
 
-const STATUS_FLOW = ['Registered', 'QR Generated', 'Loaded on Truck', 'Arrived at TNL', 'Loaded to Hauler'];
+const STATUS_FLOW = ['Registered', 'QR Generated', 'Loaded on Truck', 'Arrived in Daet', 'Loaded to Hauler'];
+const displayTrackingStatus = (status) =>
+  ['Arrived at TNL', 'Arrived at TNL Hub', 'Outload / Arrive TNL'].includes(status)
+    ? 'Arrived in Daet'
+    : status;
 
 export default function ParcelUnitDetailScreen() {
   const router = useRouter();
@@ -98,7 +102,7 @@ export default function ParcelUnitDetailScreen() {
   const completedEvents = unit.history || [];
 
   // Find the single immediate next status in the sequence
-  const completedEventNames = new Set(completedEvents.map((e) => e.event));
+  const completedEventNames = new Set(completedEvents.map((event) => displayTrackingStatus(event.event)));
   const nextPendingStatus = STATUS_FLOW.find((s) => !completedEventNames.has(s));
 
   const handleReprint = () => setPrintModalVisible(true);
@@ -119,8 +123,8 @@ export default function ParcelUnitDetailScreen() {
         </View>
         <View style={styles.badgeRow}>
           <View style={styles.statusStack}>
-            <StatusBadge value={unit.lost ? 'Lost' : unit.status} kind="status" />
-            {unit.lost && <Text style={styles.lastConfirmedStatus}>Last confirmed: {unit.status}</Text>}
+            <StatusBadge value={unit.lost ? 'Lost' : displayTrackingStatus(unit.status)} kind="status" />
+            {unit.lost && <Text style={styles.lastConfirmedStatus}>Last confirmed: {displayTrackingStatus(unit.status)}</Text>}
           </View>
           {unit.status !== 'Completed' && (
             <ExceptionAction label={unit.lost ? 'Mark as Found' : 'Mark as Lost'} record={unit}
@@ -210,7 +214,7 @@ export default function ParcelUnitDetailScreen() {
                     {/* Event Content */}
                     <View style={[styles.timelineContent, hasNextItem && styles.timelineContentSpacing]}>
                       <View style={styles.eventTitleRow}>
-                        <Text style={styles.eventTitle}>{entry.event}</Text>
+                         <Text style={styles.eventTitle}>{displayTrackingStatus(entry.event)}</Text>
                         <Text style={styles.eventTimestamp}>{entry.date}, {entry.time}</Text>
                       </View>
                       <Text style={styles.eventStaff}>by {entry.by}</Text>

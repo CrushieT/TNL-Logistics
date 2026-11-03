@@ -59,9 +59,22 @@ export function calculateFixedMetrics(actualUnits, volumeUnits, divisor, rate, q
   };
 }
 
+function parseCurrencyDecimal(value) {
+  const text = String(value ?? '').trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(text)) return null;
+  const [whole, fraction = ''] = text.split('.');
+  return BigInt(whole) * DECIMAL_SCALE + BigInt(fraction.padEnd(4, '0'));
+}
+
 export function calculateTotalCents(shippingFee, otherCharges) {
-  const feeUnits = parseDecimal(shippingFee) ?? 0n;
-  const otherUnits = parseDecimal(otherCharges) ?? 0n;
+  if (shippingFee !== null && shippingFee !== undefined && parseCurrencyDecimal(shippingFee) === null) {
+    return null;
+  }
+  if (otherCharges !== null && otherCharges !== undefined && parseCurrencyDecimal(otherCharges) === null) {
+    return null;
+  }
+  const feeUnits = parseCurrencyDecimal(shippingFee) ?? 0n;
+  const otherUnits = parseCurrencyDecimal(otherCharges) ?? 0n;
   return Number(roundHalfUp(feeUnits, 100n) + roundHalfUp(otherUnits, 100n));
 }
 

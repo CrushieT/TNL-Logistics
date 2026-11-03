@@ -79,7 +79,7 @@ export function RegistrationResult({ shipment, onRegisterAnother, onHome }) {
               <Text style={styles.value}>{shipment.recipientName}</Text>
               <Text style={styles.label}>TOTAL AMOUNT</Text>
               <Text style={styles.amount}>₱{Number(shipment.totalAmount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
-              <Text style={styles.payment}>{shipment.paidAtRegistration ? 'Paid at registration · Cash payment recorded' : 'Unpaid · To be billed in the statement of account'}</Text>
+              <Text style={styles.payment}>{Number(shipment.totalAmount) === 0 ? 'Paid · Free shipment' : (shipment.paidAtRegistration ? 'Paid at registration · Cash payment recorded' : 'Unpaid · To be billed in the statement of account')}</Text>
             </View>
             <View style={styles.actions}>
               <Pressable

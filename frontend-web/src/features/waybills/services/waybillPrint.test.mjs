@@ -28,6 +28,8 @@ test('prints exactly two complete copies of the selected manifest with 15-item p
   };
   const html = buildWaybillPrintHtml(manifest, '/tracking-logo.png');
   assert.equal(html.match(/<section class="copy">/g).length, 6);
+  assert.deepEqual([...html.matchAll(/class="copy-label(?: client-copy)?">([^<]+)/g)].map(match => match[1]),
+    ['ORIGINAL COPY', 'ORIGINAL COPY', 'ORIGINAL COPY', 'CLIENT COPY', 'CLIENT COPY', 'CLIENT COPY']);
   assert.equal(html.match(/UNIT-45/g).length, 2);
   assert.equal(html.match(/<thead>/g).length, 6);
   assert.match(html, /display: table-header-group/);
@@ -50,4 +52,12 @@ test('escapes document data and retains the text logo fallback', () => {
   assert.match(html, /TC &amp; CT INTEGRATED LOGISTICS/);
   assert.match(html, /RETURN CONFIRMATION QR/);
   assert.doesNotMatch(html, /<img/);
+});
+
+test('labels additional single-page copies as client copies', () => {
+  const html = buildWaybillPrintHtml({ waybillId: 'WYB-1', parcels: [{ trackingId: 'UNIT' }] }, null, null, 3);
+  assert.deepEqual([...html.matchAll(/class="copy-label(?: client-copy)?">([^<]+)/g)].map(match => match[1]),
+    ['ORIGINAL COPY', 'CLIENT COPY', 'CLIENT COPY']);
+  assert.equal((html.match(/class="copy-label client-copy">CLIENT COPY/g) || []).length, 2);
+  assert.equal((html.match(/CLIENT SIGNATURE AND PRINTED NAME/g) || []).length, 3);
 });

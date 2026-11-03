@@ -78,8 +78,8 @@ export default function ShipmentsTable({
             </View>
             <View style={[styles.cell, { flex: COLUMNS[5].flex }]}>
               <Text style={styles.vehicleText}>
-                {s.currentVehicleCount > 1 ? 'Multiple vehicles' : s.currentVehicleCount === 1
-                  ? s.currentVehiclePlate?.trim() || s.currentVehicleId || '—' : '—'}
+                {s.displayVehicleCount > 1 ? 'Multiple vehicles'
+                  : s.displayVehiclePlate?.trim() || s.displayVehicleId || '—'}
               </Text>
             </View>
             <View style={[styles.cell, { flex: COLUMNS[6].flex }]}>

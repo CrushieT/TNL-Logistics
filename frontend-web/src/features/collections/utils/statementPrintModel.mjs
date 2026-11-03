@@ -16,10 +16,22 @@ export function paginateStatementItems(items = []) {
   return pages;
 }
 
-export function buildStatementPrintUrl(clientId, cycle) {
+export function parseStatementVersion(version) {
+  if (version == null) return null;
+  if ((typeof version !== 'number' && typeof version !== 'string')
+      || !/^[1-9]\d*$/.test(String(version)) || !Number.isSafeInteger(Number(version))) {
+    throw new Error('Invalid statement version.');
+  }
+  return Number(version);
+}
+
+export function buildStatementPrintUrl(clientId, cycle, version) {
   const query = new URLSearchParams({ clientId: String(clientId ?? '') });
   if (cycle) {
     query.set('cycle', String(cycle));
+  }
+  if (version != null) {
+    query.set('version', String(parseStatementVersion(version)));
   }
   return `/statements/print?${query.toString()}`;
 }
@@ -39,11 +51,9 @@ export function hasUnsavedStatementAdjustments(statement, adjustments = {}) {
 
 export function getStatementPrintBlockReason(statement) {
   if (!statement) {
-    return 'Load a saved Statement of Account before printing.';
+    return 'Load a Statement of Account before printing.';
   }
-  if (!statement.isSaved) {
-    return 'Save the Statement of Account before printing.';
-  }
+  if (!statement.isSaved) return 'Save the Statement of Account before printing.';
   if (!hasValidSoaBankDetails(statement)) {
     return 'SOA bank details are incomplete or invalid. Configure them in System Settings before printing.';
   }
@@ -74,7 +84,12 @@ export function waitForImageReady(uri, createImage) {
 
   return new Promise((resolve) => {
     const image = createImage();
-    image.onload = () => resolve('loaded');
+    image.onload = async () => {
+      try {
+        if (typeof image.decode === 'function') await image.decode();
+        resolve('loaded');
+      } catch { resolve('failed'); }
+    };
     image.onerror = () => resolve('failed');
     image.src = uri;
   });

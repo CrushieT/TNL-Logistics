@@ -14,9 +14,7 @@ export default function LabelPreview({
   address = 'Manila, Philippines',
   contents = 'General Goods',
   shipmentId = 'SHP-2026-001',
-  client = 'Northbridge Trading',
   route = '',
-  total = 500,
 }) {
   const [branding, setBranding] = useState(null);
 
@@ -73,23 +71,14 @@ export default function LabelPreview({
       <View style={styles.footer}>
         <View style={[styles.footerRow, styles.contentsRow]}>
           <Text style={[styles.footerItem, styles.contentsField]}>
-            <Text style={styles.footerMuted}>Contents: </Text>
-            {contents || 'General Goods'}
+            <Text style={styles.footerMuted}>Notes: </Text>
+            {contents}
           </Text>
         </View>
         <View style={[styles.footerRow, styles.contentsRow]}>
-          <Text style={[styles.footerItem, styles.contentsField]}>
-            <Text style={styles.footerMuted}>Client: </Text>
-            {client || 'Northbridge Trading'}
-          </Text>
           <Text style={[styles.footerItem, styles.shipmentField]}>
             <Text style={styles.footerMuted}>Shipment: </Text>
             <Text style={styles.footerMono}>{shipmentId}</Text>
-          </Text>
-        </View>
-        <View style={styles.totalRow}>
-          <Text style={styles.totalText}>
-            <Text style={styles.footerMuted}>Total: </Text>PHP {Number(total || 0).toLocaleString()}
           </Text>
         </View>
       </View>
@@ -239,8 +228,8 @@ const styles = StyleSheet.create({
     overflowWrap: 'anywhere',
   },
   shipmentField: {
-    flexShrink: 0,
-    whiteSpace: 'nowrap',
+    flexShrink: 1,
+    overflowWrap: 'anywhere',
   },
   footerMono: {
     fontFamily: fonts.mono,
@@ -249,15 +238,5 @@ const styles = StyleSheet.create({
   },
   footerMuted: {
     color: '#6B7280',
-  },
-  totalRow: {
-    alignItems: 'flex-end',
-    marginTop: 2,
-  },
-  totalText: {
-    fontFamily: fonts.sans,
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#111111',
   },
 });

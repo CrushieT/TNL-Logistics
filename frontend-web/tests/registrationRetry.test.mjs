@@ -192,3 +192,94 @@ test('web registration shows label text limits and rejects oversized values befo
     assert.equal(flow.requests[0][requestField], 'A'.repeat(maximum));
   }
 });
+
+test('web registration honors manual fee override, retains value across stale-settings retry, and sends shippingFee only when overridden', async () => {
+  const flow = await setup({ rejections: 1 });
+  const pricingSummary = () => elements(flow.getTree(), 'ShipmentPricingSummary')[0];
+  assert.ok(pricingSummary());
+  assert.equal(pricingSummary().props.isShippingFeeOverridden, false);
+
+  // Set manual shipping fee override
+  pricingSummary().props.onShippingFeeChange('120.50');
+  await flow.render();
+  assert.equal(pricingSummary().props.isShippingFeeOverridden, true);
+  assert.equal(pricingSummary().props.shippingFee, '120.50');
+
+  // Submit: triggers 409 STALE_SETTINGS rejection
+  elements(flow.getTree(), 'Button')[0].props.onPress();
+  await flow.render();
+  assert.equal(flow.requests.length, 1);
+  assert.equal(flow.requests[0].shippingFee, 120.5);
+
+  // After 409 rejection and refreshed settings, manual override is preserved
+  assert.equal(pricingSummary().props.isShippingFeeOverridden, true);
+  assert.equal(pricingSummary().props.shippingFee, '120.50');
+
+  // Submit retry
+  elements(flow.getTree(), 'Button')[0].props.onPress();
+  await flow.render();
+  assert.equal(flow.requests.length, 2);
+  assert.equal(flow.requests[1].shippingFee, 120.5);
+});
+
+test('web registration omits shippingFee when using calculated default', async () => {
+  const flow = await setup({ rejections: 0 });
+  const pricingSummary = elements(flow.getTree(), 'ShipmentPricingSummary')[0];
+  assert.equal(pricingSummary.props.isShippingFeeOverridden, false);
+
+  elements(flow.getTree(), 'Button')[0].props.onPress();
+  await flow.render();
+  assert.equal(flow.requests.length, 1);
+  assert.equal(flow.requests[0].shippingFee, undefined);
+});
+
+test('web registration allows zero-fee free shipment, disables paid-at-registration, and submits paidAtRegistration=false', async () => {
+  const flow = await setup({ rejections: 0 });
+  const pricingSummary = elements(flow.getTree(), 'ShipmentPricingSummary')[0];
+  pricingSummary.props.onShippingFeeChange('0');
+  pricingSummary.props.onOtherChargesChange('0');
+  await flow.render();
+
+  const switchElement = elements(flow.getTree(), 'Switch')[0];
+  assert.equal(switchElement.props.disabled, true);
+  assert.equal(switchElement.props.value, false);
+
+  elements(flow.getTree(), 'Button')[0].props.onPress();
+  await flow.render();
+  assert.equal(flow.requests.length, 1);
+  assert.equal(flow.requests[0].shippingFee, 0);
+  assert.equal(flow.requests[0].paidAtRegistration, false);
+});
+
+test('web registration reset button reverts override to calculated fee', async () => {
+  const flow = await setup({ rejections: 0 });
+  const pricingSummary = () => elements(flow.getTree(), 'ShipmentPricingSummary')[0];
+  pricingSummary().props.onShippingFeeChange('250.00');
+  await flow.render();
+  assert.equal(pricingSummary().props.isShippingFeeOverridden, true);
+  assert.equal(pricingSummary().props.shippingFee, '250.00');
+
+  // Reset to calculated
+  pricingSummary().props.onResetShippingFee();
+  await flow.render();
+  assert.equal(pricingSummary().props.isShippingFeeOverridden, false);
+  assert.equal(pricingSummary().props.shippingFee, '');
+
+  elements(flow.getTree(), 'Button')[0].props.onPress();
+  await flow.render();
+  assert.equal(flow.requests.length, 1);
+  assert.equal(flow.requests[0].shippingFee, undefined);
+});
+
+test('web registration validates manual fee and rejects negative, excessive decimals, and oversized amounts', async () => {
+  for (const invalidValue of ['-10', '25.999', '10000000000', 'invalid']) {
+    const flow = await setup({ rejections: 0 });
+    const pricingSummary = elements(flow.getTree(), 'ShipmentPricingSummary')[0];
+    pricingSummary.props.onShippingFeeChange(invalidValue);
+    await flow.render();
+
+    elements(flow.getTree(), 'Button')[0].props.onPress();
+    await flow.render();
+    assert.equal(flow.requests.length, 0, `Submission should be blocked for invalid fee: ${invalidValue}`);
+  }
+});

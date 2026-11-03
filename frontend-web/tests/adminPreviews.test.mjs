@@ -394,3 +394,79 @@ for (const acceptsDiscard of [false, true]) {
     assert.equal(screen.props('DeductionsInputCard').deductionNote, acceptsDiscard ? '' : 'Retain this draft');
   });
 }
+
+const previewReact = {
+  createElement: (type, props, ...children) => {
+    const flatChildren = children.length === 1 && Array.isArray(children[0]) ? children[0] : children;
+    return { type, props: { ...props, children: flatChildren } };
+  },
+};
+const previewNative = {
+  View: 'View',
+  Text: 'Text',
+};
+const PreviewStatusModule = loadProductionModule('../src/components/common/PreviewStatus.js', dependency => {
+  if (dependency === 'react') return previewReact;
+  if (dependency === 'react-native') return previewNative;
+  if (dependency === './Button') return 'Button';
+  if (dependency.endsWith('/theme')) return { colors: { inkSoft: '#666' }, spacing: { sm: 8 } };
+  throw new Error(`Unhandled dependency: ${dependency}`);
+});
+const PreviewStatus = PreviewStatusModule.default || PreviewStatusModule;
+
+function previewTextContent(tree) {
+  if (typeof tree === 'string') return tree;
+  if (!tree || typeof tree !== 'object') return '';
+  if (Array.isArray(tree)) return tree.map(previewTextContent).join('');
+  return previewTextContent(tree.props?.children);
+}
+
+test('PreviewStatus: errorOnly=false renders loading, refreshing, stale, and error states', () => {
+  assert.equal(PreviewStatus({ resource: { isFresh: true, data: null, phase: 'loading' }, label: 'Items' }), null);
+
+  const loadingElement = PreviewStatus({ resource: { isFresh: false, data: null, phase: 'loading' }, label: 'Shipments' });
+  assert.ok(loadingElement);
+  assert.match(previewTextContent(loadingElement), /Loading shipments\.\.\./);
+
+  const refreshingElement = PreviewStatus({ resource: { isFresh: false, data: [{ id: 1 }], phase: 'refreshing' }, label: 'Shipments' });
+  assert.ok(refreshingElement);
+  assert.match(previewTextContent(refreshingElement), /Refreshing shipments\./);
+
+  const staleElement = PreviewStatus({ resource: { isFresh: false, data: [{ id: 1 }], phase: 'stale' }, label: 'Shipments' });
+  assert.ok(staleElement);
+  assert.match(previewTextContent(staleElement), /Shipments may be stale\./);
+
+  const errorElement = PreviewStatus({
+    resource: {
+      isFresh: false,
+      data: null,
+      phase: 'error',
+      error: 'Network unreachable',
+      refresh: () => {},
+    },
+    label: 'Shipments',
+  });
+  assert.ok(errorElement);
+  assert.match(previewTextContent(errorElement), /Unable to load shipments\..*Network unreachable/);
+});
+
+test('PreviewStatus: errorOnly=true silences routine loading/preview/refreshing and only renders errors', () => {
+  assert.equal(PreviewStatus({ resource: { isFresh: false, data: null, phase: 'loading' }, label: 'Vehicle filters', errorOnly: true }), null);
+  assert.equal(PreviewStatus({ resource: { isFresh: false, data: [{ id: 1 }], phase: 'refreshing' }, label: 'Vehicle filters', errorOnly: true }), null);
+  assert.equal(PreviewStatus({ resource: { isFresh: false, data: [{ id: 1 }], phase: 'stale' }, label: 'Vehicle filters', errorOnly: true }), null);
+
+  let retryCalled = false;
+  const errorElement = PreviewStatus({
+    resource: {
+      isFresh: false,
+      data: null,
+      phase: 'error',
+      error: 'Vehicle API 500',
+      refresh: (silent) => { retryCalled = !silent; },
+    },
+    label: 'Vehicle filters',
+    errorOnly: true,
+  });
+  assert.ok(errorElement);
+  assert.match(previewTextContent(errorElement), /Unable to load vehicle filters\..*Vehicle API 500/);
+});

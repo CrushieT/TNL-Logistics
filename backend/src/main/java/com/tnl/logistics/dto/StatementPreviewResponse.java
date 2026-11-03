@@ -43,6 +43,18 @@ public class StatementPreviewResponse {
     private BigDecimal amountDue;
     private String status;
 
+    private Integer financialRevision = 1;
+    private Boolean isCycleClosed = false;
+    private Boolean hasSnapshot = false;
+    private Integer latestVersionNumber;
+    private Integer versionsCount = 0;
+    private Integer activeVersion;
+    private String capturedAt;
+    private String capturedByName;
+    private Boolean isLive = true;
+    private String logoHash;
+    private BigDecimal liveOutstandingBalance;
+
     private List<StatementShipmentItem> items = new ArrayList<>();
 
     public StatementPreviewResponse() {}
@@ -127,6 +139,39 @@ public class StatementPreviewResponse {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public Integer getFinancialRevision() { return financialRevision; }
+    public void setFinancialRevision(Integer financialRevision) { this.financialRevision = financialRevision; }
+
+    public Boolean getIsCycleClosed() { return isCycleClosed; }
+    public void setIsCycleClosed(Boolean isCycleClosed) { this.isCycleClosed = isCycleClosed; }
+
+    public Boolean getHasSnapshot() { return hasSnapshot; }
+    public void setHasSnapshot(Boolean hasSnapshot) { this.hasSnapshot = hasSnapshot; }
+
+    public Integer getLatestVersionNumber() { return latestVersionNumber; }
+    public void setLatestVersionNumber(Integer latestVersionNumber) { this.latestVersionNumber = latestVersionNumber; }
+
+    public Integer getVersionsCount() { return versionsCount; }
+    public void setVersionsCount(Integer versionsCount) { this.versionsCount = versionsCount; }
+
+    public Integer getActiveVersion() { return activeVersion; }
+    public void setActiveVersion(Integer activeVersion) { this.activeVersion = activeVersion; }
+
+    public String getCapturedAt() { return capturedAt; }
+    public void setCapturedAt(String capturedAt) { this.capturedAt = capturedAt; }
+
+    public String getCapturedByName() { return capturedByName; }
+    public void setCapturedByName(String capturedByName) { this.capturedByName = capturedByName; }
+
+    public Boolean getIsLive() { return isLive; }
+    public void setIsLive(Boolean isLive) { this.isLive = isLive; }
+
+    public String getLogoHash() { return logoHash; }
+    public void setLogoHash(String logoHash) { this.logoHash = logoHash; }
+
+    public BigDecimal getLiveOutstandingBalance() { return liveOutstandingBalance; }
+    public void setLiveOutstandingBalance(BigDecimal liveOutstandingBalance) { this.liveOutstandingBalance = liveOutstandingBalance; }
 
     public List<StatementShipmentItem> getItems() { return items; }
     public void setItems(List<StatementShipmentItem> items) { this.items = items; }

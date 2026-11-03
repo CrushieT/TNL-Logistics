@@ -27,6 +27,7 @@ import { subscribeRealtimeEvents } from '../features/shipments';
 import { useRequestCoordinator } from '../services/api/useRequestCoordinator';
 import { useVerifiedAdminSession, getVerifiedAdminSessionKey } from '../services/api/useVerifiedAdminSession';
 import { colors, fonts, radius, spacing } from '../theme';
+import { useSavedPageState } from '../services/navigation/useSavedPageState';
 
 export default function TrackingLogsScreen() {
   const sessionKey = useVerifiedAdminSession();
@@ -53,12 +54,18 @@ export default function TrackingLogsScreen() {
   const todayUtcRef = useRef(new Date().toISOString().slice(0, 10));
 
   // Pagination & filter state
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(25);
+  const [filterState, updateFilterState] = useSavedPageState('tracking_logs_directory', {
+    search: '',
+    statusFilter: 'ALL',
+    page: 0,
+    pageSize: 25,
+  });
+  const { search, statusFilter, page, pageSize } = filterState;
+
   const [totalElements, setTotalElements] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+
+
 
   // Real-time SSE state
   const [highlightedIds, setHighlightedIds] = useState(new Set());
@@ -400,8 +407,8 @@ export default function TrackingLogsScreen() {
 
   // Handle debounced search changes with cache lookup
   const handleSearchChange = (text) => {
-    setSearch(text);
-    setPage(0);
+    updateFilterState({ search: text, page: 0 });
+
     setUnreadLiveScans(0);
     if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey()) return;
 
@@ -446,20 +453,20 @@ export default function TrackingLogsScreen() {
     setIsLogsStale(false);
     setLogsErrorMessage(null);
     setInitialLogsFailed(false);
-    setStatusFilter(newStatus);
-    setPage(0);
+    updateFilterState({ statusFilter: newStatus, page: 0 });
+
     setUnreadLiveScans(0);
   };
 
   // Handle page navigation
   const handlePageChange = (newPage) => {
-    setPage(newPage);
+    updateFilterState({ page: newPage });
   };
 
   // Handle page size selector
   const handlePageSizeChange = (newSize) => {
-    setPageSize(newSize);
-    setPage(0);
+    updateFilterState({ pageSize: newSize, page: 0 });
+
     setUnreadLiveScans(0);
   };
 
@@ -494,9 +501,9 @@ export default function TrackingLogsScreen() {
 
   // Jump to latest scans from floating pill
   const handleJumpToLatest = () => {
-    setPage(0);
-    setSearch('');
-    setStatusFilter('ALL');
+
+    updateFilterState({ page: 0, search: '', statusFilter: 'ALL' });
+
     setUnreadLiveScans(0);
     fetchLogs(0, pageSize, '', 'ALL', true);
   };
@@ -643,7 +650,7 @@ function formatStatusLabel(status) {
     case 'LOADED_ON_TRUCK':
       return 'Loaded on Truck';
     case 'ARRIVED_AT_TNL':
-      return 'Outload / Arrive TNL';
+      return 'Arrived in Daet';
     case 'LOADED_TO_HAULER':
       return 'Loaded to Hauler';
     case 'COMPLETED':

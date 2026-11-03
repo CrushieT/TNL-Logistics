@@ -40,8 +40,8 @@ export default function ShipmentResultView({ shipment, onRegisterAnother, onView
             <SummaryField label="Total Amount" value={`₱${Number(shipment.totalAmount || 0).toLocaleString()}`} bold />
             <SummaryField
               label="Payment Status"
-              value={shipment.paidAtRegistration ? 'Paid (Cash)' : 'Unpaid (Billed on SOA)'}
-              customColor={shipment.paidAtRegistration ? '#059669' : '#DC2626'}
+              value={Number(shipment.totalAmount) === 0 ? 'Paid (Free)' : (shipment.paidAtRegistration ? 'Paid (Cash)' : 'Unpaid (Billed on SOA)')}
+              customColor={Number(shipment.totalAmount) === 0 || shipment.paidAtRegistration ? '#059669' : '#DC2626'}
             />
             {shipment.totalVolumeCbm ? (
               <SummaryField label="Total Volume" value={`${Number(shipment.totalVolumeCbm).toFixed(4)} m³`} />

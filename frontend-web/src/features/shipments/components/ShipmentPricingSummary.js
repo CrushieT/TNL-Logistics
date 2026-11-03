@@ -11,6 +11,10 @@ export default function ShipmentPricingSummary({
   ratePerKilo,
   volumetricDivisor,
   shipmentMetrics = {},
+  shippingFee = '',
+  isShippingFeeOverridden = false,
+  onShippingFeeChange,
+  onResetShippingFee,
   otherCharges = '0',
   onOtherChargesChange,
   totalAmount = 0,
@@ -18,6 +22,10 @@ export default function ShipmentPricingSummary({
   calculationSettingsState = 'loading',
   onRetryCalculationSettings,
 }) {
+  const calculatedFee = shipmentMetrics.shippingFee;
+  const displayedShippingFee = isShippingFeeOverridden
+    ? (/^\d+(?:\.\d{1,2})?$/.test(String(shippingFee).trim()) ? parseFloat(shippingFee) : null)
+    : calculatedFee;
   return (
     <View style={styles.summaryContainer}>
       <Text style={styles.dimensionsHeader}>LIVE RATING BREAKDOWN & SUMMARY</Text>
@@ -62,6 +70,38 @@ export default function ShipmentPricingSummary({
 
         {/* 3. Charges & Total */}
         <View style={styles.summaryCardCol}>
+          <View style={styles.shippingFeeContainer}>
+            <View style={styles.shippingFeeHeaderRow}>
+              <Text style={type.label}>Shipping Fee (₱)</Text>
+              {isShippingFeeOverridden ? (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  onPress={onResetShippingFee}
+                  style={styles.resetButton}
+                >
+                  <Text style={styles.resetButtonText}>Reset to calculated</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.calculatedBadge}>
+                  <Text style={styles.calculatedBadgeText}>Calculated</Text>
+                </View>
+              )}
+            </View>
+            <FormField
+              value={isShippingFeeOverridden ? shippingFee : (calculatedFee !== null && calculatedFee !== undefined ? calculatedFee.toFixed(2) : '')}
+              onChangeText={onShippingFeeChange}
+              numericOnly
+              placeholder="0.00"
+              maxLength={13}
+              helper={isShippingFeeOverridden
+                ? (calculatedFee !== null && calculatedFee !== undefined
+                    ? `Manual override (Calculated: ₱${calculatedFee.toFixed(2)})`
+                    : 'Manual override')
+                : 'Calculated from billable weight & rate'}
+              error={errors.shippingFee}
+            />
+          </View>
+
           <FormField
             label="Other Charges (₱)"
             value={otherCharges}
@@ -75,10 +115,12 @@ export default function ShipmentPricingSummary({
           <View style={styles.totalBox}>
             <Text style={styles.totalLabel}>TOTAL AMOUNT</Text>
             <Text style={styles.totalValue}>
-              ₱{totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {totalAmount !== null && totalAmount !== undefined
+                ? `₱${Number(totalAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : '—'}
             </Text>
             <Text style={styles.totalFormula}>
-              {shipmentMetrics.shippingFee !== null ? `₱${shipmentMetrics.shippingFee.toFixed(2)} shipping` : '—'}
+              {displayedShippingFee !== null ? `₱${displayedShippingFee.toFixed(2)} shipping` : '—'}
               {' + ₱'}{(parseFloat(otherCharges) || 0).toFixed(2)} charges
             </Text>
           </View>
@@ -298,5 +340,38 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.ink,
     textDecorationLine: 'underline',
+  },
+  shippingFeeContainer: {
+    marginBottom: spacing.xs,
+  },
+  shippingFeeHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  resetButton: {
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
+  resetButtonText: {
+    fontFamily: fonts.sans,
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: colors.accent,
+    textDecorationLine: 'underline',
+  },
+  calculatedBadge: {
+    backgroundColor: '#E5E7EB',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.xs,
+  },
+  calculatedBadgeText: {
+    fontFamily: fonts.sans,
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: colors.inkSoft,
+    textTransform: 'uppercase',
   },
 });

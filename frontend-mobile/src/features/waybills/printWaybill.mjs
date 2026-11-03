@@ -62,7 +62,7 @@ export function buildWaybillHtml(manifest, logoUri, branding = null, copies = WA
   const printSheets = createWaybillPrintSheetSequence(paginatedPages, copies);
   const totalQuantity = manifest.totalQuantity || manifest.parcels.length;
 
-  const sheetsHtml = printSheets.map(({ pageIndex, pageNumber, totalPages, isLastPage, pageItems }) => {
+  const sheetsHtml = printSheets.map(({ copyIndex, pageIndex, pageNumber, totalPages, isLastPage, pageItems }) => {
     const rows = pageItems.map((parcel, idx) => {
       const overallIndex = pageIndex * WAYBILL_ITEMS_PER_PAGE + idx;
       const seq = parcel.seq ?? parcel.packageIndex ?? (overallIndex + 1);
@@ -85,6 +85,7 @@ export function buildWaybillHtml(manifest, logoUri, branding = null, copies = WA
         <div class="meta-row">
           <div class="meta-col">
             <h1>WAYBILL</h1>
+            <div class="copy-label${copyIndex === 0 ? '' : ' client-copy'}">${copyIndex === 0 ? 'ORIGINAL COPY' : 'CLIENT COPY'}</div>
             <p class="meta-line"><span class="meta-label">Waybill No. </span><span class="meta-mono">${escapeHtml(manifest.waybillId)}</span></p>
             <p class="meta-line"><span class="meta-label">Shipment No. </span><span class="meta-mono">${escapeHtml(manifest.shipmentId)}</span></p>
             <p class="meta-line"><span class="meta-label">Date: </span><span class="meta-val">${escapeHtml(manifest.generatedDate)}</span></p>
@@ -123,6 +124,8 @@ export function buildWaybillHtml(manifest, logoUri, branding = null, copies = WA
     .meta-row { display: flex; justify-content: space-between; align-items: flex-start; padding-top: 2.5mm; margin-top: 2.5mm; }
     .meta-col { flex: 1; min-width: 0; padding-right: 4mm; text-align: left; }
     .meta-col h1 { margin: 0 0 1.5mm 0; font-size: 17px; font-weight: 900; letter-spacing: 0.5px; }
+    .copy-label { display: inline-block; border: 1px solid #182b60; color: #182b60; padding: 1mm 2mm; margin-bottom: 1mm; font-size: 12px; font-weight: 700; line-height: 1; white-space: nowrap; }
+    .copy-label.client-copy { border-color: #c94c12; color: #c94c12; }
     .meta-line { margin: 1.2mm 0; font-size: 12px; }
     .meta-label { color: #555; }
     .meta-val { font-weight: bold; color: #111; }
