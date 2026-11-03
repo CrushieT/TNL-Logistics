@@ -1,11 +1,11 @@
 # TNL Logistics — Master Build Plan
 
-## Post-release client requests [IN PROGRESS]
+## Post-release client requests [COMPLETED]
 
-- QR label cleanup [COMPLETED]: removed displayed price and bottom Client and renamed Contents to Notes across web/mobile previews, HTML, ESC/POS, and TSPL, retaining description values, QR payloads, and audit/transport behavior. Focused 68 checks, full web 369/mobile 323 tests, production web/Android exports, rendered single/batch HTML inspection, and diff checks passed. Android print-dialog and physical thermal/QR acceptance [UPCOMING]. Details and What to Test: `.review/current/post-release-client-changes-plan.md`, item 1.
-- Document copy labels [UPCOMING]: print `ORIGINAL COPY` and `CLIENT COPY` on every waybill and SOA sheet while preserving the existing two-copy output.
+- QR label cleanup [COMPLETED]: removed displayed price and bottom Client and renamed Contents to Notes across web/mobile previews, HTML, ESC/POS, and TSPL, retaining description values, QR payloads, and audit/transport behavior. Focused 68 checks, full web 369/mobile 323 tests, production web/Android exports, rendered single/batch HTML inspection, and diff checks passed. Client demo and physical print acceptance [COMPLETED], confirmed by user on 2026-11-02. Details and What to Test: `.review/current/post-release-client-changes-plan.md`, item 1.
+- Document copy labels [COMPLETED]: print `ORIGINAL COPY` and `CLIENT COPY` on every waybill and SOA sheet while preserving the existing two-copy output. Delivered in PR #92 (`0ddd10e`). Client demo accepted [COMPLETED].
 - Shipment fee editing [COMPLETED]: allow a per-shipment shipping fee during web and mobile registration; retain other charges separately and validate the persisted total in the backend. Editable shipping fee on web and mobile registration, resets to calculated, zero fee and zero-total free shipments supported with paidAtRegistration disabled, strict validation on currency amounts, preserved across stale settings and input changes.
-- Courier truck-loading-only scans [UPCOMING]: restrict courier single and batch scans to `LOADED_ON_TRUCK`; keep receiving arrival and dispatch hauler-loading paths.
+- Courier truck-loading-only scans [COMPLETED]: restrict courier single and batch scans to `LOADED_ON_TRUCK`; keep receiving arrival and dispatch hauler-loading paths. Delivered in PR #93 (`c6b59df`). Client demo accepted [COMPLETED].
 - Implementation and verification detail: `.review/current/post-release-client-changes-plan.md`. Baseline `dev` includes the `main` release sync.
 
 ## SSE Open-In-View test-fixture cleanup [COMPLETED]

@@ -157,7 +157,7 @@ test('ui-shaped mobile registration form passes validation and builds request wi
     recipientContact: '09171234567',
     description: 'Fresh Produce',
     quantity: '1',
-    route: 'Manila to TNL Labo C.N.',
+    route: 'Manila to Daet, Camarines Norte',
     otherCharges: '50.00',
     paidAtRegistration: true,
     parcels: [
