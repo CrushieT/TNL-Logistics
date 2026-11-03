@@ -2,7 +2,8 @@ import PreviewStatus from '../../components/common/PreviewStatus';
 import { TableRowSkeleton } from '../../components/common/Skeleton';
 import { useCachedPreview, requirePage, requireDirectory } from '../../services/api/useCachedPreview';
 import { CACHE_SLOTS } from '../../services/api/responseCache.mjs';
-import React, { useState } from 'react';
+import React from 'react';
+import { useSavedPageState } from '../../services/navigation/useSavedPageState';
 import { Text } from 'react-native';
 import { colors, fonts, spacing } from '../../theme';
 import { useRouter } from 'expo-router';
@@ -32,15 +33,23 @@ const PAYMENT_OPTIONS = [
 
 export default function ShipmentsListScreen() {
   const router = useRouter();
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
-  const [paymentFilter, setPaymentFilter] = useState('ALL');
-  const [vehicleFilter, setVehicleFilter] = useState('ALL');
+  const [filterState, updateFilterState] = useSavedPageState('shipments_directory', {
+    search: '',
+    statusFilter: 'ALL',
+    paymentFilter: 'ALL',
+    vehicleFilter: 'ALL',
+    page: 0,
+    pageSize: 20,
+  });
+  const { search, statusFilter, paymentFilter, vehicleFilter, page, pageSize } = filterState;
+
+
+
 
 
   // Pagination state
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(20);
+
+
   const query = { page, size: pageSize, search: search.trim(),
     status: statusFilter === 'ALL' ? undefined : statusFilter,
     paymentStatus: paymentFilter === 'ALL' ? undefined : paymentFilter,
@@ -54,7 +63,7 @@ export default function ShipmentsListScreen() {
   const loading = resource.loading;
   const totalPages = resource.data?.page?.totalPages ?? resource.data?.totalPages ?? 1;
   const totalElements = resource.data?.page?.totalElements ?? resource.data?.totalElements ?? shipments.length;
-  const handleSearchChange = value => { setSearch(value); setPage(0); };
+  const handleSearchChange = value => { updateFilterState({ search: value, page: 0 }); };
 
   return (
     <AppShell>
@@ -73,8 +82,8 @@ export default function ShipmentsListScreen() {
             label: 'Status',
             value: statusFilter,
             onChange: (val) => {
-              setStatusFilter(val);
-              setPage(0);
+              updateFilterState({ statusFilter: val, page: 0 });
+
             },
             options: STATUS_OPTIONS,
           },
@@ -82,8 +91,8 @@ export default function ShipmentsListScreen() {
             label: 'Payment',
             value: paymentFilter,
             onChange: (val) => {
-              setPaymentFilter(val);
-              setPage(0);
+              updateFilterState({ paymentFilter: val, page: 0 });
+
             },
             options: PAYMENT_OPTIONS,
           },
@@ -91,8 +100,8 @@ export default function ShipmentsListScreen() {
             label: 'Vehicle',
             value: vehicleFilter,
             onChange: (val) => {
-              setVehicleFilter(val);
-              setPage(0);
+              updateFilterState({ vehicleFilter: val, page: 0 });
+
             },
             options: vehicleOptions,
           },
@@ -102,7 +111,7 @@ export default function ShipmentsListScreen() {
       <Text style={{ fontFamily: fonts.sans, fontSize: 12, color: colors.inkFaint, marginBottom: spacing.sm }}>
         Vehicle filter includes current and previous assignments. The Vehicle column shows current assignments only.
       </Text>
-      <PreviewStatus resource={directory} label="Vehicle filters" />
+      <PreviewStatus resource={directory} label="Vehicle filters" errorOnly />
       <PreviewStatus resource={resource} label="Shipments" />
       {loading ? <TableRowSkeleton /> : resource.data !== null ? <ShipmentsTable
         shipments={shipments}
@@ -111,10 +120,10 @@ export default function ShipmentsListScreen() {
         totalPages={totalPages}
         totalElements={totalElements}
         pageSize={pageSize}
-        onPageChange={setPage}
+        onPageChange={(newPage) => updateFilterState({ page: newPage })}
         onPageSizeChange={(newSize) => {
-          setPageSize(newSize);
-          setPage(0);
+          updateFilterState({ pageSize: newSize, page: 0 });
+
         }}
         onView={(s) => router.push(`/shipments/${s.shipmentId}`)}
       /> : null}

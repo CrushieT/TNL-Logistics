@@ -21,7 +21,7 @@ export function createRegistrationForm() {
     lengthCm: '',
     widthCm: '',
     heightCm: '',
-    route: 'Manila to TNL Labo C.N.',
+    route: 'Manila to Daet, Camarines Norte',
     chargeModel: 'PER_KILO',
     otherCharges: '0',
     paidAtRegistration: false,

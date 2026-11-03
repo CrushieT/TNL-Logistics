@@ -15,6 +15,7 @@ import {
   getRenderedWaybillLogoUri,
 } from '../../features/waybills/services/waybillPrint.mjs';
 import { colors, fonts, spacing } from '../../theme';
+import { clearSectionRoute } from '../../services/navigation/navigationState.mjs';
 
 export default function WaybillDetailScreen() {
   const router = useRouter();
@@ -64,7 +65,9 @@ export default function WaybillDetailScreen() {
 
   useEffect(() => {
     loadManifest();
-    return () => { requestRef.current.version += 1; };
+
+
+  return () => { requestRef.current.version += 1; };
   }, [loadManifest]);
 
   useEffect(() => subscribeRealtimeEvents((event) => {
@@ -92,9 +95,14 @@ export default function WaybillDetailScreen() {
     }, 300);
   };
 
+  const handleBackToWaybills = () => {
+    clearSectionRoute('/waybills');
+    router.push('/waybills');
+  };
+
   return (
     <AppShell>
-      <Pressable accessibilityRole="link" onPress={() => router.push('/waybills')}>
+      <Pressable accessibilityRole="link" onPress={handleBackToWaybills}>
         <Text style={styles.backLink}>Back to Waybills</Text>
       </Pressable>
 

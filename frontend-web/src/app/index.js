@@ -258,7 +258,7 @@ export default function DashboardScreen() {
         }
       />
 
-      <PreviewStatus resource={cycleResource} label="Collection cycles" />
+      <PreviewStatus resource={cycleResource} label="Collection cycles" errorOnly />
 
       {/* Updating Preview Banner */}
       {loading && isPreview && (

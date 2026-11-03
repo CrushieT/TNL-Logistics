@@ -55,7 +55,7 @@ export default function ShipmentForm({
   const [parcelPage, setParcelPage] = useState(0);
 
   // Charges & Options
-  const [route, setRoute] = useState('Manila to TNL Labo C.N.');
+  const [route, setRoute] = useState('Manila to Daet, Camarines Norte');
   const [otherCharges, setOtherCharges] = useState('0');
   const [paidAtRegistration, setPaidAtRegistration] = useState(false);
   const [isShippingFeeOverridden, setIsShippingFeeOverridden] = useState(false);
@@ -467,7 +467,7 @@ export default function ShipmentForm({
       recipientContact: deliveryContact,
       description: description.trim() || 'General Goods',
       quantity: parcels.length,
-      route: route.trim() || 'Manila to TNL Labo C.N.',
+      route: route.trim() || 'Manila to Daet, Camarines Norte',
       chargeModel: 'PER_KILO',
       otherCharges: parseFloat(otherCharges) || 0,
       paidAtRegistration: isZeroTotal ? false : paidAtRegistration,
@@ -730,7 +730,7 @@ export default function ShipmentForm({
               label="Route"
               value={route}
               onChangeText={setRoute}
-              placeholder="Manila to TNL Labo C.N."
+              placeholder="Manila to Daet, Camarines Norte"
               maxLength={150}
             />
           </View>

@@ -76,7 +76,7 @@ export async function registerShipment(payload) {
     chargeModel: 'PER_KILO',
     otherCharges: parseFloat(payload.otherCharges) || 0,
     paidAtRegistration: Boolean(payload.paidAtRegistration),
-    route: payload.route || 'Manila to TNL Labo C.N.',
+    route: payload.route || 'Manila to Daet, Camarines Norte',
     registeredVia: 'DESKTOP_OFFICE',
     expectedRatePerKilo: payload.expectedRatePerKilo ? parseFloat(payload.expectedRatePerKilo) : undefined,
     expectedVolumetricDivisor: payload.expectedVolumetricDivisor ? parseInt(payload.expectedVolumetricDivisor, 10) : undefined,

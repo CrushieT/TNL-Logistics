@@ -15,6 +15,7 @@ import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import StatusBadge from '../components/common/StatusBadge';
 import TablePaginationFooter from '../features/reports/components/TablePaginationFooter';
+import { useSavedPageState } from '../services/navigation/useSavedPageState';
 import {
   listUsers,
   createUser,
@@ -100,12 +101,14 @@ export default function UsersScreen() {
     };
   }, [activeActionMenuUserId]);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState('Active');
-  const [currentPage, setCurrentPage] = useState(0);
-  const [pageSize, setPageSize] = useState(20);
-
+  const [filterState, updateFilterState] = useSavedPageState('users_directory', {
+    searchQuery: '',
+    roleFilter: 'ALL',
+    statusFilter: 'Active',
+    currentPage: 0,
+    pageSize: 20,
+  });
+  const { searchQuery, roleFilter, statusFilter, currentPage, pageSize } = filterState;
   const [feedback, setFeedback] = useState(null);
   const feedbackTimer = useRef(null);
 
@@ -134,9 +137,14 @@ export default function UsersScreen() {
     loadUsers(true);
   }, [loadUsers]);
 
+  const isFirstMount = useRef(true);
   useEffect(() => {
-    setCurrentPage(0);
-  }, [roleFilter, statusFilter, pageSize, searchQuery]);
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      return;
+    }
+    updateFilterState({ currentPage: 0 });
+  }, [roleFilter, statusFilter, pageSize, searchQuery, updateFilterState]);
 
   const filteredUsers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -217,7 +225,7 @@ export default function UsersScreen() {
             placeholder="Search by name, username, or ID..."
             placeholderTextColor={colors.inkFaint}
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={(text) => updateFilterState({ searchQuery: text })}
           />
           <View style={styles.filtersRow}>
             <View style={styles.filterGroup}>
@@ -227,7 +235,7 @@ export default function UsersScreen() {
                   <Pressable
                     key={r}
                     style={[styles.filterPill, roleFilter === r && styles.filterPillActive]}
-                    onPress={() => setRoleFilter(r)}
+                    onPress={() => updateFilterState({ roleFilter: r })}
                   >
                     <Text style={[styles.filterPillText, roleFilter === r && styles.filterPillTextActive]}>
                       {r === 'ALL' ? 'All' : getRoleLabel(r)}
@@ -243,7 +251,7 @@ export default function UsersScreen() {
                   <Pressable
                     key={s}
                     style={[styles.filterPill, statusFilter === s && styles.filterPillActive]}
-                    onPress={() => setStatusFilter(s)}
+                    onPress={() => updateFilterState({ statusFilter: s })}
                   >
                     <Text style={[styles.filterPillText, statusFilter === s && styles.filterPillTextActive]}>
                       {s === 'ALL' ? 'All' : s}
@@ -393,8 +401,8 @@ export default function UsersScreen() {
           currentCount={filteredUsers.length}
           page={currentPage}
           pageSize={pageSize}
-          onPageChange={setCurrentPage}
-          onPageSizeChange={(sz) => { setPageSize(sz); setCurrentPage(0); }}
+          onPageChange={(page) => updateFilterState({ currentPage: page })}
+          onPageSizeChange={(sz) => updateFilterState({ pageSize: sz, currentPage: 0 })}
           pageSizeOptions={[10, 20, 50]}
           itemLabel="users"
           loading={loading}

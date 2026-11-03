@@ -24,6 +24,7 @@ import {
   getActiveCollectionCycles,
 } from '../features/collections';
 import { colors, fonts, spacing, radius } from '../theme';
+import { useSavedPageState } from '../services/navigation/useSavedPageState';
 import {
   buildStatementPrintUrl,
   getStatementPrintBlockReason,
@@ -34,11 +35,26 @@ export default function StatementsScreen() {
   const router = useRouter();
   const searchParams = useLocalSearchParams();
 
-  const [selectedStatement, setSelectedStatement] = useState(() => ({
-    clientId: searchParams.clientId || null,
-    cycle: searchParams.cycle || '',
-    isClientExplicit: Boolean(searchParams.clientId),
-  }));
+  const [savedSelection, updateSavedSelection] = useSavedPageState('statements_selection', {
+    clientId: null,
+    cycle: '',
+    isClientExplicit: false,
+  });
+
+  const [selectedStatement, setSelectedStatement] = useState(() => {
+    if (searchParams.clientId || searchParams.cycle) {
+      return {
+        clientId: searchParams.clientId || null,
+        cycle: searchParams.cycle || '',
+        isClientExplicit: Boolean(searchParams.clientId),
+      };
+    }
+    return savedSelection;
+  });
+
+  useEffect(() => {
+    updateSavedSelection(selectedStatement);
+  }, [selectedStatement, updateSavedSelection]);
   const selectedClientId = selectedStatement.clientId;
   const selectedCycle = selectedStatement.cycle;
   const [saving, setSaving] = useState(false);
@@ -491,12 +507,12 @@ export default function StatementsScreen() {
           </View>
         </View>
 
-        <PreviewStatus resource={cycles} label="Collection cycles" />
+        <PreviewStatus resource={cycles} label="Collection cycles" errorOnly />
         {isRequestedClientUnavailable && metadata.isFresh ? (
           <Text style={styles.errorBannerText}>Requested client {selectedClientId} is unavailable for collection cycle {selectedCycle}. Select another client or cycle.</Text>
         ) : null}
-        {selectedCycle ? <PreviewStatus resource={metadata} label="Generated clients" /> : null}
-        <PreviewStatus resource={collectorResource} label="Authorized collectors" />
+        {selectedCycle ? <PreviewStatus resource={metadata} label="Generated clients" errorOnly /> : null}
+        <PreviewStatus resource={collectorResource} label="Authorized collectors" errorOnly />
         {selectedClientId && selectedCycle && !isRequestedClientUnavailable ? <PreviewStatus resource={resource} label="Statement preview" /> : null}
         {cycles.isFresh && cycleOptions.length === 0 ? <Text>No active collection cycles.</Text> : null}
         {review ? <View style={styles.printGuardBanner}>

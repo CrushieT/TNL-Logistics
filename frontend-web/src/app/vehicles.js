@@ -3,6 +3,7 @@ import { TableRowSkeleton } from '../components/common/Skeleton';
 import { useCachedPreview, requireDirectory } from '../services/api/useCachedPreview';
 import { CACHE_SLOTS } from '../services/api/responseCache.mjs';
 import CheckIcon from '../components/common/CheckIcon';
+import { useSavedPageState } from '../services/navigation/useSavedPageState';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
@@ -38,10 +39,16 @@ export default function VehiclesScreen() {
   const [vehicleToDelete, setVehicleToDelete] = useState(null);
 
   // Search & Filter State
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('Active');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [filterState, updateFilterState] = useSavedPageState('vehicles_directory', {
+    searchQuery: '',
+    selectedStatus: 'Active',
+    currentPage: 1,
+    pageSize: 20,
+  });
+  const { searchQuery, selectedStatus, currentPage, pageSize } = filterState;
+
+
+
 
   // Action Feedback Alert State
   const [feedback, setFeedback] = useState(null); // { type: 'success' | 'info', message: string }
@@ -110,8 +117,13 @@ export default function VehiclesScreen() {
   }, [vehicles, selectedStatus, searchQuery]);
 
   // Reset page when filter changes
+  const isFirstMount = useRef(true);
   useEffect(() => {
-    setCurrentPage(1);
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      return;
+    }
+    updateFilterState({ currentPage: 1 });
   }, [searchQuery, selectedStatus, pageSize]);
 
   // Paginated slice
@@ -171,7 +183,7 @@ export default function VehiclesScreen() {
               <Pressable
                 key={status}
                 style={[styles.pill, isSelected && styles.pillActive]}
-                onPress={() => setSelectedStatus(status)}
+                onPress={() => updateFilterState({ selectedStatus: status })}
               >
                 <Text style={[styles.pillText, isSelected && styles.pillTextActive]}>
                   {status === 'ALL' ? 'All' : status} ({count})
@@ -188,10 +200,10 @@ export default function VehiclesScreen() {
             placeholder="Search by ID, plate, type, or description..."
             placeholderTextColor={colors.inkFaint}
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={(text) => updateFilterState({ searchQuery: text })}
           />
           {searchQuery ? (
-            <Pressable onPress={() => setSearchQuery('')} style={styles.clearSearchBtn}>
+            <Pressable onPress={() => updateFilterState({ searchQuery: '' })} style={styles.clearSearchBtn}>
               <Text style={styles.clearSearchText}>✕</Text>
             </Pressable>
           ) : null}
@@ -279,7 +291,7 @@ export default function VehiclesScreen() {
               <View style={styles.pageSizeSelectWrap}>
                 <select
                   value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  onChange={(e) => updateFilterState({ pageSize: Number(e.target.value) })}
                   style={webSelectStyle}
                 >
                   <option value={10}>10 / page</option>
@@ -293,7 +305,7 @@ export default function VehiclesScreen() {
               label="Previous"
               variant="secondary"
               disabled={currentPage <= 1 || loading}
-              onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              onPress={() => updateFilterState((p) => ({ ...p, currentPage: Math.max(1, p.currentPage - 1) }))}
               style={styles.pageBtn}
             />
 
@@ -301,7 +313,7 @@ export default function VehiclesScreen() {
               label="Next"
               variant="secondary"
               disabled={currentPage >= totalPages || loading}
-              onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              onPress={() => updateFilterState((p) => ({ ...p, currentPage: Math.min(totalPages, p.currentPage + 1) }))}
               style={styles.pageBtn}
             />
           </View>
