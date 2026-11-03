@@ -430,6 +430,12 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 - `.review/current/soa-pdf-preview.png`: unsuccessful PDF-viewer screenshot, excluded from acceptance evidence.
 - `.review/current/soa-*.log`: raw baseline, integration, migration, frontend, print, immutability, and export results, enumerated in the remediation report.
 
+### Web navigation visited-route memory and directory filter persistence
+
+- `frontend-web/src/services/navigation/navigationState.mjs`: pure, dependency-free navigation state manager backed by `sessionStorage` with in-memory fallback for SSR and test runners; manages section last-visited sub-routes (`saveSectionRoute`, `getSectionRoute`, `clearSectionRoute`), directory filter and pagination states (`savePageState`, `getPageState`, `clearPageState`), and session-purging on sign out (`clearAllNavigationState`).
+- `frontend-web/src/services/navigation/useSavedPageState.js`: reusable React state hook providing bidirectional synchronization between component filter/pagination state and `navigationState`.
+- `frontend-web/tests/navigationPersistence.test.mjs`: automated unit test suite verifying sub-route retention, detail toggle interaction, breadcrumb memory reset, hook state persistence across unmount cycles, and session reset.
+
 ### Mobile scanning feedback
 
 - `frontend-mobile/src/features/scanner/components/ScanFeedbackBanner.js`: shared accessible checking, success, warning, and error feedback; short success/info expiry with timer cleanup.

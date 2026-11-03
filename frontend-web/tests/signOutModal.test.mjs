@@ -217,6 +217,7 @@ test('Sidebar opens SignOutModal when SIGN OUT button is clicked, and confirming
   let modalVisibleState = false;
   let logoutCalled = false;
   let resetScrollCalled = false;
+  let clearAllNavStateCalled = false;
 
   const bindings = {
     React: {
@@ -257,6 +258,12 @@ test('Sidebar opens SignOutModal when SIGN OUT button is clicked, and confirming
     resetNavScrollPosition: () => {
       resetScrollCalled = true;
     },
+    saveSectionRoute: () => {},
+    getSectionRoute: () => null,
+    clearSectionRoute: () => {},
+    clearAllNavigationState: () => {
+      clearAllNavStateCalled = true;
+    },
     SignOutModal: 'SignOutModal',
     require: () => 'logo',
   };
@@ -293,6 +300,7 @@ test('Sidebar opens SignOutModal when SIGN OUT button is clicked, and confirming
   assert.equal(logoutCalled, false, 'logout must not be called prior to confirmation');
   modalElement.props.onConfirm();
   assert.equal(resetScrollCalled, true, 'resetNavScrollPosition must be called on confirm');
+  assert.equal(clearAllNavStateCalled, true, 'clearAllNavigationState must be called on confirm');
   assert.equal(logoutCalled, true, 'logout must be called on confirm');
   assert.equal(modalVisibleState, false, 'Modal state must close on confirm');
 });

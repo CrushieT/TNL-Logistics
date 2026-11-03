@@ -7,6 +7,11 @@ import * as requests from '../src/services/api/requestCoordinator.mjs';
 import * as waybillDirectory from '../src/features/waybills/waybillDirectory.mjs';
 import * as statementModel from '../src/features/collections/utils/statementPrintModel.mjs';
 import * as sessionCore from '../src/services/api/sessionCore.mjs';
+import * as navigationState from '../src/services/navigation/navigationState.mjs';
+
+beforeEach(() => {
+  navigationState.clearAllNavigationState();
+});
 
 const require = createRequire(import.meta.url);
 const { transformSync } = require('@babel/core');
@@ -121,7 +126,14 @@ export function mountScreen(name, api = {}, initialAuth = {}, onSubscribe) {
     if (dependency === './responseCache.mjs') return cache;
     throw new Error(dependency);
   });
+  const savedPageHook = loadProductionModule('../src/services/navigation/useSavedPageState.js', dependency => {
+    if (dependency === 'react') return react;
+    if (dependency.endsWith('/navigationState.mjs')) return navigationState;
+    throw new Error(`Unhandled useSavedPageState dependency: ${dependency}`);
+  });
   const Screen = loadProductionModule(name.startsWith('features/') ? `../src/${name}` : `../src/app/${name}.js`, dependency => {
+    if (dependency.endsWith('/useSavedPageState')) return savedPageHook;
+    if (dependency.endsWith('/navigationState.mjs')) return navigationState;
     if (dependency.endsWith('/components/StatementPaperCard')) {
       const paper = loadProductionModule('../src/features/collections/components/StatementPaperCard.js', imported => {
         if (imported === 'react') return react;

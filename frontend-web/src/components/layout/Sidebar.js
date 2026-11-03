@@ -4,6 +4,25 @@ import { useRouter, usePathname } from 'expo-router';
 import { colors, fonts, spacing, radius, type } from '../../theme';
 import { getCurrentUser, logout } from '../../services/api/client';
 import { getSavedNavScrollY, saveNavScrollY, resetNavScrollPosition } from './navScrollPosition.mjs';
+import {
+  saveSectionRoute,
+  getSectionRoute,
+  clearSectionRoute,
+  clearAllNavigationState,
+} from '../../services/navigation/navigationState.mjs';
+
+const SECTION_ROOTS = [
+  '/shipments',
+  '/clients',
+  '/waybills',
+  '/vehicles',
+  '/tracking-logs',
+  '/payments',
+  '/weekly-collections',
+  '/statements',
+  '/reports',
+  '/users',
+];
 import SignOutModal from './SignOutModal';
 
 const NAV_SECTIONS = [
@@ -105,6 +124,17 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
     };
   }, []);
 
+  // Continuously record active sub-routes for recognized section roots
+  useEffect(() => {
+    if (!pathname) return;
+    const matchedRoot = SECTION_ROOTS.find(
+      (root) => pathname === root || pathname.startsWith(root + '/')
+    );
+    if (matchedRoot) {
+      saveSectionRoute(matchedRoot, pathname);
+    }
+  }, [pathname]);
+
   const handleScroll = (event) => {
     const offsetY = event?.nativeEvent?.contentOffset?.y;
     if (typeof offsetY === 'number' && Number.isFinite(offsetY)) {
@@ -120,6 +150,18 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
         saveNavScrollY(domNode.scrollTop);
       }
     } catch (_) {}
+    if (SECTION_ROOTS.includes(href)) {
+      const isWithinSection = pathname === href || (pathname && pathname.startsWith(href + '/'));
+      if (isWithinSection) {
+        clearSectionRoute(href);
+        router.push(href);
+        return;
+      }
+      const savedRoute = getSectionRoute(href);
+      router.push(savedRoute || href);
+      return;
+    }
+
     router.push(href);
   };
 
@@ -134,6 +176,7 @@ export default function Sidebar({ user = { name: 'Admin Staff', role: 'ADMIN' } 
   const handleConfirmSignOut = () => {
     setSignOutModalVisible(false);
     resetNavScrollPosition();
+    clearAllNavigationState();
     logout();
   };
 

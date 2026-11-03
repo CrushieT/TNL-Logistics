@@ -1,5 +1,23 @@
 # TNL Logistics — Master Build Plan
 
+## Single-line loading and status banner streamlining [COMPLETED]
+
+- PreviewStatus banner streamlining: added `errorOnly = false` prop to `PreviewStatus.js`. When `errorOnly` is enabled, routine loading, preview, refreshing, and stale notices are silenced while preserving error banners and Retry actions if background fetches fail.
+- Secondary selector streamlining across primary admin screens: silenced secondary dropdown queries in Shipments (vehicle filters), Waybills (client filters), Statements (collection cycles, generated clients, authorized collectors), Dashboard (collection cycles), and Weekly Collections (collection cycles). Users see only a single clean loading line for the active screen's primary data.
+- Automated verification [COMPLETED]: focused unit tests in `adminPreviews.test.mjs`, all 385 frontend-web unit tests passed (`node --test tests/*.test.mjs`), production web export passed (`npx.cmd --no-install expo export --platform web`), and `git diff --check` passed cleanly.
+- Implementation plan: `.review/current/single-line-loading-plan.md`.
+
+## Web navigation visited-route memory and directory filter persistence [COMPLETED]
+
+- Section visited-route memory: sidebar preserves active detail sub-routes (`/shipments/[shipmentId]`, `/clients/[id]`, `/waybills/[id]`, `/statements/print`) when navigating between sections. Clicking an active section's sidebar item while on its sub-route toggles back to the root directory listing. Breadcrumb "Back to ..." navigation resets section route memory to root. `SECTION_ROOTS` expanded to include `/weekly-collections` and `/statements`.
+- Full directory filter and pagination persistence: all primary web directories (Shipments, Clients, Vehicles, Waybills, Tracking Logs, Payments, Users, Weekly Collections, Statements) preserve keyword searches, dropdown filter choices, and page/pageSize parameters across component unmount/remount cycles during an active browser session.
+- Users directory filter & page preservation: `users_directory` preserves `searchQuery`, `roleFilter`, `statusFilter`, `currentPage`, and `pageSize` across unmounts with `isFirstMount` guard preventing initial page index overwrite.
+- Weekly Collections cycle & filter persistence: `weekly_collections_directory` preserves active `selectedCycle`, `searchQuery`, and `statusFilter` with fallback validation against available cycle list.
+- Statements selection persistence & URL precedence: `statements_selection` preserves active statement cycle and client selection while ensuring explicit URL parameters (`?clientId=...&cycle=...`) take precedence on direct links.
+- Session storage boundary: values are persisted in `sessionStorage` with graceful fallback to in-memory maps for SSR, testing, or restricted storage runtimes. Signing out via the sidebar modal purges all navigation memory and stored page filter states.
+- Automated verification [COMPLETED]: 17 focused persistence tests in `navigationPersistence.test.mjs`, all 383 frontend-web unit tests passed (`node --test tests/*.test.mjs`), production web export passed (`npx.cmd --no-install expo export --platform web`), and `git diff --check` passed cleanly.
+- Implementation and verification plans: `.review/current/web-navigation-and-filter-persistence-plan.md` and `.review/current/extended-navigation-persistence-plan.md`.
+
 ## Post-release client requests [COMPLETED]
 
 - QR label cleanup [COMPLETED]: removed displayed price and bottom Client and renamed Contents to Notes across web/mobile previews, HTML, ESC/POS, and TSPL, retaining description values, QR payloads, and audit/transport behavior. Focused 68 checks, full web 369/mobile 323 tests, production web/Android exports, rendered single/batch HTML inspection, and diff checks passed. Client demo and physical print acceptance [COMPLETED], confirmed by user on 2026-11-02. Details and What to Test: `.review/current/post-release-client-changes-plan.md`, item 1.

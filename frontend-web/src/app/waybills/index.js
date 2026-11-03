@@ -2,7 +2,8 @@ import PreviewStatus from '../../components/common/PreviewStatus';
 import { TableRowSkeleton } from '../../components/common/Skeleton';
 import { useCachedPreview, requirePage, requireDirectory } from '../../services/api/useCachedPreview';
 import { CACHE_SLOTS } from '../../services/api/responseCache.mjs';
-import React, { useState } from 'react';
+import React from 'react';
+import { useSavedPageState } from '../../services/navigation/useSavedPageState';
 import { Text, View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import AppShell from '../../components/layout/AppShell';
@@ -26,11 +27,18 @@ const STATUS_OPTIONS = [
 
 export default function WaybillsScreen() {
   const router = useRouter();
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('ALL');
-  const [client, setClient] = useState('ALL');
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(20);
+  const [filterState, updateFilterState] = useSavedPageState('waybills_directory', {
+    search: '',
+    status: 'ALL',
+    client: 'ALL',
+    page: 0,
+    pageSize: 20,
+  });
+  const { search, status, client, page, pageSize } = filterState;
+
+
+
+
   const query = { page, size: pageSize, search: search.trim(), status: status === 'ALL' ? undefined : status, client: client === 'ALL' ? undefined : client };
   const resource = useCachedPreview({ slot: CACHE_SLOTS.WAYBILLS, query,
     fetcher: async signal => requirePage(await listWaybills(query, { signal })) });
@@ -55,8 +63,8 @@ export default function WaybillsScreen() {
       <SearchFilterBar
         searchValue={search}
         onSearchChange={(value) => {
-          setSearch(value);
-          setPage(0);
+          updateFilterState({ search: value, page: 0 });
+
         }}
         placeholder="Search waybill, shipment, client, recipient, or hauler..."
         filters={[
@@ -64,8 +72,8 @@ export default function WaybillsScreen() {
             label: 'Status',
             value: status,
             onChange: (value) => {
-              setStatus(value);
-              setPage(0);
+              updateFilterState({ status: value, page: 0 });
+
             },
             options: STATUS_OPTIONS,
           },
@@ -73,15 +81,15 @@ export default function WaybillsScreen() {
             label: 'Client',
             value: client,
             onChange: (value) => {
-              setClient(value);
-              setPage(0);
+              updateFilterState({ client: value, page: 0 });
+
             },
             options: clientOptions,
           },
         ]}
       />
 
-      <PreviewStatus resource={directory} label="Client filters" />
+      <PreviewStatus resource={directory} label="Client filters" errorOnly />
       <PreviewStatus resource={resource} label="Waybills" />
       {loading ? <TableRowSkeleton /> : resource.data !== null ?       <WaybillsTable
         waybills={waybills}
@@ -90,10 +98,10 @@ export default function WaybillsScreen() {
         totalPages={totalPages}
         totalElements={totalElements}
         pageSize={pageSize}
-        onPageChange={setPage}
+        onPageChange={(newPage) => updateFilterState({ page: newPage })}
         onPageSizeChange={(value) => {
-          setPageSize(value);
-          setPage(0);
+          updateFilterState({ pageSize: value, page: 0 });
+
         }}
         onView={openWaybill}
       /> : null}
