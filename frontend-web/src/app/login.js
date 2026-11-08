@@ -16,7 +16,8 @@ import { useRouter, useLocalSearchParams, useRootNavigationState } from 'expo-ro
 import { colors, fonts, spacing, radius } from '../theme';
 import { login, hasVerifiedAdminSession, getCurrentUser } from '../services/api/client';
 
-const androidApkUrl = process.env.EXPO_PUBLIC_ANDROID_APK_URL?.trim();
+const rawAndroidApkUrl = process.env.EXPO_PUBLIC_ANDROID_APK_URL?.trim();
+const androidApkUrl = rawAndroidApkUrl ? rawAndroidApkUrl.replace('/TNL-Logistics-private/', '/TNL-Logistics/') : null;
 
 export default function LoginScreen() {
   const router = useRouter();
