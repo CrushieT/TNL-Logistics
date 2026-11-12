@@ -1029,9 +1029,9 @@ const styles = StyleSheet.create({
   unitAddedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.accentSoft,
+    backgroundColor: '#FEF9EE',
     borderWidth: 1.5,
-    borderColor: colors.accent,
+    borderColor: '#F59E0B',
     paddingVertical: 10,
     paddingHorizontal: spacing.md,
     borderRadius: 4,
@@ -1042,13 +1042,13 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.accent,
+    backgroundColor: '#D97706',
   },
   unitAddedText: {
     ...typography.body,
     fontSize: 13,
     fontWeight: '700',
-    color: colors.ink,
+    color: '#92400E',
     flex: 1,
   },
   toastContainer: {
@@ -1076,7 +1076,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.accent,
+    backgroundColor: '#F59E0B',
     marginRight: 8,
   },
   toastText: {

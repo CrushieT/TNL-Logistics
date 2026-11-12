@@ -14,6 +14,19 @@ const MEASUREMENT_ROWS = [
   ],
 ];
 
+function getNextMeasurementFieldKey(fieldName, globalIndex) {
+  if (fieldName === 'weightKg') {
+    return `parcels[${globalIndex}].lengthCm`;
+  }
+  if (fieldName === 'lengthCm') {
+    return `parcels[${globalIndex}].widthCm`;
+  }
+  if (fieldName === 'widthCm') {
+    return `parcels[${globalIndex}].heightCm`;
+  }
+  return null;
+}
+
 function formatVolume(value) {
   return `${value.toFixed(4)} m³`;
 }
@@ -27,12 +40,20 @@ function ParcelMeasurementField({
   inputRefs,
   isSubmitting,
   label,
+  nextFieldKey,
   onUpdateParcelField,
   parcel,
   placeholder,
 }) {
   const fieldKey = `parcels[${globalIndex}].${fieldName}`;
   const error = errors[fieldKey];
+  const isFinalFieldInUnit = !nextFieldKey;
+
+  const handleNext = () => {
+    if (nextFieldKey && inputRefs?.current?.[nextFieldKey]) {
+      inputRefs.current[nextFieldKey].focus?.();
+    }
+  };
 
   return (
     <View
@@ -49,6 +70,10 @@ function ParcelMeasurementField({
         editable={!isSubmitting}
         keyboardType="decimal-pad"
         inputMode="decimal"
+        returnKeyType={isFinalFieldInUnit ? 'done' : 'next'}
+        enterKeyHint={isFinalFieldInUnit ? 'done' : 'next'}
+        blurOnSubmit={isFinalFieldInUnit}
+        onSubmitEditing={handleNext}
         maxLength={9}
         placeholder={placeholder}
         placeholderTextColor={colors.inkFaint}
@@ -241,19 +266,24 @@ export function ParcelUnitsEditor({
                 key={measurementRow[0].fieldName}
                 style={[styles.row, shouldStack && styles.stacked]}
               >
-                {measurementRow.map((measurement) => (
-                  <ParcelMeasurementField
-                    key={measurement.fieldName}
-                    {...measurement}
-                    errors={errors}
-                    fieldRefs={fieldRefs}
-                    globalIndex={globalIndex}
-                    inputRefs={inputRefs}
-                    isSubmitting={isSubmitting}
-                    onUpdateParcelField={onUpdateParcelField}
-                    parcel={parcel}
-                  />
-                ))}
+                {measurementRow.map((measurement) => {
+                  const nextFieldKey = getNextMeasurementFieldKey(measurement.fieldName, globalIndex);
+
+                  return (
+                    <ParcelMeasurementField
+                      key={measurement.fieldName}
+                      {...measurement}
+                      errors={errors}
+                      fieldRefs={fieldRefs}
+                      globalIndex={globalIndex}
+                      inputRefs={inputRefs}
+                      isSubmitting={isSubmitting}
+                      nextFieldKey={nextFieldKey}
+                      onUpdateParcelField={onUpdateParcelField}
+                      parcel={parcel}
+                    />
+                  );
+                })}
               </View>
             ))}
           </View>
@@ -359,10 +389,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   unitCardHighlighted: {
-    borderColor: colors.accent,
+    borderColor: '#F59E0B',
     borderWidth: 2,
     borderRadius: 4,
-    backgroundColor: '#FFF9F5',
+    backgroundColor: '#FFFDF7',
   },
   unitCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
   unitBadgeContainer: {
@@ -377,14 +407,14 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   unitBadgeHighlighted: {
-    backgroundColor: colors.accent,
+    backgroundColor: '#D97706',
   },
   unitBadgeText: { ...typography.mono, color: colors.surface, fontSize: 11, fontWeight: '700' },
   unitBadgeTextHighlighted: {
     color: '#FFFFFF',
   },
   justAddedBadge: {
-    backgroundColor: colors.accent,
+    backgroundColor: '#D97706',
     borderRadius: 2,
     paddingHorizontal: 6,
     paddingVertical: 3,
