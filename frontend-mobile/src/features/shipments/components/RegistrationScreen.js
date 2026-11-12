@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, BackHandler, Keyboard, KeyboardAvoidingView, Platform, Pressable,
-  ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions,
+  ScrollView, StyleSheet, Switch, Text, TextInput, Vibration, View, useWindowDimensions,
 } from 'react-native';
 import { useNavigation, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import { ParcelUnitsEditor } from './ParcelUnitsEditor';
 import { RegistrationResult } from './RegistrationResult';
 import { shipmentApi } from '../services/shipmentApi';
 import { clampParcelPage, getParcelPageIndex } from '../parcelPagination.mjs';
+import { safeHaptics } from '../../scanner/utils/haptics';
 import {
   calculateRegistration, createRegistrationForm, createShipmentSubmitter,
   isUncertainWrite, mapRegistrationErrors, validateRegistration,
@@ -65,6 +66,10 @@ export function RegistrationScreen() {
 
   const [dialog, setDialog] = useState(null);
   const [uncertainStage, setUncertainStage] = useState(null);
+  const [toastMessage, setToastMessage] = useState(null);
+  const toastTimerRef = useRef(null);
+  const [highlightedUnitSeq, setHighlightedUnitSeq] = useState(null);
+  const highlightTimerRef = useRef(null);
 
   const pendingQuantity = useRef(null);
   const unitToRemove = useRef(null);
@@ -97,8 +102,54 @@ export function RegistrationScreen() {
 
   useEffect(() => {
     isActive.current = true;
-    return () => { isActive.current = false; };
+    return () => {
+      isActive.current = false;
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+      if (highlightTimerRef.current) {
+        clearTimeout(highlightTimerRef.current);
+      }
+    };
   }, []);
+
+  const showUnitAddedToast = (message) => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    setToastMessage(message);
+    toastTimerRef.current = setTimeout(() => {
+      if (isActive.current) {
+        setToastMessage(null);
+      }
+      toastTimerRef.current = null;
+    }, 2500);
+  };
+
+  const triggerUnitAddedFeedback = (seq) => {
+    // 1. Strong vibration: physical motor double-buzz + heavy haptic impact
+    try {
+      if (Platform.OS !== 'web' && typeof Vibration?.vibrate === 'function') {
+        Vibration.vibrate([0, 100, 50, 100]);
+      }
+    } catch {}
+    void safeHaptics.heavy();
+
+    // 2. Highlight newly added unit card
+    if (highlightTimerRef.current) {
+      clearTimeout(highlightTimerRef.current);
+    }
+    setHighlightedUnitSeq(seq);
+    highlightTimerRef.current = setTimeout(() => {
+      if (isActive.current) {
+        setHighlightedUnitSeq(null);
+      }
+      highlightTimerRef.current = null;
+    }, 4000);
+
+    // 3. Floating toast
+    showUnitAddedToast(`Unit #${seq} added at the top`);
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -288,7 +339,9 @@ export function RegistrationScreen() {
       parcels: [...prev.parcels, newUnit],
     }));
     setErrors((prev) => ({ ...prev, quantity: undefined }));
-    setParcelPage(getParcelPageIndex(nextSeq - 1));
+    setParcelPage(0);
+
+    triggerUnitAddedFeedback(nextSeq);
   }
 
   function handleRequestRemoveUnit(index) {
@@ -343,7 +396,7 @@ export function RegistrationScreen() {
     const parcelMatch = name.match(/^parcels\[(\d+)\]\./);
     if (parcelMatch) {
       const unitIndex = parseInt(parcelMatch[1], 10);
-      setParcelPage(getParcelPageIndex(unitIndex));
+      setParcelPage(getParcelPageIndex(unitIndex, form.parcels.length, true));
     }
   }
 
@@ -517,19 +570,30 @@ export function RegistrationScreen() {
 
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityLabel={`Add unit ${form.parcels.length + 1}`}
                   disabled={isSubmitting || form.parcels.length >= 1000}
                   onPress={handleAddUnit}
-                  style={styles.addUnitButton}
+                  style={({ pressed }) => [styles.addUnitButton, pressed && styles.addUnitButtonPressed]}
                 >
                   <Text style={styles.addUnitButtonText}>+ Add Unit #{form.parcels.length + 1}</Text>
                 </Pressable>
               </View>
+
+              {highlightedUnitSeq ? (
+                <View style={styles.unitAddedBanner} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                  <View style={styles.unitAddedDot} />
+                  <Text style={styles.unitAddedText}>
+                    Unit #{highlightedUnitSeq} added at the top ({form.parcels.length} {form.parcels.length === 1 ? 'unit' : 'units'} total)
+                  </Text>
+                </View>
+              ) : null}
 
               {/* Per-Unit Cards */}
               <ParcelUnitsEditor
                 currentPage={parcelPage}
                 errors={errors}
                 fieldRefs={fieldRefs}
+                highlightedUnitSeq={highlightedUnitSeq}
                 inputRefs={inputRefs}
                 isSubmitting={isSubmitting}
                 onPageChange={setParcelPage}
@@ -786,6 +850,14 @@ export function RegistrationScreen() {
           }
         }}
       />
+      {toastMessage ? (
+        <View style={styles.toastContainer} pointerEvents="none" accessibilityRole="alert" accessibilityLiveRegion="polite">
+          <View style={styles.toastBadge}>
+            <View style={styles.toastDot} />
+            <Text style={styles.toastText}>{toastMessage}</Text>
+          </View>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -822,7 +894,68 @@ const styles = StyleSheet.create({
   quantityRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginBottom: spacing.md },
   quantityFieldWrapper: { flex: 1 },
   addUnitButton: { minHeight: 48, marginTop: 22, paddingHorizontal: spacing.md, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.ink, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
+  addUnitButtonPressed: { opacity: 0.75, transform: [{ scale: 0.98 }] },
   addUnitButtonText: { fontSize: 12, fontWeight: '700', color: colors.ink },
+  unitAddedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    borderRadius: 4,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  unitAddedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
+  },
+  unitAddedText: {
+    ...typography.body,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.ink,
+    flex: 1,
+  },
+  toastContainer: {
+    position: 'absolute',
+    bottom: spacing.xl,
+    left: spacing.md,
+    right: spacing.md,
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  toastBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.ink,
+    borderRadius: 24,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 8,
+  },
+  toastDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
+    marginRight: 8,
+  },
+  toastText: {
+    ...typography.body,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.canvas,
+    letterSpacing: 0.3,
+  },
   rateCard: { padding: spacing.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.md },
   rateLarge: { ...typography.h1, fontSize: 22, color: colors.ink },
   calculations: { padding: spacing.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, marginBottom: spacing.md },

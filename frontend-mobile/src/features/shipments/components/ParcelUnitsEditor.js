@@ -141,6 +141,7 @@ export function ParcelUnitsEditor({
   currentPage,
   errors,
   fieldRefs,
+  highlightedUnitSeq,
   inputRefs,
   isSubmitting,
   onPageChange,
@@ -149,18 +150,21 @@ export function ParcelUnitsEditor({
   parcels,
   shouldStack,
 }) {
-  const pageModel = createParcelPaginationModel(parcels, errors, currentPage);
+  const pageModel = createParcelPaginationModel(parcels, errors, currentPage, { reverse: true });
   const firstOffPageErrorIndex = pageModel.offPageErrorUnitIndices[0];
 
   return (
     <View style={styles.unitsSection}>
       <View style={styles.unitsHeaderRow}>
         <Text style={styles.unitsHeaderTitle}>
-          PARCEL UNITS ({pageModel.totalUnits} {pageModel.totalUnits === 1 ? 'UNIT' : 'UNITS'}) · PER-UNIT MEASUREMENTS
+          PARCEL UNITS ({pageModel.totalUnits} {pageModel.totalUnits === 1 ? 'UNIT' : 'UNITS'}) · NEWEST FIRST
         </Text>
         {pageModel.totalPages > 1 ? (
           <Text style={styles.pageIndicatorText}>
-            Page {pageModel.activePage + 1} of {pageModel.totalPages} ({pageModel.startIndex + 1}–{pageModel.endIndex})
+            Page {pageModel.activePage + 1} of {pageModel.totalPages}
+            {pageModel.visibleParcels.length > 0
+              ? ` (Units #${pageModel.visibleParcels[0].parcel.seq}–#${pageModel.visibleParcels[pageModel.visibleParcels.length - 1].parcel.seq})`
+              : ''}
           </Text>
         ) : null}
       </View>
@@ -172,7 +176,7 @@ export function ParcelUnitsEditor({
           </Text>
           <Pressable
             accessibilityRole="button"
-            onPress={() => onPageChange(getParcelPageIndex(firstOffPageErrorIndex))}
+            onPress={() => onPageChange(getParcelPageIndex(firstOffPageErrorIndex, pageModel.totalUnits, true))}
             style={styles.offPageErrorBtn}
           >
             <Text style={styles.offPageErrorBtnText}>
@@ -198,12 +202,25 @@ export function ParcelUnitsEditor({
           && Number.isFinite(width) && width > 0
           && Number.isFinite(height) && height > 0;
         const unitVolume = hasDimensions ? (length * width * height) / 1000000 : null;
+        const isHighlighted = highlightedUnitSeq === parcel.seq;
 
         return (
-          <View key={parcel.id || `parcel-${globalIndex}`} style={styles.unitCard}>
+          <View
+            key={parcel.id || `parcel-${globalIndex}`}
+            style={[styles.unitCard, isHighlighted && styles.unitCardHighlighted]}
+          >
             <View style={styles.unitCardHeader}>
-              <View style={styles.unitBadge}>
-                <Text style={styles.unitBadgeText}>UNIT #{parcel.seq}</Text>
+              <View style={styles.unitBadgeContainer}>
+                <View style={[styles.unitBadge, isHighlighted && styles.unitBadgeHighlighted]}>
+                  <Text style={[styles.unitBadgeText, isHighlighted && styles.unitBadgeTextHighlighted]}>
+                    UNIT #{parcel.seq}
+                  </Text>
+                </View>
+                {isHighlighted ? (
+                  <View style={styles.justAddedBadge}>
+                    <Text style={styles.justAddedBadgeText}>JUST ADDED</Text>
+                  </View>
+                ) : null}
               </View>
               {unitVolume !== null ? <Text style={styles.unitVolumeTag}>{formatVolume(unitVolume)}</Text> : null}
               {pageModel.totalUnits > 1 ? (
@@ -333,9 +350,38 @@ const styles = StyleSheet.create({
   pagePillTextActive: { color: colors.surface, fontWeight: '700' },
   pagePillTextError: { color: colors.danger, fontWeight: '700' },
   unitCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginBottom: spacing.md },
+  unitCardHighlighted: {
+    borderColor: colors.accent,
+    borderWidth: 2,
+    backgroundColor: '#FAF8F4',
+  },
   unitCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
+  unitBadgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   unitBadge: { backgroundColor: colors.black, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  unitBadgeHighlighted: {
+    backgroundColor: colors.accent,
+  },
   unitBadgeText: { ...typography.mono, color: colors.surface, fontSize: 11, fontWeight: '700' },
+  unitBadgeTextHighlighted: {
+    color: '#FFFFFF',
+  },
+  justAddedBadge: {
+    backgroundColor: colors.ink,
+    borderRadius: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  justAddedBadgeText: {
+    ...typography.eyebrow,
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.canvas,
+    letterSpacing: 0.8,
+  },
   unitVolumeTag: { ...typography.mono, fontSize: 11, color: colors.inkSoft, flex: 1, marginLeft: spacing.sm },
   removeUnitBtn: { paddingVertical: spacing.xs, paddingHorizontal: spacing.sm },
   removeUnitBtnText: { fontSize: 12, fontWeight: '700', color: colors.danger },
