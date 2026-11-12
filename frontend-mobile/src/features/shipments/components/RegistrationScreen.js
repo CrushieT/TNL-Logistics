@@ -492,23 +492,30 @@ export function RegistrationScreen() {
       /> : <KeyboardAvoidingView style={styles.body} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
           <View ref={contentRef} collapsable={false} style={styles.content}>
-            <Text style={styles.intro}>Shipment and tracking numbers are assigned on registration.</Text>
+            <View style={styles.introBanner}>
+              <View style={styles.introDot} />
+              <Text style={styles.introText}>Shipment and tracking numbers are assigned on registration.</Text>
+            </View>
             {errorMessage ? <Text accessibilityRole="alert" style={styles.errorBanner}>{errorMessage}</Text> : null}
 
             {/* 1. Client Card */}
-            <View style={styles.panel}>
-              <Text accessibilityRole="header" style={styles.sectionTitle}>Client / Billing Party</Text>
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text accessibilityRole="header" style={styles.cardTitle}>Client / Billing Party</Text>
+              </View>
               <View style={styles.toggle}>
                 {['EXISTING', 'NEW'].map((mode) => <Pressable
                   key={mode} accessibilityRole="button" accessibilityState={{ selected: form.clientMode === mode, disabled: isSubmitting }} disabled={isSubmitting}
                   onPress={() => { changeField('clientMode', mode); setErrors({}); }}
                   style={[styles.toggleButton, form.clientMode === mode && styles.toggleActive]}
-                ><Text style={[styles.toggleText, form.clientMode === mode && styles.toggleActiveText]}>{mode === 'EXISTING' ? 'Existing' : '+ New'}</Text></Pressable>)}
+                ><Text style={[styles.toggleText, form.clientMode === mode && styles.toggleActiveText]}>{mode === 'EXISTING' ? 'Existing Client' : '+ New Client'}</Text></Pressable>)}
               </View>
               {form.clientMode === 'EXISTING' ? <View ref={(node) => { fieldRefs.current.clientId = node; }} collapsable={false}>
                 <Text style={styles.label}>SELECT CLIENT *</Text>
                 <Pressable accessibilityRole="button" disabled={isSubmitting} onPress={() => setIsPickerOpen(true)} style={[styles.clientButton, errors.clientId && styles.inputError]}>
-                  <Text style={styles.clientText}>{form.clientId ? `${form.clientId} · ${form.clientName}` : 'Choose billing client'}</Text>
+                  <Text style={[styles.clientText, !form.clientId && styles.clientPlaceholderText]}>
+                    {form.clientId ? `${form.clientId} · ${form.clientName}` : 'Choose billing client…'}
+                  </Text>
                   <Text style={styles.clientArrow}>⌄</Text>
                 </Pressable>
                 {errors.clientId ? <Text accessibilityRole="alert" style={styles.error}>{errors.clientId}</Text> : null}
@@ -523,8 +530,10 @@ export function RegistrationScreen() {
 
             {/* 2. Recipient Card (shown only when selecting an EXISTING client) */}
             {form.clientMode === 'EXISTING' ? (
-              <View style={styles.section}>
-                <Text accessibilityRole="header" style={styles.sectionTitle}>Recipient</Text>
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Text accessibilityRole="header" style={styles.cardTitle}>Recipient</Text>
+                </View>
                 <View style={styles.derivedRecipientContainer}>
                   <Text style={styles.label}>RECIPIENT / CONSIGNEE</Text>
                   <View style={styles.derivedRecipientBox}>
@@ -538,18 +547,20 @@ export function RegistrationScreen() {
             ) : null}
 
             {/* 3. Parcel Details & Per-Unit Editor */}
-            <View style={styles.section}>
-              <Text accessibilityRole="header" style={styles.sectionTitle}>Parcel Details</Text>
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text accessibilityRole="header" style={styles.cardTitle}>Parcel Details</Text>
+              </View>
               {field('description', 'DESCRIPTION', { placeholder: 'General Goods', multiline: true, maxLength: MAX_DESCRIPTION_LENGTH, showCharacterCount: true })}
               {field('route', 'ROUTE', { placeholder: 'Manila to Daet, Camarines Norte', maxLength: 150 })}
 
-              <View style={styles.quantityRow}>
-                <View
-                  ref={(node) => { fieldRefs.current.quantity = node; }}
-                  collapsable={false}
-                  style={styles.quantityFieldWrapper}
-                >
-                  <Text style={styles.label}>QUANTITY (PARCEL UNITS) *</Text>
+              <View
+                ref={(node) => { fieldRefs.current.quantity = node; }}
+                collapsable={false}
+                style={styles.field}
+              >
+                <Text style={styles.label}>QUANTITY (PARCEL UNITS) *</Text>
+                <View style={styles.quantityControlRow}>
                   <TextInput
                     ref={(node) => { inputRefs.current.quantity = node; }}
                     accessibilityLabel="Quantity in parcel units"
@@ -562,21 +573,24 @@ export function RegistrationScreen() {
                     maxLength={4}
                     placeholder="1"
                     placeholderTextColor={colors.inkFaint}
-                    style={[styles.input, errors.quantity && styles.inputError]}
+                    style={[styles.input, styles.quantityInput, errors.quantity && styles.inputError]}
                   />
-                  {errors.quantity ? <Text accessibilityRole="alert" style={styles.error}>{errors.quantity}</Text> : null}
-                  <Text style={styles.helper}>1–1,000 units. One QR generated per unit.</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add unit ${form.parcels.length + 1}`}
+                    disabled={isSubmitting || form.parcels.length >= 1000}
+                    onPress={handleAddUnit}
+                    style={({ pressed }) => [
+                      styles.addUnitButton,
+                      pressed && styles.addUnitButtonPressed,
+                      (isSubmitting || form.parcels.length >= 1000) && styles.addUnitButtonDisabled,
+                    ]}
+                  >
+                    <Text style={styles.addUnitButtonText}>+ Add Unit #{form.parcels.length + 1}</Text>
+                  </Pressable>
                 </View>
-
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Add unit ${form.parcels.length + 1}`}
-                  disabled={isSubmitting || form.parcels.length >= 1000}
-                  onPress={handleAddUnit}
-                  style={({ pressed }) => [styles.addUnitButton, pressed && styles.addUnitButtonPressed]}
-                >
-                  <Text style={styles.addUnitButtonText}>+ Add Unit #{form.parcels.length + 1}</Text>
-                </Pressable>
+                {errors.quantity ? <Text accessibilityRole="alert" style={styles.error}>{errors.quantity}</Text> : null}
+                <Text style={styles.helper}>1–1,000 units. One QR generated per unit.</Text>
               </View>
 
               {highlightedUnitSeq ? (
@@ -605,19 +619,18 @@ export function RegistrationScreen() {
             </View>
 
             {/* 4. Live Rating & Summary */}
-            <View style={styles.section}>
-              <Text accessibilityRole="header" style={styles.sectionTitle}>Rating & Summary</Text>
-
-              <View style={styles.rateCard}>
-                <Text style={styles.label}>RATE PER KILO</Text>
-                <Text style={styles.rateValue}>
-                  {ratePerKilo !== null ? `₱${ratePerKilo.toFixed(2)} / kg` : '—'}
-                </Text>
-                <Text style={styles.helper}>Rate for selected client.</Text>
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text accessibilityRole="header" style={styles.cardTitle}>Rating & Summary</Text>
+                {ratePerKilo !== null ? (
+                  <View style={styles.rateBadge}>
+                    <Text style={styles.rateBadgeText}>₱{ratePerKilo.toFixed(2)} / kg</Text>
+                  </View>
+                ) : null}
               </View>
 
               <View style={styles.calculations}>
-                <Text style={styles.label}>WEIGHT & VOLUME BREAKDOWN</Text>
+                <Text style={styles.breakdownHeaderTitle}>WEIGHT & VOLUME BREAKDOWN</Text>
                 <View style={styles.metricRow}>
                   <Text style={styles.metricLabel}>Total Actual Weight</Text>
                   <Text style={styles.metricValue}>{formatMeasure(totals.actualWeight, 2, 'kg')}</Text>
@@ -688,13 +701,15 @@ export function RegistrationScreen() {
               {field('otherCharges', 'OTHER CHARGES (₱)', { ...numericProps, maxLength: 13, placeholder: '0' })}
 
               <View style={styles.totalBox}>
-                <Text style={styles.label}>TOTAL AMOUNT</Text>
-                <Text style={styles.total}>
-                  {totals.totalAmount !== null
-                    ? `₱${totals.totalAmount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                    : '—'}
-                </Text>
-                <Text style={styles.helper}>
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>TOTAL AMOUNT</Text>
+                  <Text style={styles.total}>
+                    {totals.totalAmount !== null
+                      ? `₱${totals.totalAmount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : '—'}
+                  </Text>
+                </View>
+                <Text style={styles.totalSubtext}>
                   {totals.shippingFee !== null ? `₱${totals.shippingFee.toFixed(2)} shipping` : '—'}
                   {` + ₱${(parseFloat(form.otherCharges) || 0).toFixed(2)} charges`}
                 </Text>
@@ -869,33 +884,148 @@ const styles = StyleSheet.create({
   headerTitle: { flex: 1, fontSize: 14, letterSpacing: 1, fontWeight: '700', color: colors.ink },
   scrollContent: { flexGrow: 1 },
   content: { padding: spacing.lg, paddingBottom: spacing.xl, width: '100%', maxWidth: 720, alignSelf: 'center' },
-  intro: { ...typography.bodySmall, marginBottom: spacing.lg },
-  panel: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginBottom: spacing.xl },
-  section: { marginBottom: spacing.xl },
-  sectionTitle: { ...typography.h2, fontSize: 17, marginBottom: spacing.md },
+  introBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  introDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent,
+  },
+  introText: {
+    ...typography.bodySmall,
+    color: colors.inkSoft,
+    flex: 1,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 4,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  cardTitle: {
+    ...typography.h2,
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.ink,
+    letterSpacing: -0.2,
+  },
+  rateBadge: {
+    backgroundColor: colors.slateSoft,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  rateBadgeText: {
+    ...typography.mono,
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.ink,
+  },
   field: { flex: 1, minWidth: 0, marginBottom: spacing.md },
   label: { ...typography.eyebrow, fontSize: 10, letterSpacing: 0.7, marginBottom: spacing.sm },
-  input: { minHeight: 48, paddingHorizontal: spacing.md, paddingVertical: spacing.md, borderWidth: 1, borderColor: colors.border, color: colors.ink, fontSize: 16, backgroundColor: colors.canvas },
+  input: {
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 4,
+    color: colors.ink,
+    fontSize: 15,
+    backgroundColor: colors.canvas,
+  },
   inputError: { borderColor: colors.danger },
   error: { fontSize: 12, lineHeight: 17, color: colors.danger, marginTop: spacing.xs },
-  errorBanner: { ...typography.body, backgroundColor: colors.dangerSoft, color: colors.danger, padding: spacing.md, marginBottom: spacing.lg },
+  errorBanner: { ...typography.body, backgroundColor: colors.dangerSoft, color: colors.danger, padding: spacing.md, marginBottom: spacing.lg, borderRadius: 4 },
   helper: { ...typography.bodySmall, marginTop: spacing.xs, marginBottom: spacing.sm },
-  toggle: { flexDirection: 'row', flexWrap: 'wrap', borderWidth: 1, borderColor: colors.borderStrong, marginBottom: spacing.lg },
-  toggleButton: { flex: 1, minHeight: 44, padding: spacing.sm, justifyContent: 'center', alignItems: 'center' },
+  toggle: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: spacing.lg,
+  },
+  toggleButton: { flex: 1, minHeight: 44, padding: spacing.sm, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.surface },
   toggleActive: { backgroundColor: colors.black },
-  toggleText: { fontSize: 13, fontWeight: '700', color: colors.ink },
-  toggleActiveText: { color: colors.surface },
-  clientButton: { flexDirection: 'row', alignItems: 'center', minHeight: 48, padding: spacing.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.canvas, gap: spacing.sm },
-  clientText: { flex: 1, fontSize: 15, color: colors.ink },
-  clientArrow: { fontSize: 20, color: colors.ink },
+  toggleText: { fontSize: 13, fontWeight: '700', color: colors.inkSoft },
+  toggleActiveText: { color: colors.surface, fontWeight: '800' },
+  clientButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 4,
+    backgroundColor: colors.canvas,
+    gap: spacing.sm,
+  },
+  clientText: { flex: 1, fontSize: 15, color: colors.ink, fontWeight: '600' },
+  clientPlaceholderText: { color: colors.inkFaint, fontWeight: '400' },
+  clientArrow: { fontSize: 18, color: colors.inkFaint, fontWeight: '700' },
   derivedRecipientContainer: { marginBottom: spacing.md },
-  derivedRecipientBox: { padding: spacing.md, backgroundColor: colors.canvas, borderWidth: 1, borderColor: colors.border },
-  derivedRecipientName: { ...typography.body, fontWeight: '700', fontSize: 15, color: colors.ink },
-  quantityRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginBottom: spacing.md },
-  quantityFieldWrapper: { flex: 1 },
-  addUnitButton: { minHeight: 48, marginTop: 22, paddingHorizontal: spacing.md, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.ink, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
-  addUnitButtonPressed: { opacity: 0.75, transform: [{ scale: 0.98 }] },
-  addUnitButtonText: { fontSize: 12, fontWeight: '700', color: colors.ink },
+  derivedRecipientBox: { padding: spacing.md, backgroundColor: colors.canvas, borderWidth: 1, borderColor: colors.border, borderRadius: 4 },
+  derivedRecipientName: { ...typography.body, fontWeight: '700', fontSize: 15, color: colors.ink, marginBottom: 2 },
+  quantityControlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  quantityInput: {
+    width: 88,
+    textAlign: 'center',
+    fontWeight: '700',
+  },
+  addUnitButton: {
+    flex: 1,
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.borderStrong,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  addUnitButtonPressed: {
+    backgroundColor: colors.canvas,
+    transform: [{ scale: 0.98 }],
+  },
+  addUnitButtonDisabled: {
+    opacity: 0.4,
+  },
+  addUnitButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.ink,
+    letterSpacing: 0.3,
+  },
   unitAddedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -956,25 +1086,74 @@ const styles = StyleSheet.create({
     color: colors.canvas,
     letterSpacing: 0.3,
   },
-  rateCard: { padding: spacing.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.md },
-  rateLarge: { ...typography.h1, fontSize: 22, color: colors.ink },
-  calculations: { padding: spacing.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, marginBottom: spacing.md },
+  calculations: {
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.canvas,
+    borderRadius: 4,
+    marginBottom: spacing.md,
+  },
+  breakdownHeaderTitle: {
+    ...typography.eyebrow,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: colors.inkFaint,
+    marginBottom: spacing.sm,
+  },
   metricRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: spacing.xs },
   metricLabel: { ...typography.bodySmall, color: colors.inkSoft },
   metricValue: { ...typography.body, fontWeight: '700', color: colors.ink },
   billableMetricRow: { borderTopWidth: 1, borderTopColor: colors.border, marginTop: spacing.sm, paddingTop: spacing.sm },
   billableLabel: { ...typography.body, fontWeight: '800', color: colors.ink },
   billableValue: { ...typography.h2, fontSize: 18, fontWeight: '900', color: colors.ink },
-  totalBox: { padding: spacing.lg, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface, marginBottom: spacing.md },
-  total: { ...typography.h1, fontSize: 28 },
+  totalBox: {
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.canvas,
+    borderRadius: 4,
+    marginBottom: spacing.md,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: 2,
+  },
+  totalLabel: {
+    ...typography.eyebrow,
+    fontSize: 11,
+    letterSpacing: 1,
+    color: colors.inkFaint,
+  },
+  total: {
+    ...typography.h1,
+    fontSize: 26,
+    color: colors.ink,
+  },
+  totalSubtext: {
+    ...typography.mono,
+    fontSize: 11,
+    color: colors.inkSoft,
+    marginTop: 2,
+  },
   settingsNotice: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
-  unconfiguredBox: { backgroundColor: colors.warningSoft, borderWidth: 1, borderColor: colors.warning, padding: spacing.md, marginBottom: spacing.md },
+  unconfiguredBox: { backgroundColor: colors.warningSoft, borderWidth: 1, borderColor: colors.warning, padding: spacing.md, marginBottom: spacing.md, borderRadius: 4 },
   unconfiguredTitle: { ...typography.body, fontWeight: '800', color: colors.ink, marginBottom: 2 },
   unconfiguredText: { ...typography.bodySmall, color: colors.inkSoft, lineHeight: 16 },
-  errorBox: { backgroundColor: colors.dangerSoft, borderWidth: 1, borderColor: colors.danger, padding: spacing.md, marginBottom: spacing.md },
+  errorBox: { backgroundColor: colors.dangerSoft, borderWidth: 1, borderColor: colors.danger, padding: spacing.md, marginBottom: spacing.md, borderRadius: 4 },
   retry: { minHeight: 36, justifyContent: 'center' },
   retryText: { fontSize: 13, fontWeight: '700', color: colors.ink, textDecorationLine: 'underline' },
-  paymentRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.md },
+  paymentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
+    marginTop: spacing.xs,
+  },
   paymentCopy: { flex: 1 },
   paymentTitle: { ...typography.body, fontWeight: '700', color: colors.ink },
   shippingFeeHeader: {
@@ -1006,7 +1185,19 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   footer: { borderTopWidth: 1, borderColor: colors.border, padding: spacing.lg, backgroundColor: colors.canvas },
-  submit: { minHeight: 56, maxWidth: 688, width: '100%', alignSelf: 'center', backgroundColor: colors.black, flexDirection: 'row', gap: spacing.md, padding: spacing.md, alignItems: 'center', justifyContent: 'center' },
+  submit: {
+    minHeight: 54,
+    maxWidth: 688,
+    width: '100%',
+    alignSelf: 'center',
+    backgroundColor: colors.black,
+    borderRadius: 4,
+    flexDirection: 'row',
+    gap: spacing.md,
+    padding: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   disabled: { opacity: 0.6 },
   submitText: { fontSize: 14, color: colors.surface, fontWeight: '700', letterSpacing: 0.5 },
 });
