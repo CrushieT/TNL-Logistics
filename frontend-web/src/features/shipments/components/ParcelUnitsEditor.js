@@ -1,10 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import FormField from '../../../components/common/FormField';
-import { generatePaginationItems } from '../parcelPagination.mjs';
+import { createParcelPaginationModel, getParcelPageIndex } from '../parcelPagination.mjs';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
-
-const PAGE_SIZE = 10;
 
 function formatMeasure(value, digits, suffix) {
   return value === null ? 'Unavailable' : `${value.toFixed(digits)} ${suffix}`;
@@ -17,94 +15,88 @@ export default function ParcelUnitsEditor({
   onPageChange,
   onUpdateParcelField,
   onRemoveUnit,
-  pageSize = PAGE_SIZE,
+  highlightedUnitSeq = null,
 }) {
-  const totalUnits = parcels.length;
-  const totalPages = Math.max(1, Math.ceil(totalUnits / pageSize));
-  const activePage = Math.min(Math.max(0, currentPage), totalPages - 1);
+  const inputRefs = useRef({});
+  const pageModel = createParcelPaginationModel(parcels, errors, currentPage, { reverse: true });
 
-  const startIndex = activePage * pageSize;
-  const endIndex = Math.min(startIndex + pageSize, totalUnits);
-  const visibleParcels = parcels.slice(startIndex, endIndex);
-
-  // Detect off-page validation errors
-  const offPageErrorUnits = useMemo(() => {
-    const errorIndices = new Set();
-    Object.keys(errors).forEach((key) => {
-      const match = key.match(/^parcel_(\d+)_(weightKg|lengthCm|widthCm|heightCm)$/);
-      if (match) {
-        const unitIndex = parseInt(match[1], 10);
-        if (unitIndex < startIndex || unitIndex >= endIndex) {
-          errorIndices.add(unitIndex);
-        }
-      }
-    });
-
-    return Array.from(errorIndices)
-      .sort((a, b) => a - b)
-      .map((idx) => ({
-        index: idx,
-        seq: parcels[idx]?.seq || idx + 1,
-        pageIndex: Math.floor(idx / pageSize),
-      }));
-  }, [errors, startIndex, endIndex, parcels, pageSize]);
+  const firstVisibleUnitSeq = pageModel.visibleParcels[0]?.parcel?.seq;
+  const lastVisibleUnitSeq = pageModel.visibleParcels[pageModel.visibleParcels.length - 1]?.parcel?.seq;
 
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.sectionHeader}>
-          PARCEL UNITS ({totalUnits} {totalUnits === 1 ? 'UNIT' : 'UNITS'}) · PER-UNIT MEASUREMENTS
+          PARCEL UNITS ({pageModel.totalUnits} {pageModel.totalUnits === 1 ? 'UNIT' : 'UNITS'}) · NEWEST FIRST
         </Text>
-        {totalPages > 1 && (
+        {pageModel.totalPages > 1 && (
           <View style={styles.paginationSummary}>
             <Text style={styles.paginationSummaryText}>
-              Showing {startIndex + 1}–{endIndex} of {totalUnits} (Page {activePage + 1} of {totalPages})
+              Showing units #{firstVisibleUnitSeq}–#{lastVisibleUnitSeq} (Page {pageModel.activePage + 1} of {pageModel.totalPages})
             </Text>
           </View>
         )}
       </View>
 
       {/* Off-page error banner */}
-      {offPageErrorUnits.length > 0 && (
+      {pageModel.offPageErrorUnitIndices.length > 0 && (
         <View style={styles.offPageErrorBanner}>
           <Text style={styles.offPageErrorText}>
-            Attention: Validation errors in off-page unit{offPageErrorUnits.length > 1 ? 's' : ''}:{' '}
-            {offPageErrorUnits.map((item, idx) => (
-              <Text
-                key={item.seq}
-                style={styles.offPageErrorLink}
-                onPress={() => onPageChange?.(item.pageIndex)}
-              >
-                #{item.seq} (Pg {item.pageIndex + 1})
-                {idx < offPageErrorUnits.length - 1 ? ', ' : ''}
-              </Text>
-            ))}
+            Attention: Validation errors in off-page unit{pageModel.offPageErrorUnitIndices.length > 1 ? 's' : ''}:{' '}
+            {pageModel.offPageErrorUnitIndices.map((unitIndex, idx) => {
+              const pSeq = parcels[unitIndex]?.seq || (unitIndex + 1);
+              const targetPage = getParcelPageIndex(unitIndex, pageModel.totalUnits, true);
+              return (
+                <Text
+                  key={`off-page-err-${unitIndex}`}
+                  style={styles.offPageErrorLink}
+                  onPress={() => onPageChange?.(targetPage)}
+                >
+                  #{pSeq} (Pg {targetPage + 1})
+                  {idx < pageModel.offPageErrorUnitIndices.length - 1 ? ', ' : ''}
+                </Text>
+              );
+            })}
           </Text>
         </View>
       )}
 
       {/* Paginated unit cards */}
       <View style={styles.unitsScrollContainer}>
-        {visibleParcels.map((parcel, localIndex) => {
-          const globalIndex = startIndex + localIndex;
+        {pageModel.visibleParcels.map(({ parcel, globalIndex }) => {
           const lNum = parseFloat(parcel.lengthCm);
           const wNum = parseFloat(parcel.widthCm);
           const hNum = parseFloat(parcel.heightCm);
           const hasDims = !isNaN(lNum) && lNum > 0 && !isNaN(wNum) && wNum > 0 && !isNaN(hNum) && hNum > 0;
           const unitVolume = hasDims ? (lNum * wNum * hNum) / 1000000 : null;
+          const isHighlighted = highlightedUnitSeq === parcel.seq;
 
           return (
-            <View key={parcel.id || `parcel-${globalIndex}`} style={styles.unitCard}>
+            <View
+              key={parcel.id || `parcel-${globalIndex}`}
+              style={[styles.unitCard, isHighlighted && styles.unitCardHighlighted]}
+            >
               <View style={styles.unitCardTop}>
-                <View style={styles.unitBadge}>
-                  <Text style={styles.unitBadgeText}>UNIT #{parcel.seq}</Text>
+                <View style={styles.unitBadgeContainer}>
+                  <View style={[styles.unitBadge, isHighlighted && styles.unitBadgeHighlighted]}>
+                    <Text style={[styles.unitBadgeText, isHighlighted && styles.unitBadgeTextHighlighted]}>
+                      UNIT #{parcel.seq}
+                    </Text>
+                  </View>
+                  {isHighlighted && (
+                    <View style={styles.justAddedBadge}>
+                      <Text style={styles.justAddedBadgeText}>JUST ADDED</Text>
+                    </View>
+                  )}
                 </View>
+
                 {unitVolume !== null ? (
                   <Text style={styles.unitVolumeTag}>
                     {formatMeasure(unitVolume, 4, 'm³')}
                   </Text>
                 ) : null}
-                {totalUnits > 1 ? (
+
+                {pageModel.totalUnits > 1 ? (
                   <TouchableOpacity
                     style={styles.removeUnitBtn}
                     onPress={() => onRemoveUnit?.(globalIndex)}
@@ -127,7 +119,11 @@ export default function ParcelUnitsEditor({
                     placeholder="0.00"
                     maxLength={9}
                     suffix="kg"
-                    error={errors[`parcel_${globalIndex}_weightKg`]}
+                    error={errors[`parcel_${globalIndex}_weightKg`] || errors[`parcels[${globalIndex}].weightKg`]}
+                    inputRef={(node) => { inputRefs.current[`parcels[${globalIndex}].weightKg`] = node; }}
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                    onSubmitEditing={() => inputRefs.current[`parcels[${globalIndex}].lengthCm`]?.focus?.()}
                   />
                 </View>
                 <View style={styles.unitFieldCol}>
@@ -140,7 +136,11 @@ export default function ParcelUnitsEditor({
                     placeholder="0"
                     maxLength={9}
                     suffix="cm"
-                    error={errors[`parcel_${globalIndex}_lengthCm`]}
+                    error={errors[`parcel_${globalIndex}_lengthCm`] || errors[`parcels[${globalIndex}].lengthCm`]}
+                    inputRef={(node) => { inputRefs.current[`parcels[${globalIndex}].lengthCm`] = node; }}
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                    onSubmitEditing={() => inputRefs.current[`parcels[${globalIndex}].widthCm`]?.focus?.()}
                   />
                 </View>
                 <View style={styles.unitFieldCol}>
@@ -153,7 +153,11 @@ export default function ParcelUnitsEditor({
                     placeholder="0"
                     maxLength={9}
                     suffix="cm"
-                    error={errors[`parcel_${globalIndex}_widthCm`]}
+                    error={errors[`parcel_${globalIndex}_widthCm`] || errors[`parcels[${globalIndex}].widthCm`]}
+                    inputRef={(node) => { inputRefs.current[`parcels[${globalIndex}].widthCm`] = node; }}
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                    onSubmitEditing={() => inputRefs.current[`parcels[${globalIndex}].heightCm`]?.focus?.()}
                   />
                 </View>
                 <View style={styles.unitFieldCol}>
@@ -166,7 +170,10 @@ export default function ParcelUnitsEditor({
                     placeholder="0"
                     maxLength={9}
                     suffix="cm"
-                    error={errors[`parcel_${globalIndex}_heightCm`]}
+                    error={errors[`parcel_${globalIndex}_heightCm`] || errors[`parcels[${globalIndex}].heightCm`]}
+                    inputRef={(node) => { inputRefs.current[`parcels[${globalIndex}].heightCm`] = node; }}
+                    returnKeyType="done"
+                    blurOnSubmit={true}
                   />
                 </View>
               </View>
@@ -176,27 +183,25 @@ export default function ParcelUnitsEditor({
       </View>
 
       {/* Pagination Controls */}
-      {totalPages > 1 && (
+      {pageModel.totalPages > 1 && (
         <View style={styles.paginationControls}>
           <TouchableOpacity
-            style={[styles.pageNavBtn, activePage === 0 && styles.pageNavBtnDisabled]}
-            disabled={activePage === 0}
-            onPress={() => onPageChange?.(activePage - 1)}
+            style={[styles.pageNavBtn, pageModel.activePage === 0 && styles.pageNavBtnDisabled]}
+            disabled={pageModel.activePage === 0}
+            onPress={() => onPageChange?.(pageModel.activePage - 1)}
             accessibilityRole="button"
             accessibilityLabel="Previous page of parcel units"
           >
-            <Text style={[styles.pageNavBtnText, activePage === 0 && styles.pageNavBtnTextDisabled]}>
+            <Text style={[styles.pageNavBtnText, pageModel.activePage === 0 && styles.pageNavBtnTextDisabled]}>
               ← Previous
             </Text>
           </TouchableOpacity>
 
           <View style={styles.pagePillsRow}>
-            {generatePaginationItems(activePage, totalPages).map((item) => {
+            {pageModel.paginationItems.map((item) => {
               const hasErrors = item.isEllipsis
-                ? (item.coveredPageIndices || []).some((pIdx) =>
-                    offPageErrorUnits.some((e) => e.pageIndex === pIdx)
-                  )
-                : offPageErrorUnits.some((e) => e.pageIndex === item.pageIndex);
+                ? (item.coveredPageIndices || []).some((pIdx) => pageModel.errorPageIndices.has(pIdx))
+                : pageModel.errorPageIndices.has(item.pageIndex);
 
               return (
                 <TouchableOpacity
@@ -229,16 +234,16 @@ export default function ParcelUnitsEditor({
           </View>
 
           <TouchableOpacity
-            style={[styles.pageNavBtn, activePage >= totalPages - 1 && styles.pageNavBtnDisabled]}
-            disabled={activePage >= totalPages - 1}
-            onPress={() => onPageChange?.(activePage + 1)}
+            style={[styles.pageNavBtn, pageModel.activePage >= pageModel.totalPages - 1 && styles.pageNavBtnDisabled]}
+            disabled={pageModel.activePage >= pageModel.totalPages - 1}
+            onPress={() => onPageChange?.(pageModel.activePage + 1)}
             accessibilityRole="button"
             accessibilityLabel="Next page of parcel units"
           >
             <Text
               style={[
                 styles.pageNavBtnText,
-                activePage >= totalPages - 1 && styles.pageNavBtnTextDisabled,
+                pageModel.activePage >= pageModel.totalPages - 1 && styles.pageNavBtnTextDisabled,
               ]}
             >
               Next →
@@ -311,6 +316,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     padding: spacing.md,
   },
+  unitCardHighlighted: {
+    borderColor: '#F59E0B',
+    borderWidth: 2,
+    borderRadius: radius.sm,
+    backgroundColor: '#FFFDF7',
+  },
   unitCardTop: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -318,11 +329,19 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     gap: spacing.sm,
   },
+  unitBadgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   unitBadge: {
     backgroundColor: colors.black,
     paddingVertical: 2,
     paddingHorizontal: spacing.sm,
     borderRadius: radius.sm,
+  },
+  unitBadgeHighlighted: {
+    backgroundColor: '#D97706',
   },
   unitBadgeText: {
     fontFamily: fonts.mono,
@@ -330,6 +349,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.5,
+  },
+  unitBadgeTextHighlighted: {
+    color: '#FFFFFF',
+  },
+  justAddedBadge: {
+    backgroundColor: '#D97706',
+    borderRadius: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  justAddedBadgeText: {
+    fontFamily: fonts.mono,
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.8,
   },
   unitVolumeTag: {
     fontFamily: fonts.mono,

@@ -7,6 +7,8 @@ export default function FormField({
   required,
   value,
   onChangeText,
+  onBlur,
+  onSubmitEditing,
   placeholder,
   keyboardType,
   helper,
@@ -19,6 +21,10 @@ export default function FormField({
   suffix,
   style,
   inputStyle,
+  inputRef,
+  returnKeyType,
+  blurOnSubmit,
+  accessibilityLabel,
 }) {
   const handleChangeText = (text) => {
     if (!onChangeText) return;
@@ -47,6 +53,7 @@ export default function FormField({
       ) : null}
       <View style={styles.inputRow}>
         <TextInput
+          ref={inputRef}
           style={[
             styles.input,
             multiline && styles.multiline,
@@ -56,12 +63,17 @@ export default function FormField({
           ]}
           value={value}
           onChangeText={handleChangeText}
+          onBlur={onBlur}
+          onSubmitEditing={onSubmitEditing}
           placeholder={placeholder}
           placeholderTextColor={colors.inkFaint}
           keyboardType={keyboardType || (integerOnly || numericOnly ? 'numeric' : 'default')}
           multiline={multiline}
           editable={editable}
           maxLength={maxLength}
+          returnKeyType={returnKeyType}
+          blurOnSubmit={blurOnSubmit}
+          accessibilityLabel={accessibilityLabel || label}
         />
         {suffix ? <Text style={styles.suffix}>{suffix}</Text> : null}
       </View>
