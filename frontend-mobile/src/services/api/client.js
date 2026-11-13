@@ -4,12 +4,14 @@ import { authSessionCoordinator } from '../../features/auth/services/sessionCoor
 import {
   buildSessionRetryConfig,
   classifySessionFailure,
+  normalizeApiUrl,
   sanitizeSensitiveError,
 } from './sessionHandling.mjs';
 
 function resolveBaseUrl() {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
+  const envUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
+    return normalizeApiUrl(envUrl);
   }
   const hostUri = Constants.expoConfig?.hostUri;
   if (hostUri) {

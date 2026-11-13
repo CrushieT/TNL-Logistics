@@ -7,7 +7,7 @@
 
 ### Local review artifacts
 
-- `.review/current/`: active plans and deployment guidance, including `post-release-client-changes-plan.md` for QR labels, document copies, shipment fee editing, and courier scanning.
+- `.review/current/`: active plans and deployment guidance, including `post-release-client-changes-plan.md` for QR labels, document copies, shipment fee editing, and courier scanning; `deployment/railway-deployment-runbook.md` and `deployment/railway-production-handover-summary.md` for live Railway deployment, standalone APK stabilization, and client First Boot handover.
 - `.review/current/soa-cycle-versioning-plan.md`: agreed collection cutoff, SOA versioning, implementation handoff, and verification criteria.
 - `.review/archive/`: completed client-demo, SSE, and release verification artifacts. The final release evidence is grouped in `archive/release-v1.4.0/`.
 - `.review/performance/`: performance investigations and diagnostic scripts, kept at their working paths.

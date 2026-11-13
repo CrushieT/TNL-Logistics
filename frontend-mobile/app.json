@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "TC & CT Staff App",
+    "name": "TNL Field",
     "slug": "tnl-field",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -14,6 +14,7 @@
     },
     "android": {
       "versionCode": 1,
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
@@ -26,7 +27,7 @@
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.ACCESS_FINE_LOCATION"
       ],
-      "package": "com.tcct.staff"
+      "package": "com.tnllogistics.field"
     },
     "web": {},
     "plugins": [

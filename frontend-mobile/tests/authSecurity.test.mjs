@@ -18,6 +18,7 @@ import {
 import {
   buildSessionRetryConfig,
   classifySessionFailure,
+  normalizeApiUrl,
   sanitizeSensitiveError,
 } from '../src/services/api/sessionHandling.mjs';
 
@@ -175,6 +176,92 @@ test('sensitive API errors expose only the approved safe fields', () => {
   }
   assert.equal('config' in sanitized, false);
   assert.equal('response' in sanitized, false);
+});
+
+test('network error sanitization reports user-friendly connectivity message without masking', () => {
+  const networkError = sanitizeSensitiveError({
+    code: 'ERR_NETWORK',
+    message: 'Network Error',
+    response: { status: 0, data: '' },
+  });
+  assert.equal(networkError.message, 'Network error. Please verify your connection to the server.');
+  assert.equal(networkError.code, 'ERR_NETWORK');
+
+  const httpServerError = sanitizeSensitiveError({
+    code: 'ERR_BAD_RESPONSE',
+    message: 'Request failed with status code 502',
+    response: { status: 502, data: '' },
+  });
+  assert.equal(
+    httpServerError.message,
+    'The server is temporarily unavailable. Please try again later.'
+  );
+
+  const emptyUnauthorizedError = sanitizeSensitiveError({
+    response: { status: 401, data: '' },
+  });
+  assert.equal(
+    emptyUnauthorizedError.message,
+    'Invalid username or password. Please verify your credentials and try again.'
+  );
+
+  const forbiddenError = sanitizeSensitiveError({
+    response: { status: 403, data: '' },
+  });
+  assert.equal(
+    forbiddenError.message,
+    'You do not have permission to perform this action.'
+  );
+
+  const notFoundError = sanitizeSensitiveError({
+    response: { status: 404, data: '' },
+  });
+  assert.equal(
+    notFoundError.message,
+    'The requested resource could not be found.'
+  );
+
+  const rateLimitFallback = sanitizeSensitiveError({
+    response: { status: 429, data: '' },
+  });
+  assert.equal(
+    rateLimitFallback.message,
+    'Too many requests. Please wait a moment and try again.'
+  );
+});
+
+test('normalizeApiUrl standardizes base urls with /api/v1 suffix and trims whitespace', () => {
+  assert.equal(
+    normalizeApiUrl('https://tcct-ingtegrated-logistics.up.railway.app'),
+    'https://tcct-ingtegrated-logistics.up.railway.app/api/v1'
+  );
+  assert.equal(
+    normalizeApiUrl('https://tcct-ingtegrated-logistics.up.railway.app/'),
+    'https://tcct-ingtegrated-logistics.up.railway.app/api/v1'
+  );
+  assert.equal(
+    normalizeApiUrl('https://tcct-ingtegrated-logistics.up.railway.app/api'),
+    'https://tcct-ingtegrated-logistics.up.railway.app/api/v1'
+  );
+  assert.equal(
+    normalizeApiUrl('https://tcct-ingtegrated-logistics.up.railway.app/api/'),
+    'https://tcct-ingtegrated-logistics.up.railway.app/api/v1'
+  );
+  assert.equal(
+    normalizeApiUrl('https://tcct-ingtegrated-logistics.up.railway.app/api/v1'),
+    'https://tcct-ingtegrated-logistics.up.railway.app/api/v1'
+  );
+  assert.equal(
+    normalizeApiUrl('https://tcct-ingtegrated-logistics.up.railway.app/api/v1/'),
+    'https://tcct-ingtegrated-logistics.up.railway.app/api/v1'
+  );
+  assert.equal(
+    normalizeApiUrl('  https://tcct-ingtegrated-logistics.up.railway.app  '),
+    'https://tcct-ingtegrated-logistics.up.railway.app/api/v1'
+  );
+  assert.equal(normalizeApiUrl('http://localhost:8080'), 'http://localhost:8080/api/v1');
+  assert.equal(normalizeApiUrl(''), '');
+  assert.equal(normalizeApiUrl(null), '');
 });
 
 test('ordinary authorization denial and public authentication errors do not trigger cleanup', () => {

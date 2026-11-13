@@ -14,6 +14,19 @@ const MEASUREMENT_ROWS = [
   ],
 ];
 
+function getNextMeasurementFieldKey(fieldName, globalIndex) {
+  if (fieldName === 'weightKg') {
+    return `parcels[${globalIndex}].lengthCm`;
+  }
+  if (fieldName === 'lengthCm') {
+    return `parcels[${globalIndex}].widthCm`;
+  }
+  if (fieldName === 'widthCm') {
+    return `parcels[${globalIndex}].heightCm`;
+  }
+  return null;
+}
+
 function formatVolume(value) {
   return `${value.toFixed(4)} m³`;
 }
@@ -27,12 +40,20 @@ function ParcelMeasurementField({
   inputRefs,
   isSubmitting,
   label,
+  nextFieldKey,
   onUpdateParcelField,
   parcel,
   placeholder,
 }) {
   const fieldKey = `parcels[${globalIndex}].${fieldName}`;
   const error = errors[fieldKey];
+  const isFinalFieldInUnit = !nextFieldKey;
+
+  const handleNext = () => {
+    if (nextFieldKey && inputRefs?.current?.[nextFieldKey]) {
+      inputRefs.current[nextFieldKey].focus?.();
+    }
+  };
 
   return (
     <View
@@ -49,6 +70,10 @@ function ParcelMeasurementField({
         editable={!isSubmitting}
         keyboardType="decimal-pad"
         inputMode="decimal"
+        returnKeyType={isFinalFieldInUnit ? 'done' : 'next'}
+        enterKeyHint={isFinalFieldInUnit ? 'done' : 'next'}
+        blurOnSubmit={isFinalFieldInUnit}
+        onSubmitEditing={handleNext}
         maxLength={9}
         placeholder={placeholder}
         placeholderTextColor={colors.inkFaint}
@@ -141,6 +166,7 @@ export function ParcelUnitsEditor({
   currentPage,
   errors,
   fieldRefs,
+  highlightedUnitSeq,
   inputRefs,
   isSubmitting,
   onPageChange,
@@ -149,18 +175,21 @@ export function ParcelUnitsEditor({
   parcels,
   shouldStack,
 }) {
-  const pageModel = createParcelPaginationModel(parcels, errors, currentPage);
+  const pageModel = createParcelPaginationModel(parcels, errors, currentPage, { reverse: true });
   const firstOffPageErrorIndex = pageModel.offPageErrorUnitIndices[0];
 
   return (
     <View style={styles.unitsSection}>
       <View style={styles.unitsHeaderRow}>
         <Text style={styles.unitsHeaderTitle}>
-          PARCEL UNITS ({pageModel.totalUnits} {pageModel.totalUnits === 1 ? 'UNIT' : 'UNITS'}) · PER-UNIT MEASUREMENTS
+          PARCEL UNITS ({pageModel.totalUnits} {pageModel.totalUnits === 1 ? 'UNIT' : 'UNITS'}) · NEWEST FIRST
         </Text>
         {pageModel.totalPages > 1 ? (
           <Text style={styles.pageIndicatorText}>
-            Page {pageModel.activePage + 1} of {pageModel.totalPages} ({pageModel.startIndex + 1}–{pageModel.endIndex})
+            Page {pageModel.activePage + 1} of {pageModel.totalPages}
+            {pageModel.visibleParcels.length > 0
+              ? ` (Units #${pageModel.visibleParcels[0].parcel.seq}–#${pageModel.visibleParcels[pageModel.visibleParcels.length - 1].parcel.seq})`
+              : ''}
           </Text>
         ) : null}
       </View>
@@ -172,7 +201,7 @@ export function ParcelUnitsEditor({
           </Text>
           <Pressable
             accessibilityRole="button"
-            onPress={() => onPageChange(getParcelPageIndex(firstOffPageErrorIndex))}
+            onPress={() => onPageChange(getParcelPageIndex(firstOffPageErrorIndex, pageModel.totalUnits, true))}
             style={styles.offPageErrorBtn}
           >
             <Text style={styles.offPageErrorBtnText}>
@@ -198,12 +227,25 @@ export function ParcelUnitsEditor({
           && Number.isFinite(width) && width > 0
           && Number.isFinite(height) && height > 0;
         const unitVolume = hasDimensions ? (length * width * height) / 1000000 : null;
+        const isHighlighted = highlightedUnitSeq === parcel.seq;
 
         return (
-          <View key={parcel.id || `parcel-${globalIndex}`} style={styles.unitCard}>
+          <View
+            key={parcel.id || `parcel-${globalIndex}`}
+            style={[styles.unitCard, isHighlighted && styles.unitCardHighlighted]}
+          >
             <View style={styles.unitCardHeader}>
-              <View style={styles.unitBadge}>
-                <Text style={styles.unitBadgeText}>UNIT #{parcel.seq}</Text>
+              <View style={styles.unitBadgeContainer}>
+                <View style={[styles.unitBadge, isHighlighted && styles.unitBadgeHighlighted]}>
+                  <Text style={[styles.unitBadgeText, isHighlighted && styles.unitBadgeTextHighlighted]}>
+                    UNIT #{parcel.seq}
+                  </Text>
+                </View>
+                {isHighlighted ? (
+                  <View style={styles.justAddedBadge}>
+                    <Text style={styles.justAddedBadgeText}>JUST ADDED</Text>
+                  </View>
+                ) : null}
               </View>
               {unitVolume !== null ? <Text style={styles.unitVolumeTag}>{formatVolume(unitVolume)}</Text> : null}
               {pageModel.totalUnits > 1 ? (
@@ -224,19 +266,24 @@ export function ParcelUnitsEditor({
                 key={measurementRow[0].fieldName}
                 style={[styles.row, shouldStack && styles.stacked]}
               >
-                {measurementRow.map((measurement) => (
-                  <ParcelMeasurementField
-                    key={measurement.fieldName}
-                    {...measurement}
-                    errors={errors}
-                    fieldRefs={fieldRefs}
-                    globalIndex={globalIndex}
-                    inputRefs={inputRefs}
-                    isSubmitting={isSubmitting}
-                    onUpdateParcelField={onUpdateParcelField}
-                    parcel={parcel}
-                  />
-                ))}
+                {measurementRow.map((measurement) => {
+                  const nextFieldKey = getNextMeasurementFieldKey(measurement.fieldName, globalIndex);
+
+                  return (
+                    <ParcelMeasurementField
+                      key={measurement.fieldName}
+                      {...measurement}
+                      errors={errors}
+                      fieldRefs={fieldRefs}
+                      globalIndex={globalIndex}
+                      inputRefs={inputRefs}
+                      isSubmitting={isSubmitting}
+                      nextFieldKey={nextFieldKey}
+                      onUpdateParcelField={onUpdateParcelField}
+                      parcel={parcel}
+                    />
+                  );
+                })}
               </View>
             ))}
           </View>
@@ -265,12 +312,13 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.xs,
   },
-  unitsHeaderTitle: { ...typography.eyebrow, fontSize: 10.5, letterSpacing: 0.8, color: colors.inkFaint, marginBottom: spacing.sm },
+  unitsHeaderTitle: { ...typography.eyebrow, fontSize: 11, letterSpacing: 1, color: colors.inkFaint, marginBottom: spacing.sm },
   pageIndicatorText: { ...typography.mono, fontSize: 11, color: colors.inkSoft },
   offPageErrorBanner: {
     backgroundColor: colors.dangerSoft,
     borderWidth: 1,
     borderColor: colors.danger,
+    borderRadius: 4,
     padding: spacing.sm,
     marginBottom: spacing.sm,
     flexDirection: 'row',
@@ -280,7 +328,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   offPageErrorText: { fontSize: 12, fontWeight: '700', color: colors.danger },
-  offPageErrorBtn: { paddingVertical: 2, paddingHorizontal: spacing.sm, backgroundColor: colors.danger },
+  offPageErrorBtn: { paddingVertical: 3, paddingHorizontal: spacing.sm, backgroundColor: colors.danger, borderRadius: 2 },
   offPageErrorBtnText: { fontSize: 11, fontWeight: '700', color: colors.surface },
   paginationRow: {
     flexDirection: 'row',
@@ -317,8 +365,8 @@ const styles = StyleSheet.create({
     flexWrap: 'nowrap',
   },
   pagePill: {
-    minWidth: 26,
-    height: 26,
+    minWidth: 28,
+    height: 28,
     borderRadius: 4,
     borderWidth: 1,
     borderColor: colors.border,
@@ -332,10 +380,52 @@ const styles = StyleSheet.create({
   pagePillText: { ...typography.mono, fontSize: 11, color: colors.inkSoft, fontWeight: '600' },
   pagePillTextActive: { color: colors.surface, fontWeight: '700' },
   pagePillTextError: { color: colors.danger, fontWeight: '700' },
-  unitCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginBottom: spacing.md },
+  unitCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 4,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  unitCardHighlighted: {
+    borderColor: '#F59E0B',
+    borderWidth: 2,
+    borderRadius: 4,
+    backgroundColor: '#FFFDF7',
+  },
   unitCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
-  unitBadge: { backgroundColor: colors.black, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  unitBadgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  unitBadge: {
+    backgroundColor: colors.black,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: 2,
+  },
+  unitBadgeHighlighted: {
+    backgroundColor: '#D97706',
+  },
   unitBadgeText: { ...typography.mono, color: colors.surface, fontSize: 11, fontWeight: '700' },
+  unitBadgeTextHighlighted: {
+    color: '#FFFFFF',
+  },
+  justAddedBadge: {
+    backgroundColor: '#D97706',
+    borderRadius: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  justAddedBadgeText: {
+    ...typography.eyebrow,
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.8,
+  },
   unitVolumeTag: { ...typography.mono, fontSize: 11, color: colors.inkSoft, flex: 1, marginLeft: spacing.sm },
   removeUnitBtn: { paddingVertical: spacing.xs, paddingHorizontal: spacing.sm },
   removeUnitBtnText: { fontSize: 12, fontWeight: '700', color: colors.danger },
@@ -349,8 +439,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
+    borderRadius: 4,
     color: colors.ink,
-    fontSize: 16,
+    fontSize: 15,
     backgroundColor: colors.canvas,
   },
   inputError: { borderColor: colors.danger },

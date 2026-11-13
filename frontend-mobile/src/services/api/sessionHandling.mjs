@@ -71,12 +71,88 @@ function collectSensitiveValues(config) {
   return values.filter((value) => value.length > 0);
 }
 
+export function normalizeApiUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') {
+    return '';
+  }
+  let normalized = rawUrl.trim();
+  while (normalized.endsWith('/')) {
+    normalized = normalized.slice(0, -1);
+  }
+  if (!normalized.endsWith('/api/v1')) {
+    if (normalized.endsWith('/api')) {
+      normalized = `${normalized}/v1`;
+    } else {
+      normalized = `${normalized}/api/v1`;
+    }
+  }
+  return normalized;
+}
+
+function resolveStatusFallbackMessage(status) {
+  switch (status) {
+    case 400:
+      return 'Invalid request. Please check your inputs and try again.';
+    case 401:
+      return 'Invalid username or password. Please verify your credentials and try again.';
+    case 403:
+      return 'You do not have permission to perform this action.';
+    case 404:
+      return 'The requested resource could not be found.';
+    case 409:
+      return 'The request could not be completed due to a conflict.';
+    case 429:
+      return 'Too many requests. Please wait a moment and try again.';
+    case 500:
+    case 502:
+    case 503:
+    case 504:
+      return 'The server is temporarily unavailable. Please try again later.';
+    default:
+      return 'Unable to complete request. Please try again.';
+  }
+}
+
 export function sanitizeSensitiveError(error) {
-  const responseData = error?.response?.data || {};
+  let responseData = error?.response?.data || {};
+  if (typeof responseData === 'string') {
+    try {
+      responseData = JSON.parse(responseData);
+    } catch {
+      responseData = { message: responseData };
+    }
+  }
   const sensitiveValues = collectSensitiveValues(error?.config);
-  const serverMessage = typeof responseData.message === 'string'
-    ? responseData.message
-    : 'The request could not be completed.';
+  const isNetworkFailure =
+    error?.code === 'ERR_NETWORK' ||
+    error?.message === 'Network Error' ||
+    error?.response?.status === 0;
+
+  const status = typeof error?.response?.status === 'number' && error.response.status > 0
+    ? error.response.status
+    : null;
+
+  const isTechnicalErrorMessage = (msg) =>
+    typeof msg === 'string' &&
+    (/Request failed with status code \d{3}/i.test(msg) || /^HTTP \d{3}/i.test(msg));
+
+  const serverMessageCandidate =
+    typeof responseData.message === 'string' && responseData.message.trim()
+      ? responseData.message.trim()
+      : typeof responseData.error === 'string' && responseData.error.trim()
+        ? responseData.error.trim()
+        : null;
+
+  const rawMessage = serverMessageCandidate && !isTechnicalErrorMessage(serverMessageCandidate)
+    ? serverMessageCandidate
+    : isNetworkFailure
+      ? 'Network error. Please verify your connection to the server.'
+      : status !== null
+        ? resolveStatusFallbackMessage(status)
+        : typeof error?.message === 'string' && error.message.trim() && !isTechnicalErrorMessage(error.message)
+          ? error.message.trim()
+          : 'The request could not be completed.';
+  const serverMessage = rawMessage;
   const containsSensitiveValue = sensitiveValues.some((value) => serverMessage.includes(value));
 
   const retryAfter = readHeader(error?.response?.headers, 'Retry-After');
@@ -91,9 +167,15 @@ export function sanitizeSensitiveError(error) {
     }
   }
 
+  const rawCode = typeof responseData.code === 'string'
+    ? responseData.code
+    : typeof error?.code === 'string'
+      ? error.code
+      : null;
+
   return {
     status: error?.response?.status || null,
-    code: typeof responseData.code === 'string' ? responseData.code : null,
+    code: containsSensitiveValue ? null : rawCode,
     message: containsSensitiveValue ? 'The request could not be completed.' : serverMessage,
     retryAfterSeconds: Number.isFinite(retryAfterSeconds) ? retryAfterSeconds
       : Number.isFinite(responseData.retryAfterSeconds) ? Math.max(0, responseData.retryAfterSeconds) : null,

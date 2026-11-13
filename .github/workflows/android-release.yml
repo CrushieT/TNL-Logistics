@@ -46,10 +46,27 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
+      - name: Cache Android SDK Components
+        id: cache-android-sdk
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ANDROID_HOME }}/ndk/27.1.12297006
+            ${{ env.ANDROID_HOME }}/platforms/android-36
+            ${{ env.ANDROID_HOME }}/build-tools/36.0.0
+            ${{ env.ANDROID_HOME }}/cmake/3.22.1
+          key: android-sdk-36-ndk-27.1.12297006-buildtools-36.0.0
+
       - name: Install Android Build Dependencies
+        if: steps.cache-android-sdk.outputs.cache-hit != 'true'
         run: |
           yes | sdkmanager --licenses > /dev/null
           sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
 
       - name: Validate Release Configuration
         run: |
@@ -61,6 +78,10 @@ jobs:
 
       - name: Install Dependencies
         run: npm ci --include=dev
+
+      - name: Create Mobile Environment Configuration
+        run: |
+          echo "EXPO_PUBLIC_API_URL=${EXPO_PUBLIC_API_URL}" > .env
 
       - name: Run Mobile Tests
         run: node --test tests/*.test.mjs
@@ -83,12 +104,14 @@ jobs:
           {
             echo
             echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
-            echo "org.gradle.workers.max=2"
+            echo "org.gradle.parallel=true"
+            echo "org.gradle.caching=true"
+            echo "org.gradle.vfs.watch=false"
           } >> android/gradle.properties
 
       - name: Build Release APK
         working-directory: frontend-mobile/android
-        run: ./gradlew :app:assembleRelease --no-daemon --info --stacktrace --console=plain
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace --console=plain
 
       - name: Upload Gradle Failure Diagnostics
         if: failure()
@@ -111,7 +134,7 @@ jobs:
           keystore_file="$signing_directory/tnl-field-release.jks"
           apk_input="android/app/build/outputs/apk/release/app-release.apk"
           apk_aligned="artifacts/tnl-field-release-aligned.apk"
-          apk_output="artifacts/tnl-field-release.apk"
+          apk_latest="artifacts/tc-ct-staff-app-latest.apk"
           build_tools_version="$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
           zipalign="$ANDROID_HOME/build-tools/$build_tools_version/zipalign"
           apksigner="$ANDROID_HOME/build-tools/$build_tools_version/apksigner"
@@ -125,15 +148,16 @@ jobs:
             --ks-key-alias "$ANDROID_KEY_ALIAS" \
             --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
             --key-pass env:ANDROID_KEY_PASSWORD \
-            --out "$apk_output" \
+            --out "$apk_latest" \
             "$apk_aligned"
-          "$apksigner" verify --verbose --print-certs "$apk_output"
+          rm -f "$apk_aligned"
+          "$apksigner" verify --verbose --print-certs "$apk_latest"
 
       - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: tnl-field-android-release-v2
-          path: frontend-mobile/artifacts/tnl-field-release.apk
+          name: tc-ct-staff-app-latest
+          path: frontend-mobile/artifacts/tc-ct-staff-app-latest.apk
           if-no-files-found: error
           retention-days: 30
 

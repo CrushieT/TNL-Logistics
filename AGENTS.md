@@ -34,6 +34,21 @@ Consult the specialized rule files on demand when relevant to the task:
 - [`.agents/rules/answer.md`](.agents/rules/answer.md): Consult for communication tone (direct, plain paragraphs, senior engineer critique, anti-hype, no emojis).
 - [`.agents/rules/karpathy-guidelines.md`](.agents/rules/karpathy-guidelines.md): Reference copy of the core behavioral guidelines active globally.
 
+## Mobile Application Identity & Package Standards
+
+Maintain strict separation between public/testing and client production mobile application identifiers:
+
+- **Origin (Public / Testing / Demo):**
+  - App Name: `TNL Field`
+  - Android Package (`applicationId`): `com.tnllogistics.field`
+  - Expo Slug: `tnl-field`
+  - Never use personal names or developer usernames (e.g. `aundraysteam`) in package identifiers.
+- **Private (Client Production):**
+  - App Name: `TC & CT Staff App`
+  - Android Package (`applicationId`): `com.tcct.staff`
+  - Production Release Output: `tc-ct-staff-app-latest.apk`
+- **Side-by-Side Coexistence Invariant:** The origin testing APK and private client production APK must maintain distinct Android package names (`com.tnllogistics.field` vs `com.tcct.staff`) so both applications can be installed simultaneously on physical devices without package collisions, signature mismatch rejections, or shared storage overwrites.
+
 ## Full Skill Set
 
 This repo has its own `SKILL.md` files that are authoritative over the global file's condensed `/ship`/`/bug`/`/test`/`/audit` summary. They add:

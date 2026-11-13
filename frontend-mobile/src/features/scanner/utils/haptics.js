@@ -15,6 +15,13 @@ export const safeHaptics = {
   selection() {
     return invokeHapticSafely(() => Haptics?.selectionAsync?.());
   },
+  heavy() {
+    return invokeHapticSafely(() => {
+      if (Haptics?.ImpactFeedbackStyle?.Heavy) {
+        return Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      }
+    });
+  },
   success() {
     return invokeHapticSafely(() => {
       if (Haptics?.NotificationFeedbackType?.Success) {

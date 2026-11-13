@@ -2,7 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateShipmentMetrics } from '../src/features/shipments/registrationCalculations.mjs';
 import { calculateTotalCents } from '../src/features/shipments/fixedPointPricing.mjs';
-import { generatePaginationItems } from '../src/features/shipments/parcelPagination.mjs';
+import {
+  clampParcelPage,
+  createParcelPaginationModel,
+  generatePaginationItems,
+  getParcelPageCount,
+  getParcelPageIndex,
+  PARCEL_PAGE_SIZE,
+} from '../src/features/shipments/parcelPagination.mjs';
 
 const baseShipment = {
   quantity: '2',
@@ -153,4 +160,83 @@ test('calculateTotalCents returns null for negative or non-decimal amounts and n
   assert.equal(calculateTotalCents('0', '0'), 0);
   assert.equal(calculateTotalCents(0, 0), 0);
   assert.equal(calculateTotalCents('125.50', '24.50'), 15000);
+});
+
+test('parcel pagination helpers compute page count, clamping, and reverse index correctly', () => {
+  assert.equal(PARCEL_PAGE_SIZE, 10);
+  assert.equal(getParcelPageCount(0), 1);
+  assert.equal(getParcelPageCount(1), 1);
+  assert.equal(getParcelPageCount(10), 1);
+  assert.equal(getParcelPageCount(11), 2);
+  assert.equal(getParcelPageCount(25), 3);
+
+  // Clamping
+  assert.equal(clampParcelPage(-1, 25), 0);
+  assert.equal(clampParcelPage(0, 25), 0);
+  assert.equal(clampParcelPage(1, 25), 1);
+  assert.equal(clampParcelPage(2, 25), 2);
+  assert.equal(clampParcelPage(5, 25), 2);
+
+  // Forward indexing
+  assert.equal(getParcelPageIndex(0, 25, false), 0);
+  assert.equal(getParcelPageIndex(9, 25, false), 0);
+  assert.equal(getParcelPageIndex(10, 25, false), 1);
+  assert.equal(getParcelPageIndex(24, 25, false), 2);
+
+  // Reverse indexing (newest first)
+  // For 25 units: index 24 (Unit #25) is at top of page 0
+  assert.equal(getParcelPageIndex(24, 25, true), 0);
+  // index 15 (Unit #16) is at bottom of page 0 (10th item)
+  assert.equal(getParcelPageIndex(15, 25, true), 0);
+  // index 14 (Unit #15) is at top of page 1
+  assert.equal(getParcelPageIndex(14, 25, true), 1);
+  // index 0 (Unit #1) is at bottom of page 2
+  assert.equal(getParcelPageIndex(0, 25, true), 2);
+});
+
+test('createParcelPaginationModel delivers reverse unit ordering and off-page error detection', () => {
+  const parcels = Array.from({ length: 15 }, (_, i) => ({
+    id: `u-${i + 1}`,
+    seq: i + 1,
+    weightKg: '1.0',
+    lengthCm: '20',
+    widthCm: '20',
+    heightCm: '20',
+  }));
+
+  // Page 0 requested with reverse = true
+  const page0Model = createParcelPaginationModel(parcels, {}, 0, { reverse: true });
+  assert.equal(page0Model.totalUnits, 15);
+  assert.equal(page0Model.totalPages, 2);
+  assert.equal(page0Model.activePage, 0);
+  assert.equal(page0Model.visibleParcels.length, 10);
+  // Newest unit at the top: Unit #15
+  assert.equal(page0Model.visibleParcels[0].parcel.seq, 15);
+  assert.equal(page0Model.visibleParcels[0].globalIndex, 14);
+  // 10th item on page 0: Unit #6
+  assert.equal(page0Model.visibleParcels[9].parcel.seq, 6);
+  assert.equal(page0Model.visibleParcels[9].globalIndex, 5);
+
+  // Page 1
+  const page1Model = createParcelPaginationModel(parcels, {}, 1, { reverse: true });
+  assert.equal(page1Model.activePage, 1);
+  assert.equal(page1Model.visibleParcels.length, 5);
+  // First item on page 1: Unit #5
+  assert.equal(page1Model.visibleParcels[0].parcel.seq, 5);
+  assert.equal(page1Model.visibleParcels[0].globalIndex, 4);
+  // Last item on page 1: Unit #1
+  assert.equal(page1Model.visibleParcels[4].parcel.seq, 1);
+  assert.equal(page1Model.visibleParcels[4].globalIndex, 0);
+
+  // Error detection: unit #2 (index 1) has an error, while viewing Page 0
+  const errors = {
+    parcel_1_weightKg: 'Required',
+    'parcels[14].lengthCm': 'Required',
+  };
+  const modelWithErrors = createParcelPaginationModel(parcels, errors, 0, { reverse: true });
+  // Unit index 14 is on page 0, visible
+  // Unit index 1 is on page 1, off-page
+  assert.deepEqual(modelWithErrors.offPageErrorUnitIndices, [1]);
+  // Error pages: index 14 is on page 0, index 1 is on page 1
+  assert.deepEqual(Array.from(modelWithErrors.errorPageIndices), [0, 1]);
 });

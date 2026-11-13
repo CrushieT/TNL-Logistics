@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Switch, TouchableOpacity, useWindowDimensions } from 'react-native';
 import Card from '../../../components/common/Card';
 import FormField from '../../../components/common/FormField';
@@ -10,6 +10,7 @@ import ParcelUnitsEditor from './ParcelUnitsEditor';
 import ShipmentPricingSummary from './ShipmentPricingSummary';
 import { calculateShipmentMetrics } from '../registrationCalculations.mjs';
 import { calculateTotalCents } from '../fixedPointPricing.mjs';
+import { clampParcelPage, getParcelPageIndex } from '../parcelPagination.mjs';
 import { colors, fonts, spacing, radius, type } from '../../../theme';
 
 const CHARGE_MODELS = [
@@ -53,6 +54,16 @@ export default function ShipmentForm({
     { id: 'unit-1', seq: 1, weightKg: '', lengthCm: '', widthCm: '', heightCm: '' },
   ]);
   const [parcelPage, setParcelPage] = useState(0);
+  const [highlightedUnitSeq, setHighlightedUnitSeq] = useState(null);
+  const highlightTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current) {
+        clearTimeout(highlightTimerRef.current);
+      }
+    };
+  }, []);
 
   // Charges & Options
   const [route, setRoute] = useState('Manila to Daet, Camarines Norte');
@@ -185,9 +196,14 @@ export default function ShipmentForm({
   function performReduceQuantity(targetQty) {
     setParcels((prev) => prev.slice(0, targetQty));
     setQuantityInput(String(targetQty));
-    setErrors((prev) => ({ ...prev, quantity: null }));
-    const maxPage = Math.max(0, Math.ceil(targetQty / 10) - 1);
-    setParcelPage((prev) => Math.min(prev, maxPage));
+    setErrors((prev) => {
+      const next = { ...prev, quantity: null };
+      Object.keys(next).forEach((k) => {
+        if (k.startsWith('parcel_') || k.startsWith('parcels[')) delete next[k];
+      });
+      return next;
+    });
+    setParcelPage((prev) => clampParcelPage(prev, targetQty));
   }
 
   function addUnit() {
@@ -204,7 +220,17 @@ export default function ShipmentForm({
     };
     setParcels((prev) => [...prev, newUnit]);
     setQuantityInput(String(nextSeq));
-    setParcelPage(Math.floor((nextSeq - 1) / 10));
+    setErrors((prev) => ({ ...prev, quantity: null }));
+    setParcelPage(0);
+
+    if (highlightTimerRef.current) {
+      clearTimeout(highlightTimerRef.current);
+    }
+    setHighlightedUnitSeq(nextSeq);
+    highlightTimerRef.current = setTimeout(() => {
+      setHighlightedUnitSeq(null);
+      highlightTimerRef.current = null;
+    }, 4000);
   }
 
   function removeUnit(indexToRemove) {
@@ -234,8 +260,14 @@ export default function ShipmentForm({
       .map((p, idx) => ({ ...p, seq: idx + 1 }));
     setParcels(nextParcels);
     setQuantityInput(String(nextParcels.length));
-    const maxPage = Math.max(0, Math.ceil(nextParcels.length / 10) - 1);
-    setParcelPage((prev) => Math.min(prev, maxPage));
+    setErrors((prev) => {
+      const next = { ...prev, quantity: null };
+      Object.keys(next).forEach((k) => {
+        if (k.startsWith('parcel_') || k.startsWith('parcels[')) delete next[k];
+      });
+      return next;
+    });
+    setParcelPage((prev) => clampParcelPage(prev, nextParcels.length));
   }
 
   function handleConfirmDiscardModal() {
@@ -438,12 +470,14 @@ export default function ShipmentForm({
 
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) {
-      const firstParcelErrorKey = Object.keys(newErrors).find((k) => k.startsWith('parcel_'));
+      const firstParcelErrorKey = Object.keys(newErrors).find(
+        (k) => k.startsWith('parcel_') || k.startsWith('parcels[')
+      );
       if (firstParcelErrorKey) {
-        const match = firstParcelErrorKey.match(/^parcel_(\d+)_/);
+        const match = firstParcelErrorKey.match(/^(?:parcel_(\d+)_|parcels\[(\d+)\]\.)/);
         if (match) {
-          const errorUnitIndex = parseInt(match[1], 10);
-          setParcelPage(Math.floor(errorUnitIndex / 10));
+          const errorUnitIndex = parseInt(match[1] !== undefined ? match[1] : match[2], 10);
+          setParcelPage(getParcelPageIndex(errorUnitIndex, parcels.length, true));
         }
       }
     }
@@ -754,14 +788,25 @@ export default function ShipmentForm({
           <View style={[styles.gridCol, isMobile ? styles.colFull : isTablet ? styles.colHalf : styles.colFourth, styles.addUnitCol]}>
             <Text style={type.label}>Add Parcel</Text>
             <TouchableOpacity
-              style={styles.addUnitButton}
+              style={[styles.addUnitButton, parcels.length >= 1000 && styles.addUnitButtonDisabled]}
               onPress={addUnit}
               disabled={parcels.length >= 1000}
+              accessibilityRole="button"
+              accessibilityLabel={`Add unit ${parcels.length + 1}`}
             >
               <Text style={styles.addUnitButtonText}>+ Add Unit #{parcels.length + 1}</Text>
             </TouchableOpacity>
           </View>
         </View>
+
+        {highlightedUnitSeq ? (
+          <View style={styles.unitAddedBanner} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            <View style={styles.unitAddedDot} />
+            <Text style={styles.unitAddedText}>
+              Unit #{highlightedUnitSeq} added at the top ({parcels.length} {parcels.length === 1 ? 'unit' : 'units'} total)
+            </Text>
+          </View>
+        ) : null}
 
         {/* Row 2: Per-Unit Measurements Editor (Paginated) */}
         <ParcelUnitsEditor
@@ -771,7 +816,7 @@ export default function ShipmentForm({
           onPageChange={setParcelPage}
           onUpdateParcelField={updateParcelField}
           onRemoveUnit={removeUnit}
-          pageSize={10}
+          highlightedUnitSeq={highlightedUnitSeq}
         />
 
         {/* Row 3: Live Rating Breakdown & Summary */}
@@ -1116,12 +1161,42 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: spacing.xs,
     backgroundColor: '#FFFFFF',
+    minHeight: 40,
+  },
+  addUnitButtonDisabled: {
+    opacity: 0.35,
+    borderColor: colors.border,
   },
   addUnitButtonText: {
     fontFamily: fonts.sans,
     fontSize: 12,
     fontWeight: '700',
     color: colors.ink,
+  },
+  unitAddedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF9EE',
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+    borderRadius: radius.sm,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  unitAddedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#D97706',
+  },
+  unitAddedText: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#92400E',
+    flex: 1,
   },
   footerRow: {
     flexDirection: 'row',

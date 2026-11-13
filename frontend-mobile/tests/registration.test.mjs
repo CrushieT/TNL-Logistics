@@ -406,6 +406,33 @@ test('pagination slicing, page clamping, and off-page error detection logic', ()
   assert.equal(getParcelPageIndex(22), 2);
   assert.equal(clampParcelPage(-1, 25), 0);
   assert.equal(clampParcelPage(10, 25), 2);
+
+  // Reverse mode: newest units appear at the top
+  const reverseFirstPage = createParcelPaginationModel(parcels, errors, 0, { reverse: true });
+  assert.equal(reverseFirstPage.totalPages, 3);
+  assert.equal(reverseFirstPage.visibleParcels.length, 10);
+  assert.equal(reverseFirstPage.visibleParcels[0].parcel.seq, 25);
+  assert.equal(reverseFirstPage.visibleParcels[0].globalIndex, 24);
+  assert.equal(reverseFirstPage.visibleParcels[9].parcel.seq, 16);
+  assert.equal(reverseFirstPage.visibleParcels[9].globalIndex, 15);
+  // Unit index 22 (seq 23) is visible on page 0; indices 5 and 12 are off-page
+  assert.deepEqual(reverseFirstPage.offPageErrorUnitIndices, [5, 12]);
+  assert.deepEqual(Array.from(reverseFirstPage.errorPageIndices), [0, 1]);
+
+  const reverseLastPage = createParcelPaginationModel(parcels, errors, 99, { reverse: true });
+  assert.equal(reverseLastPage.activePage, 2);
+  assert.equal(reverseLastPage.visibleParcels.length, 5);
+  assert.equal(reverseLastPage.visibleParcels[0].parcel.seq, 5);
+  assert.equal(reverseLastPage.visibleParcels[0].globalIndex, 4);
+  assert.equal(reverseLastPage.visibleParcels[4].parcel.seq, 1);
+  assert.equal(reverseLastPage.visibleParcels[4].globalIndex, 0);
+
+  // Reverse getParcelPageIndex mappings
+  assert.equal(getParcelPageIndex(24, 25, true), 0);
+  assert.equal(getParcelPageIndex(22, 25, true), 0);
+  assert.equal(getParcelPageIndex(12, 25, true), 1);
+  assert.equal(getParcelPageIndex(5, 25, true), 1);
+  assert.equal(getParcelPageIndex(0, 25, true), 2);
 });
 
 test('adding a unit copies previous unit measurements while quantity input leaves new units empty', () => {

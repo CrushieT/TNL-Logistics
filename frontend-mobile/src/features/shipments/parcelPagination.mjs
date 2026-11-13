@@ -5,8 +5,12 @@ export function getParcelPageCount(totalUnits) {
   return Math.max(1, Math.ceil(normalizedTotal / PARCEL_PAGE_SIZE));
 }
 
-export function getParcelPageIndex(unitIndex) {
+export function getParcelPageIndex(unitIndex, totalUnits = null, reverse = false) {
   const normalizedIndex = Number.isInteger(unitIndex) && unitIndex > 0 ? unitIndex : 0;
+  if (reverse && Number.isInteger(totalUnits) && totalUnits > 0) {
+    const reversedIndex = Math.max(0, totalUnits - 1 - normalizedIndex);
+    return Math.floor(reversedIndex / PARCEL_PAGE_SIZE);
+  }
   return Math.floor(normalizedIndex / PARCEL_PAGE_SIZE);
 }
 
@@ -197,17 +201,26 @@ export function generatePaginationItems(activePage, totalPages, jumpStep = 5) {
   ];
 }
 
-export function createParcelPaginationModel(parcels = [], errors = {}, requestedPage = 0) {
+export function createParcelPaginationModel(parcels = [], errors = {}, requestedPage = 0, options = {}) {
   const safeParcels = Array.isArray(parcels) ? parcels : [];
   const totalUnits = safeParcels.length;
   const totalPages = getParcelPageCount(totalUnits);
   const activePage = clampParcelPage(requestedPage, totalUnits);
+  const reverse = Boolean(options?.reverse);
   const startIndex = activePage * PARCEL_PAGE_SIZE;
   const endIndex = Math.min(startIndex + PARCEL_PAGE_SIZE, totalUnits);
-  const visibleParcels = safeParcels.slice(startIndex, endIndex).map((parcel, localIndex) => ({
+
+  let indexedParcels = safeParcels.map((parcel, globalIndex) => ({
     parcel,
-    globalIndex: startIndex + localIndex,
+    globalIndex,
   }));
+
+  if (reverse) {
+    indexedParcels.reverse();
+  }
+
+  const visibleParcels = indexedParcels.slice(startIndex, endIndex);
+  const visibleIndices = new Set(visibleParcels.map((item) => item.globalIndex));
   const errorUnitIndices = new Set();
 
   Object.keys(errors || {}).forEach((key) => {
@@ -219,9 +232,13 @@ export function createParcelPaginationModel(parcels = [], errors = {}, requested
 
   const sortedErrorUnitIndices = Array.from(errorUnitIndices).sort((left, right) => left - right);
   const offPageErrorUnitIndices = sortedErrorUnitIndices.filter(
-    (unitIndex) => unitIndex < startIndex || unitIndex >= endIndex,
+    (unitIndex) => !visibleIndices.has(unitIndex),
   );
-  const errorPageIndices = new Set(sortedErrorUnitIndices.map(getParcelPageIndex));
+  const errorPageIndices = new Set(
+    sortedErrorUnitIndices
+      .map((unitIndex) => getParcelPageIndex(unitIndex, totalUnits, reverse))
+      .sort((a, b) => a - b),
+  );
   const paginationItems = generatePaginationItems(activePage, totalPages);
 
   return {
