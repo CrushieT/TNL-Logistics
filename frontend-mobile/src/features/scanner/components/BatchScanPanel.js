@@ -33,8 +33,16 @@ export default function BatchScanPanel({
   role
 }) {
   const allowedOperations = getAllowedBatchOperations(role);
-  const isVehicleRequired = operation === 'LOADED_ON_TRUCK';
-  const canSubmit = canSubmitBatch(queue, operation, selectedVehicleId, role) && !isSubmitting && isOnline;
+  const isSingleAllowedOp = allowedOperations.length === 1;
+  const effectiveOperation = operation || (isSingleAllowedOp ? allowedOperations[0] : null);
+  const isVehicleRequired = effectiveOperation === 'LOADED_ON_TRUCK';
+  const canSubmit = canSubmitBatch(queue, effectiveOperation, selectedVehicleId, role) && !isSubmitting && isOnline;
+
+  React.useEffect(() => {
+    if (isSingleAllowedOp && operation !== allowedOperations[0] && typeof onSelectOperation === 'function') {
+      onSelectOperation(allowedOperations[0]);
+    }
+  }, [isSingleAllowedOp, allowedOperations, operation, onSelectOperation]);
 
   const renderQueueItem = ({ item, index }) => (
     <View style={styles.queueItemRow}>
@@ -53,30 +61,35 @@ export default function BatchScanPanel({
 
   return (
     <View style={styles.container}>
-      {/* Operation Selection Segment */}
-      <View style={styles.operationSection}>
-        <Text style={styles.sectionEyebrow}>TARGET OPERATION *</Text>
-        <View style={styles.operationButtonsRow}>
-          {allowedOperations.map((op) => {
-            const isSelected = operation === op;
-            return (
-              <TouchableOpacity
-                key={op}
-                style={[styles.opButton, isSelected && styles.opButtonSelected]}
-                onPress={() => onSelectOperation(op)}
-                disabled={isSubmitting || !isOnline}
-              >
-                <Text style={[styles.opButtonText, isSelected && styles.opButtonTextSelected]}>
-                  {formatStatusLabel(op)}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+      {/* Operation Selection Segment - only shown when there are multiple operations to choose from */}
+      {allowedOperations.length > 1 && (
+        <View style={styles.operationSection}>
+          <Text style={styles.sectionEyebrow}>TARGET OPERATION *</Text>
+          <View style={styles.operationButtonsRow}>
+            {allowedOperations.map((op) => {
+              const isSelected = effectiveOperation === op;
+              return (
+                <TouchableOpacity
+                  key={op}
+                  style={[styles.opButton, isSelected && styles.opButtonSelected]}
+                  onPress={() => onSelectOperation(op)}
+                  disabled={isSubmitting || !isOnline}
+                >
+                  <Text style={[styles.opButtonText, isSelected && styles.opButtonTextSelected]}>
+                    {formatStatusLabel(op)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
-        {allowedOperations.length === 0 && (
+      )}
+
+      {allowedOperations.length === 0 && (
+        <View style={styles.operationSection}>
           <Text style={styles.permissionMessage}>No Rapid Batch operations are permitted for this role.</Text>
-        )}
-      </View>
+        </View>
+      )}
 
       {/* Vehicle Selection when LOADED_ON_TRUCK is chosen */}
       {isVehicleRequired && (
@@ -104,8 +117,8 @@ export default function BatchScanPanel({
 
       {/* Queue Header & Counter */}
       <View style={styles.queueHeaderRow}>
-        <View style={styles.queueCountBadge}>
-          <Text style={styles.queueCountText}>
+        <View style={[styles.queueCountBadge, queue.length > 0 && styles.queueCountBadgeActive]}>
+          <Text style={[styles.queueCountText, queue.length > 0 && styles.queueCountTextActive]}>
             {queue.length} / {MAX_BATCH_SIZE} PARCELS
           </Text>
         </View>
@@ -122,7 +135,7 @@ export default function BatchScanPanel({
           <View style={styles.emptyQueueBox}>
             <Icon source="barcode-scan" size={28} color={colors.inkFaint} />
             <Text style={styles.emptyQueueTitle}>
-              {!operation
+              {!effectiveOperation
                 ? 'Select an operation above to begin scanning'
                 : isVehicleRequired && !selectedVehicleId
                 ? 'Select a vehicle above to begin scanning'
@@ -272,15 +285,23 @@ const styles = StyleSheet.create({
   },
   queueCountBadge: {
     backgroundColor: colors.canvas,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.border
   },
+  queueCountBadgeActive: {
+    backgroundColor: '#0F172A',
+    borderColor: '#0F172A',
+  },
   queueCountText: {
     ...typography.eyebrow,
     color: colors.ink
+  },
+  queueCountTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   clearBatchText: {
     fontSize: 12,
@@ -333,7 +354,7 @@ const styles = StyleSheet.create({
   },
   queueTrackingId: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: 'monospace',
     fontWeight: '700',
     color: colors.ink
@@ -349,16 +370,19 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     backgroundColor: colors.accent,
-    paddingVertical: 12,
+    minHeight: 52,
+    paddingVertical: 14,
     borderRadius: radius.sm,
-    alignItems: 'center'
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   submitButtonDisabled: {
     backgroundColor: '#D9D8D3'
   },
   submitButtonText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF'
+    color: '#FFFFFF',
+    letterSpacing: 0.3
   }
 });
