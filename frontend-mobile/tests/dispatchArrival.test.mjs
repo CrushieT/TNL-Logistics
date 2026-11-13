@@ -404,7 +404,7 @@ test('switch shipment action appears above cancel', async () => {
   assert.ok(labels.indexOf('Switch shipment') < labels.indexOf('Cancel'));
 });
 
-function feedback(screen) { return nodes(screen.render()).find((node) => node.type === 'ScanFeedbackBanner').props; }
+function feedback(screen) { return nodes(screen.render()).find((node) => node.type === 'ScanFeedbackBanner')?.props || null; }
 
 test('arrival reports checking, queue count, duplicates, and confirmed arrival separately', async () => {
   const screen = await arrival();
@@ -434,8 +434,7 @@ test('courier single scan reports checking and review before a confirmed status 
   assert.equal(feedback(screen).kind, 'loading');
   request.resolve({ ...context(parcelId(1)), currentStatusCode: 'QR_GENERATED', nextStatusCode: 'LOADED_ON_TRUCK', requiresVehicle: true });
   await pending; await screen.flush();
-  assert.equal(feedback(screen).kind, 'info');
-  assert.match(feedback(screen).message, /status unchanged/);
+  assert.equal(feedback(screen).message, undefined);
   let review = nodes(screen.render()).find((node) => node.props.onConfirm);
   review.props.onSelectVehicle('VH-TEST'); screen.render();
   review = nodes(screen.render()).find((node) => node.props.onConfirm);

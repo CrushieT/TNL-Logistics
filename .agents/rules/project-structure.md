@@ -3,14 +3,6 @@
 ### Dispatch arrival and courier truck loading
 
 - `frontend-mobile/tests/dispatchArrival.test.mjs`: executes the production dispatch screen with mocked native/API boundaries; covers camera/manual arrival queueing, capacity, duplicates, eligibility, retries, offline/busy controls, discard/navigation, session ownership, and obsolete requests.
-- `.review/archive/dispatch-arrival-verification.md`: scoped implementation evidence, verification commands, fixture adjustments, and device acceptance checklist.
-
-### Local review artifacts
-
-- `.review/current/`: active plans and deployment guidance, including `post-release-client-changes-plan.md` for QR labels, document copies, shipment fee editing, and courier scanning; `deployment/railway-deployment-runbook.md` and `deployment/railway-production-handover-summary.md` for live Railway deployment, standalone APK stabilization, and client First Boot handover.
-- `.review/current/soa-cycle-versioning-plan.md`: agreed collection cutoff, SOA versioning, implementation handoff, and verification criteria.
-- `.review/archive/`: completed client-demo, SSE, and release verification artifacts. The final release evidence is grouped in `archive/release-v1.4.0/`.
-- `.review/performance/`: performance investigations and diagnostic scripts, kept at their working paths.
 
 ### Android Bluetooth printer permission and discovery verification
 
@@ -88,7 +80,6 @@
 
 ### Lost parcel workflow
 
-- `.review/lost-parcel-evidence.md`: scoped test results, audit, remediation log, and manual acceptance guide.
 - `backend/src/main/java/com/tnl/logistics/service/ParcelCustodyLocks.java`: ordered shipment/waybill/parcel locks and fresh locked state.
 - `backend/src/main/java/com/tnl/logistics/service/ParcelExceptionService.java`: authenticated Admin commands, replay protection, closure, and reopening.
 - `backend/src/main/java/com/tnl/logistics/model/ParcelExceptionCommand.java` and `repository/ParcelExceptionCommandRepository.java`: shared command request-ID registry.
@@ -98,8 +89,6 @@
 - `frontend-web/src/components/common/ExceptionAction.js`: Admin confirmation, reason, retry, and conflict-review interaction.
 - `frontend-web/tests/parcelException.test.mjs`: confirmation behavior and lost-manifest reprints.
 - `frontend-mobile/tests/parcelLoss.test.mjs`: loss-aware scanner, revision gates, and reprints.
-
-- `.review/lost-parcel-plan.md`: implementation slices, threat controls, and acceptance scope.
 - `backend/src/main/resources/db/migration/V39__add_parcel_loss_reconciliation.sql`: additive loss, revision, and audit persistence.
 - `backend/src/main/java/com/tnl/logistics/dto/ParcelExceptionRequest.java`: validated Admin exception command.
 - `backend/src/main/java/com/tnl/logistics/model/ParcelLossEvent.java` and `WaybillReconciliationEvent.java`: immutable exception history.
@@ -108,7 +97,6 @@
 ### V34 managed-MySQL compatibility
 
 - `backend/src/test/java/com/tnl/logistics/migration/V34PrimaryKeyMigrationIntegrationTest.java`: isolated local upgrade, backfill rejection, and recovery tests with required primary keys enabled.
-- `.review/v34-primary-key-recovery.md`: controlled recovery procedure for the failed deployed migration and applied-migration checksum handling.
 
 ### Pricing parity and registration retry additions
 
@@ -117,7 +105,6 @@
 - `frontend-web/tests/pricingParity.test.mjs`: identical boundary vectors against both calculators.
 - `frontend-mobile/tests/pricingParity.test.mjs`: mobile suite entry for the same parity vectors.
 - `frontend-web/tests/registrationRetry.test.mjs`: production form and screen retry regressions.
-- `.review/pricing-retry-evidence.md`: verification, scoped audit, and merge review evidence.
 
 ### Mobile account-switch additions
 
@@ -128,7 +115,6 @@
 - `backend/src/test/java/com/tnl/logistics/support/TestSessionTokenFactory.java`: binding-scoped test sessions.
 - `frontend-mobile/src/features/auth/services/sessionCoordinator.mjs`: session generations and serialized persistence.
 - `frontend-mobile/tests/accountSwitch.test.mjs`: stale-response and storage-failure regressions.
-- `.review/mobile-account-switch-evidence.md`: threat model and verification evidence.
 
 ### First-boot financial setup
 
@@ -350,7 +336,7 @@ tnl-logistics/
 - `frontend-mobile/src/features/waybills/waybillOptionsFlow.mjs`: pure option parameter construction, page merging, recommendation bounds, and cancellable request coordination.
 - `frontend-mobile/tests/waybillOptions.test.mjs`: unit tests for returned waybill pagination, recommendation capping, and cancellation.
 
-Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. The final account entity and DTOs expose role-only identities. `.review/four-role-ship-3-evidence.md` retains the baseline capability trace, company-column removal evidence, migration controls, and final verification reports.
+Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. The final account entity and DTOs expose role-only identities.
 
 ### 50,000-shipment read optimization
 - `backend/src/main/java/com/tnl/logistics/dto/CollectionTotals.java`: internal shared collection totals DTO (total due, total collected, outstanding balance, active clients count) for Dashboard and Weekly Collections.
@@ -399,7 +385,6 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 ### Shipment current vehicle columns
 - `frontend-web/tests/shipmentVehicles.test.mjs`: executes shipment table and detail screen rendering for current and historical display vehicles, blank plates, missing fields, lost packages, pagination, View, and Reprint actions.
 - Existing `ShipmentIntegrationTest` includes cold-context SQL capture, separate custody/display assignments, and deterministic bulk truck-history regressions. `TrackingAndVehicleIntegrationTest` verifies retained display through arrival and hauler loading alongside decreased fleet occupancy; no new backend package or endpoint.
-- `.review/archive/transport-truck-display.md`: local transport truck display verification report, changed-file rationale, and pending browser/device acceptance checklist.
 
 ### Release checkpoint remediation
 - `backend/src/main/java/com/tnl/logistics/service/PaymentCollectibility.java`: shared shipment/SOA collectible balance calculation.
@@ -424,12 +409,6 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 
 - `backend/src/main/resources/db/migration/V42__bind_soa_version_requests.sql`: additive immutable request-to-version bindings, including Ensure-V1 responses that reuse an existing snapshot. Existing snapshots and V41 are retained.
 
-- `.review/current/soa-remediation.md`: results, per-file manifest, raw evidence references, and manual acceptance checks.
-- `.review/current/soa-print-fixture.cjs` and `.review/current/soa-print-fixture.html`: production paper/print-CSS fixture generator and output.
-- `.review/current/soa-render-pdf.ps1`, `.review/current/soa-print-verification.pdf`, `.review/current/soa-print-verification.png`, and `.review/current/soa-pdf-page-1.png` through `soa-pdf-page-4.png`: PDF inspection evidence.
-- `.review/current/soa-pdf-preview.png`: unsuccessful PDF-viewer screenshot, excluded from acceptance evidence.
-- `.review/current/soa-*.log`: raw baseline, integration, migration, frontend, print, immutability, and export results, enumerated in the remediation report.
-
 ### Web navigation visited-route memory and directory filter persistence
 
 - `frontend-web/src/services/navigation/navigationState.mjs`: pure, dependency-free navigation state manager backed by `sessionStorage` with in-memory fallback for SSR and test runners; manages section last-visited sub-routes (`saveSectionRoute`, `getSectionRoute`, `clearSectionRoute`), directory filter and pagination states (`savePageState`, `getPageState`, `clearPageState`), and session-purging on sign out (`clearAllNavigationState`).
@@ -440,5 +419,4 @@ Ship 3 removed `backend/src/main/java/com/tnl/logistics/model/StaffType.java`. T
 
 - `frontend-mobile/src/features/scanner/components/ScanFeedbackBanner.js`: shared accessible checking, success, warning, and error feedback; short success/info expiry with timer cleanup.
 - `frontend-mobile/tests/scanFeedback.test.mjs`: production banner timer/accessibility and barcode modal lifecycle/feedback tests.
-- `.review/archive/mobile-scan-feedback.md`: implementation evidence and manual acceptance for courier, dispatch, and reusable barcode scanning.
 - `.github/PR_DRAFT.md`: arrival display terminology PR description, verification, scoped audit, and manual acceptance checklist.

@@ -32,6 +32,7 @@ import {
   canActivateCamera,
   getScannerConnectivity,
   isRoleTransitionAllowed,
+  getAllowedBatchOperations,
   validateBatchCandidate
 } from '../../features/scanner/scannerFlow.mjs';
 import {
@@ -75,9 +76,25 @@ export default function ScanScreen() {
 
   const [state, dispatch] = useReducer(scannerReducer, initialScannerState);
   const [scanFeedback, setScanFeedback] = useState(null);
+  const [scanOutcome, setScanOutcome] = useState(null);
+  const scanOutcomeTimerRef = useRef(null);
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [isScreenFocused, setIsScreenFocused] = useState(true);
   const [cameraMountKey, setCameraMountKey] = useState(0);
+
+  const triggerScanOutcome = useCallback((outcome) => {
+    if (scanOutcomeTimerRef.current) {
+      clearTimeout(scanOutcomeTimerRef.current);
+    }
+    setScanOutcome(outcome);
+    scanOutcomeTimerRef.current = setTimeout(() => {
+      setScanOutcome(null);
+      scanOutcomeTimerRef.current = null;
+    }, outcome === 'error' ? 600 : 500);
+  }, []);
+  const allowedBatchOperations = useMemo(() => getAllowedBatchOperations(user?.role), [user?.role]);
+  const isSingleBatchOperation = allowedBatchOperations.length === 1;
+  const effectiveBatchOperation = state.batchOperation || (isSingleBatchOperation ? allowedBatchOperations[0] : null);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [cameraHeightIndex, setCameraHeightIndex] = useState(DEFAULT_CAMERA_HEIGHT_INDEX);
 
@@ -242,11 +259,14 @@ export default function ScanScreen() {
     }, [animatedCameraHeight, animateCameraToIndex])
   );
 
-  // Clear cooldown timer on unmount
+  // Clear cooldown and outcome timers on unmount
   useEffect(() => {
     return () => {
       if (cooldownTimerRef.current) {
         clearTimeout(cooldownTimerRef.current);
+      }
+      if (scanOutcomeTimerRef.current) {
+        clearTimeout(scanOutcomeTimerRef.current);
       }
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -429,15 +449,39 @@ export default function ScanScreen() {
     vehicleOptionCoordinatorRef.current.cancelAll();
   }, []);
 
-  // When switching to BATCH with LOADED_ON_TRUCK, load vehicles
+  // Auto-select batch operation when sole allowed operation exists (e.g. LOADED_ON_TRUCK for COURIER_STAFF)
   useEffect(() => {
-    if (state.mode === SCANNER_MODES.BATCH
-      && state.batchOperation === 'LOADED_ON_TRUCK'
-      && isRoleTransitionAllowed(user?.role, state.batchOperation)
-      && vehicles.length === 0) {
-      loadRecentVehicleOptions();
+    if (state.mode === SCANNER_MODES.BATCH) {
+      if (isSingleBatchOperation && state.batchOperation !== allowedBatchOperations[0]) {
+        dispatch({ type: 'SET_BATCH_OPERATION', payload: allowedBatchOperations[0] });
+      }
     }
-  }, [state.mode, state.batchOperation, vehicles.length, loadRecentVehicleOptions, user?.role]);
+  }, [state.mode, isSingleBatchOperation, allowedBatchOperations, state.batchOperation]);
+
+  // When switching to BATCH, load vehicles immediately if LOADED_ON_TRUCK is active or sole allowed operation
+  useEffect(() => {
+    if (state.mode === SCANNER_MODES.BATCH) {
+      const isLoadedOnTruck = effectiveBatchOperation === 'LOADED_ON_TRUCK';
+
+      if (isLoadedOnTruck
+        && isRoleTransitionAllowed(user?.role, 'LOADED_ON_TRUCK')
+        && vehicles.length === 0
+        && !hasLoadedVehicleOptions
+        && !loadingVehicles
+        && !vehicleLoadError) {
+        loadRecentVehicleOptions();
+      }
+    }
+  }, [
+    state.mode,
+    effectiveBatchOperation,
+    vehicles.length,
+    loadRecentVehicleOptions,
+    user?.role,
+    hasLoadedVehicleOptions,
+    loadingVehicles,
+    vehicleLoadError
+  ]);
 
   // When in SINGLE review requiring vehicle, ensure vehicles are loaded
   useEffect(() => {
@@ -491,6 +535,7 @@ export default function ScanScreen() {
       const normalized = normalizeTrackingId(rawValue);
 
       if (!normalized.isValid) {
+        triggerScanOutcome('error');
         void safeHaptics.error();
         dispatch({ type: 'SET_ERROR', payload: normalized.error });
         scanLockRef.current = false;
@@ -510,10 +555,22 @@ export default function ScanScreen() {
         const context = await trackingScanApi.getScanContext(normalized.trackingId, controller.signal);
         if (controller.signal.aborted) return;
         const isAllowed = context.canScan && isRoleTransitionAllowed(user?.role, context.nextStatusCode);
-        setScanFeedback({ kind: isAllowed ? 'info' : 'error', message: isAllowed
-          ? `${context.trackingId} found. Review truck loading; status unchanged.`
-          : context.scanBlockedReason || 'This parcel is not eligible for courier truck loading.' });
-        if (isAllowed) void safeHaptics.selection(); else void safeHaptics.warning();
+        if (isAllowed) {
+          if (user?.role === 'COURIER_STAFF') {
+            setScanFeedback(null);
+          } else {
+            setScanFeedback({ kind: 'info', message: `${context.trackingId} found. Review truck loading; status unchanged.` });
+          }
+          triggerScanOutcome('success');
+          void safeHaptics.selection();
+        } else {
+          setScanFeedback({
+            kind: 'error',
+            message: context.scanBlockedReason || 'This parcel is not eligible for courier truck loading.'
+          });
+          triggerScanOutcome('error');
+          void safeHaptics.warning();
+        }
         dispatch({ type: 'SET_CONTEXT', payload: context });
         if (context.requiresVehicle
           && isRoleTransitionAllowed(user?.role, context.nextStatusCode)
@@ -523,6 +580,7 @@ export default function ScanScreen() {
       } catch (err) {
         if (controller.signal.aborted || err.name === 'CanceledError' || err.name === 'AbortError') return;
         setScanFeedback(null);
+        triggerScanOutcome('error');
         void safeHaptics.error();
         const msg = err.response?.data?.message || err.message || 'Failed to retrieve scan context.';
         dispatch({
@@ -536,17 +594,17 @@ export default function ScanScreen() {
       if (state.phase !== SCANNER_PHASES.BATCH_READY) {
         return;
       }
-      if (!state.batchOperation) {
+      if (!effectiveBatchOperation) {
         void safeHaptics.warning();
         dispatch({ type: 'SET_ERROR', payload: 'Please select a target operation before scanning parcels.' });
         return;
       }
-      if (!isRoleTransitionAllowed(user?.role, state.batchOperation)) {
+      if (!isRoleTransitionAllowed(user?.role, effectiveBatchOperation)) {
         void safeHaptics.warning();
         dispatch({ type: 'RECONCILE_ROLE_PERMISSIONS', payload: user?.role });
         return;
       }
-      if (state.batchOperation === 'LOADED_ON_TRUCK' && !state.batchVehicleId) {
+      if (effectiveBatchOperation === 'LOADED_ON_TRUCK' && !state.batchVehicleId) {
         void safeHaptics.warning();
         dispatch({ type: 'SET_ERROR', payload: 'Please select an active vehicle before scanning parcels.' });
         return;
@@ -556,6 +614,7 @@ export default function ScanScreen() {
       const normalized = normalizeTrackingId(rawValue);
 
       if (!normalized.isValid) {
+        triggerScanOutcome('error');
         void safeHaptics.error();
         dispatch({ type: 'SET_ERROR', payload: normalized.error });
         cooldownTimerRef.current = setTimeout(() => { scanLockRef.current = false; }, 750);
@@ -563,15 +622,17 @@ export default function ScanScreen() {
       }
 
       if (state.batchQueue.includes(normalized.trackingId)) {
+        triggerScanOutcome('error');
         void safeHaptics.warning();
-        dispatch({ type: 'SET_ERROR', payload: `Parcel ${normalized.trackingId} is already in the batch.` });
+        dispatch({ type: 'SET_ERROR', payload: `ALREADY SCANNED: Parcel ${normalized.trackingId} is already in the batch.` });
         cooldownTimerRef.current = setTimeout(() => { scanLockRef.current = false; }, 750);
         return;
       }
 
       if (state.batchQueue.length >= MAX_BATCH_SIZE) {
+        triggerScanOutcome('error');
         void safeHaptics.error();
-        dispatch({ type: 'SET_ERROR', payload: `Batch queue limit reached (${MAX_BATCH_SIZE} parcels).` });
+        dispatch({ type: 'SET_ERROR', payload: `BATCH FULL: Limit reached (${MAX_BATCH_SIZE} parcels). Tap Submit below.` });
         cooldownTimerRef.current = setTimeout(() => { scanLockRef.current = false; }, 750);
         return;
       }
@@ -587,9 +648,10 @@ export default function ScanScreen() {
       try {
         const context = await trackingScanApi.getScanContext(normalized.trackingId, controller.signal);
         if (controller.signal.aborted) return;
-        const validation = validateBatchCandidate(context, state.batchOperation, user?.role);
+        const validation = validateBatchCandidate(context, effectiveBatchOperation, user?.role);
 
         if (!validation.isValid) {
+          triggerScanOutcome('error');
           void safeHaptics.warning();
           setScanFeedback(null);
           dispatch({ type: 'SET_ERROR', payload: validation.error });
@@ -597,6 +659,7 @@ export default function ScanScreen() {
           return;
         }
 
+        triggerScanOutcome('success');
         void safeHaptics.success();
         dispatch({ type: 'ADD_TO_BATCH', payload: normalized.trackingId });
         setScanFeedback({ kind: 'success', message: `${normalized.trackingId} added to queue. ${state.batchQueue.length + 1} queued.` });
@@ -608,6 +671,7 @@ export default function ScanScreen() {
       } catch (err) {
         if (controller.signal.aborted || err.name === 'CanceledError' || err.name === 'AbortError') return;
         setScanFeedback(null);
+        triggerScanOutcome('error');
         void safeHaptics.error();
         const msg = err.response?.data?.message || err.message || 'Failed to verify parcel status.';
         dispatch({ type: 'SET_ERROR', payload: msg });
@@ -644,10 +708,12 @@ export default function ScanScreen() {
         user?.role
       );
       const res = await trackingScanApi.submitSingleScan(payload);
+      triggerScanOutcome('success');
       void safeHaptics.success();
       dispatch({ type: 'SET_SINGLE_RESULT', payload: res });
       setScanFeedback({ kind: 'success', message: res.transitionApplied === false ? 'Truck loading was already recorded.' : 'Truck loading recorded.' });
     } catch (err) {
+      triggerScanOutcome('error');
       void safeHaptics.error();
       const msg = err.response?.data?.message || err.message || 'Status update failed.';
       dispatch({ type: 'SUBMISSION_FAILED', payload: msg });
@@ -669,11 +735,12 @@ export default function ScanScreen() {
     try {
       const payload = buildBatchScanRequest(
         state.batchQueue,
-        state.batchOperation,
+        effectiveBatchOperation,
         state.batchVehicleId,
         user?.role
       );
       const responses = await trackingScanApi.submitBatchScan(payload);
+      triggerScanOutcome('success');
       void safeHaptics.success();
       setScanFeedback({ kind: 'success', message: 'Batch processed. Review the recorded results below.' });
       const transitionedCount = responses.filter((r) => r.transitionApplied).length;
@@ -686,11 +753,12 @@ export default function ScanScreen() {
           totalRequested: responses.length,
           transitionedCount,
           idempotentCount,
-          targetStatus: state.batchOperation,
+          targetStatus: effectiveBatchOperation,
           vehiclePlateNumber: assignedVehicle ? `${assignedVehicle.plateNumber} (${assignedVehicle.vehicleId})` : null
         }
       });
     } catch (err) {
+      triggerScanOutcome('error');
       void safeHaptics.error();
       const msg = err.response?.data?.message || err.message || 'Batch submission failed.';
       dispatch({ type: 'SUBMISSION_FAILED', payload: msg });
@@ -738,7 +806,7 @@ export default function ScanScreen() {
     cameraError: state.cameraError,
     phase: state.phase,
     mode: state.mode,
-    batchOperation: state.batchOperation,
+    batchOperation: effectiveBatchOperation,
     batchVehicleId: state.batchVehicleId,
     role: user?.role
   });
@@ -814,13 +882,14 @@ export default function ScanScreen() {
             !connectivity.isOnline
               ? 'Internet connection required to scan parcels'
               : state.mode === SCANNER_MODES.BATCH &&
-            state.batchOperation === 'LOADED_ON_TRUCK' &&
+            effectiveBatchOperation === 'LOADED_ON_TRUCK' &&
             !state.batchVehicleId
               ? 'Please select an active vehicle below to start scanning'
               : 'Camera preview paused'
           }
           viewfinderHeight={viewfinderHeight}
           animatedHeight={animatedCameraHeight}
+          scanOutcome={scanOutcome}
         />
 
         <View
@@ -975,7 +1044,7 @@ export default function ScanScreen() {
           {state.mode === SCANNER_MODES.BATCH &&
             (state.phase === SCANNER_PHASES.BATCH_READY || state.phase === SCANNER_PHASES.BATCH_SUBMITTING) && (
               <BatchScanPanel
-                operation={state.batchOperation}
+                operation={effectiveBatchOperation}
                 onSelectOperation={(op) => dispatch({ type: 'SET_BATCH_OPERATION', payload: op })}
                 vehicles={vehicles}
                 selectedVehicleId={state.batchVehicleId}

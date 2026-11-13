@@ -152,6 +152,20 @@ export default function DispatchWaybillsScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setErrorState] = useState('');
   const [notice, setNotice] = useState('');
+  const [scanOutcome, setScanOutcome] = useState(null);
+  const scanOutcomeTimerRef = useRef(null);
+
+  const triggerScanOutcome = useCallback((outcome) => {
+    if (scanOutcomeTimerRef.current) {
+      clearTimeout(scanOutcomeTimerRef.current);
+    }
+    setScanOutcome(outcome);
+    scanOutcomeTimerRef.current = setTimeout(() => {
+      setScanOutcome(null);
+      scanOutcomeTimerRef.current = null;
+    }, outcome === 'error' ? 600 : 500);
+  }, []);
+
   const setError = useCallback((message) => {
     setErrorState(message);
     if (message) setNotice('');
@@ -306,6 +320,9 @@ export default function DispatchWaybillsScreen() {
         setIsKeyboardVisible(false);
         setTorchEnabled(false);
         setConfirmedWaybillId(null);
+        if (scanOutcomeTimerRef.current) {
+          clearTimeout(scanOutcomeTimerRef.current);
+        }
       };
     }, [animatedCameraHeight, animateCameraToIndex])
   );
@@ -772,17 +789,24 @@ export default function DispatchWaybillsScreen() {
     if (mode !== 'arrival' || user?.role !== 'DISPATCH_STAFF' || !isOnline
         || busy || arrivalSubmittingRef.current || pendingArrivalLeave) return;
     const normalized = normalizeTrackingId(rawValue);
-    if (!normalized.isValid) { safeHaptics.error(); setError(normalized.error); return; }
+    if (!normalized.isValid) {
+      triggerScanOutcome('error');
+      safeHaptics.error();
+      setError(normalized.error);
+      return;
+    }
     const trackingId = normalized.trackingId;
     if (arrivalQueueRef.current.some((parcel) => parcel.trackingId === trackingId)
         || arrivalPendingRef.current.has(trackingId)) {
+      triggerScanOutcome('error');
       safeHaptics.warning();
-      setError(`${trackingId} is already in the arrival queue or being verified.`);
+      setError(`ALREADY SCANNED: ${trackingId} is already in the arrival queue.`);
       return;
     }
     if (arrivalQueueRef.current.length + arrivalPendingRef.current.size >= MAX_BATCH_SIZE) {
+      triggerScanOutcome('error');
       safeHaptics.warning();
-      setError(`Arrival queue limit reached (maximum ${MAX_BATCH_SIZE} parcels).`);
+      setError(`QUEUE FULL: Arrival queue limit reached (maximum ${MAX_BATCH_SIZE} parcels).`);
       return;
     }
     const requestVersion = arrivalVersionRef.current;
@@ -796,8 +820,9 @@ export default function DispatchWaybillsScreen() {
       const validation = validateBatchCandidate(context, 'ARRIVED_AT_TNL', user.role);
       if (!validation.isValid || context.lost || context.currentStatusCode !== 'LOADED_ON_TRUCK'
           || context.trackingId !== trackingId) {
+        triggerScanOutcome('error');
         safeHaptics.error();
-        setError(validation.error || 'Only non-lost parcels loaded on a truck can arrive in Daet.');
+        setError(validation.error || 'CANNOT ARRIVE: Only non-lost parcels loaded on truck can arrive in Daet.');
         return;
       }
       arrivalQueueRef.current = [...arrivalQueueRef.current, context];
@@ -805,9 +830,11 @@ export default function DispatchWaybillsScreen() {
       setArrivalInput('');
       setError('');
       setNotice(`${trackingId} added to arrival queue. ${arrivalQueueRef.current.length} queued.`);
+      triggerScanOutcome('success');
       safeHaptics.success();
     } catch (err) {
       if (arrivalVersionRef.current !== requestVersion) return;
+      triggerScanOutcome('error');
       safeHaptics.error();
       setError(err?.response?.data?.message || `Failed to verify ${trackingId}. Try again.`);
     } finally {
@@ -836,9 +863,11 @@ export default function DispatchWaybillsScreen() {
       setArrivalQueue([]);
       setArrivalInput('');
       setNotice('Arrival in Daet confirmed.');
+      triggerScanOutcome('success');
       safeHaptics.success();
     } catch (err) {
       if (arrivalVersionRef.current !== requestVersion) return;
+      triggerScanOutcome('error');
       setError(err?.response?.data?.message || 'Arrival failed. Queue retained; try again.');
     } finally {
       if (arrivalVersionRef.current === requestVersion) {
@@ -910,11 +939,26 @@ export default function DispatchWaybillsScreen() {
 
   // Process adding a parcel unit to the Waybill Manifest Queue (Rapid Batch)
   const processQueueScan = async (candidateId) => {
+    const notifyOutcome = (outcome) => {
+      if (typeof triggerScanOutcome === 'function') {
+        triggerScanOutcome(outcome);
+      }
+    };
     if (mode !== 'load' || !isOnline || busy || loadRequestRef.current || pendingShipmentSwitch) return;
     const normalized = normalizeTrackingId(candidateId);
-    if (!normalized.isValid) { safeHaptics.error(); setError(normalized.error); return; }
+    if (!normalized.isValid) {
+      notifyOutcome('error');
+      safeHaptics.error();
+      setError(normalized.error);
+      return;
+    }
     const cleanId = normalized.trackingId;
-    if (batchQueue.includes(cleanId)) { safeHaptics.warning(); setError(`${cleanId} is already in the manifest queue.`); return; }
+    if (batchQueue.includes(cleanId)) {
+      notifyOutcome('error');
+      safeHaptics.warning();
+      setError(`ALREADY SCANNED: ${cleanId} is already in the manifest queue.`);
+      return;
+    }
     const request = { version: arrivalVersionRef.current };
     loadRequestRef.current = request;
     setBusy(true);
@@ -924,6 +968,7 @@ export default function DispatchWaybillsScreen() {
       if (arrivalVersionRef.current !== request.version) return;
       if (context?.trackingId !== cleanId || !context.shipmentId) throw new Error('Invalid parcel scan context.');
       if (context.shipmentId !== shipmentId) {
+        notifyOutcome('error');
         if (shipmentId && batchQueue.length > 0) {
           safeHaptics.warning();
           setPendingShipmentSwitch({ shipmentId: context.shipmentId, context });
@@ -933,13 +978,25 @@ export default function DispatchWaybillsScreen() {
         return;
       }
       const candidateError = getManifestCandidateError(context, availableUnits);
-      if (candidateError) { safeHaptics.error(); setError(candidateError); return; }
-      if (batchQueue.length >= MAX_BATCH_SIZE) { safeHaptics.warning(); setError(`Batch queue limit reached (${MAX_BATCH_SIZE} units).`); return; }
+      if (candidateError) {
+        notifyOutcome('error');
+        safeHaptics.error();
+        setError(candidateError);
+        return;
+      }
+      if (batchQueue.length >= MAX_BATCH_SIZE) {
+        notifyOutcome('error');
+        safeHaptics.warning();
+        setError(`QUEUE FULL: Limit reached (${MAX_BATCH_SIZE} units).`);
+        return;
+      }
       setBatchQueue((previous) => previous.includes(cleanId) ? previous : [...previous, cleanId]);
+      notifyOutcome('success');
       safeHaptics.success();
       setNotice(`${cleanId} added to manifest queue. ${batchQueue.length + 1} queued.`);
     } catch (err) {
       if (arrivalVersionRef.current === request.version) {
+        notifyOutcome('error');
         safeHaptics.error();
         setError(err?.response?.data?.message || err?.message || 'Could not verify parcel. Try again.');
       }
@@ -951,13 +1008,15 @@ export default function DispatchWaybillsScreen() {
   const processReturnWaybillScan = async (rawValue) => {
     const parsed = parseWaybillQrPayload(rawValue);
     if (!parsed.isValid) {
+      triggerScanOutcome('error');
       safeHaptics.error();
       setError('Scan the return confirmation QR printed on the waybill.');
       return;
     }
     if (!doesWaybillQrMatchOpenManifest(manifest, parsed.waybillId)) {
+      triggerScanOutcome('error');
       safeHaptics.error();
-      setError(`The scanned QR does not match open waybill ${manifest.waybillId}.`);
+      setError(`WRONG WAYBILL: Scanned QR does not match open waybill ${manifest.waybillId}.`);
       return;
     }
 
@@ -978,12 +1037,14 @@ export default function DispatchWaybillsScreen() {
       setWaybillInput(record.waybillId);
       setConfirmedWaybillId(isSentToHauler ? record.waybillId : null);
       setConfirmedManifestRevision(isSentToHauler ? record.manifestRevision : null);
+      triggerScanOutcome('success');
       safeHaptics.success();
       setNotice(isSentToHauler
         ? `${record.waybillId} return confirmed. Review the manifest, then complete the waybill.`
         : `${record.waybillId} opened for review. Status: ${record.statusLabel || record.status}.`);
     } catch {
       if (returnContextVersionRef.current !== requestVersion) return;
+      triggerScanOutcome('error');
       safeHaptics.error();
       setError('The scanned waybill could not be confirmed.');
     } finally {
@@ -1290,6 +1351,7 @@ export default function DispatchWaybillsScreen() {
           pausedText={getPausedText()}
           viewfinderHeight={viewfinderHeight}
           animatedHeight={animatedCameraHeight}
+          scanOutcome={scanOutcome}
         />
 
         <View
@@ -2566,16 +2628,17 @@ const styles = StyleSheet.create({
     marginTop: 4
   },
   primaryButton: {
-    height: 44,
+    minHeight: 52,
     backgroundColor: colors.accent,
     borderRadius: radius.sm,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: spacing.md
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12
   },
   primaryButtonText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '800',
     letterSpacing: 0.5
   },

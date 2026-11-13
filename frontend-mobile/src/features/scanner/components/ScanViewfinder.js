@@ -18,7 +18,8 @@ export default function ScanViewfinder({
   cameraMountKey,
   pausedText,
   viewfinderHeight = 280,
-  animatedHeight
+  animatedHeight,
+  scanOutcome = null,
 }) {
   const hasCameraError = Boolean(cameraError);
   const isCompact = viewfinderHeight < 220;
@@ -94,16 +95,27 @@ export default function ScanViewfinder({
             pointerEvents="none"
           >
             {/* Top Left Corner */}
-            <View style={[styles.corner, styles.cornerTL]} />
+            <View style={[styles.corner, styles.cornerTL, scanOutcome === 'success' && styles.cornerSuccess, scanOutcome === 'error' && styles.cornerError]} />
             {/* Top Right Corner */}
-            <View style={[styles.corner, styles.cornerTR]} />
+            <View style={[styles.corner, styles.cornerTR, scanOutcome === 'success' && styles.cornerSuccess, scanOutcome === 'error' && styles.cornerError]} />
             {/* Bottom Left Corner */}
-            <View style={[styles.corner, styles.cornerBL]} />
+            <View style={[styles.corner, styles.cornerBL, scanOutcome === 'success' && styles.cornerSuccess, scanOutcome === 'error' && styles.cornerError]} />
             {/* Bottom Right Corner */}
-            <View style={[styles.corner, styles.cornerBR]} />
+            <View style={[styles.corner, styles.cornerBR, scanOutcome === 'success' && styles.cornerSuccess, scanOutcome === 'error' && styles.cornerError]} />
 
             {/* Thin Orange Scan Line */}
             <View style={styles.scanLine} />
+
+            {/* Peripheral Reticle Flash on Outcome */}
+            {scanOutcome ? (
+              <View
+                style={[
+                  styles.flashOverlay,
+                  scanOutcome === 'success' ? styles.flashSuccess : styles.flashError,
+                ]}
+                pointerEvents="none"
+              />
+            ) : null}
           </View>
         )}
 
@@ -196,6 +208,34 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderColor: colors.accent
+  },
+  cornerSuccess: {
+    borderColor: '#10B981',
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+    borderRightWidth: 4,
+    borderBottomWidth: 4,
+  },
+  cornerError: {
+    borderColor: '#EF4444',
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+    borderRightWidth: 4,
+    borderBottomWidth: 4,
+  },
+  flashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 2,
+  },
+  flashSuccess: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.4)',
+  },
+  flashError: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.4)',
   },
   cornerTL: {
     top: 0,
