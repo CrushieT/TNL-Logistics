@@ -1,16 +1,53 @@
 import { hasValidSoaBankDetails } from '../../settings/utils/soaBankDetails.mjs';
 
 export const STATEMENT_PRINT_COPY_COUNT = 2;
-export const ITEMS_PER_PAGE = 11;
+export const FINAL_PAGE_CAP = 17;
+export const INTERMEDIATE_PAGE_CAP = 23;
+export const ITEMS_PER_PAGE = FINAL_PAGE_CAP;
+export const VISUAL_OFFSET = 5;
+
+export function calculatePageDistribution(
+  totalCount,
+  intermediateCap = INTERMEDIATE_PAGE_CAP,
+  finalCap = FINAL_PAGE_CAP,
+  offset = VISUAL_OFFSET,
+) {
+  if (totalCount <= 0) return [0];
+  if (totalCount <= finalCap) return [totalCount];
+
+  const totalPages = 1 + Math.ceil((totalCount - finalCap) / intermediateCap);
+  const fullPages = totalPages - 2;
+  const counts = [];
+
+  for (let i = 0; i < fullPages; i++) {
+    counts.push(intermediateCap);
+  }
+
+  const remaining = totalCount - fullPages * intermediateCap;
+  const minPenultimate = remaining - finalCap;
+  const penultimate = Math.max(minPenultimate, Math.min(intermediateCap, Math.ceil((remaining + offset) / 2)));
+  const finalCount = remaining - penultimate;
+
+  counts.push(penultimate, finalCount);
+  return counts;
+}
 
 export function paginateStatementItems(items = []) {
   if (!Array.isArray(items) || items.length === 0) {
     return [[]];
   }
 
+  if (items.length <= FINAL_PAGE_CAP) {
+    return [items];
+  }
+
+  const distribution = calculatePageDistribution(items.length);
   const pages = [];
-  for (let i = 0; i < items.length; i += ITEMS_PER_PAGE) {
-    pages.push(items.slice(i, i + ITEMS_PER_PAGE));
+  let startIndex = 0;
+
+  for (const count of distribution) {
+    pages.push(items.slice(startIndex, startIndex + count));
+    startIndex += count;
   }
 
   return pages;
