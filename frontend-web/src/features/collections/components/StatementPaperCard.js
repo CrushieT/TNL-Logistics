@@ -206,12 +206,12 @@ export default function StatementPaperCard({
             className="soa-paper-sheet"
             nativeID={`soa-printable-sheet-${copyIndex}-${pageIndex}`}
           >
-
-            {data.isLive && (
-              <View style={styles.liveBannerTop}>
-                <Text style={styles.liveBannerTopText}>LIVE SOA — MAY CHANGE</Text>
-              </View>
-            )}
+            <View style={styles.sheetTopSection}>
+              {data.isLive && (
+                <View style={styles.liveBannerTop}>
+                  <Text style={styles.liveBannerTopText}>LIVE SOA — MAY CHANGE</Text>
+                </View>
+              )}
 
             {/* Top-Centered Letterhead Brand Header (Rendered on Every Page) */}
             <View style={styles.letterheadBlock}>
@@ -329,36 +329,37 @@ export default function StatementPaperCard({
                   <Text style={styles.emptyText}>No shipments found for this client in the selected cycle.</Text>
                 </View>
               ) : (
-                pageItems.map((item, rowIdx) => {
-                  const itemChargesTotal = Number(item.charges || 0) + Number(item.otherCharges || 0);
-                  return (
-                    <View
-                      key={item.shipmentId || rowIdx}
-                      style={styles.tableRow}
-                    >
-                      <Text style={[styles.tdTextMono, styles.colDate]} numberOfLines={1}>{item.dateRegistered}</Text>
-                      <Text style={[styles.tdTextMono, styles.colShipment]} numberOfLines={1}>{item.shipmentId}</Text>
-                      <Text style={[styles.tdTextCenter, styles.colQty]}>{item.quantity}</Text>
-                      <Text style={[styles.tdTextRight, styles.colCharges]}>{formatCurrency(itemChargesTotal)}</Text>
-                      <Text style={[styles.tdTextRight, styles.colDue]}>{formatCurrency(item.due)}</Text>
-                      <Text style={[styles.tdTextRight, styles.colPaid]}>{formatCurrency(item.paid)}</Text>
-                      <Text style={[styles.tdTextRight, styles.colBalance]}>{formatCurrency(item.balance)}</Text>
-                    </View>
-                  );
-                })
+                <View style={styles.tableBody}>
+                  {pageItems.map((item, rowIdx) => {
+                    const itemChargesTotal = Number(item.charges || 0) + Number(item.otherCharges || 0);
+                    return (
+                      <View
+                        key={item.shipmentId || rowIdx}
+                        style={styles.tableRow}
+                      >
+                        <Text style={[styles.tdTextMono, styles.colDate]} numberOfLines={1}>{item.dateRegistered}</Text>
+                        <Text style={[styles.tdTextMono, styles.colShipment]} numberOfLines={1}>{item.shipmentId}</Text>
+                        <Text style={[styles.tdTextCenter, styles.colQty]}>{item.quantity}</Text>
+                        <Text style={[styles.tdTextRight, styles.colCharges]}>{formatCurrency(itemChargesTotal)}</Text>
+                        <Text style={[styles.tdTextRight, styles.colDue]}>{formatCurrency(item.due)}</Text>
+                        <Text style={[styles.tdTextRight, styles.colPaid]}>{formatCurrency(item.paid)}</Text>
+                        <Text style={[styles.tdTextRight, styles.colBalance]}>{formatCurrency(item.balance)}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
               )}
             </View>
+          </View>
 
+          <View style={styles.sheetBottomSection}>
             {/* Non-Final Page: Payment Instructions */}
             {!isLastPage && (
-              <>
-                <View style={styles.nonLastPageSpacer} />
-                <PaymentInstructionsBox
-                  bankName={bankName}
-                  accountName={accountName}
-                  accountNumber={accountNumber}
-                />
-              </>
+              <PaymentInstructionsBox
+                bankName={bankName}
+                accountName={accountName}
+                accountNumber={accountNumber}
+              />
             )}
 
             {/* Final Page Summary, Totals, Payment Instructions & Signatures */}
@@ -449,6 +450,7 @@ export default function StatementPaperCard({
               </Text>
             </View>
           </View>
+          </View>
         );
       })}
     </View>
@@ -470,6 +472,10 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     width: '100%',
     maxWidth: 840,
+    minHeight: 880,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
     alignSelf: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -477,6 +483,13 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
     marginTop: spacing.md,
+  },
+  sheetTopSection: {
+    width: '100%',
+  },
+  sheetBottomSection: {
+    width: '100%',
+    marginTop: 'auto',
   },
   stackedPaper: {
     marginBottom: 24,
@@ -715,13 +728,17 @@ const styles = StyleSheet.create({
   },
 
   tableContainer: {
-    marginBottom: 6,
+    width: '100%',
+    marginBottom: 4,
+  },
+  tableBody: {
+    width: '100%',
   },
   tableHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 5,
-    marginTop: 4,
+    paddingVertical: 3.5,
+    marginTop: 2,
   },
   tableHeaderDivider: {
     borderTopWidth: 1.5,
@@ -732,7 +749,7 @@ const styles = StyleSheet.create({
   },
   thText: {
     fontFamily: fonts.mono,
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '800',
     color: colors.ink,
     letterSpacing: 0.5,
@@ -740,33 +757,31 @@ const styles = StyleSheet.create({
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 7.5,
+    paddingVertical: 5,
+    minHeight: 32,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
   },
-  nonLastPageSpacer: {
-    height: 36,
-  },
   tdText: {
     fontFamily: fonts.sans,
-    fontSize: 14.5,
+    fontSize: 11.5,
     color: '#111110',
   },
   tdTextMono: {
     fontFamily: fonts.mono,
-    fontSize: 14.5,
+    fontSize: 11.5,
     color: '#111110',
   },
   tdTextCenter: {
     fontFamily: fonts.mono,
-    fontSize: 14.5,
+    fontSize: 11.5,
     color: '#111110',
     textAlign: 'center',
     fontWeight: '600',
   },
   tdTextRight: {
     fontFamily: fonts.mono,
-    fontSize: 14.5,
+    fontSize: 11.5,
     color: '#111110',
     textAlign: 'right',
     fontWeight: '700',
@@ -794,64 +809,64 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    gap: 20,
-    marginBottom: 6,
+    gap: 16,
+    marginBottom: 5,
   },
   deductionsBox: {
     backgroundColor: '#F8F7F4',
     borderWidth: 1,
     borderColor: '#EBE9E2',
     borderRadius: 3,
-    padding: 10,
-    minWidth: 250,
-    maxWidth: 350,
+    padding: 8,
+    minWidth: 240,
+    maxWidth: 340,
     flex: 1,
   },
   deductionsBoxTitle: {
     fontFamily: fonts.mono,
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '800',
     color: colors.inkMuted,
     letterSpacing: 0.8,
-    marginBottom: 3,
+    marginBottom: 2,
   },
   deductionsEmptyText: {
     fontFamily: fonts.sans,
-    fontSize: 13,
+    fontSize: 12,
     color: colors.inkMuted,
     fontStyle: 'italic',
   },
   deductionAmountText: {
     fontFamily: fonts.mono,
-    fontSize: 16.5,
+    fontSize: 15,
     fontWeight: '800',
     color: '#111110',
   },
   deductionReasonText: {
     fontFamily: fonts.sans,
-    fontSize: 12.5,
+    fontSize: 12,
     color: colors.inkMuted,
     marginTop: 1,
   },
   totalsBox: {
-    minWidth: 250,
+    minWidth: 240,
     alignItems: 'flex-end',
   },
   totalLine: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: 250,
-    marginBottom: 3,
+    width: 240,
+    marginBottom: 2,
   },
   totalLabel: {
     fontFamily: fonts.sans,
-    fontSize: 15,
+    fontSize: 13,
     color: '#111110',
     fontWeight: '700',
   },
   totalVal: {
     fontFamily: fonts.mono,
-    fontSize: 16,
+    fontSize: 14,
     color: '#111110',
     fontWeight: '800',
   },
@@ -859,25 +874,25 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     height: 0,
-    width: 250,
-    marginVertical: 5,
+    width: 240,
+    marginVertical: 4,
   },
   amountDueRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'baseline',
-    width: 250,
+    width: 240,
     marginTop: 2,
   },
   amountDueLabel: {
     fontFamily: fonts.sans,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '900',
     color: '#111110',
   },
   amountDueValue: {
     fontFamily: fonts.mono,
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '900',
     color: '#111110',
   },
@@ -901,13 +916,13 @@ const styles = StyleSheet.create({
   paymentInstructionsBox: {
     borderWidth: 1.5,
     borderColor: '#111110',
-    padding: 8,
+    padding: 6,
     marginTop: 5,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   paymentInstructionsTitle: {
     fontFamily: fonts.mono,
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '900',
     color: '#111110',
     letterSpacing: 0.8,
@@ -915,36 +930,36 @@ const styles = StyleSheet.create({
   },
   paymentInstructionsText: {
     fontFamily: fonts.sans,
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 10,
+    lineHeight: 14,
     color: '#111110',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   bankDetailsGrid: {
-    gap: 2,
+    gap: 1.5,
   },
   bankDetailRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
   },
   bankDetailLabel: {
-    width: 110,
+    width: 105,
     fontFamily: fonts.sans,
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '800',
     color: '#111110',
   },
   bankDetailValue: {
     flex: 1,
     fontFamily: fonts.sans,
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '700',
     color: '#111110',
   },
   bankAccountNumber: {
     flex: 1,
     fontFamily: fonts.mono,
-    fontSize: 13.5,
+    fontSize: 12.5,
     fontWeight: '900',
     color: '#111110',
     letterSpacing: 0.5,

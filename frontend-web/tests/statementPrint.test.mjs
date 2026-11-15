@@ -41,12 +41,12 @@ test('statement component labels every print sheet while leaving preview unlabel
     throw new Error(`Unexpected import ${dependency}`);
   }).default;
   const text = node => typeof node === 'string' || typeof node === 'number' ? String(node) : Array.isArray(node) ? node.map(text).join(' ') : node?.children ? node.children.map(text).join(' ') : '';
-  for (const count of [1, 12]) {
+  for (const count of [1, 18]) {
     const data = { ...printableStatement, items: Array.from({ length: count }, (_, index) => ({ shipmentId: `S${index}` })) };
     const preview = text(component({ data, showLogo: false }));
     assert.doesNotMatch(preview, /ORIGINAL COPY|CLIENT COPY/);
     const printed = text(component({ data, copies: 2, showCopyLabels: true, showLogo: false }));
-    const pages = Math.ceil(count / 11);
+    const pages = count <= 17 ? 1 : 2;
     assert.deepEqual(printed.match(/ORIGINAL COPY|CLIENT COPY/g), [...Array(pages).fill('ORIGINAL COPY'), ...Array(pages).fill('CLIENT COPY')]);
     assert.equal((printed.match(/Page\s+1\s+of/g) || []).length, 2);
   }
@@ -86,7 +86,7 @@ test('printed copies hide version numbers while preserving capture date, copy la
     versionNumber: 2,
     capturedAt: 'Oct 27, 2026, 3:30 PM',
     isLive: false,
-    items: Array.from({ length: 15 }, (_, index) => ({ shipmentId: `SHP-${index}` })),
+    items: Array.from({ length: 18 }, (_, index) => ({ shipmentId: `SHP-${index}` })),
   };
 
   // 1. Staff preview (on screen): version badge and details remain visible
@@ -117,6 +117,83 @@ test('printed copies hide version numbers while preserving capture date, copy la
   assert.match(livePrinted, /LIVE SOA — MAY CHANGE/);
   assert.doesNotMatch(livePrinted, /VERSION/);
   assert.doesNotMatch(livePrinted, /\bV\d+\b/);
+});
+
+test('StatementPaperCard configures uniform fixed row sizing across all pages without height divergence', () => {
+  let capturedStyles = null;
+  const react = {
+    createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
+    useMemo: callback => callback(),
+    useState: initial => [initial, () => {}],
+    useEffect: () => {},
+  };
+  const native = {
+    View: 'View',
+    Text: 'Text',
+    Image: 'Image',
+    Platform: { OS: 'web', select: options => options.web },
+    StyleSheet: {
+      create: styles => {
+        capturedStyles = styles;
+        return styles;
+      },
+    },
+  };
+  const themeValues = new Proxy({}, { get: () => 'sans-serif' });
+  const component = loadProductionModule('../src/features/collections/components/StatementPaperCard.js', dependency => {
+    if (dependency.endsWith('/api/client')) return { default: {} };
+    if (dependency === 'react') return { __esModule: true, default: react, ...react };
+    if (dependency === 'react-native') return native;
+    if (dependency === '../../../theme') return { colors: themeValues, fonts: themeValues, spacing: themeValues, radius: themeValues };
+    if (dependency.endsWith('collectionsUtils')) return { formatCurrency: value => String(value) };
+    if (dependency.endsWith('statementPrintModel.mjs')) return statementModel;
+    if (dependency.endsWith('.png')) return 'logo.png';
+    throw new Error(`Unexpected import ${dependency}`);
+  }).default;
+
+  assert.ok(capturedStyles, 'Styles should be captured from StyleSheet.create');
+  assert.equal(capturedStyles.sheetBottomSection.marginTop, 'auto');
+  assert.equal(capturedStyles.tableRow.minHeight, 32);
+  assert.equal(capturedStyles.tableRow.paddingVertical, 5);
+
+  const findNodes = (node, predicate) => {
+    const results = [];
+    if (!node) return results;
+    if (Array.isArray(node)) {
+      for (const item of node) results.push(...findNodes(item, predicate));
+      return results;
+    }
+    if (typeof node !== 'object') return results;
+    if (predicate(node)) results.push(node);
+    if (Array.isArray(node.children)) {
+      for (const child of node.children) results.push(...findNodes(child, predicate));
+    }
+    return results;
+  };
+
+  // 1. Single-page statement (e.g. 15 items): rows use standard uniform tableRow style
+  const singlePageRendered = component({
+    data: {
+      ...printableStatement,
+      items: Array.from({ length: 15 }, (_, index) => ({ shipmentId: `SHP-${index}` })),
+    },
+    showLogo: false,
+  });
+
+  const singlePageRows = findNodes(singlePageRendered, node => node.props?.style === capturedStyles.tableRow);
+  assert.equal(singlePageRows.length, 15, 'All 15 items on single page use uniform tableRow style');
+
+  // 2. Multi-page statement (e.g. 18 items): Page 1 and Page 2 rows use the EXACT same tableRow style
+  const multiPageRendered = component({
+    data: {
+      ...printableStatement,
+      items: Array.from({ length: 18 }, (_, index) => ({ shipmentId: `SHP-${index}` })),
+    },
+    showLogo: false,
+  });
+
+  const allMultiPageRows = findNodes(multiPageRendered, node => node.props?.style === capturedStyles.tableRow);
+  assert.equal(allMultiPageRows.length, 18, 'All 18 items across both pages use the exact same uniform tableRow style without divergence');
 });
 
 test('SOA bank details normalize values and preserve leading zeroes', () => {
@@ -197,42 +274,82 @@ test('two-copy multi-page sequence repeats every sheet and restarts page numberi
     sheets.filter((sheet) => sheet.copyIndex === 1).flatMap((sheet) => sheet.pageItems),
     items,
   );
-  assert.ok(pages.at(-1).length <= 11);
+  assert.ok(pages.at(-1).length <= 15);
 });
 
-test('paginateStatementItems uniformly chunks up to 11 shipments per page', () => {
+test('paginateStatementItems implements two-tier weighted balanced distribution across pages', () => {
   // Empty
   assert.deepEqual(paginateStatementItems([]).map((p) => p.length), [0]);
 
-  // Single-page: 1 to 11 shipments
+  // Single-page: 1 to 17 shipments
   assert.deepEqual(paginateStatementItems(Array.from({ length: 5 })).map((p) => p.length), [5]);
-  assert.deepEqual(paginateStatementItems(Array.from({ length: 11 })).map((p) => p.length), [11]);
+  assert.deepEqual(paginateStatementItems(Array.from({ length: 15 })).map((p) => p.length), [15]);
+  assert.deepEqual(paginateStatementItems(Array.from({ length: 16 })).map((p) => p.length), [16]);
+  assert.deepEqual(paginateStatementItems(Array.from({ length: 17 })).map((p) => p.length), [17]);
 
-  // 2 pages: 12 shipments (Sunrise Hardware: 11 on Page 1, 1 on Page 2)
-  assert.deepEqual(paginateStatementItems(Array.from({ length: 12 })).map((p) => p.length), [11, 1]);
+  // 2 pages: 18 shipments (12 on Page 1, 6 on Page 2, eliminating orphan rows)
+  assert.deepEqual(paginateStatementItems(Array.from({ length: 18 })).map((p) => p.length), [12, 6]);
 
-  // 2 pages: 18 shipments (Northbridge Trading: 11 on Page 1, 7 on Page 2)
-  assert.deepEqual(paginateStatementItems(Array.from({ length: 18 })).map((p) => p.length), [11, 7]);
+  // 2 pages: 19 shipments (12 on Page 1, 7 on Page 2)
+  assert.deepEqual(paginateStatementItems(Array.from({ length: 19 })).map((p) => p.length), [12, 7]);
 
-  // 2 pages: 20 shipments (11 on Page 1, 9 on Page 2)
-  assert.deepEqual(paginateStatementItems(Array.from({ length: 20 })).map((p) => p.length), [11, 9]);
+  // 2 pages: 20 shipments (13 on Page 1, 7 on Page 2)
+  assert.deepEqual(paginateStatementItems(Array.from({ length: 20 })).map((p) => p.length), [13, 7]);
 
-  // 2 pages: 22 shipments (11 on Page 1, 11 on Page 2)
-  assert.deepEqual(paginateStatementItems(Array.from({ length: 22 })).map((p) => p.length), [11, 11]);
+  // 2 pages: 25 shipments (15 on Page 1, 10 on Page 2)
+  assert.deepEqual(paginateStatementItems(Array.from({ length: 25 })).map((p) => p.length), [15, 10]);
 
-  // 3 pages: 23 shipments (11 on Page 1, 11 on Page 2, 1 on Page 3)
-  assert.deepEqual(paginateStatementItems(Array.from({ length: 23 })).map((p) => p.length), [11, 11, 1]);
+  // 2 pages: 30 shipments (18 on Page 1, 12 on Page 2)
+  assert.deepEqual(paginateStatementItems(Array.from({ length: 30 })).map((p) => p.length), [18, 12]);
 
-  // 4 pages: 41 shipments (11, 11, 11, 8)
-  assert.deepEqual(paginateStatementItems(Array.from({ length: 41 })).map((p) => p.length), [11, 11, 11, 8]);
+  // 2 pages: 35 shipments (20 on Page 1, 15 on Page 2)
+  assert.deepEqual(paginateStatementItems(Array.from({ length: 35 })).map((p) => p.length), [20, 15]);
 
-  // Invariant across all counts 1..100: every non-final page has exactly 11 items, final page has 1..11
-  for (let count = 1; count <= 100; count++) {
+  // 2 pages: 40 shipments (23 on Page 1 reaching Payment Instructions, 17 on Page 2)
+  assert.deepEqual(paginateStatementItems(Array.from({ length: 40 })).map((p) => p.length), [23, 17]);
+
+  // 3 pages: 41 shipments (23 on Page 1; Pages 2 & 3 balance remaining 18 items as 12 & 6)
+  assert.deepEqual(paginateStatementItems(Array.from({ length: 41 })).map((p) => p.length), [23, 12, 6]);
+
+  // 3 pages: 42 shipments (23 on Page 1; Pages 2 & 3 balance remaining 19 items as 12 & 7)
+  assert.deepEqual(paginateStatementItems(Array.from({ length: 42 })).map((p) => p.length), [23, 12, 7]);
+
+  // 3 pages: 50 shipments (23 on Page 1; Pages 2 & 3 balance remaining 27 items as 16 & 11)
+  assert.deepEqual(paginateStatementItems(Array.from({ length: 50 })).map((p) => p.length), [23, 16, 11]);
+
+  // 3 pages: 63 shipments (23 on Page 1, 23 on Page 2, 17 on Page 3)
+  assert.deepEqual(paginateStatementItems(Array.from({ length: 63 })).map((p) => p.length), [23, 23, 17]);
+
+  // 4 pages: 64 shipments (23 on Page 1, 23 on Page 2; Pages 3 & 4 balance remaining 18 items as 12 & 6)
+  assert.deepEqual(paginateStatementItems(Array.from({ length: 64 })).map((p) => p.length), [23, 23, 12, 6]);
+
+  // Invariants across all counts 1..300:
+  // 1. Page count matches 1 + ceil((count - 17) / 23) for count > 17
+  // 2. Sum of page item counts equals total count
+  // 3. Intermediate pages are bounded [1, 23] and final page is bounded [1, 17]
+  // 4. For multi-page statements (count >= 18), the final page has >= 5 items (no orphan rows)
+  for (let count = 1; count <= 300; count++) {
     const pages = paginateStatementItems(Array.from({ length: count }));
-    for (let i = 0; i < pages.length - 1; i++) {
-      assert.equal(pages[i].length, 11, `Non-final page ${i + 1} must have exactly 11 items for count ${count}`);
+    const expectedPages = count <= 17 ? 1 : 1 + Math.ceil((count - 17) / 23);
+    assert.equal(pages.length, expectedPages, `Page count for count ${count} must match expected`);
+    assert.equal(
+      pages.reduce((sum, p) => sum + p.length, 0),
+      count,
+      `Sum of chunked items must equal total count for count ${count}`,
+    );
+    for (let i = 0; i < pages.length; i++) {
+      const cap = i === pages.length - 1 ? 17 : 23;
+      assert.ok(
+        pages[i].length >= 1 && pages[i].length <= cap,
+        `Page ${i + 1} item count must be between 1 and ${cap} (found ${pages[i].length} for count ${count})`,
+      );
     }
-    assert.ok(pages.at(-1).length >= 1 && pages.at(-1).length <= 11);
+    if (count >= 18) {
+      assert.ok(
+        pages.at(-1).length >= 5,
+        `Final page of multi-page statement must have >= 5 items (found ${pages.at(-1).length} for count ${count})`,
+      );
+    }
   }
 });
 

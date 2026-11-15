@@ -21,28 +21,31 @@ function decodeMatrix(matrix) {
   return jsQR(pixels, size, size)?.data;
 }
 
-test('prints two complete copies of only the selected manifest with 15-item pagination and multi-page headers', () => {
+test('prints two complete copies of only the selected manifest with 50-item dual-column pagination and multi-page headers', () => {
   const manifest = {
-    waybillId: 'WYB-2026-0001', shipmentId: 'SHP-2026-0001', totalQuantity: 45,
+    waybillId: 'WYB-2026-0001', shipmentId: 'SHP-2026-0001', totalQuantity: 55,
     clientName: 'Client', recipientName: 'Recipient',
-    parcels: Array.from({ length: 45 }, (_, index) => ({ trackingId: `TRK-${index + 1}`, seq: index + 1 })),
+    parcels: Array.from({ length: 55 }, (_, index) => ({ trackingId: `TRK-${index + 1}`, seq: index + 1 })),
   };
   const html = buildWaybillHtml(manifest, 'logo.png');
-  assert.equal(html.match(/class="copy"/g).length, 6);
+  assert.equal(html.match(/class="copy"/g).length, 4);
   assert.deepEqual([...html.matchAll(/class="copy-label(?: client-copy)?">([^<]+)/g)].map(match => match[1]),
-    ['ORIGINAL COPY', 'ORIGINAL COPY', 'ORIGINAL COPY', 'CLIENT COPY', 'CLIENT COPY', 'CLIENT COPY']);
-  assert.equal(html.match(/TRK-45/g).length, 2);
-  assert.doesNotMatch(html, /TRK-46/);
+    ['ORIGINAL COPY', 'ORIGINAL COPY', 'CLIENT COPY', 'CLIENT COPY']);
+  assert.equal(html.match(/TRK-55/g).length, 2);
+  assert.doesNotMatch(html, /TRK-56/);
   assert.match(html, /A4 portrait/);
   assert.match(html, /table-header-group/);
+  assert.match(html, /class="manifest-grid"/);
+  assert.match(html, /class="manifest-table"/);
+  assert.doesNotMatch(html, /<th>Contents<\/th>/i);
   assert.match(html, /logo\.png/);
-  assert.equal(html.match(/class="return-qr"/g).length, 6);
-  assert.equal(html.match(/aria-label="WAYBILL:WYB-2026-0001"/g).length, 6);
+  assert.equal(html.match(/class="return-qr"/g).length, 4);
+  assert.equal(html.match(/aria-label="WAYBILL:WYB-2026-0001"/g).length, 4);
   const qrPaths = [...html.matchAll(/<path d="([^"]+)"/g)].map((match) => match[1]);
-  assert.equal(qrPaths.length, 6);
+  assert.equal(qrPaths.length, 4);
   assert.equal(qrPaths[0], qrPaths[1]);
-  assert.match(html, /Page 1 of 3/);
-  assert.match(html, /Page 3 of 3/);
+  assert.match(html, /Page 1 of 2/);
+  assert.match(html, /Page 2 of 2/);
   const payload = getWaybillQrPayload(manifest.waybillId);
   assert.equal(decodeMatrix(generateQRMatrix(payload)), payload);
 });

@@ -6,7 +6,8 @@ import { generateQRMatrix } from '../src/utils/qr.js';
 import {
   buildWaybillPrintHtml,
   getRenderedWaybillLogoUri,
-  getWaybillQrPayload
+  getWaybillQrPayload,
+  WAYBILL_ITEMS_PER_PAGE
 } from '../src/features/waybills/services/waybillPrint.mjs';
 
 function decodeMatrix(matrix) {
@@ -26,25 +27,29 @@ function decodeMatrix(matrix) {
   return jsQR(pixels, size, size)?.data;
 }
 
-test('prints exactly two complete copies of the selected manifest with 15-item pagination and multi-page headers', () => {
+test('prints exactly two complete copies of the selected manifest with 50-item dual-column pagination and multi-page headers', () => {
+  assert.equal(WAYBILL_ITEMS_PER_PAGE, 50);
   const manifest = {
-    waybillId: 'WYB-A', shipmentId: 'SHP-1', totalQuantity: 45,
-    parcels: Array.from({ length: 45 }, (_, index) => ({ trackingId: `UNIT-${index + 1}`, seq: index + 1 })),
+    waybillId: 'WYB-A', shipmentId: 'SHP-1', totalQuantity: 55,
+    parcels: Array.from({ length: 55 }, (_, index) => ({ trackingId: `UNIT-${index + 1}`, seq: index + 1 })),
   };
   const html = buildWaybillPrintHtml(manifest, '/tracking-logo.png');
-  assert.equal(html.match(/<section class="copy">/g).length, 6);
-  assert.equal(html.match(/UNIT-45/g).length, 2);
-  assert.equal(html.match(/<thead>/g).length, 6);
+  assert.equal(html.match(/<section class="copy">/g).length, 4);
+  assert.equal(html.match(/UNIT-55/g).length, 2);
+  assert.equal(html.match(/<thead>/g).length, 8);
+  assert.match(html, /class="manifest-grid"/);
+  assert.match(html, /class="manifest-table"/);
+  assert.doesNotMatch(html, /<th>Contents<\/th>/i);
   assert.match(html, /display: table-header-group/);
   assert.match(html, /size: A4 portrait/);
-  assert.doesNotMatch(html, /UNIT-46/);
-  assert.equal(html.match(/class="return-qr"/g).length, 6);
-  assert.equal(html.match(/aria-label="WAYBILL:WYB-A"/g).length, 6);
+  assert.doesNotMatch(html, /UNIT-56/);
+  assert.equal(html.match(/class="return-qr"/g).length, 4);
+  assert.equal(html.match(/aria-label="WAYBILL:WYB-A"/g).length, 4);
   const qrPaths = [...html.matchAll(/<path d="([^"]+)"/g)].map((match) => match[1]);
-  assert.equal(qrPaths.length, 6);
+  assert.equal(qrPaths.length, 4);
   assert.equal(qrPaths[0], qrPaths[1]);
-  assert.match(html, /Page 1 of 3/);
-  assert.match(html, /Page 3 of 3/);
+  assert.match(html, /Page 1 of 2/);
+  assert.match(html, /Page 2 of 2/);
   const payload = getWaybillQrPayload(manifest.waybillId);
   assert.equal(decodeMatrix(generateQRMatrix(payload)), payload);
 });

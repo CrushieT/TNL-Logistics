@@ -164,18 +164,15 @@ export default function WaybillManifestCard({ manifest, selectedHauler, companyB
             {/* Single Solid Black Divider */}
             <View style={styles.solidDivider} />
 
-            {/* Cargo Tracking Items Table */}
+            {/* Cargo Tracking Items Dual-Column Grid */}
             <View style={styles.tableContainer}>
-              <View style={styles.tableHeader}>
-                <Text style={[styles.thCell, { flex: 2 }]}>TRACKING ID</Text>
-                <Text style={[styles.thCell, { flex: 1 }]}>PACKAGE</Text>
-                <Text style={[styles.thCell, { flex: 2.5 }]}>CONTENTS</Text>
-                <Text style={[styles.thCell, { flex: 1.2, textAlign: 'right' }]}>WEIGHT</Text>
-              </View>
+              {(() => {
+                const midpoint = Math.ceil(pageItems.length / 2);
+                const leftColumnItems = pageItems.slice(0, midpoint);
+                const rightColumnItems = pageItems.slice(midpoint);
 
-              {pageItems.length > 0 ? (
-                pageItems.map((parcel, idx) => {
-                  const overallIndex = pageIndex * WAYBILL_ITEMS_PER_PAGE + idx;
+                const renderParcelRow = (parcel, startOffset, idx) => {
+                  const overallIndex = pageIndex * WAYBILL_ITEMS_PER_PAGE + startOffset + idx;
                   const seq = parcel.seq ?? parcel.packageIndex ?? (overallIndex + 1);
                   const total = parcel.packageCount ?? totalQuantity ?? parcels.length;
                   const packageDisplay = parcel.packageNumber || `${seq} of ${total}`;
@@ -185,31 +182,51 @@ export default function WaybillManifestCard({ manifest, selectedHauler, companyB
 
                   return (
                     <View key={parcel.trackingId || overallIndex} style={[styles.tableRow, parcel.lost && styles.lostTableRow]}>
-                      <Text style={[styles.tdCell, styles.monoText, { flex: 2 }]}>
-                        {parcel.trackingId}{parcel.lost ? <Text style={styles.lostMarker}>  LOST</Text> : null}
+                      <Text style={[styles.tdCell, styles.monoText, styles.colTracking]}>
+                        {parcel.trackingId}{parcel.lost ? <Text style={styles.lostMarker}> LOST</Text> : null}
                       </Text>
-                      <Text style={[styles.tdCell, { flex: 1 }]}>
+                      <Text style={[styles.tdCell, styles.colPackage]}>
                         {packageDisplay}
                       </Text>
-                      <Text style={[styles.tdCell, { flex: 2.5 }]} numberOfLines={1}>
-                        {description || 'General Cargo'}
-                      </Text>
-                      <Text style={[styles.tdCell, styles.monoText, { flex: 1.2, textAlign: 'right' }]}>
+                      <Text style={[styles.tdCell, styles.monoText, styles.colWeight]}>
                         {weightDisplay}
                       </Text>
                     </View>
                   );
-                })
-              ) : (
-                <View style={styles.tableRow}>
-                  <Text style={[styles.tdCell, styles.monoText, { flex: 2 }]}>
-                    TRK-PENDING
-                  </Text>
-                  <Text style={[styles.tdCell, { flex: 1 }]}>1 of {totalQuantity}</Text>
-                  <Text style={[styles.tdCell, { flex: 2.5 }]}>{description || 'General Cargo'}</Text>
-                  <Text style={[styles.tdCell, styles.monoText, { flex: 1.2, textAlign: 'right' }]}>2.5 kg</Text>
-                </View>
-              )}
+                };
+
+                return (
+                  <View style={styles.manifestColumnsContainer}>
+                    {/* Left Column */}
+                    <View style={styles.manifestColumn}>
+                      <View style={styles.tableHeader}>
+                        <Text style={[styles.thCell, styles.colTracking]}>TRACKING ID</Text>
+                        <Text style={[styles.thCell, styles.colPackage]}>PACKAGE</Text>
+                        <Text style={[styles.thCell, styles.colWeight]}>WEIGHT</Text>
+                      </View>
+                      {leftColumnItems.length > 0 ? (
+                        leftColumnItems.map((parcel, idx) => renderParcelRow(parcel, 0, idx))
+                      ) : (
+                        <View style={styles.tableRow}>
+                          <Text style={[styles.tdCell, styles.monoText, styles.colTracking]}>TRK-PENDING</Text>
+                          <Text style={[styles.tdCell, styles.colPackage]}>1 of {totalQuantity}</Text>
+                          <Text style={[styles.tdCell, styles.monoText, styles.colWeight]}>2.5 kg</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Right Column */}
+                    <View style={[styles.manifestColumn, rightColumnItems.length === 0 && styles.hiddenColumn]}>
+                      <View style={styles.tableHeader}>
+                        <Text style={[styles.thCell, styles.colTracking]}>TRACKING ID</Text>
+                        <Text style={[styles.thCell, styles.colPackage]}>PACKAGE</Text>
+                        <Text style={[styles.thCell, styles.colWeight]}>WEIGHT</Text>
+                      </View>
+                      {rightColumnItems.map((parcel, idx) => renderParcelRow(parcel, midpoint, idx))}
+                    </View>
+                  </View>
+                );
+              })()}
             </View>
 
             {/* Non-last page spacer */}
@@ -482,16 +499,37 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     marginBottom: spacing.md,
   },
+  manifestColumnsContainer: {
+    flexDirection: 'row',
+    gap: spacing.lg,
+  },
+  manifestColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+  hiddenColumn: {
+    opacity: 0,
+  },
+  colTracking: {
+    flex: 2.2,
+  },
+  colPackage: {
+    flex: 1.2,
+  },
+  colWeight: {
+    flex: 1,
+    textAlign: 'right',
+  },
   tableHeader: {
     flexDirection: 'row',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
+    paddingVertical: 4,
+    borderBottomWidth: 1.5,
     borderBottomColor: '#111111',
     marginBottom: 4,
   },
   thCell: {
     fontFamily: fonts.mono,
-    fontSize: 13.5,
+    fontSize: 10.5,
     fontWeight: '800',
     color: colors.ink,
     letterSpacing: 0.5,
@@ -499,16 +537,16 @@ const styles = StyleSheet.create({
   },
   tableRow: {
     flexDirection: 'row',
-    paddingVertical: 10,
+    paddingVertical: 4,
     borderBottomWidth: 1,
     borderBottomColor: '#F0EFEA',
     alignItems: 'center',
   },
   lostTableRow: { backgroundColor: colors.dangerSoft },
-  lostMarker: { color: colors.danger, fontWeight: '800', fontSize: 11 },
+  lostMarker: { color: colors.danger, fontWeight: '800', fontSize: 9.5 },
   tdCell: {
     fontFamily: fonts.sans,
-    fontSize: 14,
+    fontSize: 10.5,
     color: colors.ink,
   },
   monoText: {

@@ -173,6 +173,11 @@ export default function StatementPrintScreen() {
                   box-sizing: border-box !important;
                   width: 100% !important;
                   max-width: 100% !important;
+                  min-height: 297mm !important;
+                  height: 297mm !important;
+                  display: flex !important;
+                  flex-direction: column !important;
+                  justify-content: space-between !important;
                   background-color: #FFFFFF !important;
                   page-break-after: always !important;
                   break-after: page !important;
