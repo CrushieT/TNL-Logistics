@@ -1,5 +1,31 @@
 # TNL Logistics — Master Build Plan
 
+## Mobile in-app force update hard gate and request-time version gating [COMPLETED]
+
+- Database version schema: added Flyway migration `V43__add_mobile_app_version_settings.sql` extending `system_setting` table with `min_mobile_version_code`, `latest_mobile_version_code`, `latest_mobile_version_name`, `mobile_apk_download_url`, `mobile_force_update`, and `mobile_update_release_notes`.
+- Public version endpoint: exposed `GET /api/v1/settings/mobile-version` returning lightweight `MobileAppVersionDto` with `.permitAll()` in `SecurityConfig.java`, allowing mobile clients to verify version gating immediately on app mount before login.
+- Dynamic administrative configuration: integrated mobile version fields into `SystemSettingDto` and `UpdateSystemSettingRequest`, with in-memory caching and zero-query read performance.
+- Mobile version evaluation engine: implemented pure `appVersionService.mjs` comparing monotonic integer version codes, testing boundary and fallback conditions.
+- Mobile lifecycle hook: created `useAppVersionCheck.js` evaluating version status on initial mount and whenever `AppState` transitions to `active`, gracefully handling offline states.
+- Non-dismissible hard-gate modal: implemented `ForceUpdateModal.js` and `AppVersionGate.js` mounted at the root level in `frontend-mobile/src/app/_layout.js`. Suppresses Android hardware back press and outside dismissal, displays version comparison diff, and links directly to APK download.
+- Request-time version enforcement filter: implemented `MobileVersionEnforcementFilter.java` positioned before authentication in `SecurityConfig.java`. Evaluates `X-App-Version-Code` against `min_mobile_version_code` (cached with 5-second TTL to guard database pool), immediately returning HTTP `426 Upgrade Required` before controllers or transactions execute. Exempts web requests and the version discovery endpoint.
+- Mobile Axios request and response interceptors: updated `frontend-mobile/src/services/api/client.js` to attach `X-App-Version-Code` and `X-App-Platform` on mobile requests, and intercept HTTP 426 responses to immediately mount `ForceUpdateModal` over the current screen.
+- Automated verification [COMPLETED]: 34 passing backend tests in `MobileVersionEnforcementFilterTest`, `SystemSettingIntegrationTest`, and `SystemSettingServiceImplTest`, 355 passing mobile unit tests (`node --test tests/*.test.mjs`), clean Android Hermes production bundling (`expo export --platform android`), and zero `git diff --check` warnings.
+
+## Waybill print orphan trailing page elimination and web logo inlining [COMPLETED]
+
+- Mobile print orientation correction: fixed inverted print dimensions in `handlePrintManifest` within `frontend-mobile/src/app/(main)/waybills.js` from landscape (`width: 842, height: 595`) to portrait (`width: 595, height: 842`), preventing Android system print spoolers from truncating the 297mm A4 portrait sheet at 210mm.
+- Print template margin and page-break resilience: updated CSS `.copy` styling in `frontend-mobile/src/features/waybills/printWaybill.mjs` and `frontend-web/src/features/waybills/services/waybillPrint.mjs` to enforce `break-inside: avoid; page-break-inside: avoid;`, bounded height `min-height: 278mm; max-height: 297mm;`, and breathing padding `8mm 12mm 4mm 12mm;`. Enforced page-break protection on the signature and page footnote container (`.bottom-block, footer, .page-footnote`). This absorbs browser default margins (10mm) and hardware feed-roller unprintable margins (3mm–5mm) without generating an extra page containing only the footer.
+- Web brand logo asset inlining: exported `WAYBILL_LOGO_BASE64` in `frontend-web/src/features/waybills/services/waybillLogo.mjs` and updated `buildWaybillPrintHtml` in `waybillPrint.mjs` to default `logoUri = WAYBILL_LOGO_BASE64`. Updated `frontend-web/src/app/waybills/[id].js` to fall back to `WAYBILL_LOGO_BASE64` if `getRenderedWaybillLogoUri` returns null or non-data URI, guaranteeing instantaneous and synchronous rendering of the company logo in the print preview iframe without DOM or network dependencies.
+- Test alignment and verification [COMPLETED]: updated legacy 15-item test fixture in `frontend-web/src/features/waybills/services/waybillPrint.test.mjs` to match the canonical 50-item dual-column pagination (`WAYBILL_ITEMS_PER_PAGE = 50`), added height, break-inside, and default Base64 logo inlining assertions across `frontend-mobile/src/features/waybills/printWaybill.test.mjs` and `frontend-web/tests/waybillPrint.test.mjs`. Verified via 348 passing mobile unit tests, 388 passing web unit tests, clean Android production export (`expo export --platform android`), clean Web production export (`expo export --platform web`), and zero `git diff --check` warnings.
+
+## Mobile waybill print logo inlining for standalone builds [COMPLETED]
+
+- Standalone print logo asset inlining: resolved missing waybill brand logo in standalone release APKs by exporting the canonical tracking brand logo as a self-contained Base64 data URI in `waybillLogo.mjs`.
+- Template integration & parameter defaulting: updated `buildWaybillHtml` in `printWaybill.mjs` to default `logoUri = WAYBILL_LOGO_BASE64`, rendering the inlined logo directly into the print HTML. Preserved explicit `null` and string overrides for unit testing and custom branding.
+- Consumer streamlining: removed runtime `Image.resolveAssetSource(require(...))` and unused `Image` import from `waybills.js`, calling `buildWaybillHtml(manifest)` directly.
+- Automated verification [COMPLETED]: focused unit tests in `printWaybill.test.mjs`, all 348 frontend-mobile unit tests passed (`node --test tests/*.test.mjs src/features/waybills/printWaybill.test.mjs`), clean Android Hermes production bundling passed (`npx.cmd --no-install expo export --platform android`), and `git diff --check` passed cleanly.
+
 ## Single-line loading and status banner streamlining [COMPLETED]
 
 - PreviewStatus banner streamlining: added `errorOnly = false` prop to `PreviewStatus.js`. When `errorOnly` is enabled, routine loading, preview, refreshing, and stale notices are silenced while preserving error banners and Retry actions if background fetches fail.

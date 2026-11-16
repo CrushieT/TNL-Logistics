@@ -13,6 +13,7 @@ import { getCompanyBranding } from '../../features/settings/services/settingsApi
 import {
   buildWaybillPrintHtml,
   getRenderedWaybillLogoUri,
+  WAYBILL_LOGO_BASE64,
 } from '../../features/waybills/services/waybillPrint.mjs';
 import { colors, fonts, spacing } from '../../theme';
 import { clearSectionRoute } from '../../services/navigation/navigationState.mjs';
@@ -85,7 +86,8 @@ export default function WaybillDetailScreen() {
     document.body.appendChild(frame);
     const printDocument = frame.contentDocument;
     printDocument.open();
-    const logoUri = getRenderedWaybillLogoUri(document);
+    const renderedLogo = getRenderedWaybillLogoUri(document);
+    const logoUri = (renderedLogo && renderedLogo.startsWith('data:')) ? renderedLogo : WAYBILL_LOGO_BASE64;
     printDocument.write(buildWaybillPrintHtml(manifest, logoUri, branding));
     printDocument.close();
     setTimeout(() => {

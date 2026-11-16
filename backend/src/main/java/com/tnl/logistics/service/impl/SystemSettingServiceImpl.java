@@ -1,6 +1,7 @@
 package com.tnl.logistics.service.impl;
 
 import com.tnl.logistics.dto.CompanyBrandingDto;
+import com.tnl.logistics.dto.MobileAppVersionDto;
 import com.tnl.logistics.dto.SystemSettingDto;
 import com.tnl.logistics.dto.UpdateSystemSettingRequest;
 import com.tnl.logistics.model.SystemSetting;
@@ -27,6 +28,9 @@ public class SystemSettingServiceImpl implements SystemSettingService {
     private final SseService sseService;
 
     private volatile SystemSettingDto cachedSettings;
+    private volatile MobileAppVersionDto cachedMobileVersionPolicy;
+    private volatile long lastVersionCheckTime = 0;
+    private static final long VERSION_CACHE_TTL_MS = 5000L;
 
     public SystemSettingServiceImpl(SystemSettingRepository systemSettingRepository, SseService sseService) {
         this.systemSettingRepository = systemSettingRepository;
@@ -59,6 +63,33 @@ public class SystemSettingServiceImpl implements SystemSettingService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public MobileAppVersionDto getMobileAppVersion() {
+        SystemSetting setting = systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID)
+                .orElseGet(SystemSetting::new);
+        return toMobileAppVersionDto(setting);
+    }
+
+    @Override
+    public MobileAppVersionDto getCachedMobileVersionPolicy() {
+        long now = System.currentTimeMillis();
+        MobileAppVersionDto cached = this.cachedMobileVersionPolicy;
+        if (cached != null && (now - lastVersionCheckTime < VERSION_CACHE_TTL_MS)) {
+            return cached;
+        }
+        synchronized (this) {
+            now = System.currentTimeMillis();
+            if (this.cachedMobileVersionPolicy != null && (now - lastVersionCheckTime < VERSION_CACHE_TTL_MS)) {
+                return this.cachedMobileVersionPolicy;
+            }
+            MobileAppVersionDto fetched = getMobileAppVersion();
+            this.cachedMobileVersionPolicy = fetched;
+            this.lastVersionCheckTime = now;
+            return fetched;
+        }
+    }
+
+    @Override
     @Transactional
     public SystemSettingDto updateSettings(UpdateSystemSettingRequest request, String actingUserId) {
         SystemSetting setting = systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID)
@@ -84,11 +115,33 @@ public class SystemSettingServiceImpl implements SystemSettingService {
         setting.setSoaBankName(request.getSoaBankName().trim());
         setting.setSoaAccountName(request.getSoaAccountName().trim());
         setting.setSoaAccountNumber(request.getSoaAccountNumber().trim());
+        if (request.getMinMobileVersionCode() != null) {
+            setting.setMinMobileVersionCode(request.getMinMobileVersionCode());
+        }
+        if (request.getLatestMobileVersionCode() != null) {
+            setting.setLatestMobileVersionCode(request.getLatestMobileVersionCode());
+        }
+        if (request.getLatestMobileVersionName() != null && !request.getLatestMobileVersionName().isBlank()) {
+            setting.setLatestMobileVersionName(request.getLatestMobileVersionName().trim());
+        }
+        if (request.getMobileApkDownloadUrl() != null) {
+            String url = request.getMobileApkDownloadUrl().trim();
+            setting.setMobileApkDownloadUrl(url.isEmpty() ? null : url);
+        }
+        if (request.getMobileForceUpdate() != null) {
+            setting.setMobileForceUpdate(request.getMobileForceUpdate());
+        }
+        if (request.getMobileUpdateReleaseNotes() != null) {
+            String notes = request.getMobileUpdateReleaseNotes().trim();
+            setting.setMobileUpdateReleaseNotes(notes.isEmpty() ? null : notes);
+        }
         setting.setUpdatedBy(actingUserId != null ? actingUserId : "ADMIN");
 
         SystemSetting saved = systemSettingRepository.save(setting);
         SystemSettingDto dto = toDto(saved);
         this.cachedSettings = dto;
+        this.cachedMobileVersionPolicy = toMobileAppVersionDto(saved);
+        this.lastVersionCheckTime = System.currentTimeMillis();
 
         log.info("System settings updated by {}: collectionDay={}, volumetricDivisor={}, ratePerKilo={}",
                 actingUserId, dto.getCollectionDay(), dto.getVolumetricDivisor(), dto.getRatePerKilo());
@@ -133,6 +186,22 @@ public class SystemSettingServiceImpl implements SystemSettingService {
                 )));
         SystemSettingDto dto = toDto(setting);
         this.cachedSettings = dto;
+        this.cachedMobileVersionPolicy = toMobileAppVersionDto(setting);
+        this.lastVersionCheckTime = System.currentTimeMillis();
+    }
+
+    private MobileAppVersionDto toMobileAppVersionDto(SystemSetting setting) {
+        if (setting == null) {
+            return new MobileAppVersionDto(1, 1, "1.0.0", null, true, null);
+        }
+        return new MobileAppVersionDto(
+                setting.getMinMobileVersionCode(),
+                setting.getLatestMobileVersionCode(),
+                setting.getLatestMobileVersionName(),
+                setting.getMobileApkDownloadUrl(),
+                setting.getMobileForceUpdate(),
+                setting.getMobileUpdateReleaseNotes()
+        );
     }
 
     private SystemSettingDto toDto(SystemSetting setting) {
@@ -150,6 +219,12 @@ public class SystemSettingServiceImpl implements SystemSettingService {
                 setting.getSoaAccountNumber(),
                 setting.getTrackingPrefix() != null ? setting.getTrackingPrefix() : "TRK",
                 setting.getShipmentPrefix() != null ? setting.getShipmentPrefix() : "SHP",
+                setting.getMinMobileVersionCode() != null ? setting.getMinMobileVersionCode() : 1,
+                setting.getLatestMobileVersionCode() != null ? setting.getLatestMobileVersionCode() : 1,
+                setting.getLatestMobileVersionName() != null ? setting.getLatestMobileVersionName() : "1.0.0",
+                setting.getMobileApkDownloadUrl(),
+                setting.getMobileForceUpdate() != null ? setting.getMobileForceUpdate() : true,
+                setting.getMobileUpdateReleaseNotes(),
                 setting.getUpdatedAt(),
                 setting.getUpdatedBy()
         );

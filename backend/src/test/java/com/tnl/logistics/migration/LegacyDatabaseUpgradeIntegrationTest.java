@@ -277,7 +277,7 @@ public class LegacyDatabaseUpgradeIntegrationTest {
                 .load();
 
         var result = flyway.migrate();
-        assertEquals(9, result.migrationsExecuted);
+        assertEquals(10, result.migrationsExecuted);
         flyway.validate();
 
         assertEquals("Cordillera Freight", freshJdbcTemplate.queryForObject(
@@ -305,7 +305,7 @@ public class LegacyDatabaseUpgradeIntegrationTest {
         jdbcTemplate.update("INSERT INTO mobile_device_binding (device_id, user_id, device_token_hash, active) " +
                 "VALUES ('upgrade-phone', 'USR-BIND-UPGRADE', ?, TRUE)", "a".repeat(64));
         Flyway flyway = Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load();
-        assertEquals(5, flyway.migrate().migrationsExecuted);
+        assertEquals(6, flyway.migrate().migrationsExecuted);
         flyway.validate();
         assertEquals("USR-BIND-UPGRADE", jdbcTemplate.queryForObject(
                 "SELECT user_id FROM mobile_device_binding WHERE device_id = 'upgrade-phone'", String.class));
@@ -328,8 +328,8 @@ public class LegacyDatabaseUpgradeIntegrationTest {
                 .migrate();
 
         JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
-        assertEquals(42, result.migrationsExecuted);
-        assertEquals("42", jdbcTemplate.queryForObject(
+        assertEquals(43, result.migrationsExecuted);
+        assertEquals("43", jdbcTemplate.queryForObject(
                 "SELECT version FROM flyway_schema_history WHERE success = TRUE ORDER BY installed_rank DESC LIMIT 1",
                 String.class));
         assertTrue(upgradeService.tableExists(dataSource, "app_user"));
@@ -359,7 +359,7 @@ public class LegacyDatabaseUpgradeIntegrationTest {
                 .load()
                 .migrate();
 
-        assertEquals(7, result.migrationsExecuted);
+        assertEquals(8, result.migrationsExecuted);
         assertEquals("ADMIN:4", finalIdentity(jdbcTemplate, "USR-MIG-ADMIN"));
         assertEquals("RECEIVING_STAFF:6", finalIdentity(jdbcTemplate, "USR-MIG-RECEIVING"));
         assertEquals("COURIER_STAFF:7", finalIdentity(jdbcTemplate, "USR-MIG-COURIER"));

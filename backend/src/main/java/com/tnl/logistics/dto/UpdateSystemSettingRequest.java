@@ -53,6 +53,22 @@ public class UpdateSystemSettingRequest {
     @Pattern(regexp = "^[0-9]{6,20}$", message = "SOA account number must contain 6 to 20 digits")
     private String soaAccountNumber;
 
+    @Min(value = 1, message = "Minimum mobile version code must be at least 1")
+    private Integer minMobileVersionCode;
+
+    @Min(value = 1, message = "Latest mobile version code must be at least 1")
+    private Integer latestMobileVersionCode;
+
+    @Size(max = 50, message = "Latest mobile version name must not exceed 50 characters")
+    private String latestMobileVersionName;
+
+    @Size(max = 500, message = "Mobile APK download URL must not exceed 500 characters")
+    private String mobileApkDownloadUrl;
+
+    private Boolean mobileForceUpdate;
+
+    private String mobileUpdateReleaseNotes;
+
     public UpdateSystemSettingRequest() {}
 
     public UpdateSystemSettingRequest(String companyName, String companyAddress, String companyContact,
@@ -101,4 +117,22 @@ public class UpdateSystemSettingRequest {
 
     public String getSoaAccountNumber() { return soaAccountNumber; }
     public void setSoaAccountNumber(String soaAccountNumber) { this.soaAccountNumber = soaAccountNumber; }
+
+    public Integer getMinMobileVersionCode() { return minMobileVersionCode; }
+    public void setMinMobileVersionCode(Integer minMobileVersionCode) { this.minMobileVersionCode = minMobileVersionCode; }
+
+    public Integer getLatestMobileVersionCode() { return latestMobileVersionCode; }
+    public void setLatestMobileVersionCode(Integer latestMobileVersionCode) { this.latestMobileVersionCode = latestMobileVersionCode; }
+
+    public String getLatestMobileVersionName() { return latestMobileVersionName; }
+    public void setLatestMobileVersionName(String latestMobileVersionName) { this.latestMobileVersionName = latestMobileVersionName; }
+
+    public String getMobileApkDownloadUrl() { return mobileApkDownloadUrl; }
+    public void setMobileApkDownloadUrl(String mobileApkDownloadUrl) { this.mobileApkDownloadUrl = mobileApkDownloadUrl; }
+
+    public Boolean getMobileForceUpdate() { return mobileForceUpdate; }
+    public void setMobileForceUpdate(Boolean mobileForceUpdate) { this.mobileForceUpdate = mobileForceUpdate; }
+
+    public String getMobileUpdateReleaseNotes() { return mobileUpdateReleaseNotes; }
+    public void setMobileUpdateReleaseNotes(String mobileUpdateReleaseNotes) { this.mobileUpdateReleaseNotes = mobileUpdateReleaseNotes; }
 }

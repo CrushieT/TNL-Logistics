@@ -34,6 +34,9 @@ test('prints two complete copies of only the selected manifest with 50-item dual
   assert.equal(html.match(/TRK-55/g).length, 2);
   assert.doesNotMatch(html, /TRK-56/);
   assert.match(html, /A4 portrait/);
+  assert.match(html, /min-height: 278mm/);
+  assert.match(html, /max-height: 297mm/);
+  assert.match(html, /break-inside: avoid/);
   assert.match(html, /table-header-group/);
   assert.match(html, /class="manifest-grid"/);
   assert.match(html, /class="manifest-table"/);
@@ -60,9 +63,18 @@ test('labels additional single-page copies as client copies', () => {
 
 test('escapes manifest text and falls back to the brand name without a logo', () => {
   const html = buildWaybillHtml({ waybillId: 'WYB-1', totalQuantity: 1,
-    recipientName: '<Recipient>', parcels: [{ trackingId: 'TRK-1', seq: 1 }] });
+    recipientName: '<Recipient>', parcels: [{ trackingId: 'TRK-1', seq: 1 }] }, null);
   assert.match(html, /&lt;Recipient&gt;/);
   assert.match(html, /TC &amp; CT INTEGRATED LOGISTICS/);
   assert.match(html, /RETURN CONFIRMATION QR/);
   assert.doesNotMatch(html, /<img/);
+  assert.match(html, /class="logo-fallback"/);
+});
+
+test('inlines the canonical base64 waybill logo by default when logoUri is omitted', () => {
+  const html = buildWaybillHtml({ waybillId: 'WYB-1', totalQuantity: 1,
+    parcels: [{ trackingId: 'TRK-1', seq: 1 }] });
+  assert.match(html, /<img src="data:image\/png;base64,[^"]+"/);
+  assert.match(html, /class="logo-wrap"/);
+  assert.doesNotMatch(html, /class="logo-fallback"/);
 });

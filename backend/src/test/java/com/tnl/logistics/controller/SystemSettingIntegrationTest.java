@@ -104,6 +104,50 @@ public class SystemSettingIntegrationTest {
     }
 
     @Test
+    void testGetMobileAppVersionUnauthenticatedReturns200AndExpectedStructure() throws Exception {
+        mockMvc.perform(get("/api/v1/settings/mobile-version")
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minSupportedVersionCode").value(1))
+                .andExpect(jsonPath("$.latestVersionCode").value(1))
+                .andExpect(jsonPath("$.latestVersionName").value("1.0.0"))
+                .andExpect(jsonPath("$.forceUpdate").value(true));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testUpdateMobileVersionSettingsAsAdminReflectsInMobileVersionEndpoint() throws Exception {
+        UpdateSystemSettingRequest request = createValidSettingsRequest();
+        request.setMinMobileVersionCode(2);
+        request.setLatestMobileVersionCode(3);
+        request.setLatestMobileVersionName("1.2.0");
+        request.setMobileApkDownloadUrl("https://github.com/CrushieT/TNL-Logistics/releases/download/v1.2.0/app.apk");
+        request.setMobileForceUpdate(true);
+        request.setMobileUpdateReleaseNotes("Mandatory update for tracking and waybill stability.");
+
+        mockMvc.perform(put("/api/v1/settings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minMobileVersionCode").value(2))
+                .andExpect(jsonPath("$.latestMobileVersionCode").value(3))
+                .andExpect(jsonPath("$.latestMobileVersionName").value("1.2.0"))
+                .andExpect(jsonPath("$.mobileApkDownloadUrl").value("https://github.com/CrushieT/TNL-Logistics/releases/download/v1.2.0/app.apk"))
+                .andExpect(jsonPath("$.mobileForceUpdate").value(true))
+                .andExpect(jsonPath("$.mobileUpdateReleaseNotes").value("Mandatory update for tracking and waybill stability."));
+
+        mockMvc.perform(get("/api/v1/settings/mobile-version")
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minSupportedVersionCode").value(2))
+                .andExpect(jsonPath("$.latestVersionCode").value(3))
+                .andExpect(jsonPath("$.latestVersionName").value("1.2.0"))
+                .andExpect(jsonPath("$.apkDownloadUrl").value("https://github.com/CrushieT/TNL-Logistics/releases/download/v1.2.0/app.apk"))
+                .andExpect(jsonPath("$.forceUpdate").value(true))
+                .andExpect(jsonPath("$.releaseNotes").value("Mandatory update for tracking and waybill stability."));
+    }
+
+    @Test
     @WithMockUser(username = "admin", roles = {"ADMIN"})
     void testUpdateSettingsAsAdminReturns200AndUpdatesSettings() throws Exception {
         UpdateSystemSettingRequest request = new UpdateSystemSettingRequest(

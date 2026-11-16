@@ -147,7 +147,7 @@ tnl-logistics/
 │   ├── src/
 │   │   ├── main/
 │   │   │   ├── java/com/tnl/logistics/
-│   │   │   │   ├── config/              # SecurityConfig, JwtRenewalResponseWrapper, CorsConfig, JwtTokenProvider, DataSeeder, LoadTestDataSeeder, LoadTestEnvironmentGuard
+│   │   │   │   ├── config/              # SecurityConfig, MobileVersionEnforcementFilter, JwtRenewalResponseWrapper, CorsConfig, JwtTokenProvider, DataSeeder, LoadTestDataSeeder, LoadTestEnvironmentGuard
 │   │   │   │   ├── controller/          # REST endpoints (Shipment, Vehicle, Client, Waybill, Payment, Collections, SOA)
 │   │   │   │   ├── dto/                 # Request & Response DTOs (including CurrentUserResponse and MobileDeviceBindingSummary)
 │   │   │   │   ├── model/               # JPA Entities (Client, Shipment, ParcelUnit, Vehicle, Waybill, Payment, Soa, MobileDeviceBinding, etc.)
@@ -238,13 +238,14 @@ tnl-logistics/
 │   │   ├── components/               # Shared UI atoms (BackButton, Keypad, PinIndicator, PressableScale, ActionCard, MetricCard, NoticeBanner, StatusModal, QRCodeGenerator, ThermalLabelPreviewModal)
 │   │   │   ├── common/
 │   │   │   └── layout/               # MobileHeader
-│   │   ├── features/                 # Domain feature slices (auth, office, field, shipments, printer, scanner, tracking-history, waybills, settings)
+│   │   ├── features/                 # Domain feature slices (auth, office, field, shipments, printer, scanner, tracking-history, waybills, settings, updates)
 │   │   │   ├── auth/services/        # Auth API, secure storage transitions, and pure cold-launch/PIN lifecycle helpers
 │   │   │   ├── settings/             # Account/security flow helpers and reusable settings components
+│   │   │   ├── updates/              # Mobile version check hook (useAppVersionCheck), pure evaluation service (appVersionService.mjs), and hard-gate modal (ForceUpdateModal, AppVersionGate)
 │   │   │   ├── shipments/            # Shipment registration with ParcelUnitsEditor and parcelPagination helpers, explorer, detail screens, and barcode scanner modal
 │   │   │   ├── printer/              # Driver isolation, audit outbox, ESC/POS & TSPL formatters (tsplFormatter.js for XP-470B/XP-420B), and serialized PrinterContext
 │   │   │   ├── scanner/              # Field camera scanner (ScanViewfinder, SingleScanReview, BatchScanPanel, ScanResultPanel, VehiclePicker, scannerFlow.mjs, vehicleOptionsFlow.mjs, trackingScanApi.js, haptics.js, hapticsCore.mjs)
-│   │   │   ├── waybills/             # Split waybill client (waybillApi.js) and 2-copy portrait A4 print generator (printWaybill.mjs)
+│   │   │   ├── waybills/             # Split waybill client (waybillApi.js), 2-copy portrait A4 print generator (printWaybill.mjs), and inlined print logo asset (waybillLogo.mjs)
 │   │   │   ├── tracking-history/     # Field personal scan feed, metrics, parcel summary, personal timeline, pure flow logic (trackingHistoryFlow.mjs), request coordinator (trackingHistoryRequestCoordinator.mjs), and API client (trackingHistoryApi.js)
 │   │   ├── services/
 │   │   │   ├── api/                  # Axios client plus sessionHandling.mjs retry and redaction helpers
@@ -318,10 +319,12 @@ tnl-logistics/
 - `frontend-mobile/src/app/(main)/waybills.js`: Hauler Staff loading, handoff, printing, exact lookup, and printed-waybill QR return confirmation screen.
 - `frontend-mobile/src/features/waybills/waybillApi.js`: waybill API calls.
 - `frontend-mobile/src/features/waybills/printWaybill.mjs` and `printWaybill.test.mjs`: two-copy A4 print model and tests.
+- `frontend-mobile/src/features/waybills/waybillLogo.mjs`: self-contained inlined Base64 data URI asset for standalone mobile print rendering.
 - `frontend-mobile/src/features/waybills/waybillReturnFlow.mjs` and `frontend-mobile/tests/waybillReturn.test.mjs`: strict QR parsing and completion-unlock rules.
 - `frontend-web/src/app/waybills/index.js`: Admin waybill lookup and selected-manifest printing.
 - `backend/src/main/resources/db/migration/V35__record_waybill_return_scans.sql` and its model/repository remain for historical return-scan records; the active return-scan endpoint is retired.
 - `frontend-web/src/features/waybills/services/waybillPrint.mjs` and `waybillPrint.test.mjs`: exact-manifest two-copy A4 print model with identical return-confirmation QRs and pagination tests.
+- `frontend-web/src/features/waybills/services/waybillLogo.mjs`: self-contained inlined Base64 data URI asset for web print rendering.
 
 ### Mobile shipment-option pagination additions
 

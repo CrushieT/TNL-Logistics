@@ -2,6 +2,10 @@ import axios from 'axios';
 import Constants from 'expo-constants';
 import { authSessionCoordinator } from '../../features/auth/services/sessionCoordinator.mjs';
 import {
+  buildMobileVersionHeaders,
+  notifyVersionObsolete,
+} from '../../features/updates/services/appVersionService.mjs';
+import {
   buildSessionRetryConfig,
   classifySessionFailure,
   normalizeApiUrl,
@@ -47,6 +51,13 @@ apiClient.interceptors.request.use(
       throw { code: 'SESSION_SUPERSEDED', message: 'This request belongs to an earlier session.' };
     }
     config._sessionGeneration = session.generation;
+
+    // Attach mobile version headers for request-time version enforcement
+    const versionHeaders = buildMobileVersionHeaders();
+    if (config.headers && versionHeaders) {
+      Object.assign(config.headers, versionHeaders);
+    }
+
     if (config.skipAuth === true) {
       if (config.headers) delete config.headers.Authorization;
       return config;
@@ -76,6 +87,18 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error) => {
+    // Intercept HTTP 426 Upgrade Required for request-time version enforcement
+    if (error.response?.status === 426) {
+      notifyVersionObsolete(error.response?.data);
+      const upgradeError = new Error(
+        error.response?.data?.message || 'The mobile application version is no longer supported. Please update to continue.'
+      );
+      upgradeError.code = 'UPGRADE_REQUIRED';
+      upgradeError.status = 426;
+      upgradeError.serverVersion = error.response?.data;
+      return Promise.reject(upgradeError);
+    }
+
     const session = authSessionCoordinator.current();
     const currentToken = session.token || null;
     const sessionFailure = classifySessionFailure(error, currentToken, session);

@@ -1,4 +1,5 @@
 import { generateQRMatrix, generateQRSvgPath } from '../../utils/qr.js';
+import { WAYBILL_LOGO_BASE64 } from './waybillLogo.mjs';
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (character) => ({
@@ -47,7 +48,7 @@ export function createWaybillPrintSheetSequence(paginatedPages, copies = WAYBILL
   )).flat();
 }
 
-export function buildWaybillHtml(manifest, logoUri, branding = null, copies = WAYBILL_PRINT_COPY_COUNT) {
+export function buildWaybillHtml(manifest, logoUri = WAYBILL_LOGO_BASE64, branding = null, copies = WAYBILL_PRINT_COPY_COUNT) {
   if (!manifest?.waybillId || !Array.isArray(manifest.parcels) || manifest.parcels.length === 0) {
     throw new Error('A generated waybill with manifest units is required');
   }
@@ -117,7 +118,7 @@ export function buildWaybillHtml(manifest, logoUri, branding = null, copies = WA
           ${rightTable}
         </div>
       </div>
-      <div>
+      <div class="bottom-block">
         ${isLastPage ? `<footer><div>RELEASED BY<br><b>${escapeHtml(manifest.releasedByAdminName || 'Hauler Staff')}</b><hr>Signature</div><div>CLIENT SIGNATURE AND PRINTED NAME<br><b>${escapeHtml(manifest.signedBy)}</b><hr>Date: ${escapeHtml(manifest.signedDate || '________________')}</div></footer>` : ''}
         <div class="page-footnote"><span>Waybill ${escapeHtml(manifest.waybillId || manifest.shipmentId)} | Manifest for ${escapeHtml(manifest.recipientName || 'Consignee')}</span><span>Page ${pageNumber} of ${totalPages}</span></div>
       </div>
@@ -127,7 +128,7 @@ export function buildWaybillHtml(manifest, logoUri, branding = null, copies = WA
   return `<!doctype html><html><head><meta charset="utf-8"><title></title><style>
     @page { size: A4 portrait; margin: 0; }
     body { margin: 0; padding: 0; font: 11.5px Arial, sans-serif; color: #111; }
-    .copy { padding: 10mm 12mm; box-sizing: border-box; break-after: page; page-break-after: always; min-height: 297mm; display: flex; flex-direction: column; justify-content: space-between; }
+    .copy { padding: 8mm 12mm 4mm 12mm; box-sizing: border-box; break-after: page; page-break-after: always; break-inside: avoid; page-break-inside: avoid; min-height: 278mm; max-height: 297mm; display: flex; flex-direction: column; justify-content: space-between; }
     .copy:last-child { break-after: auto; page-break-after: auto; }
     .letterhead { text-align: center; margin-bottom: 2mm; }
     .letterhead .logo-wrap img { max-height: 12mm; max-width: 38mm; object-fit: contain; margin: 0 auto 1mm auto; display: block; }
@@ -158,7 +159,7 @@ export function buildWaybillHtml(manifest, logoUri, branding = null, copies = WA
     .manifest-table { flex: 1; min-width: 0; width: 49%; border-collapse: collapse; }
     .manifest-table.empty-col { visibility: hidden; }
     thead { display: table-header-group; }
-    tr, footer { break-inside: avoid; page-break-inside: avoid; }
+    tr, footer, .bottom-block, .page-footnote { break-inside: avoid; page-break-inside: avoid; }
     th, td { padding: 1.4mm 2mm; border-bottom: 1px solid #ddd; text-align: left; }
     th { border-bottom: 1.5px solid #111; font-family: monospace; font-size: 10.5px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; }
     td { font-size: 10.5px; }
