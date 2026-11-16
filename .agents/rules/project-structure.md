@@ -323,6 +323,7 @@ tnl-logistics/
 - `frontend-web/src/app/waybills/index.js`: Admin waybill lookup and selected-manifest printing.
 - `backend/src/main/resources/db/migration/V35__record_waybill_return_scans.sql` and its model/repository remain for historical return-scan records; the active return-scan endpoint is retired.
 - `frontend-web/src/features/waybills/services/waybillPrint.mjs` and `waybillPrint.test.mjs`: exact-manifest two-copy A4 print model with identical return-confirmation QRs and pagination tests.
+- `frontend-web/src/features/waybills/services/waybillLogo.mjs`: self-contained inlined Base64 data URI asset for web print rendering.
 
 ### Mobile shipment-option pagination additions
 

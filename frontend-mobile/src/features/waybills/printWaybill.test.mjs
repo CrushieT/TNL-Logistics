@@ -34,6 +34,9 @@ test('prints two complete copies of only the selected manifest with 50-item dual
   assert.equal(html.match(/TRK-55/g).length, 2);
   assert.doesNotMatch(html, /TRK-56/);
   assert.match(html, /A4 portrait/);
+  assert.match(html, /min-height: 278mm/);
+  assert.match(html, /max-height: 297mm/);
+  assert.match(html, /break-inside: avoid/);
   assert.match(html, /table-header-group/);
   assert.match(html, /class="manifest-grid"/);
   assert.match(html, /class="manifest-table"/);

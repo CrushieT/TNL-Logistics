@@ -1,5 +1,12 @@
 # TNL Logistics — Master Build Plan
 
+## Waybill print orphan trailing page elimination and web logo inlining [COMPLETED]
+
+- Mobile print orientation correction: fixed inverted print dimensions in `handlePrintManifest` within `frontend-mobile/src/app/(main)/waybills.js` from landscape (`width: 842, height: 595`) to portrait (`width: 595, height: 842`), preventing Android system print spoolers from truncating the 297mm A4 portrait sheet at 210mm.
+- Print template margin and page-break resilience: updated CSS `.copy` styling in `frontend-mobile/src/features/waybills/printWaybill.mjs` and `frontend-web/src/features/waybills/services/waybillPrint.mjs` to enforce `break-inside: avoid; page-break-inside: avoid;`, bounded height `min-height: 278mm; max-height: 297mm;`, and breathing padding `8mm 12mm 4mm 12mm;`. Enforced page-break protection on the signature and page footnote container (`.bottom-block, footer, .page-footnote`). This absorbs browser default margins (10mm) and hardware feed-roller unprintable margins (3mm–5mm) without generating an extra page containing only the footer.
+- Web brand logo asset inlining: exported `WAYBILL_LOGO_BASE64` in `frontend-web/src/features/waybills/services/waybillLogo.mjs` and updated `buildWaybillPrintHtml` in `waybillPrint.mjs` to default `logoUri = WAYBILL_LOGO_BASE64`. Updated `frontend-web/src/app/waybills/[id].js` to fall back to `WAYBILL_LOGO_BASE64` if `getRenderedWaybillLogoUri` returns null or non-data URI, guaranteeing instantaneous and synchronous rendering of the company logo in the print preview iframe without DOM or network dependencies.
+- Test alignment and verification [COMPLETED]: updated legacy 15-item test fixture in `frontend-web/src/features/waybills/services/waybillPrint.test.mjs` to match the canonical 50-item dual-column pagination (`WAYBILL_ITEMS_PER_PAGE = 50`), added height, break-inside, and default Base64 logo inlining assertions across `frontend-mobile/src/features/waybills/printWaybill.test.mjs` and `frontend-web/tests/waybillPrint.test.mjs`. Verified via 348 passing mobile unit tests, 388 passing web unit tests, clean Android production export (`expo export --platform android`), clean Web production export (`expo export --platform web`), and zero `git diff --check` warnings.
+
 ## Mobile waybill print logo inlining for standalone builds [COMPLETED]
 
 - Standalone print logo asset inlining: resolved missing waybill brand logo in standalone release APKs by exporting the canonical tracking brand logo as a self-contained Base64 data URI in `waybillLogo.mjs`.

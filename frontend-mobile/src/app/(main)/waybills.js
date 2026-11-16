@@ -1123,15 +1123,15 @@ export default function DispatchWaybillsScreen() {
     }
   };
 
-  // Print 2 landscape A4 copies via expo-print
+  // Print 2 portrait A4 copies via expo-print
   const handlePrintManifest = async () => {
     if (!manifest || busy) return;
     setBusy(true);
     try {
       await Print.printAsync({
         html: buildWaybillHtml(manifest),
-        width: 842,
-        height: 595
+        width: 595,
+        height: 842
       });
       setNotice('Print dialog opened. Hand paper copies and units to the driver.');
     } catch {

@@ -42,6 +42,9 @@ test('prints exactly two complete copies of the selected manifest with 50-item d
   assert.doesNotMatch(html, /<th>Contents<\/th>/i);
   assert.match(html, /display: table-header-group/);
   assert.match(html, /size: A4 portrait/);
+  assert.match(html, /min-height: 278mm/);
+  assert.match(html, /max-height: 297mm/);
+  assert.match(html, /break-inside: avoid/);
   assert.doesNotMatch(html, /UNIT-56/);
   assert.equal(html.match(/class="return-qr"/g).length, 4);
   assert.equal(html.match(/aria-label="WAYBILL:WYB-A"/g).length, 4);
@@ -55,11 +58,18 @@ test('prints exactly two complete copies of the selected manifest with 50-item d
 });
 
 test('escapes document data and retains the text logo fallback', () => {
-  const html = buildWaybillPrintHtml({ waybillId: 'WYB-1', parcels: [{ trackingId: '<UNIT>' }] });
+  const html = buildWaybillPrintHtml({ waybillId: 'WYB-1', parcels: [{ trackingId: '<UNIT>' }] }, null);
   assert.match(html, /&lt;UNIT&gt;/);
   assert.match(html, /TC &amp; CT INTEGRATED LOGISTICS/);
   assert.match(html, /RETURN CONFIRMATION QR/);
   assert.doesNotMatch(html, /<img/);
+});
+
+test('inlines the canonical base64 waybill logo by default when logoUri is omitted', () => {
+  const html = buildWaybillPrintHtml({ waybillId: 'WYB-1', parcels: [{ trackingId: 'UNIT-1' }] });
+  assert.match(html, /<img src="data:image\/png;base64,[^"]+"/);
+  assert.match(html, /class="logo-wrap"/);
+  assert.doesNotMatch(html, /class="logo-fallback"/);
 });
 
 test('web waybill preview displays the same return confirmation QR payload as printed copies', () => {
