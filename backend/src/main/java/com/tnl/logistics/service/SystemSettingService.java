@@ -1,6 +1,7 @@
 package com.tnl.logistics.service;
 
 import com.tnl.logistics.dto.CompanyBrandingDto;
+import com.tnl.logistics.dto.MobileAppVersionDto;
 import com.tnl.logistics.dto.SystemSettingDto;
 import com.tnl.logistics.dto.UpdateSystemSettingRequest;
 
@@ -21,6 +22,16 @@ public interface SystemSettingService {
      * Retrieve lightweight company branding, collection day, and calculation parameters.
      */
     CompanyBrandingDto getCompanyBranding();
+
+    /**
+     * Retrieve mobile application version status and update gating requirements.
+     */
+    MobileAppVersionDto getMobileAppVersion();
+
+    /**
+     * Retrieve cached mobile application version policy with short TTL to protect against DB amplification.
+     */
+    MobileAppVersionDto getCachedMobileVersionPolicy();
 
     /**
      * Update system settings and broadcast real-time update event.

@@ -1,6 +1,7 @@
 package com.tnl.logistics.controller;
 
 import com.tnl.logistics.dto.CompanyBrandingDto;
+import com.tnl.logistics.dto.MobileAppVersionDto;
 import com.tnl.logistics.dto.SystemSettingDto;
 import com.tnl.logistics.dto.UpdateSystemSettingRequest;
 import com.tnl.logistics.service.SystemSettingService;
@@ -48,5 +49,10 @@ public class SystemSettingController {
     @PreAuthorize("hasAnyRole('ADMIN', 'RECEIVING_STAFF', 'COURIER_STAFF', 'DISPATCH_STAFF')")
     public ResponseEntity<CompanyBrandingDto> getCompanyBranding() {
         return ResponseEntity.ok(systemSettingService.getCompanyBranding());
+    }
+
+    @GetMapping("/mobile-version")
+    public ResponseEntity<MobileAppVersionDto> getMobileAppVersion() {
+        return ResponseEntity.ok(systemSettingService.getMobileAppVersion());
     }
 }

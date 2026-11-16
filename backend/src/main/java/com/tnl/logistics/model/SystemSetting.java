@@ -59,6 +59,24 @@ public class SystemSetting {
     @Column(name = "shipment_prefix", length = 20, nullable = false)
     private String shipmentPrefix = "SHP";
 
+    @Column(name = "min_mobile_version_code", nullable = false)
+    private Integer minMobileVersionCode = 1;
+
+    @Column(name = "latest_mobile_version_code", nullable = false)
+    private Integer latestMobileVersionCode = 1;
+
+    @Column(name = "latest_mobile_version_name", length = 50, nullable = false)
+    private String latestMobileVersionName = "1.0.0";
+
+    @Column(name = "mobile_apk_download_url", length = 500)
+    private String mobileApkDownloadUrl;
+
+    @Column(name = "mobile_force_update", nullable = false)
+    private Boolean mobileForceUpdate = true;
+
+    @Column(name = "mobile_update_release_notes", columnDefinition = "TEXT")
+    private String mobileUpdateReleaseNotes;
+
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
@@ -129,6 +147,24 @@ public class SystemSetting {
 
     public String getShipmentPrefix() { return shipmentPrefix; }
     public void setShipmentPrefix(String shipmentPrefix) { this.shipmentPrefix = shipmentPrefix; }
+
+    public Integer getMinMobileVersionCode() { return minMobileVersionCode; }
+    public void setMinMobileVersionCode(Integer minMobileVersionCode) { this.minMobileVersionCode = minMobileVersionCode; }
+
+    public Integer getLatestMobileVersionCode() { return latestMobileVersionCode; }
+    public void setLatestMobileVersionCode(Integer latestMobileVersionCode) { this.latestMobileVersionCode = latestMobileVersionCode; }
+
+    public String getLatestMobileVersionName() { return latestMobileVersionName; }
+    public void setLatestMobileVersionName(String latestMobileVersionName) { this.latestMobileVersionName = latestMobileVersionName; }
+
+    public String getMobileApkDownloadUrl() { return mobileApkDownloadUrl; }
+    public void setMobileApkDownloadUrl(String mobileApkDownloadUrl) { this.mobileApkDownloadUrl = mobileApkDownloadUrl; }
+
+    public Boolean getMobileForceUpdate() { return mobileForceUpdate; }
+    public void setMobileForceUpdate(Boolean mobileForceUpdate) { this.mobileForceUpdate = mobileForceUpdate; }
+
+    public String getMobileUpdateReleaseNotes() { return mobileUpdateReleaseNotes; }
+    public void setMobileUpdateReleaseNotes(String mobileUpdateReleaseNotes) { this.mobileUpdateReleaseNotes = mobileUpdateReleaseNotes; }
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }

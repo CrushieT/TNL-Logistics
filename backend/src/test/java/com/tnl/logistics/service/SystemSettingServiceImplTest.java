@@ -1,6 +1,7 @@
 package com.tnl.logistics.service;
 
 import com.tnl.logistics.dto.CompanyBrandingDto;
+import com.tnl.logistics.dto.MobileAppVersionDto;
 import com.tnl.logistics.dto.UpdateSystemSettingRequest;
 import com.tnl.logistics.model.SystemSetting;
 import com.tnl.logistics.repository.SystemSettingRepository;
@@ -15,7 +16,9 @@ import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -54,5 +57,28 @@ class SystemSettingServiceImplTest {
         ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
         verify(sseService).broadcastEvent(eq("SETTINGS_UPDATED"), payloadCaptor.capture());
         assertInstanceOf(CompanyBrandingDto.class, payloadCaptor.getValue());
+    }
+
+    @Test
+    void getMobileAppVersionReturnsConfiguredValues() {
+        SystemSetting setting = new SystemSetting();
+        setting.setMinMobileVersionCode(2);
+        setting.setLatestMobileVersionCode(5);
+        setting.setLatestMobileVersionName("2.0.0");
+        setting.setMobileApkDownloadUrl("https://example.com/tcct-staff.apk");
+        setting.setMobileForceUpdate(true);
+        setting.setMobileUpdateReleaseNotes("Release notes test");
+
+        when(systemSettingRepository.findById(SystemSetting.DEFAULT_SETTING_ID)).thenReturn(Optional.of(setting));
+
+        SystemSettingServiceImpl service = new SystemSettingServiceImpl(systemSettingRepository, sseService);
+        MobileAppVersionDto versionDto = service.getMobileAppVersion();
+
+        assertEquals(2, versionDto.getMinSupportedVersionCode());
+        assertEquals(5, versionDto.getLatestVersionCode());
+        assertEquals("2.0.0", versionDto.getLatestVersionName());
+        assertEquals("https://example.com/tcct-staff.apk", versionDto.getApkDownloadUrl());
+        assertTrue(versionDto.getForceUpdate());
+        assertEquals("Release notes test", versionDto.getReleaseNotes());
     }
 }

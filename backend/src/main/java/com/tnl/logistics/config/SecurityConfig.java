@@ -25,11 +25,14 @@ public class SecurityConfig {
 
 	private final com.tnl.logistics.repository.AppUserRepository appUserRepository;
 	private final com.tnl.logistics.repository.MobileDeviceBindingRepository mobileDeviceBindingRepository;
+	private final com.tnl.logistics.service.SystemSettingService systemSettingService;
 
 	public SecurityConfig(com.tnl.logistics.repository.AppUserRepository appUserRepository,
-			com.tnl.logistics.repository.MobileDeviceBindingRepository mobileDeviceBindingRepository) {
+			com.tnl.logistics.repository.MobileDeviceBindingRepository mobileDeviceBindingRepository,
+			com.tnl.logistics.service.SystemSettingService systemSettingService) {
 		this.appUserRepository = appUserRepository;
 		this.mobileDeviceBindingRepository = mobileDeviceBindingRepository;
+		this.systemSettingService = systemSettingService;
 	}
 
 	@Bean
@@ -56,14 +59,15 @@ public class SecurityConfig {
 						"/swagger-ui/**",
 						"/swagger-ui.html"
 				).permitAll()
-				// Allow public access to Login and First Boot auth endpoints
+				// Allow public access to Login, First Boot, and Mobile Version Check endpoints
 				.requestMatchers(
 						"/api/v1/auth/login",
 						"/api/v1/auth/mobile-login",
 						"/api/v1/auth/mobile-pin-login",
 						"/api/v1/auth/mobile-pin-status",
 						"/api/v1/auth/first-boot-status",
-						"/api/v1/auth/first-boot-admin"
+						"/api/v1/auth/first-boot-admin",
+						"/api/v1/settings/mobile-version"
 				).permitAll()
 				// Allow internal Spring Boot error dispatch
 				.requestMatchers("/error").permitAll()
@@ -71,6 +75,8 @@ public class SecurityConfig {
 				.requestMatchers("/api/v1/**").authenticated()
 				.anyRequest().authenticated()
 			)
+			// Wire the mobile version enforcement filter before authentication
+			.addFilterBefore(new MobileVersionEnforcementFilter(systemSettingService), org.springframework.security.web.authentication.logout.LogoutFilter.class)
 			// Wire the JWT token verification filter
 			.addFilterBefore(new JwtAuthenticationFilter(appUserRepository, mobileDeviceBindingRepository), UsernamePasswordAuthenticationFilter.class);
 

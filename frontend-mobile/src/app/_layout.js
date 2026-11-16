@@ -4,6 +4,7 @@ import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
 import { AuthProvider } from '../features/auth/context/AuthContext';
+import { AppVersionGate } from '../features/updates/components/AppVersionGate';
 import { colors } from '../theme';
 
 /**
@@ -29,6 +30,7 @@ export default function RootLayout() {
             <Stack.Screen name="(auth)/pin" />
             <Stack.Screen name="(main)" />
           </Stack>
+          <AppVersionGate />
         </AuthProvider>
       </PaperProvider>
     </SafeAreaProvider>

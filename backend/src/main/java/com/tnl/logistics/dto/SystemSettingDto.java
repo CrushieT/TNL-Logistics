@@ -24,6 +24,12 @@ public class SystemSettingDto {
     private String shipmentPrefix;
     private String trackingIdPrefixPreview;
     private String shipmentIdPrefixPreview;
+    private Integer minMobileVersionCode;
+    private Integer latestMobileVersionCode;
+    private String latestMobileVersionName;
+    private String mobileApkDownloadUrl;
+    private Boolean mobileForceUpdate;
+    private String mobileUpdateReleaseNotes;
     private LocalDateTime updatedAt;
     private String updatedBy;
 
@@ -53,6 +59,21 @@ public class SystemSettingDto {
                             String soaBankName, String soaAccountName, String soaAccountNumber,
                             String trackingPrefix, String shipmentPrefix,
                             LocalDateTime updatedAt, String updatedBy) {
+        this(settingId, companyName, companyAddress, companyContact, billingEmail, collectionDay,
+             volumetricDivisor, ratePerKilo, soaBankName, soaAccountName, soaAccountNumber,
+             trackingPrefix, shipmentPrefix, 1, 1, "1.0.0", null, true, null,
+             updatedAt, updatedBy);
+    }
+
+    public SystemSettingDto(Integer settingId, String companyName, String companyAddress,
+                            String companyContact, String billingEmail, DayOfWeek collectionDay,
+                            Integer volumetricDivisor, java.math.BigDecimal ratePerKilo,
+                            String soaBankName, String soaAccountName, String soaAccountNumber,
+                            String trackingPrefix, String shipmentPrefix,
+                            Integer minMobileVersionCode, Integer latestMobileVersionCode,
+                            String latestMobileVersionName, String mobileApkDownloadUrl,
+                            Boolean mobileForceUpdate, String mobileUpdateReleaseNotes,
+                            LocalDateTime updatedAt, String updatedBy) {
         this.settingId = settingId;
         this.companyName = companyName;
         this.companyAddress = companyAddress;
@@ -66,6 +87,12 @@ public class SystemSettingDto {
         this.soaAccountNumber = soaAccountNumber;
         this.trackingPrefix = trackingPrefix;
         this.shipmentPrefix = shipmentPrefix;
+        this.minMobileVersionCode = minMobileVersionCode != null ? minMobileVersionCode : 1;
+        this.latestMobileVersionCode = latestMobileVersionCode != null ? latestMobileVersionCode : 1;
+        this.latestMobileVersionName = latestMobileVersionName != null ? latestMobileVersionName : "1.0.0";
+        this.mobileApkDownloadUrl = mobileApkDownloadUrl;
+        this.mobileForceUpdate = mobileForceUpdate != null ? mobileForceUpdate : true;
+        this.mobileUpdateReleaseNotes = mobileUpdateReleaseNotes;
         int currentYear = LocalDate.now().getYear();
         this.trackingIdPrefixPreview = (trackingPrefix != null ? trackingPrefix : "TRK") + "-" + currentYear + "-";
         this.shipmentIdPrefixPreview = (shipmentPrefix != null ? shipmentPrefix : "SHP") + "-" + currentYear + "-";
@@ -117,6 +144,24 @@ public class SystemSettingDto {
 
     public String getShipmentIdPrefixPreview() { return shipmentIdPrefixPreview; }
     public void setShipmentIdPrefixPreview(String shipmentIdPrefixPreview) { this.shipmentIdPrefixPreview = shipmentIdPrefixPreview; }
+
+    public Integer getMinMobileVersionCode() { return minMobileVersionCode; }
+    public void setMinMobileVersionCode(Integer minMobileVersionCode) { this.minMobileVersionCode = minMobileVersionCode; }
+
+    public Integer getLatestMobileVersionCode() { return latestMobileVersionCode; }
+    public void setLatestMobileVersionCode(Integer latestMobileVersionCode) { this.latestMobileVersionCode = latestMobileVersionCode; }
+
+    public String getLatestMobileVersionName() { return latestMobileVersionName; }
+    public void setLatestMobileVersionName(String latestMobileVersionName) { this.latestMobileVersionName = latestMobileVersionName; }
+
+    public String getMobileApkDownloadUrl() { return mobileApkDownloadUrl; }
+    public void setMobileApkDownloadUrl(String mobileApkDownloadUrl) { this.mobileApkDownloadUrl = mobileApkDownloadUrl; }
+
+    public Boolean getMobileForceUpdate() { return mobileForceUpdate; }
+    public void setMobileForceUpdate(Boolean mobileForceUpdate) { this.mobileForceUpdate = mobileForceUpdate; }
+
+    public String getMobileUpdateReleaseNotes() { return mobileUpdateReleaseNotes; }
+    public void setMobileUpdateReleaseNotes(String mobileUpdateReleaseNotes) { this.mobileUpdateReleaseNotes = mobileUpdateReleaseNotes; }
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
