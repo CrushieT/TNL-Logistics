@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Animated,
   FlatList,
-  Image,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -1129,9 +1128,8 @@ export default function DispatchWaybillsScreen() {
     if (!manifest || busy) return;
     setBusy(true);
     try {
-      const logoUri = Image.resolveAssetSource(require('../../../assets/tracking-logo.png'))?.uri;
       await Print.printAsync({
-        html: buildWaybillHtml(manifest, logoUri),
+        html: buildWaybillHtml(manifest),
         width: 842,
         height: 595
       });

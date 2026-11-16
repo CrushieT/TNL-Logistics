@@ -60,9 +60,18 @@ test('labels additional single-page copies as client copies', () => {
 
 test('escapes manifest text and falls back to the brand name without a logo', () => {
   const html = buildWaybillHtml({ waybillId: 'WYB-1', totalQuantity: 1,
-    recipientName: '<Recipient>', parcels: [{ trackingId: 'TRK-1', seq: 1 }] });
+    recipientName: '<Recipient>', parcels: [{ trackingId: 'TRK-1', seq: 1 }] }, null);
   assert.match(html, /&lt;Recipient&gt;/);
   assert.match(html, /TC &amp; CT INTEGRATED LOGISTICS/);
   assert.match(html, /RETURN CONFIRMATION QR/);
   assert.doesNotMatch(html, /<img/);
+  assert.match(html, /class="logo-fallback"/);
+});
+
+test('inlines the canonical base64 waybill logo by default when logoUri is omitted', () => {
+  const html = buildWaybillHtml({ waybillId: 'WYB-1', totalQuantity: 1,
+    parcels: [{ trackingId: 'TRK-1', seq: 1 }] });
+  assert.match(html, /<img src="data:image\/png;base64,[^"]+"/);
+  assert.match(html, /class="logo-wrap"/);
+  assert.doesNotMatch(html, /class="logo-fallback"/);
 });

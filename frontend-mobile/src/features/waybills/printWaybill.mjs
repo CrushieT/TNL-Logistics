@@ -1,4 +1,5 @@
 import { generateQRMatrix, generateQRSvgPath } from '../../utils/qr.js';
+import { WAYBILL_LOGO_BASE64 } from './waybillLogo.mjs';
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (character) => ({
@@ -47,7 +48,7 @@ export function createWaybillPrintSheetSequence(paginatedPages, copies = WAYBILL
   )).flat();
 }
 
-export function buildWaybillHtml(manifest, logoUri, branding = null, copies = WAYBILL_PRINT_COPY_COUNT) {
+export function buildWaybillHtml(manifest, logoUri = WAYBILL_LOGO_BASE64, branding = null, copies = WAYBILL_PRINT_COPY_COUNT) {
   if (!manifest?.waybillId || !Array.isArray(manifest.parcels) || manifest.parcels.length === 0) {
     throw new Error('A generated waybill with manifest units is required');
   }

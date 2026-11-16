@@ -1,5 +1,12 @@
 # TNL Logistics — Master Build Plan
 
+## Mobile waybill print logo inlining for standalone builds [COMPLETED]
+
+- Standalone print logo asset inlining: resolved missing waybill brand logo in standalone release APKs by exporting the canonical tracking brand logo as a self-contained Base64 data URI in `waybillLogo.mjs`.
+- Template integration & parameter defaulting: updated `buildWaybillHtml` in `printWaybill.mjs` to default `logoUri = WAYBILL_LOGO_BASE64`, rendering the inlined logo directly into the print HTML. Preserved explicit `null` and string overrides for unit testing and custom branding.
+- Consumer streamlining: removed runtime `Image.resolveAssetSource(require(...))` and unused `Image` import from `waybills.js`, calling `buildWaybillHtml(manifest)` directly.
+- Automated verification [COMPLETED]: focused unit tests in `printWaybill.test.mjs`, all 348 frontend-mobile unit tests passed (`node --test tests/*.test.mjs src/features/waybills/printWaybill.test.mjs`), clean Android Hermes production bundling passed (`npx.cmd --no-install expo export --platform android`), and `git diff --check` passed cleanly.
+
 ## Single-line loading and status banner streamlining [COMPLETED]
 
 - PreviewStatus banner streamlining: added `errorOnly = false` prop to `PreviewStatus.js`. When `errorOnly` is enabled, routine loading, preview, refreshing, and stale notices are silenced while preserving error banners and Retry actions if background fetches fail.
