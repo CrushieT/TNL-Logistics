@@ -1,6 +1,6 @@
 import { useCachedPreview } from '../services/api/useCachedPreview';
 import PreviewStatus from '../components/common/PreviewStatus';
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import AppShell from '../components/layout/AppShell';
@@ -47,17 +47,27 @@ export default function DashboardScreen() {
   const [isStale, setIsStale] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
-  const [pageState, updatePageState] = useSavedPageState('dashboard_state', { selectedCycle: '' });
+  const [pageState, updatePageState] = useSavedPageState('dashboard_state', {
+    selectedCycle: '',
+    cachedSummary: null,
+    cachedSummaryCycle: null,
+    cachedUserId: null,
+    cachedSessionGeneration: null,
+  });
   const selectedCycle = pageState.selectedCycle;
   const setSelectedCycle = useCallback((cycleOrUpdater) => {
     updatePageState((prev) => {
       const nextCycle = typeof cycleOrUpdater === 'function' ? cycleOrUpdater(prev.selectedCycle) : cycleOrUpdater;
+      if (prev.selectedCycle === nextCycle) return prev;
       return { ...prev, selectedCycle: nextCycle };
     });
   }, [updatePageState]);
 
   const activeCycleRef = useRef(selectedCycle);
   activeCycleRef.current = selectedCycle;
+
+  const pageStateRef = useRef(pageState);
+  pageStateRef.current = pageState;
 
   const summaryRef = useRef(summary);
   summaryRef.current = summary;
@@ -84,6 +94,14 @@ export default function DashboardScreen() {
         queryParams: { cycle: targetCycle },
         data,
       });
+
+      updatePageState((prev) => ({
+        ...prev,
+        cachedSummary: data,
+        cachedSummaryCycle: targetCycle,
+        cachedUserId: currentAuth.userId,
+        cachedSessionGeneration: currentAuth.sessionGeneration,
+      }));
 
       setSummary(data);
       setIsPreview(false);
@@ -153,10 +171,7 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     if (cycleResource.data === null) return;
-    setSelectedCycle(previous => {
-      const isStillValid = previous && cycles.some(cycle => cycle.isoDate === previous);
-      return isStillValid ? previous : (cycles[0]?.isoDate || '');
-    });
+    setSelectedCycle(previous => cycles.some(cycle => cycle.isoDate === previous) ? previous : (cycles[0]?.isoDate || ''));
   }, [cycleResource.data]);
 
   const load = useCallback((cycleDate, showSpinner = true, debounce = false) => {
@@ -177,7 +192,7 @@ export default function DashboardScreen() {
     });
   }, [coordinator, sessionKey, cyclesSessionKey]);
 
-  // Query key change with instant cached preview
+  // Query key change with instant cached preview or session snapshot
   useEffect(() => {
     if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey() || cyclesSessionKey !== sessionKey || !selectedCycle) return;
 
@@ -188,13 +203,23 @@ export default function DashboardScreen() {
       queryParams: { cycle: selectedCycle },
     });
 
-    if (cached?.data) {
-      setSummary(cached.data);
+    const state = pageStateRef.current;
+    const isMatchingSnapshot = Boolean(
+      state?.cachedSummary &&
+      state?.cachedSummaryCycle === selectedCycle &&
+      state?.cachedUserId === auth.userId &&
+      state?.cachedSessionGeneration === auth.sessionGeneration
+    );
+
+    const snapshotData = cached?.data || (isMatchingSnapshot ? state.cachedSummary : null);
+
+    if (snapshotData) {
+      setSummary(snapshotData);
       setIsPreview(true);
       setIsStale(false);
       setInitialLoadFailed(false);
       setErrorMessage(null);
-      setLastUpdated(new Date(cached.timestamp).toLocaleTimeString());
+      setLastUpdated(cached?.timestamp ? new Date(cached.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString());
       setLoading(true);
       load(selectedCycle, false, false);
     } else {

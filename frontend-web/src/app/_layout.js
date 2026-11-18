@@ -42,6 +42,21 @@ export default function RootLayout() {
     setIsSynchronizing(true);
     setIsAdminVerified(hasVerifiedAdminSession());
     operation.promise = (async () => {
+      const token = getToken();
+      if (!token) {
+        const isFirstBoot = await checkFirstBootStatus();
+        if (!isCurrent()) return;
+        setFirstBootStatus(isFirstBoot);
+        setIsAdminVerified(false);
+        setSynchronizationError(isFirstBoot === null ? 'Unable to verify access. Check your connection and retry.' : null);
+        return;
+      }
+
+      // Concurrently dispatch session validation while checking first-boot status
+      const validationPromise = hasVerifiedAdminSession()
+        ? Promise.resolve('VALID')
+        : validateSession();
+
       const isFirstBoot = await checkFirstBootStatus();
       if (!isCurrent()) return;
       setFirstBootStatus(isFirstBoot);
@@ -49,12 +64,13 @@ export default function RootLayout() {
         setSynchronizationError('Unable to verify access. Check your connection and retry.');
         return;
       }
-      if (isFirstBoot || !getToken()) {
+      if (isFirstBoot) {
         setIsAdminVerified(false);
         setSynchronizationError(null);
         return;
       }
-      const validationStatus = hasVerifiedAdminSession() ? 'VALID' : await validateSession();
+
+      const validationStatus = await validationPromise;
       if (!isCurrent()) return;
       setIsAdminVerified(validationStatus === 'VALID' && hasVerifiedAdminSession());
       setSynchronizationError(validationStatus === 'UNVERIFIED' ? 'Unable to verify your session. Check your connection and retry.' : null);

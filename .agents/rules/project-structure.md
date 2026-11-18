@@ -13,10 +13,12 @@
 - `frontend-mobile/tests/printerDiscoveryFlows.test.mjs`: executes the actual printer service, provider, and Printer screen against native/storage/API mocks.
 - `frontend-mobile/docs/bluetooth-permissions-verification.md`: implementation evidence, scoped review, and pending hardware acceptance checklist.
 
-### Initial HTML loading shell and browser refresh improvements
+### Initial HTML loading shell, static asset routing, and browser refresh improvements
 
 - `frontend-web/public/index.html`: initial HTML template for Expo single-page web export (`output: "single"`), containing inline reset styles, application canvas background `#F3F2ED`, accessible pre-hydration loading shell with tracking logo, "ADMIN CONSOLE" badge, CSS spinner, and noscript alert.
 - `frontend-web/public/tracking-logo.png`: static tracking brand logo asset served from public root without hashing waterfalls.
+- `frontend-web/public/_redirects`: single-page application edge rewrite rule (`/* /index.html 200`) ensuring direct deep-link hits on edge CDN hosts (Cloudflare Pages) resolve without 404 errors.
+- `frontend-web/public/_headers`: edge HTTP response headers applying 1-year immutable caching to fingerprinted static assets (`/_expo/static/*`) and revalidation with security headers to HTML entry documents (`/*`).
 - `frontend-web/src/utils/loadingShell.js`: utility to safely dismiss the pre-hydration loading shell once React has mounted and populated the `#root` container.
 - `frontend-web/tests/loadingShell.test.mjs`: unit test suite verifying template structure, accessibility roles, noscript fallback, and dismissal logic.
 

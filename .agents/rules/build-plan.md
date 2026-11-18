@@ -1,5 +1,13 @@
 # TNL Logistics — Master Build Plan
 
+## Web dashboard load optimization and Cloudflare Pages edge delivery [COMPLETED]
+
+- Dashboard state persistence: integrated `useSavedPageState('dashboard_state', { selectedCycle: '' })` in `frontend-web/src/app/index.js` to preserve the user's active billing cycle selection across sidebar route transitions and render cached summary previews synchronously in 0 ms.
+- Edge CDN routing & caching headers: added `frontend-web/public/_redirects` (`/* /index.html 200`) for edge SPA rewrite handling and `frontend-web/public/_headers` applying 1-year immutable caching to fingerprinted static assets (`/_expo/static/*`) and revalidation with security headers (`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`) to HTML entry documents (`/*`).
+- Web export build script: added `"build": "expo export --platform web"` to `frontend-web/package.json` for deterministic CI edge bundling.
+- Cloudflare Pages deployment runbook: created `.review/current/deployment/cloudflare-pages-deployment-runbook.md` with step-by-step setup instructions for Git-integrated edge deployments, environment variable configuration, and Railway CORS alignment.
+- Verification & benchmarks [COMPLETED]: verified 86/86 unit tests across `adminPreviews.test.mjs`, `progressiveLoadingFlows.test.mjs`, and `loadingShell.test.mjs`, verified production static web export bundling 976 modules and copying public routing/header files into `dist/`, verified backend stability with container RSS under 504 MB on Railway test and production.
+
 ## Mobile in-app force update hard gate and request-time version gating [COMPLETED]
 
 - Database version schema: added Flyway migration `V43__add_mobile_app_version_settings.sql` extending `system_setting` table with `min_mobile_version_code`, `latest_mobile_version_code`, `latest_mobile_version_name`, `mobile_apk_download_url`, `mobile_force_update`, and `mobile_update_release_notes`.
