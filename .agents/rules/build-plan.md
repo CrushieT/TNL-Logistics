@@ -1,5 +1,12 @@
 # TNL Logistics — Master Build Plan
 
+## Web cold-load optimization, route-level code splitting, and snapshot hydration [COMPLETED]
+
+- Route-level asynchronous code-splitting: configured `asyncRoutes: { "web": true }` in `frontend-web/app.json` across plugins and `extra.router`. Metro extracts all 15+ administration screens into independent on-demand chunk files (`_expo/static/js/web/[route]-[hash].js`), reducing initial entry bundle download from 2.37 MB down to 1.06 MB raw (221.8 KB Brotli / 281.7 KB Gzip).
+- Snapshot hydration decoupling: decoupled preview rendering in `frontend-web/src/app/index.js` from `cyclesSessionKey !== sessionKey`. Preserved dashboard snapshots in tab-scoped `sessionStorage` render immediately in 0 ms on full browser reloads (F5) without waiting for `/collections/cycles` network round-trips.
+- Concurrent API validation: aligned `load()` in `frontend-web/src/app/index.js` to dispatch background revalidation when cycles arrive, while keeping empty-cache initial loads gated to valid server cycle discovery.
+- Verification & benchmarks [COMPLETED]: verified 131/131 unit tests across `sessionValidationReload.test.mjs`, `adminPreviews.test.mjs`, `progressiveLoadingFlows.test.mjs`, `loadingShell.test.mjs`, and `navigationPersistence.test.mjs`. Verified static web export generating 27 split bundles in `dist/_expo/static/js/web/` with zero bundle or compilation errors.
+
 ## Web dashboard load optimization and Cloudflare Pages edge delivery [COMPLETED]
 
 - Dashboard state persistence: integrated `useSavedPageState('dashboard_state', { selectedCycle: '' })` in `frontend-web/src/app/index.js` to preserve the user's active billing cycle selection across sidebar route transitions and render cached summary previews synchronously in 0 ms.

@@ -175,7 +175,7 @@ export default function DashboardScreen() {
   }, [cycleResource.data]);
 
   const load = useCallback((cycleDate, showSpinner = true, debounce = false) => {
-    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey() || cyclesSessionKey !== sessionKey || !cycleDate) return;
+    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey() || !cycleDate) return;
     if (showSpinner) {
       setLoading(true);
       setErrorMessage(null);
@@ -190,11 +190,11 @@ export default function DashboardScreen() {
       requestAuth,
       requestQuery,
     });
-  }, [coordinator, sessionKey, cyclesSessionKey]);
+  }, [coordinator, sessionKey]);
 
   // Query key change with instant cached preview or session snapshot
   useEffect(() => {
-    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey() || cyclesSessionKey !== sessionKey || !selectedCycle) return;
+    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey() || !selectedCycle) return;
 
     const auth = getSessionAuthContext();
     const cached = getCacheEntry(CACHE_SLOTS.DASHBOARD, {
@@ -221,8 +221,11 @@ export default function DashboardScreen() {
       setErrorMessage(null);
       setLastUpdated(cached?.timestamp ? new Date(cached.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString());
       setLoading(true);
-      load(selectedCycle, false, false);
+      if (cyclesSessionKey === sessionKey) {
+        load(selectedCycle, false, false);
+      }
     } else {
+      if (cyclesSessionKey !== sessionKey) return;
       // Clear previous cycle's data immediately to prevent showing wrong cycle under new filter
       setSummary(null);
       setIsPreview(false);
@@ -232,7 +235,7 @@ export default function DashboardScreen() {
       setLoading(true);
       load(selectedCycle, true, false);
     }
-  }, [selectedCycle, load]);
+  }, [selectedCycle, load, cyclesSessionKey]);
 
   // Real-time SSE updates
   useEffect(() => {

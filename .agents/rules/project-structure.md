@@ -15,6 +15,7 @@
 
 ### Initial HTML loading shell, static asset routing, and browser refresh improvements
 
+- `frontend-web/app.json`: Expo application configuration with `asyncRoutes: { "web": true }` enabling route-level asynchronous code-splitting in Metro for web exports, generating per-route bundles under `_expo/static/js/web/`.
 - `frontend-web/public/index.html`: initial HTML template for Expo single-page web export (`output: "single"`), containing inline reset styles, application canvas background `#F3F2ED`, accessible pre-hydration loading shell with tracking logo, "ADMIN CONSOLE" badge, CSS spinner, and noscript alert.
 - `frontend-web/public/tracking-logo.png`: static tracking brand logo asset served from public root without hashing waterfalls.
 - `frontend-web/public/_redirects`: single-page application edge rewrite rule (`/* /index.html 200`) ensuring direct deep-link hits on edge CDN hosts (Cloudflare Pages) resolve without 404 errors.
