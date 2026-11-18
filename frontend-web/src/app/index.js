@@ -34,6 +34,7 @@ import { getRecentThursdays } from '../features/collections/utils/collectionsUti
 import { getDashboardSummary, subscribeRealtimeEvents } from '../features/shipments';
 import { useRequestCoordinator } from '../services/api/useRequestCoordinator';
 import { useVerifiedAdminSession, getVerifiedAdminSessionKey } from '../services/api/useVerifiedAdminSession';
+import { useSavedPageState } from '../services/navigation/useSavedPageState';
 import { colors, fonts, spacing, radius } from '../theme';
 
 export default function DashboardScreen() {
@@ -46,7 +47,14 @@ export default function DashboardScreen() {
   const [isStale, setIsStale] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
-  const [selectedCycle, setSelectedCycle] = useState('');
+  const [pageState, updatePageState] = useSavedPageState('dashboard_state', { selectedCycle: '' });
+  const selectedCycle = pageState.selectedCycle;
+  const setSelectedCycle = useCallback((cycleOrUpdater) => {
+    updatePageState((prev) => {
+      const nextCycle = typeof cycleOrUpdater === 'function' ? cycleOrUpdater(prev.selectedCycle) : cycleOrUpdater;
+      return { ...prev, selectedCycle: nextCycle };
+    });
+  }, [updatePageState]);
 
   const activeCycleRef = useRef(selectedCycle);
   activeCycleRef.current = selectedCycle;
@@ -145,7 +153,10 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     if (cycleResource.data === null) return;
-    setSelectedCycle(previous => cycles.some(cycle => cycle.isoDate === previous) ? previous : cycles[0]?.isoDate || '');
+    setSelectedCycle(previous => {
+      const isStillValid = previous && cycles.some(cycle => cycle.isoDate === previous);
+      return isStillValid ? previous : (cycles[0]?.isoDate || '');
+    });
   }, [cycleResource.data]);
 
   const load = useCallback((cycleDate, showSpinner = true, debounce = false) => {
