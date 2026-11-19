@@ -28,14 +28,10 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
                    SUM(CASE WHEN s.statement_id IS NULL
                        OR REGEXP_LIKE(s.statement_id, CONCAT('^[', CHAR(0 USING utf8mb4), '-', CHAR(32 USING utf8mb4), ']*$')) THEN 1 ELSE 0 END) AS unbilledCount,
                    COALESCE(SUM(s.total_amount), 0) AS currentCharges,
-                   COALESCE(SUM(pm.paid), 0) AS paid
+                   COALESCE(SUM((SELECT SUM(p.amount_paid)
+                                 FROM payment p WHERE p.shipment_id = s.shipment_id)), 0) AS paid
             FROM shipment s
             JOIN client c ON c.client_id = s.client_id
-            LEFT JOIN (
-                SELECT shipment_id, SUM(amount_paid) AS paid
-                FROM payment
-                GROUP BY shipment_id
-            ) pm ON pm.shipment_id = s.shipment_id
             WHERE (((s.business_registration_date IS NOT NULL AND s.business_registration_date >= :cycleStartDate AND s.business_registration_date < :cycleEndDate)
                     OR (s.business_registration_date IS NULL AND s.date_registered >= :cycleStart AND s.date_registered < :cycleEnd))
                    OR (s.statement_id IS NOT NULL AND EXISTS (
@@ -307,18 +303,19 @@ public interface ShipmentRepository extends JpaRepository<Shipment, String> {
 
     @Query(value = """
             SELECT COUNT(*) AS shipmentCount,
-                   COALESCE(SUM(s.quantity), 0) AS parcelCount,
-                   COALESCE(SUM(s.total_amount), 0) AS totalCharges,
-                   COALESCE(SUM(CASE WHEN s.total_amount > COALESCE(pm.paid, 0) THEN 1 ELSE 0 END), 0) AS unpaidShipmentCount,
-                   COALESCE(SUM(pm.paid), 0) AS collectedPayments
-            FROM shipment s
-            LEFT JOIN (
-                SELECT shipment_id, SUM(amount_paid) AS paid
-                FROM payment
-                GROUP BY shipment_id
-            ) pm ON pm.shipment_id = s.shipment_id
-            WHERE ((s.business_registration_date IS NOT NULL AND s.business_registration_date >= :cycleStartDate AND s.business_registration_date < :cycleEndDate)
-                   OR (s.business_registration_date IS NULL AND s.date_registered >= :cycleStart AND s.date_registered < :cycleEnd))
+                   COALESCE(SUM(amounts.quantity), 0) AS parcelCount,
+                   COALESCE(SUM(amounts.total_amount), 0) AS totalCharges,
+                   COALESCE(SUM(CASE WHEN amounts.total_amount > amounts.paid THEN 1 ELSE 0 END), 0) AS unpaidShipmentCount,
+                   COALESCE(SUM(amounts.paid), 0) AS collectedPayments
+            FROM (
+                SELECT s.shipment_id, s.quantity, s.total_amount,
+                       COALESCE(SUM(p.amount_paid), 0) AS paid
+                FROM shipment s
+                LEFT JOIN payment p ON p.shipment_id = s.shipment_id
+                WHERE ((s.business_registration_date IS NOT NULL AND s.business_registration_date >= :cycleStartDate AND s.business_registration_date < :cycleEndDate)
+                       OR (s.business_registration_date IS NULL AND s.date_registered >= :cycleStart AND s.date_registered < :cycleEnd))
+                GROUP BY s.shipment_id, s.quantity, s.total_amount
+            ) amounts
             """, nativeQuery = true)
     CycleShipmentSummary getCycleShipmentSummary(
             @Param("cycleStartDate") LocalDate cycleStartDate,
