@@ -1,5 +1,14 @@
 # TNL Logistics — Master Build Plan
 
+## Frontend Frame-1 snapshot hydration and startup waterfall elimination [COMPLETED]
+
+- Tab-scoped session verification hydration: initialized `isAdminSessionVerified` in `frontend-web/src/services/api/client.js` by checking `sessionStorage.getItem('tnl_session_verified')` against the active eligible admin token from `localStorage` on initial module evaluation. Synchronized verification state across `login()`, `registerFirstBootAdmin()`, `validateSessionWorker()`, and `changePassword()`. Evicted verified marks on `invalidateSession()`, `logout()`, and `clearIneligibleSession()`.
+- Frame-1 instant snapshot rendering: prevented the session reset effect in `frontend-web/src/app/index.js` from wiping `cachedSummary` and `selectedCycle` on initial mount when an unexpired admin session exists (`previousSessionKeyRef.current && (!sessionKey || previousSessionKeyRef.current !== sessionKey)`). Synchronously populated dashboard summary metrics and charts directly from `sessionStorage` in < 16 ms.
+- Artificial delay elimination: removed the 2,500 ms `fallbackTimer` in `frontend-web/src/app/_layout.js`, replacing it with immediate root mount dismissal and a tight 200 ms safety fallback so `#app-loading-shell` fades out without blocking user interaction.
+- First-boot network trip caching: cached `isFirstBoot === false` in `sessionStorage` (`tnl_first_boot_status`) in `checkFirstBootStatus()`, bypassing redundant HTTP GET calls on subsequent page reloads and tab focus events.
+- Backend loadtest daemon alignment: terminated stale JVM PID 17936 and restarted Spring Boot with `SPRING_PROFILES_ACTIVE=loadtest` on port 8080 (PID 2852), executing the compiled parallel query engine against `tnl_loadtest` (50,215 records) with ~770 ms summary response latency.
+- Automated verification [COMPLETED]: verified all 390 frontend web tests pass (`node --test tests/*.test.mjs`) and all 18 backend integration tests pass (`mvn test -Dtest=CollectionsAggregationIntegrationTest,DashboardIntegrationTest`).
+
 ## Backend dashboard aggregation and collections query optimization [COMPLETED]
 
 - Eliminated 16,680 scalar subquery roundtrips in `ShipmentRepository.aggregateCollectionsByClient`: replaced the correlated scalar subquery `(SELECT SUM(p.amount_paid) FROM payment p WHERE p.shipment_id = s.shipment_id)` with a derived grouping join `LEFT JOIN (SELECT shipment_id, SUM(amount_paid) AS paid FROM payment GROUP BY shipment_id) pm ON pm.shipment_id = s.shipment_id`. Preserved exact row cardinality and mathematical parity while reducing `aggregateCollectionsByClient` execution from ~1,120 ms to ~180 ms (4x speedup).

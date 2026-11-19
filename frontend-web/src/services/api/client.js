@@ -5,6 +5,8 @@ import { clearAllCache, invalidateMutation } from './responseCache.mjs';
 
 const TOKEN_KEY = 'tnl_admin_token';
 const USER_KEY = 'tnl_user_info';
+const VERIFIED_STORAGE_KEY = 'tnl_session_verified';
+const FIRST_BOOT_STORAGE_KEY = 'tnl_first_boot_status';
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
 let memoryToken = null;
@@ -12,8 +14,40 @@ let memoryUser = null;
 let sessionGeneration = 0;
 const sessionInvalidationListeners = new Set();
 const sessionChangeListeners = new Set();
-let isAdminSessionVerified = false;
+
+function checkInitialVerification() {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.sessionStorage) {
+    try {
+      const storedVerifiedToken = window.sessionStorage.getItem(VERIFIED_STORAGE_KEY);
+      const activeToken = getToken();
+      if (storedVerifiedToken && activeToken && storedVerifiedToken === activeToken && isEligibleAdminToken(activeToken)) {
+        return true;
+      }
+    } catch (_) {}
+  }
+  return false;
+}
+
+let isAdminSessionVerified = checkInitialVerification();
 let pendingValidation = null;
+
+function markSessionVerified(token) {
+  isAdminSessionVerified = true;
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.sessionStorage && token) {
+    try {
+      window.sessionStorage.setItem(VERIFIED_STORAGE_KEY, token);
+    } catch (_) {}
+  }
+}
+
+function clearSessionVerifiedMark() {
+  isAdminSessionVerified = false;
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.sessionStorage) {
+    try {
+      window.sessionStorage.removeItem(VERIFIED_STORAGE_KEY);
+    } catch (_) {}
+  }
+}
 
 export function getSessionGeneration() {
   return sessionGeneration;
@@ -55,7 +89,7 @@ function notifySessionChanged() {
 }
 
 function clearIneligibleSession() {
-  isAdminSessionVerified = false;
+  clearSessionVerifiedMark();
   clearToken();
   clearCurrentUser();
   if (typeof clearAllCache === 'function') {
@@ -194,7 +228,7 @@ export function getSessionAuthContext() {
 
 export function invalidateSession() {
   incrementSessionGeneration();
-  isAdminSessionVerified = false;
+  clearSessionVerifiedMark();
   clearToken();
   clearCurrentUser();
   if (typeof clearAllCache === 'function') {
@@ -276,15 +310,30 @@ export async function login(username, password) {
     mustChangePassword,
   });
   isAdminSessionVerified = true;
+  if (typeof markSessionVerified === 'function') {
+    markSessionVerified(token);
+  }
   notifySessionChanged();
 
   return response.data;
 }
 
 export async function checkFirstBootStatus() {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.sessionStorage) {
+    try {
+      const cached = window.sessionStorage.getItem(FIRST_BOOT_STORAGE_KEY);
+      if (cached === 'false') return false;
+    } catch (_) {}
+  }
   try {
     const response = await axios.get(`${BASE_URL}/auth/first-boot-status`, { timeout: 15000 });
-    return Boolean(response.data?.isFirstBoot);
+    const isFirstBoot = Boolean(response.data?.isFirstBoot);
+    if (!isFirstBoot && Platform.OS === 'web' && typeof window !== 'undefined' && window.sessionStorage) {
+      try {
+        window.sessionStorage.setItem(FIRST_BOOT_STORAGE_KEY, 'false');
+      } catch (_) {}
+    }
+    return isFirstBoot;
   } catch (error) {
     return null;
   }
@@ -338,6 +387,9 @@ export async function registerFirstBootAdmin({
     mustChangePassword,
   });
   isAdminSessionVerified = true;
+  if (typeof markSessionVerified === 'function') {
+    markSessionVerified(token);
+  }
   notifySessionChanged();
 
   return response.data;
@@ -480,7 +532,7 @@ async function validateSessionWorker(isRetry = false) {
         fullName: data.fullName,
         mustChangePassword: data.mustChangePassword,
       });
-      isAdminSessionVerified = true;
+      markSessionVerified(response.headers?.['x-renewed-token'] || requestToken);
       notifySessionChanged();
       return 'VALID';
     }
@@ -536,7 +588,7 @@ export async function changePassword(oldPassword, newPassword) {
     }
     incrementSessionGeneration();
     setToken(response.data.token);
-    isAdminSessionVerified = true;
+    markSessionVerified(response.data.token);
     if (typeof clearAllCache === 'function') {
       clearAllCache();
     }

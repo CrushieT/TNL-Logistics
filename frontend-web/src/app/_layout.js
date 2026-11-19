@@ -164,9 +164,10 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    dismissLoadingShell();
     const fallbackTimer = setTimeout(() => {
       dismissLoadingShell();
-    }, 2500);
+    }, 200);
     return () => clearTimeout(fallbackTimer);
   }, []);
 

@@ -171,7 +171,7 @@ export default function DashboardScreen() {
       setLoading(true);
     };
 
-    if (!sessionKey || (previousSessionKeyRef.current && previousSessionKeyRef.current !== sessionKey)) {
+    if (previousSessionKeyRef.current && (!sessionKey || previousSessionKeyRef.current !== sessionKey)) {
       resetSession();
     }
     previousSessionKeyRef.current = sessionKey;
