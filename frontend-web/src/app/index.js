@@ -40,13 +40,7 @@ import { colors, fonts, spacing, radius } from '../theme';
 export default function DashboardScreen() {
   const sessionKey = useVerifiedAdminSession();
   const router = useRouter();
-  const [summary, setSummary] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [isPreview, setIsPreview] = useState(false);
-  const [initialLoadFailed, setInitialLoadFailed] = useState(false);
-  const [isStale, setIsStale] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(null);
-  const [errorMessage, setErrorMessage] = useState(null);
+
   const [pageState, updatePageState] = useSavedPageState('dashboard_state', {
     selectedCycle: '',
     cachedSummary: null,
@@ -54,6 +48,28 @@ export default function DashboardScreen() {
     cachedUserId: null,
     cachedSessionGeneration: null,
   });
+
+  const [summary, setSummary] = useState(() => {
+    const auth = getSessionAuthContext();
+    if (!auth.isVerified || !auth.userId) return null;
+    if (
+      pageState?.cachedSummary &&
+      pageState?.selectedCycle &&
+      pageState?.cachedSummaryCycle === pageState.selectedCycle &&
+      pageState?.cachedUserId === auth.userId &&
+      pageState?.cachedSessionGeneration === auth.sessionGeneration
+    ) {
+      return pageState.cachedSummary;
+    }
+    return null;
+  });
+
+  const [loading, setLoading] = useState(() => !summary);
+  const [isPreview, setIsPreview] = useState(false);
+  const [initialLoadFailed, setInitialLoadFailed] = useState(false);
+  const [isStale, setIsStale] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(() => (summary ? new Date().toLocaleTimeString() : null));
+  const [errorMessage, setErrorMessage] = useState(null);
   const selectedCycle = pageState.selectedCycle;
   const setSelectedCycle = useCallback((cycleOrUpdater) => {
     updatePageState((prev) => {
@@ -140,6 +156,7 @@ export default function DashboardScreen() {
   });
 
   // Session reset listener
+  const previousSessionKeyRef = useRef(sessionKey);
   useEffect(() => {
     const resetSession = () => {
       coordinator.cancel();
@@ -153,12 +170,17 @@ export default function DashboardScreen() {
       setErrorMessage(null);
       setLoading(true);
     };
-    resetSession();
+
+    if (!sessionKey || (previousSessionKeyRef.current && previousSessionKeyRef.current !== sessionKey)) {
+      resetSession();
+    }
+    previousSessionKeyRef.current = sessionKey;
+
     const unsubscribe = onSessionInvalidated(resetSession);
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [coordinator, sessionKey]);
+  }, [coordinator, sessionKey, setSelectedCycle]);
 
   const cycleResource = useCachedPreview({
     slot: CACHE_SLOTS.COLLECTION_CYCLES,
@@ -168,6 +190,11 @@ export default function DashboardScreen() {
   const cycles = cycleResource.data?.length ? cycleResource.data
     : cycleResource.data !== null ? getRecentThursdays(1) : [];
   const cyclesSessionKey = cycleResource.data !== null ? sessionKey : null;
+  const displayCycles = cycles.length > 0
+    ? cycles
+    : selectedCycle
+      ? [{ isoDate: selectedCycle, label: `Cycle: ${selectedCycle}` }]
+      : [];
 
   useEffect(() => {
     if (cycleResource.data === null) return;
@@ -215,20 +242,22 @@ export default function DashboardScreen() {
 
     if (snapshotData) {
       setSummary(snapshotData);
-      setIsPreview(true);
+      const isFresh = Boolean(cached?.timestamp && (Date.now() - cached.timestamp < 30000));
+      setIsPreview(!isFresh);
       setIsStale(false);
       setInitialLoadFailed(false);
       setErrorMessage(null);
       setLastUpdated(cached?.timestamp ? new Date(cached.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString());
-      setLoading(true);
-      if (cyclesSessionKey === sessionKey) {
-        load(selectedCycle, false, false);
-      }
+      setLoading(!isFresh);
+      load(selectedCycle, false, false);
     } else {
       if (cyclesSessionKey !== sessionKey) return;
-      // Clear previous cycle's data immediately to prevent showing wrong cycle under new filter
-      setSummary(null);
-      setIsPreview(false);
+      if (summaryRef.current) {
+        setIsPreview(true);
+      } else {
+        setSummary(null);
+        setIsPreview(false);
+      }
       setIsStale(false);
       setInitialLoadFailed(false);
       setErrorMessage(null);
@@ -269,8 +298,8 @@ export default function DashboardScreen() {
   const financialRows = summary?.outstandingVsCollected || [];
   const recentActivities = summary?.recentActivity || [];
 
-  // Actions requiring fresh summary are disabled when loading, previewing, or stale
-  const actionsDisabled = !cycleResource.isFresh || loading || isPreview || isStale || !summary;
+  // Actions requiring fresh summary are disabled when loading without data or when no summary exists
+  const actionsDisabled = (loading && !summary) || !summary;
 
   return (
     <AppShell>
@@ -280,9 +309,9 @@ export default function DashboardScreen() {
         style={styles.pageHeader}
         right={
           <View style={styles.headerRightGroup}>
-            {cycles.length > 0 ? (
+            {displayCycles.length > 0 ? (
               <CycleDropdown
-                cycles={cycles}
+                cycles={displayCycles}
                 selectedCycle={selectedCycle}
                 onSelectCycle={setSelectedCycle}
                 minWidth={280}

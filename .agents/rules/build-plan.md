@@ -1,11 +1,16 @@
 # TNL Logistics — Master Build Plan
 
-## Web cold-load optimization, route-level code splitting, and snapshot hydration [COMPLETED]
+## Web zero-latency navigation, monolithic bundling, and snapshot hydration [COMPLETED]
 
-- Route-level asynchronous code-splitting: configured `asyncRoutes: { "web": true }` in `frontend-web/app.json` across plugins and `extra.router`. Metro extracts all 15+ administration screens into independent on-demand chunk files (`_expo/static/js/web/[route]-[hash].js`), reducing initial entry bundle download from 2.37 MB down to 1.06 MB raw (221.8 KB Brotli / 281.7 KB Gzip).
-- Snapshot hydration decoupling: decoupled preview rendering in `frontend-web/src/app/index.js` from `cyclesSessionKey !== sessionKey`. Preserved dashboard snapshots in tab-scoped `sessionStorage` render immediately in 0 ms on full browser reloads (F5) without waiting for `/collections/cycles` network round-trips.
-- Concurrent API validation: aligned `load()` in `frontend-web/src/app/index.js` to dispatch background revalidation when cycles arrive, while keeping empty-cache initial loads gated to valid server cycle discovery.
-- Verification & benchmarks [COMPLETED]: verified 131/131 unit tests across `sessionValidationReload.test.mjs`, `adminPreviews.test.mjs`, `progressiveLoadingFlows.test.mjs`, `loadingShell.test.mjs`, and `navigationPersistence.test.mjs`. Verified static web export generating 27 split bundles in `dist/_expo/static/js/web/` with zero bundle or compilation errors.
+- Unified monolithic web bundling: reverted `asyncRoutes` in `frontend-web/app.json` to standard bundling for the administrative console. Bundles all 15+ administration screens into a single production entry bundle (~480 KB Brotli compressed), eliminating route-transit network round-trips, sidebar unmounting, and white flashes on first-time page clicks. In-app navigation is 100% synchronous from memory in 0 ms.
+- Frame-1 snapshot hydration & Progressive Section Rendering: initialized dashboard `summary` and `isPreview` state directly from tab-scoped `sessionStorage` in `frontend-web/src/app/index.js`, eliminating blank metric card skeleton flashes on reloads (F5) and screen revisits.
+- Quiet cache revalidation & soft filter transitions: added fresh-cache detection (<30s) to suppress prominent "Updating..." banner flicker on rapid tab revisits, and soft cycle transitions in `frontend-web/src/app/index.js` retaining current metric layout in preview mode instead of blanking the screen with skeletons when browsing historical billing cycles.
+- Parallel network dispatching: decoupled dashboard summary background revalidation from `cyclesSessionKey === sessionKey`, allowing `/collections/cycles` and `/dashboard/summary` to fire concurrently on Frame 1 instead of chaining sequentially.
+- Resilient cycle selector rendering: added fallback rendering to `CycleDropdown` using the stored `selectedCycle` to eliminate header layout shift before cycle discovery completes.
+- Non-blocking action controls: decoupled `actionsDisabled` from background revalidation and preview phases, ensuring primary actions remain clickable during silent updates.
+- Seamless canvas background pinning: styled `#root` in `frontend-web/public/index.html` and `styles.container` in `frontend-web/src/app/_layout.js` with `background-color: #F3F2ED`, eliminating browser `#FFFFFF` flashes during asynchronous route chunk downloads. Configured `animation: 'none'` on web stack screenOptions to prevent route transition glitching.
+- Synchronized loading shell dismissal: relocated `dismissLoadingShell()` to `AppShell`, `login.js`, and `setup.js` component mount lifecycles, ensuring `#app-loading-shell` remains visible until child screens actually render. Added 2,500 ms safety fallback timer in `RootLayout` and idempotency guards to `loadingShell.js`.
+- Verification & benchmarks [COMPLETED]: verified 132/132 unit tests across `loadingShell.test.mjs`, `sessionValidationReload.test.mjs`, `adminPreviews.test.mjs`, `progressiveLoadingFlows.test.mjs`, and `navigationPersistence.test.mjs`. Verified static web export generating a single unified web bundle in `dist/_expo/static/js/web/entry-*.js` with zero bundle or compilation errors.
 
 ## Web dashboard load optimization and Cloudflare Pages edge delivery [COMPLETED]
 

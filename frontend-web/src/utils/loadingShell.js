@@ -25,6 +25,7 @@ export function dismissLoadingShell({
 
   if (!shellEl) return false;
   if (!rootEl || !rootEl.hasChildNodes()) return false;
+  if (shellEl.classList && shellEl.classList.contains(hiddenClass)) return true;
 
   shellEl.classList.add(hiddenClass);
 

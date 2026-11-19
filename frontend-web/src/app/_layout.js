@@ -162,14 +162,12 @@ export default function RootLayout() {
     document.head.appendChild(styleEl);
   }, []);
 
-  const useIsomorphicLayoutEffect =
-    typeof window !== 'undefined' && Platform.OS === 'web' && typeof React.useLayoutEffect === 'function'
-      ? React.useLayoutEffect
-      : useEffect;
-
-  useIsomorphicLayoutEffect(() => {
+  useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
-    dismissLoadingShell();
+    const fallbackTimer = setTimeout(() => {
+      dismissLoadingShell();
+    }, 2500);
+    return () => clearTimeout(fallbackTimer);
   }, []);
 
   return (
@@ -185,6 +183,7 @@ export default function RootLayout() {
       <Stack
         screenOptions={{
           headerShown: false,
+          animation: 'none',
           contentStyle: { backgroundColor: '#F3F2ED' },
         }}
       >
@@ -220,7 +219,7 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: '#F3F2ED' },
   errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, backgroundColor: '#FEF2F2' },
   errorText: { flex: 1, color: '#991B1B' },
   retryText: { color: '#991B1B', fontWeight: '600', padding: 8 },

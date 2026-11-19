@@ -15,6 +15,7 @@ import {
 import { useRouter, useLocalSearchParams, useRootNavigationState } from 'expo-router';
 import { colors, fonts, spacing, radius } from '../theme';
 import { login, hasVerifiedAdminSession, getCurrentUser } from '../services/api/client';
+import { dismissLoadingShell } from '../utils/loadingShell';
 
 const rawAndroidApkUrl = process.env.EXPO_PUBLIC_ANDROID_APK_URL?.trim();
 const androidApkUrl = rawAndroidApkUrl ? rawAndroidApkUrl.replace('/TNL-Logistics-private/', '/TNL-Logistics/') : null;
@@ -34,6 +35,10 @@ export default function LoginScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
+
+  useEffect(() => {
+    dismissLoadingShell();
+  }, []);
 
   useEffect(() => {
     // Prevent calling router.replace before root navigator has mounted
