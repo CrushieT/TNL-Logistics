@@ -6,7 +6,8 @@
     "start": "expo start",
     "web": "expo start --web",
     "android": "expo start --android",
-    "ios": "expo start --ios"
+    "ios": "expo start --ios",
+    "build": "expo export --platform web"
   },
   "dependencies": {
     "axios": "^1.7.2",

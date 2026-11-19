@@ -1,15 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, ScrollView, StyleSheet, useWindowDimensions, TouchableOpacity, Text, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import { colors, fonts, spacing } from '../../theme';
+import { dismissLoadingShell } from '../../utils/loadingShell';
 
 export default function AppShell({ children }) {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    dismissLoadingShell();
+  }, []);
 
   return (
     <View style={[styles.frame, isMobile && styles.frameMobile]}>

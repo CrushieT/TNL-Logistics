@@ -182,4 +182,11 @@ describe('dismissLoadingShell Utility', () => {
     assert.ok(removeChildCalled, 'Should fallback to parentNode.removeChild');
     assert.equal(doc.shellEl.parentNode, null);
   });
+
+  test('is idempotent when called repeatedly on an already hidden shell', () => {
+    const doc = createMockDocument({ hasRoot: true, rootChildren: 1, hasShell: true });
+    doc.shellEl.classList.add('app-loading-shell-hidden');
+    const dismissed = dismissLoadingShell({ documentRef: doc, transitionMs: 0 });
+    assert.equal(dismissed, true);
+  });
 });

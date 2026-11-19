@@ -16,6 +16,7 @@ import { useRouter, useRootNavigationState } from 'expo-router';
 import { colors, fonts, spacing, radius } from '../theme';
 import { registerFirstBootAdmin, checkFirstBootStatus, isAuthenticated } from '../services/api/client';
 import { getSoaBankDetailsErrors, normalizeSoaBankDetails } from '../features/settings/utils/soaBankDetails.mjs';
+import { dismissLoadingShell } from '../utils/loadingShell';
 
 function EyeIcon({ visible, size = 18, color = colors.inkSoft }) {
   if (visible) {
@@ -66,6 +67,10 @@ export default function SetupScreen() {
 
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    dismissLoadingShell();
+  }, []);
 
   useEffect(() => {
     if (!navigationState?.key) return;

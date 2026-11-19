@@ -13,12 +13,17 @@
 - `frontend-mobile/tests/printerDiscoveryFlows.test.mjs`: executes the actual printer service, provider, and Printer screen against native/storage/API mocks.
 - `frontend-mobile/docs/bluetooth-permissions-verification.md`: implementation evidence, scoped review, and pending hardware acceptance checklist.
 
-### Initial HTML loading shell and browser refresh improvements
+### Initial HTML loading shell, static asset routing, and browser refresh improvements
 
+- `frontend-web/app.json`: Expo application configuration with standard monolithic web bundling in Metro, packaging all administrative screens into a single production bundle (~480 KB Brotli compressed) to deliver 0 ms instant transitions for all in-app navigation without chunk download latency or white-screen flashes.
 - `frontend-web/public/index.html`: initial HTML template for Expo single-page web export (`output: "single"`), containing inline reset styles, application canvas background `#F3F2ED`, accessible pre-hydration loading shell with tracking logo, "ADMIN CONSOLE" badge, CSS spinner, and noscript alert.
 - `frontend-web/public/tracking-logo.png`: static tracking brand logo asset served from public root without hashing waterfalls.
-- `frontend-web/src/utils/loadingShell.js`: utility to safely dismiss the pre-hydration loading shell once React has mounted and populated the `#root` container.
-- `frontend-web/tests/loadingShell.test.mjs`: unit test suite verifying template structure, accessibility roles, noscript fallback, and dismissal logic.
+- `frontend-web/public/_redirects`: single-page application edge rewrite rule (`/* /index.html 200`) ensuring direct deep-link hits on edge CDN hosts (Cloudflare Pages) resolve without 404 errors.
+- `frontend-web/public/_headers`: edge HTTP response headers applying 1-year immutable caching to fingerprinted static assets (`/_expo/static/*`) and revalidation with security headers to HTML entry documents (`/*`).
+- `frontend-web/src/utils/loadingShell.js`: utility to safely and idempotently dismiss the pre-hydration loading shell once child screens commit to the DOM.
+- `frontend-web/src/components/layout/AppShell.js`: shared authenticated screen frame with TopBar, Sidebar, and child screen layout; triggers synchronized `dismissLoadingShell()` upon mount to prevent white-screen flashes during initial application hydration.
+- `frontend-web/src/app/index.js`: root operations dashboard screen with Frame-1 tab-scoped `sessionStorage` snapshot hydration (0 ms reload paint), concurrent `/collections/cycles` and `/dashboard/summary` network dispatching, resilient fallback `CycleDropdown` rendering without layout shifts, quiet fresh-cache revalidation (<30s), soft filter transitions without skeleton screen blanking, and non-blocking background revalidation.
+- `frontend-web/tests/loadingShell.test.mjs`: unit test suite verifying template structure, accessibility roles, noscript fallback, and dismissal logic including idempotency.
 
 ### Frontend progressive loading and bounded memory cache
 

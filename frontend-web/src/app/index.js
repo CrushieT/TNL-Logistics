@@ -1,6 +1,6 @@
 import { useCachedPreview } from '../services/api/useCachedPreview';
 import PreviewStatus from '../components/common/PreviewStatus';
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import AppShell from '../components/layout/AppShell';
@@ -34,22 +34,56 @@ import { getRecentThursdays } from '../features/collections/utils/collectionsUti
 import { getDashboardSummary, subscribeRealtimeEvents } from '../features/shipments';
 import { useRequestCoordinator } from '../services/api/useRequestCoordinator';
 import { useVerifiedAdminSession, getVerifiedAdminSessionKey } from '../services/api/useVerifiedAdminSession';
+import { useSavedPageState } from '../services/navigation/useSavedPageState';
 import { colors, fonts, spacing, radius } from '../theme';
 
 export default function DashboardScreen() {
   const sessionKey = useVerifiedAdminSession();
   const router = useRouter();
-  const [summary, setSummary] = useState(null);
-  const [loading, setLoading] = useState(true);
+
+  const [pageState, updatePageState] = useSavedPageState('dashboard_state', {
+    selectedCycle: '',
+    cachedSummary: null,
+    cachedSummaryCycle: null,
+    cachedUserId: null,
+    cachedSessionGeneration: null,
+  });
+
+  const [summary, setSummary] = useState(() => {
+    const auth = getSessionAuthContext();
+    if (!auth.isVerified || !auth.userId) return null;
+    if (
+      pageState?.cachedSummary &&
+      pageState?.selectedCycle &&
+      pageState?.cachedSummaryCycle === pageState.selectedCycle &&
+      pageState?.cachedUserId === auth.userId &&
+      pageState?.cachedSessionGeneration === auth.sessionGeneration
+    ) {
+      return pageState.cachedSummary;
+    }
+    return null;
+  });
+
+  const [loading, setLoading] = useState(() => !summary);
   const [isPreview, setIsPreview] = useState(false);
   const [initialLoadFailed, setInitialLoadFailed] = useState(false);
   const [isStale, setIsStale] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(() => (summary ? new Date().toLocaleTimeString() : null));
   const [errorMessage, setErrorMessage] = useState(null);
-  const [selectedCycle, setSelectedCycle] = useState('');
+  const selectedCycle = pageState.selectedCycle;
+  const setSelectedCycle = useCallback((cycleOrUpdater) => {
+    updatePageState((prev) => {
+      const nextCycle = typeof cycleOrUpdater === 'function' ? cycleOrUpdater(prev.selectedCycle) : cycleOrUpdater;
+      if (prev.selectedCycle === nextCycle) return prev;
+      return { ...prev, selectedCycle: nextCycle };
+    });
+  }, [updatePageState]);
 
   const activeCycleRef = useRef(selectedCycle);
   activeCycleRef.current = selectedCycle;
+
+  const pageStateRef = useRef(pageState);
+  pageStateRef.current = pageState;
 
   const summaryRef = useRef(summary);
   summaryRef.current = summary;
@@ -76,6 +110,14 @@ export default function DashboardScreen() {
         queryParams: { cycle: targetCycle },
         data,
       });
+
+      updatePageState((prev) => ({
+        ...prev,
+        cachedSummary: data,
+        cachedSummaryCycle: targetCycle,
+        cachedUserId: currentAuth.userId,
+        cachedSessionGeneration: currentAuth.sessionGeneration,
+      }));
 
       setSummary(data);
       setIsPreview(false);
@@ -114,6 +156,7 @@ export default function DashboardScreen() {
   });
 
   // Session reset listener
+  const previousSessionKeyRef = useRef(sessionKey);
   useEffect(() => {
     const resetSession = () => {
       coordinator.cancel();
@@ -127,12 +170,17 @@ export default function DashboardScreen() {
       setErrorMessage(null);
       setLoading(true);
     };
-    resetSession();
+
+    if (previousSessionKeyRef.current && (!sessionKey || previousSessionKeyRef.current !== sessionKey)) {
+      resetSession();
+    }
+    previousSessionKeyRef.current = sessionKey;
+
     const unsubscribe = onSessionInvalidated(resetSession);
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [coordinator, sessionKey]);
+  }, [coordinator, sessionKey, setSelectedCycle]);
 
   const cycleResource = useCachedPreview({
     slot: CACHE_SLOTS.COLLECTION_CYCLES,
@@ -142,14 +190,19 @@ export default function DashboardScreen() {
   const cycles = cycleResource.data?.length ? cycleResource.data
     : cycleResource.data !== null ? getRecentThursdays(1) : [];
   const cyclesSessionKey = cycleResource.data !== null ? sessionKey : null;
+  const displayCycles = cycles.length > 0
+    ? cycles
+    : selectedCycle
+      ? [{ isoDate: selectedCycle, label: `Cycle: ${selectedCycle}` }]
+      : [];
 
   useEffect(() => {
     if (cycleResource.data === null) return;
-    setSelectedCycle(previous => cycles.some(cycle => cycle.isoDate === previous) ? previous : cycles[0]?.isoDate || '');
+    setSelectedCycle(previous => cycles.some(cycle => cycle.isoDate === previous) ? previous : (cycles[0]?.isoDate || ''));
   }, [cycleResource.data]);
 
   const load = useCallback((cycleDate, showSpinner = true, debounce = false) => {
-    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey() || cyclesSessionKey !== sessionKey || !cycleDate) return;
+    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey() || !cycleDate) return;
     if (showSpinner) {
       setLoading(true);
       setErrorMessage(null);
@@ -164,11 +217,11 @@ export default function DashboardScreen() {
       requestAuth,
       requestQuery,
     });
-  }, [coordinator, sessionKey, cyclesSessionKey]);
+  }, [coordinator, sessionKey]);
 
-  // Query key change with instant cached preview
+  // Query key change with instant cached preview or session snapshot
   useEffect(() => {
-    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey() || cyclesSessionKey !== sessionKey || !selectedCycle) return;
+    if (!sessionKey || sessionKey !== getVerifiedAdminSessionKey() || !selectedCycle) return;
 
     const auth = getSessionAuthContext();
     const cached = getCacheEntry(CACHE_SLOTS.DASHBOARD, {
@@ -177,26 +230,41 @@ export default function DashboardScreen() {
       queryParams: { cycle: selectedCycle },
     });
 
-    if (cached?.data) {
-      setSummary(cached.data);
-      setIsPreview(true);
+    const state = pageStateRef.current;
+    const isMatchingSnapshot = Boolean(
+      state?.cachedSummary &&
+      state?.cachedSummaryCycle === selectedCycle &&
+      state?.cachedUserId === auth.userId &&
+      state?.cachedSessionGeneration === auth.sessionGeneration
+    );
+
+    const snapshotData = cached?.data || (isMatchingSnapshot ? state.cachedSummary : null);
+
+    if (snapshotData) {
+      setSummary(snapshotData);
+      const isFresh = Boolean(cached?.timestamp && (Date.now() - cached.timestamp < 30000));
+      setIsPreview(!isFresh);
       setIsStale(false);
       setInitialLoadFailed(false);
       setErrorMessage(null);
-      setLastUpdated(new Date(cached.timestamp).toLocaleTimeString());
-      setLoading(true);
+      setLastUpdated(cached?.timestamp ? new Date(cached.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString());
+      setLoading(!isFresh);
       load(selectedCycle, false, false);
     } else {
-      // Clear previous cycle's data immediately to prevent showing wrong cycle under new filter
-      setSummary(null);
-      setIsPreview(false);
+      if (cyclesSessionKey !== sessionKey) return;
+      if (summaryRef.current) {
+        setIsPreview(true);
+      } else {
+        setSummary(null);
+        setIsPreview(false);
+      }
       setIsStale(false);
       setInitialLoadFailed(false);
       setErrorMessage(null);
       setLoading(true);
       load(selectedCycle, true, false);
     }
-  }, [selectedCycle, load]);
+  }, [selectedCycle, load, cyclesSessionKey]);
 
   // Real-time SSE updates
   useEffect(() => {
@@ -230,8 +298,8 @@ export default function DashboardScreen() {
   const financialRows = summary?.outstandingVsCollected || [];
   const recentActivities = summary?.recentActivity || [];
 
-  // Actions requiring fresh summary are disabled when loading, previewing, or stale
-  const actionsDisabled = !cycleResource.isFresh || loading || isPreview || isStale || !summary;
+  // Actions requiring fresh summary are disabled when loading without data or when no summary exists
+  const actionsDisabled = (loading && !summary) || !summary;
 
   return (
     <AppShell>
@@ -241,9 +309,9 @@ export default function DashboardScreen() {
         style={styles.pageHeader}
         right={
           <View style={styles.headerRightGroup}>
-            {cycles.length > 0 ? (
+            {displayCycles.length > 0 ? (
               <CycleDropdown
-                cycles={cycles}
+                cycles={displayCycles}
                 selectedCycle={selectedCycle}
                 onSelectCycle={setSelectedCycle}
                 minWidth={280}
