@@ -15,7 +15,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
@@ -27,6 +27,8 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.stream.Collectors;
 
 /**
@@ -34,7 +36,6 @@ import java.util.stream.Collectors;
  * Executes database-level SQL/JPQL aggregates for live totals.
  */
 @Service
-@Transactional(readOnly = true)
 public class DashboardServiceImpl implements DashboardService {
 
     private static final ZoneId MANILA_ZONE = ZoneId.of("Asia/Manila");
@@ -77,9 +78,62 @@ public class DashboardServiceImpl implements DashboardService {
             LocalDateTime cycleStart = cycleStartLocalDate.atStartOfDay();
             LocalDateTime cycleEnd = activeCycleEnd.atStartOfDay();
 
-            // 1. Cycle-scoped counts and charges consolidated into single aggregate
-            CycleShipmentSummary cycleSummary = shipmentRepository.getCycleShipmentSummary(
-                    cycleStart, cycleEnd);
+            LocalDateTime todayStart = today.atStartOfDay();
+            LocalDateTime todayEnd = today.plusDays(1).atStartOfDay();
+
+            CycleShipmentSummary cycleSummary;
+            long todayShipmentCount;
+            CollectionTotals totals;
+            List<Object[]> statusRows;
+            List<Object[]> dailyRows;
+            List<TrackingEvent> recentEvents;
+
+            if (TransactionSynchronizationManager.isActualTransactionActive()) {
+                // When an ambient transaction is active (e.g., in @Transactional tests), execute on caller thread to maintain transaction visibility
+                cycleSummary = shipmentRepository.getCycleShipmentSummary(cycleStart, cycleEnd);
+                todayShipmentCount = shipmentRepository.countShipmentsRegisteredBetween(todayStart, todayEnd);
+                totals = collectionsService.getCollectionTotals(activeCycleEnd, cycleStartLocalDate);
+                statusRows = parcelUnitRepository.countParcelsGroupedByLossAndStatusBetween(cycleStart, cycleEnd);
+                dailyRows = shipmentRepository.countDailyShipmentsBetween(cycleStart, cycleEnd);
+                recentEvents = trackingEventRepository.findRecentEvents(PageRequest.of(0, 5));
+            } else {
+                // Dispatch independent read-only database aggregations concurrently
+                CompletableFuture<CycleShipmentSummary> cycleSummaryFuture =
+                        CompletableFuture.supplyAsync(() -> shipmentRepository.getCycleShipmentSummary(cycleStart, cycleEnd));
+
+                CompletableFuture<Long> todayCountFuture =
+                        CompletableFuture.supplyAsync(() -> shipmentRepository.countShipmentsRegisteredBetween(todayStart, todayEnd));
+
+                CompletableFuture<CollectionTotals> totalsFuture =
+                        CompletableFuture.supplyAsync(() -> collectionsService.getCollectionTotals(activeCycleEnd, cycleStartLocalDate));
+
+                CompletableFuture<List<Object[]>> statusRowsFuture =
+                        CompletableFuture.supplyAsync(() -> parcelUnitRepository.countParcelsGroupedByLossAndStatusBetween(cycleStart, cycleEnd));
+
+                CompletableFuture<List<Object[]>> dailyRowsFuture =
+                        CompletableFuture.supplyAsync(() -> shipmentRepository.countDailyShipmentsBetween(cycleStart, cycleEnd));
+
+                CompletableFuture<List<TrackingEvent>> recentEventsFuture =
+                        CompletableFuture.supplyAsync(() -> trackingEventRepository.findRecentEvents(PageRequest.of(0, 5)));
+
+                CompletableFuture.allOf(
+                        cycleSummaryFuture,
+                        todayCountFuture,
+                        totalsFuture,
+                        statusRowsFuture,
+                        dailyRowsFuture,
+                        recentEventsFuture
+                ).join();
+
+                cycleSummary = cycleSummaryFuture.join();
+                todayShipmentCount = todayCountFuture.join();
+                totals = totalsFuture.join();
+                statusRows = statusRowsFuture.join();
+                dailyRows = dailyRowsFuture.join();
+                recentEvents = recentEventsFuture.join();
+            }
+
+            // 1. Cycle-scoped counts and charges
             long shipmentCount = (cycleSummary != null && cycleSummary.getShipmentCount() != null)
                     ? cycleSummary.getShipmentCount() : 0L;
             long parcelCount = (cycleSummary != null && cycleSummary.getParcelCount() != null)
@@ -88,9 +142,6 @@ public class DashboardServiceImpl implements DashboardService {
                     ? cycleSummary.getTotalCharges() : BigDecimal.ZERO;
 
             // 2. Today's shipments
-            LocalDateTime todayStart = today.atStartOfDay();
-            LocalDateTime todayEnd = today.plusDays(1).atStartOfDay();
-            long todayShipmentCount = shipmentRepository.countShipmentsRegisteredBetween(todayStart, todayEnd);
             String todayDateFormatted = today.format(DATE_FORMATTER);
 
             // 3. Cycle-scoped unpaid transactions count
@@ -102,7 +153,6 @@ public class DashboardServiceImpl implements DashboardService {
             String collectionDayShort = collectionDay != null
                     ? collectionDay.getDisplayName(TextStyle.SHORT, Locale.ENGLISH)
                     : "Thu";
-            CollectionTotals totals = collectionsService.getCollectionTotals(activeCycleEnd, cycleStartLocalDate);
             BigDecimal amount = (totals != null && totals.outstandingBalance() != null)
                     ? totals.outstandingBalance()
                     : BigDecimal.ZERO;
@@ -111,7 +161,6 @@ public class DashboardServiceImpl implements DashboardService {
                     new DashboardSummaryResponse.ForCollectionDto(amount, clientCount, collectionDayShort);
 
             // 5. Parcel units status breakdown for this cycle
-            List<Object[]> statusRows = parcelUnitRepository.countParcelsGroupedByLossAndStatusBetween(cycleStart, cycleEnd);
             Map<ParcelStatus, Long> statusCounts = new EnumMap<>(ParcelStatus.class);
             long lostCount = 0L;
             for (Object[] row : statusRows) {
@@ -142,7 +191,6 @@ public class DashboardServiceImpl implements DashboardService {
             }
 
             // 6. Weekly shipment volume aligned to active 7-day billing cycle
-            List<Object[]> dailyRows = shipmentRepository.countDailyShipmentsBetween(cycleStart, cycleEnd);
             Map<LocalDate, Long> dailyMap = new HashMap<>();
             for (Object[] row : dailyRows) {
                 LocalDate date = null;
@@ -179,7 +227,6 @@ public class DashboardServiceImpl implements DashboardService {
             outstandingVsCollected.add(new DashboardSummaryResponse.ComparisonRowDto("Collected", totalCollected, "#16A34A"));
 
             // 8. Recent tracking events stream
-            List<TrackingEvent> recentEvents = trackingEventRepository.findRecentEvents(PageRequest.of(0, 5));
             List<DashboardSummaryResponse.RecentActivityDto> recentActivity = recentEvents.stream().map(event -> {
                 String dateStr = event.getEventTimestamp() != null ? event.getEventTimestamp().format(DATE_FORMATTER) : "—";
                 String timeStr = event.getEventTimestamp() != null ? event.getEventTimestamp().format(TIME_FORMATTER) : "—";
@@ -211,6 +258,24 @@ public class DashboardServiceImpl implements DashboardService {
                     outstandingVsCollected,
                     recentActivity
             );
+        } catch (CompletionException ex) {
+            Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+            if (cause instanceof ResponseStatusException rse) {
+                throw rse;
+            }
+            if (cause instanceof DataAccessException dae) {
+                throw new ResponseStatusException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "DASHBOARD_UNAVAILABLE: Dashboard data is temporarily unavailable due to a database error",
+                        dae);
+            }
+            if (cause instanceof RuntimeException re) {
+                throw re;
+            }
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Unexpected error retrieving dashboard summary",
+                    cause);
         } catch (DataAccessException ex) {
             throw new ResponseStatusException(
                     HttpStatus.SERVICE_UNAVAILABLE,

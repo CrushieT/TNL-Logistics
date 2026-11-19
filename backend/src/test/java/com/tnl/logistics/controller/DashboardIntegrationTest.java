@@ -322,6 +322,20 @@ public class DashboardIntegrationTest {
         return actual;
     }
 
+    @Test
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    void testParallelExecutionPathWithoutAmbientTransaction() {
+        assertFalse(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive());
+        DashboardSummaryResponse response = dashboardService.getDashboardSummary();
+        assertNotNull(response);
+        assertNotNull(response.getForCollection());
+        assertNotNull(response.getParcelUnitsByStatus());
+        assertNotNull(response.getWeeklyShipmentVolume());
+        assertEquals(7, response.getWeeklyShipmentVolume().size());
+        assertNotNull(response.getOutstandingVsCollected());
+        assertEquals(2, response.getOutstandingVsCollected().size());
+    }
+
     private Client createClient(String id) {
         return clientRepository.saveAndFlush(new Client(id, id, "Test address", "09170000000",
                 "test@example.com", ChargeModel.FLAT, true));
