@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -30,10 +30,19 @@ export function ParcelDetailScreen({ trackingId }) {
   const [error, setError] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [isReprinting, setIsReprinting] = useState(false);
+  const [isCoolingDown, setIsCoolingDown] = useState(false);
   const [statusDialog, setStatusDialog] = useState(null);
   const [previewVisible, setPreviewVisible] = useState(false);
+  const isReprintingRef = useRef(false);
+  const cooldownTimerRef = useRef(null);
 
   const { isConnected, connectedDevice, printParcelLabels } = usePrinter();
+
+  useEffect(() => {
+    return () => {
+      if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
+    };
+  }, []);
 
   const fetchParcel = useCallback(async (signal) => {
     try {
@@ -59,7 +68,8 @@ export function ParcelDetailScreen({ trackingId }) {
   );
 
   const handleReprint = async () => {
-    if (isReprinting || !parcel || !shipment) return;
+    if (isReprintingRef.current || isReprinting || !parcel || !shipment) return;
+    isReprintingRef.current = true;
 
     if (isConnected) {
       setIsReprinting(true);
@@ -81,8 +91,14 @@ export function ParcelDetailScreen({ trackingId }) {
         });
       } finally {
         setIsReprinting(false);
+        setIsCoolingDown(true);
+        cooldownTimerRef.current = setTimeout(() => {
+          isReprintingRef.current = false;
+          setIsCoolingDown(false);
+        }, 1700);
       }
     } else {
+      isReprintingRef.current = false;
       // Option A: Seamless fallback to visual preview modal
       setPreviewVisible(true);
     }
@@ -226,12 +242,14 @@ export function ParcelDetailScreen({ trackingId }) {
         <View style={styles.actionsRow}>
           <Pressable
             accessibilityRole="button"
-            disabled={isReprinting || !previewLabel}
+            disabled={isReprinting || isCoolingDown || !previewLabel}
             onPress={handleReprint}
-            style={[styles.actionBtn, isReprinting && styles.btnDisabled]}
+            style={[styles.actionBtn, (isReprinting || isCoolingDown) && styles.btnDisabled]}
           >
             {isReprinting ? (
               <ActivityIndicator color={colors.ink} size="small" />
+            ) : isCoolingDown ? (
+              <Text style={styles.actionBtnText}>PLEASE WAIT...</Text>
             ) : (
               <Text style={styles.actionBtnText}>REPRINT LABEL</Text>
             )}
