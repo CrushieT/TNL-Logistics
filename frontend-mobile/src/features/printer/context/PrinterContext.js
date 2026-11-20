@@ -266,6 +266,9 @@ export function PrinterProvider({ children }) {
     auditTrackingIds({ printJobId, shipmentId, trackingIds, printerId: 'SYSTEM-PDF' }), [auditTrackingIds]);
 
   const printParcelLabels = useCallback((shipment, unitsToPrint = null, options = {}) => {
+    if (bluetoothPrinterService.isPrinting || bluetoothPrinterService.isTransmitting) {
+      return Promise.reject(new Error('Wait for the current print job to finish before printing.'));
+    }
     const jobId = options.jobId || Crypto.randomUUID();
     return enqueueSerialized(jobId, async () => {
       const units = unitsToPrint || shipment.units || [];
@@ -280,6 +283,9 @@ export function PrinterProvider({ children }) {
 
       if (bluetoothPrinterService.pendingConnection || bluetoothPrinterService.controlOperation) {
         throw new Error('Wait for the printer connection to finish before printing.');
+      }
+      if (bluetoothPrinterService.isPrinting || bluetoothPrinterService.isTransmitting) {
+        throw new Error('Wait for the current print job to finish before printing.');
       }
       bluetoothPrinterService.isPrinting = true;
       setIsPrinting(true);

@@ -810,3 +810,28 @@ test('printing cannot start while a reconnect operation is unfinished', async ()
   assert.equal(mount.context().isConnected, true);
   mount.provider.unmount();
 });
+
+test('concurrent print requests are rejected while a print job is in progress', async () => {
+  const transmission = deferred();
+  const mount = mountPrinter({ storage: savedStorage(), print: () => transmission.promise });
+  await initialize(mount);
+  const firstPrint = mount.context().printParcelLabels(
+    { shipmentId: 'SHIPMENT-1', units: [{ trackingId: 'TRACKING-1' }] },
+    null,
+    { auditMode: 'NONE' }
+  );
+  await mount.provider.flush();
+  assert.equal(mount.context().isPrinting, true);
+  await assert.rejects(
+    mount.context().printParcelLabels(
+      { shipmentId: 'SHIPMENT-2', units: [{ trackingId: 'TRACKING-2' }] },
+      null,
+      { auditMode: 'NONE' }
+    ),
+    /current print job to finish/
+  );
+  transmission.resolve();
+  await firstPrint;
+  assert.equal(mount.calls.prints, 1);
+  mount.provider.unmount();
+});

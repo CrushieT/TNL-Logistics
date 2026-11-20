@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
 import { colors, spacing, typography } from '../../../theme';
 import { usePrinter } from '../../printer/context/PrinterContext';
@@ -14,8 +14,17 @@ export function RegistrationResult({ shipment, onRegisterAnother, onHome }) {
   const [canonicalShipment, setCanonicalShipment] = useState(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(true);
   const [detailsError, setDetailsError] = useState(null);
+  const [isCoolingDown, setIsCoolingDown] = useState(false);
+  const isPrintingRef = useRef(false);
+  const cooldownTimerRef = useRef(null);
 
   const trackingCount = shipment.trackingIds?.length || 1;
+
+  useEffect(() => {
+    return () => {
+      if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
+    };
+  }, []);
 
   const loadCanonicalShipment = useCallback(async () => {
     setIsLoadingDetails(true);
@@ -32,7 +41,11 @@ export function RegistrationResult({ shipment, onRegisterAnother, onHome }) {
   useEffect(() => { loadCanonicalShipment(); }, [loadCanonicalShipment]);
 
   const handlePrintLabels = async () => {
-    if (!canonicalShipment) return;
+    if (isPrintingRef.current || isPrinting || !canonicalShipment) return;
+    isPrintingRef.current = true;
+    const unitCount = canonicalShipment.units?.length || trackingCount || 1;
+    const cooldownMs = Math.min(8000, 1500 + unitCount * 200);
+
     if (isConnected) {
       try {
         const result = await printParcelLabels(canonicalShipment);
@@ -48,8 +61,15 @@ export function RegistrationResult({ shipment, onRegisterAnother, onHome }) {
           title: 'Print Failed',
           message: err?.message || 'Failed to print labels. Check connection and retry.',
         });
+      } finally {
+        setIsCoolingDown(true);
+        cooldownTimerRef.current = setTimeout(() => {
+          isPrintingRef.current = false;
+          setIsCoolingDown(false);
+        }, cooldownMs);
       }
     } else {
+      isPrintingRef.current = false;
       // Option A: Seamless fallback to preview modal
       setPreviewVisible(true);
     }
@@ -84,12 +104,14 @@ export function RegistrationResult({ shipment, onRegisterAnother, onHome }) {
             <View style={styles.actions}>
               <Pressable
                 accessibilityRole="button"
-                style={styles.printAction}
+                style={[styles.printAction, isCoolingDown && styles.coolingDownAction]}
                 onPress={handlePrintLabels}
-                disabled={isPrinting || isLoadingDetails || !canonicalShipment}
+                disabled={isPrinting || isCoolingDown || isLoadingDetails || !canonicalShipment}
               >
                 {isPrinting || isLoadingDetails ? (
                   <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : isCoolingDown ? (
+                  <Text style={styles.printActionText}>PLEASE WAIT...</Text>
                 ) : (
                   <Text style={styles.printActionText}>
                     PRINT LABELS ({trackingCount})
@@ -161,6 +183,7 @@ const styles = StyleSheet.create({
   retryText: { ...typography.mono, color: colors.ink, textDecorationLine: 'underline', marginTop: spacing.xs },
   actions: { gap: spacing.sm, marginVertical: spacing.xl },
   printAction: { backgroundColor: colors.ink, minHeight: 52, padding: spacing.md, justifyContent: 'center', alignItems: 'center', borderRadius: 4 },
+  coolingDownAction: { opacity: 0.65 },
   printActionText: { color: colors.surface, fontSize: 15, fontWeight: '800', letterSpacing: 0.5 },
   primary: { backgroundColor: colors.canvas, borderWidth: 1, borderColor: colors.borderStrong, minHeight: 48, padding: spacing.md, justifyContent: 'center', alignItems: 'center', borderRadius: 4 },
   primaryText: { color: colors.ink, fontSize: 14, fontWeight: '700' },

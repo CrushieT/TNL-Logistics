@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -28,10 +28,19 @@ export function ShipmentDetailScreen({ shipmentId }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isPrinting, setIsPrinting] = useState(false);
+  const [isCoolingDown, setIsCoolingDown] = useState(false);
   const [statusDialog, setStatusDialog] = useState(null);
   const [previewVisible, setPreviewVisible] = useState(false);
+  const isPrintingRef = useRef(false);
+  const cooldownTimerRef = useRef(null);
 
   const { isConnected, connectedDevice, printParcelLabels } = usePrinter();
+
+  useEffect(() => {
+    return () => {
+      if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
+    };
+  }, []);
 
   const fetchDetail = useCallback(async (signal) => {
     try {
@@ -55,7 +64,10 @@ export function ShipmentDetailScreen({ shipmentId }) {
   );
 
   const handlePrintAll = async () => {
-    if (isPrinting || !shipment) return;
+    if (isPrintingRef.current || isPrinting || !shipment) return;
+    isPrintingRef.current = true;
+    const unitCount = shipment.units?.length || 1;
+    const cooldownMs = Math.min(8000, 1500 + unitCount * 200);
 
     if (isConnected) {
       setIsPrinting(true);
@@ -76,8 +88,14 @@ export function ShipmentDetailScreen({ shipmentId }) {
         });
       } finally {
         setIsPrinting(false);
+        setIsCoolingDown(true);
+        cooldownTimerRef.current = setTimeout(() => {
+          isPrintingRef.current = false;
+          setIsCoolingDown(false);
+        }, cooldownMs);
       }
     } else {
+      isPrintingRef.current = false;
       // Option A: Seamless fallback to visual preview modal
       setPreviewVisible(true);
     }
@@ -299,12 +317,14 @@ export function ShipmentDetailScreen({ shipmentId }) {
           <View style={styles.actionsBox}>
             <Pressable
               accessibilityRole="button"
-              disabled={isPrinting || Boolean(labelDataError) || units.length === 0}
+              disabled={isPrinting || isCoolingDown || Boolean(labelDataError) || units.length === 0}
               onPress={handlePrintAll}
-              style={[styles.primaryBtn, isPrinting && styles.disabled]}
+              style={[styles.primaryBtn, (isPrinting || isCoolingDown) && styles.disabled]}
             >
               {isPrinting ? (
                 <ActivityIndicator color={colors.surface} />
+              ) : isCoolingDown ? (
+                <Text style={styles.primaryBtnText}>PLEASE WAIT...</Text>
               ) : (
                 <Text style={styles.primaryBtnText}>PRINT ALL LABELS ({units.length})</Text>
               )}
