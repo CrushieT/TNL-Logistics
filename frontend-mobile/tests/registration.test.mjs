@@ -652,7 +652,8 @@ test('RegistrationResult prompts for confirmation before reprinting already prin
   assert.ok(source.includes('confirmReprintVisible'));
   assert.ok(source.includes('REPRINT CONFIRMATION'));
   assert.ok(source.includes('REPRINT LABELS'));
-  assert.ok(source.includes('startPrintCountdown'));
+  assert.ok(source.includes('startCooldownCountdown'));
+  assert.ok(source.includes('executeActualPrint'));
 
   // Pure logic helper extracted from RegistrationResult
   const evaluateHasPrinted = (hasPrintedInSession, canonicalShipment) => {
@@ -719,3 +720,30 @@ test('ShipmentDetailScreen prompts for confirmation before reprinting already pr
     { labelStatus: 'PRINTED' },
   ]), true);
 });
+
+test('RegistrationResult locks reprint button until simulation complete popup appears and cooldown countdown elapses', () => {
+  const source = readFileSync(new URL('../src/features/shipments/components/RegistrationResult.js', import.meta.url), 'utf8');
+  assert.ok(source.includes('startCooldownCountdown'));
+  assert.ok(source.includes('cooldownSeconds > 0'));
+  assert.ok(source.includes('PLEASE WAIT ('));
+  assert.ok(!source.includes('PRINTING IN'));
+  assert.ok(!source.includes('CANCEL PRINT'));
+
+  // Logic verification of untappable guard
+  const isButtonTappable = ({ isPrinting, isPrinterContextPrinting, cooldownSeconds, isLoadingDetails, hasCanonicalShipment }) => {
+    const isBusy = isPrinting || isPrinterContextPrinting || isLoadingDetails;
+    return !(isBusy || cooldownSeconds > 0 || !hasCanonicalShipment);
+  };
+
+  // During print execution (before popup appears) -> untappable
+  assert.equal(isButtonTappable({ isPrinting: true, isPrinterContextPrinting: false, cooldownSeconds: 0, isLoadingDetails: false, hasCanonicalShipment: true }), false);
+  assert.equal(isButtonTappable({ isPrinting: false, isPrinterContextPrinting: true, cooldownSeconds: 0, isLoadingDetails: false, hasCanonicalShipment: true }), false);
+
+  // When popup appears and countdown is active -> untappable
+  assert.equal(isButtonTappable({ isPrinting: false, isPrinterContextPrinting: false, cooldownSeconds: 3, isLoadingDetails: false, hasCanonicalShipment: true }), false);
+  assert.equal(isButtonTappable({ isPrinting: false, isPrinterContextPrinting: false, cooldownSeconds: 1, isLoadingDetails: false, hasCanonicalShipment: true }), false);
+
+  // When countdown completes -> tappable
+  assert.equal(isButtonTappable({ isPrinting: false, isPrinterContextPrinting: false, cooldownSeconds: 0, isLoadingDetails: false, hasCanonicalShipment: true }), true);
+});
+
