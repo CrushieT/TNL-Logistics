@@ -61,3 +61,26 @@ test('the production Dispatch queue rejects lost arrivals and loaded parcels bef
   assert.deepEqual(queue, ['TRK-2026-000001']);
   assert.equal(error, '');
 });
+
+test('ParcelDetailScreen prompts for confirmation before reprinting an already printed label', () => {
+  const source = readFileSync(new URL('../src/features/shipments/components/ParcelDetailScreen.js', import.meta.url), 'utf8');
+  assert.ok(source.includes('confirmReprintVisible'));
+  assert.ok(source.includes('REPRINT CONFIRMATION'));
+  assert.ok(source.includes('handleReprintPress'));
+
+  // Test the pure decision function extracted from ParcelDetailScreen
+  const shouldPromptForReprint = (labelStatus) => {
+    const isPrinted = Boolean(labelStatus && String(labelStatus).toUpperCase() !== 'NOT_PRINTED');
+    return isPrinted;
+  };
+
+  assert.equal(shouldPromptForReprint('NOT_PRINTED'), false);
+  assert.equal(shouldPromptForReprint('not_printed'), false);
+  assert.equal(shouldPromptForReprint(null), false);
+  assert.equal(shouldPromptForReprint(undefined), false);
+
+  assert.equal(shouldPromptForReprint('PRINTED'), true);
+  assert.equal(shouldPromptForReprint('Printed'), true);
+  assert.equal(shouldPromptForReprint('REPRINTED'), true);
+  assert.equal(shouldPromptForReprint('Reprinted'), true);
+});

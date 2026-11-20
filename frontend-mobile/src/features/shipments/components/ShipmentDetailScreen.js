@@ -30,6 +30,7 @@ export function ShipmentDetailScreen({ shipmentId }) {
   const [isPrinting, setIsPrinting] = useState(false);
   const [isCoolingDown, setIsCoolingDown] = useState(false);
   const [statusDialog, setStatusDialog] = useState(null);
+  const [confirmReprintVisible, setConfirmReprintVisible] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(false);
   const isPrintingRef = useRef(false);
   const cooldownTimerRef = useRef(null);
@@ -140,6 +141,19 @@ export function ShipmentDetailScreen({ shipmentId }) {
   } catch (normalizationError) {
     labelDataError = normalizationError;
   }
+
+  const hasPrintedLabels = units.length > 0 && units.some(
+    (unit) => unit.labelStatus && String(unit.labelStatus).toUpperCase() !== 'NOT_PRINTED'
+  );
+
+  const handlePrintAllPress = () => {
+    if (isPrintingRef.current || isPrinting || isCoolingDown || Boolean(labelDataError) || units.length === 0) return;
+    if (hasPrintedLabels) {
+      setConfirmReprintVisible(true);
+      return;
+    }
+    handlePrintAll();
+  };
   const registeredPlatform = shipment.registeredVia === 'MOBILE_FIELD' ? 'REGISTERED ON MOBILE' : 'REGISTERED ON PC';
   const contentsDesc = `${shipment.description || 'General Goods'}, ${shipment.quantity || units.length || 1} pcs, ${shipment.chargeModel === 'PER_PARCEL' ? 'per unit' : 'flat'}`;
 
@@ -275,7 +289,7 @@ export function ShipmentDetailScreen({ shipmentId }) {
           </View>
         }
         renderItem={({ item, index }) => {
-          const isPrinted = item.labelStatus === 'Printed' || item.labelStatus === 'PRINTED';
+          const isPrinted = item.labelStatus && String(item.labelStatus).toUpperCase() !== 'NOT_PRINTED';
           return (
             <Pressable
               accessibilityRole="button"
@@ -318,13 +332,15 @@ export function ShipmentDetailScreen({ shipmentId }) {
             <Pressable
               accessibilityRole="button"
               disabled={isPrinting || isCoolingDown || Boolean(labelDataError) || units.length === 0}
-              onPress={handlePrintAll}
+              onPress={handlePrintAllPress}
               style={[styles.primaryBtn, (isPrinting || isCoolingDown) && styles.disabled]}
             >
               {isPrinting ? (
                 <ActivityIndicator color={colors.surface} />
               ) : isCoolingDown ? (
                 <Text style={styles.primaryBtnText}>PLEASE WAIT...</Text>
+              ) : hasPrintedLabels ? (
+                <Text style={styles.primaryBtnText}>REPRINT ALL LABELS ({units.length})</Text>
               ) : (
                 <Text style={styles.primaryBtnText}>PRINT ALL LABELS ({units.length})</Text>
               )}
@@ -341,6 +357,28 @@ export function ShipmentDetailScreen({ shipmentId }) {
         message={statusDialog?.message || ''}
         confirmText="OK"
         onConfirm={() => setStatusDialog(null)}
+      />
+
+      <StatusModal
+        visible={confirmReprintVisible}
+        eyebrow="REPRINT CONFIRMATION"
+        title={units.length > 1 ? 'Reprint All Labels?' : 'Reprint Parcel Label?'}
+        message={
+          units.length > 1
+            ? `Labels for this shipment have already been printed. An audit event will be recorded for this reprint. Are you sure you want to reprint all ${units.length} labels?`
+            : `The label for this shipment has already been printed. An audit event will be recorded for this reprint. Are you sure you want to reprint it?`
+        }
+        confirmText="REPRINT ALL"
+        cancelText="CANCEL"
+        confirmVariant="primary"
+        onConfirm={() => {
+          if (isPrintingRef.current || isPrinting || isCoolingDown) return;
+          setConfirmReprintVisible(false);
+          handlePrintAll();
+        }}
+        onCancel={() => {
+          setConfirmReprintVisible(false);
+        }}
       />
 
       <ThermalLabelPreviewModal

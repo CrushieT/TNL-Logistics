@@ -11,18 +11,45 @@ export function RegistrationResult({ shipment, onRegisterAnother, onHome }) {
   const { isConnected, connectedDevice, printParcelLabels, isPrinting } = usePrinter();
   const [previewVisible, setPreviewVisible] = useState(false);
   const [statusDialog, setStatusDialog] = useState(null);
+  const [confirmReprintVisible, setConfirmReprintVisible] = useState(false);
+  const [hasPrintedInSession, setHasPrintedInSession] = useState(false);
   const [canonicalShipment, setCanonicalShipment] = useState(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(true);
   const [detailsError, setDetailsError] = useState(null);
   const [isCoolingDown, setIsCoolingDown] = useState(false);
+  const [countdown, setCountdown] = useState(0);
   const isPrintingRef = useRef(false);
   const cooldownTimerRef = useRef(null);
+  const countdownTimerRef = useRef(null);
+  const countdownIntervalRef = useRef(null);
 
   const trackingCount = shipment.trackingIds?.length || 1;
+
+  const hasPrinted = hasPrintedInSession || Boolean(
+    canonicalShipment?.units?.length > 0 &&
+    canonicalShipment.units.every(
+      (unit) => unit.labelStatus && String(unit.labelStatus).toUpperCase() !== 'NOT_PRINTED'
+    )
+  );
+
+  const cancelCountdown = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearTimeout(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    setCountdown(0);
+    isPrintingRef.current = false;
+  }, []);
 
   useEffect(() => {
     return () => {
       if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
+      if (countdownTimerRef.current) clearTimeout(countdownTimerRef.current);
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
     };
   }, []);
 
@@ -40,15 +67,19 @@ export function RegistrationResult({ shipment, onRegisterAnother, onHome }) {
 
   useEffect(() => { loadCanonicalShipment(); }, [loadCanonicalShipment]);
 
-  const handlePrintLabels = async () => {
-    if (isPrintingRef.current || isPrinting || !canonicalShipment) return;
-    isPrintingRef.current = true;
+  const executeActualPrint = useCallback(async () => {
+    setCountdown(0);
+    if (!canonicalShipment) {
+      isPrintingRef.current = false;
+      return;
+    }
     const unitCount = canonicalShipment.units?.length || trackingCount || 1;
     const cooldownMs = Math.min(8000, 1500 + unitCount * 200);
 
     if (isConnected) {
       try {
         const result = await printParcelLabels(canonicalShipment);
+        setHasPrintedInSession(true);
         setStatusDialog({
           title: result.isVirtual ? 'Simulation Complete' : 'Labels Printed',
           message: result.isVirtual
@@ -73,7 +104,54 @@ export function RegistrationResult({ shipment, onRegisterAnother, onHome }) {
       // Option A: Seamless fallback to preview modal
       setPreviewVisible(true);
     }
-  };
+  }, [canonicalShipment, isConnected, loadCanonicalShipment, printParcelLabels, trackingCount]);
+
+  const startPrintCountdown = useCallback(() => {
+    if (isPrintingRef.current) return;
+    isPrintingRef.current = true;
+
+    // Start 3-second grace period countdown
+    setCountdown(3);
+    let secondsRemaining = 3;
+
+    countdownIntervalRef.current = setInterval(() => {
+      secondsRemaining -= 1;
+      if (secondsRemaining > 0) {
+        setCountdown(secondsRemaining);
+      } else {
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
+        }
+      }
+    }, 1000);
+
+    countdownTimerRef.current = setTimeout(() => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      executeActualPrint();
+    }, 3000);
+  }, [executeActualPrint]);
+
+  const handlePrintLabels = useCallback(() => {
+    if (isPrinting || isCoolingDown || isLoadingDetails || !canonicalShipment) return;
+
+    // Accidental tap protection: If countdown is already active and pressed again, cancel!
+    if (countdown > 0) {
+      cancelCountdown();
+      return;
+    }
+
+    // Precautionary check: If labels have already been printed, prompt for confirmation
+    if (hasPrinted) {
+      setConfirmReprintVisible(true);
+      return;
+    }
+
+    startPrintCountdown();
+  }, [cancelCountdown, canonicalShipment, countdown, hasPrinted, isCoolingDown, isLoadingDetails, isPrinting, startPrintCountdown]);
 
   const previewLabels = canonicalShipment
     ? (canonicalShipment.units || []).map((unit, index) =>
@@ -102,22 +180,47 @@ export function RegistrationResult({ shipment, onRegisterAnother, onHome }) {
               <Text style={styles.payment}>{Number(shipment.totalAmount) === 0 ? 'Paid · Free shipment' : (shipment.paidAtRegistration ? 'Paid at registration · Cash payment recorded' : 'Unpaid · To be billed in the statement of account')}</Text>
             </View>
             <View style={styles.actions}>
-              <Pressable
-                accessibilityRole="button"
-                style={[styles.printAction, isCoolingDown && styles.coolingDownAction]}
-                onPress={handlePrintLabels}
-                disabled={isPrinting || isCoolingDown || isLoadingDetails || !canonicalShipment}
-              >
-                {isPrinting || isLoadingDetails ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : isCoolingDown ? (
-                  <Text style={styles.printActionText}>PLEASE WAIT...</Text>
-                ) : (
-                  <Text style={styles.printActionText}>
-                    PRINT LABELS ({trackingCount})
-                  </Text>
-                )}
-              </Pressable>
+              {countdown > 0 ? (
+                <View style={styles.countdownContainer}>
+                  <Pressable
+                    accessibilityRole="button"
+                    style={[styles.printAction, styles.countdownAction]}
+                    onPress={handlePrintLabels}
+                  >
+                    <Text style={styles.countdownActionText}>
+                      PRINTING IN {countdown}S · TAP TO CANCEL
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    style={styles.cancelAction}
+                    onPress={cancelCountdown}
+                  >
+                    <Text style={styles.cancelActionText}>CANCEL PRINT</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  style={[styles.printAction, isCoolingDown && styles.coolingDownAction]}
+                  onPress={handlePrintLabels}
+                  disabled={isPrinting || isCoolingDown || isLoadingDetails || !canonicalShipment}
+                >
+                  {isPrinting || isLoadingDetails ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : isCoolingDown ? (
+                    <Text style={styles.printActionText}>PLEASE WAIT...</Text>
+                  ) : hasPrinted ? (
+                    <Text style={styles.printActionText}>
+                      REPRINT LABELS ({trackingCount})
+                    </Text>
+                  ) : (
+                    <Text style={styles.printActionText}>
+                      PRINT LABELS ({trackingCount})
+                    </Text>
+                  )}
+                </Pressable>
+              )}
               {detailsError ? (
                 <View style={styles.detailsError}>
                   <Text style={styles.detailsErrorText}>{detailsError}</Text>
@@ -152,15 +255,42 @@ export function RegistrationResult({ shipment, onRegisterAnother, onHome }) {
         onConfirm={() => setStatusDialog(null)}
       />
 
+      {/* Reprint Confirmation Modal */}
+      <StatusModal
+        visible={confirmReprintVisible}
+        eyebrow="REPRINT CONFIRMATION"
+        title={trackingCount > 1 ? 'Reprint Parcel Labels?' : 'Reprint Parcel Label?'}
+        message={
+          trackingCount > 1
+            ? `Labels for all ${trackingCount} parcel units have already been printed. An audit event will be recorded for this reprint. Are you sure you want to reprint?`
+            : `The label for this shipment has already been printed. An audit event will be recorded for this reprint. Are you sure you want to reprint?`
+        }
+        confirmText="REPRINT"
+        cancelText="CANCEL"
+        confirmVariant="primary"
+        onConfirm={() => {
+          if (isPrintingRef.current || isPrinting || isCoolingDown) return;
+          setConfirmReprintVisible(false);
+          startPrintCountdown();
+        }}
+        onCancel={() => {
+          setConfirmReprintVisible(false);
+        }}
+      />
+
       {/* Label Preview Modal (Option A) */}
       <ThermalLabelPreviewModal
         visible={previewVisible}
         labels={previewLabels}
         onClose={() => setPreviewVisible(false)}
-        onAuditComplete={() => loadCanonicalShipment()}
+        onAuditComplete={() => {
+          setHasPrintedInSession(true);
+          loadCanonicalShipment();
+        }}
         onPrintDirect={async () => {
           setPreviewVisible(false);
-          await handlePrintLabels();
+          setHasPrintedInSession(true);
+          await executeActualPrint();
         }}
       />
     </>
@@ -182,6 +312,11 @@ const styles = StyleSheet.create({
   detailsErrorText: { ...typography.bodySmall, color: colors.danger },
   retryText: { ...typography.mono, color: colors.ink, textDecorationLine: 'underline', marginTop: spacing.xs },
   actions: { gap: spacing.sm, marginVertical: spacing.xl },
+  countdownContainer: { gap: spacing.xs },
+  countdownAction: { backgroundColor: colors.amber, borderWidth: 1, borderColor: colors.amber },
+  countdownActionText: { color: colors.surface, fontSize: 14, fontWeight: '800', letterSpacing: 0.5 },
+  cancelAction: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.danger, minHeight: 44, padding: spacing.md, justifyContent: 'center', alignItems: 'center', borderRadius: 4 },
+  cancelActionText: { color: colors.danger, fontSize: 13, fontWeight: '700', letterSpacing: 0.5 },
   printAction: { backgroundColor: colors.ink, minHeight: 52, padding: spacing.md, justifyContent: 'center', alignItems: 'center', borderRadius: 4 },
   coolingDownAction: { opacity: 0.65 },
   printActionText: { color: colors.surface, fontSize: 15, fontWeight: '800', letterSpacing: 0.5 },

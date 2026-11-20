@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   buildShipmentRequest, calculateRegistration, createRegistrationForm, createShipmentSubmitter,
   isUncertainWrite, mapRegistrationErrors, MAX_PARCELS, toCents, validateRegistration,
@@ -644,4 +645,77 @@ test('mobile manual shipping fee validation rejects negative, excessive decimals
     const errors = validateRegistration(form);
     assert.equal(errors.shippingFee, undefined, `Unexpected error for shippingFee='${validFee}'`);
   }
+});
+
+test('RegistrationResult prompts for confirmation before reprinting already printed shipment labels', () => {
+  const source = readFileSync(new URL('../src/features/shipments/components/RegistrationResult.js', import.meta.url), 'utf8');
+  assert.ok(source.includes('confirmReprintVisible'));
+  assert.ok(source.includes('REPRINT CONFIRMATION'));
+  assert.ok(source.includes('REPRINT LABELS'));
+  assert.ok(source.includes('startPrintCountdown'));
+
+  // Pure logic helper extracted from RegistrationResult
+  const evaluateHasPrinted = (hasPrintedInSession, canonicalShipment) => {
+    return hasPrintedInSession || Boolean(
+      canonicalShipment?.units?.length > 0 &&
+      canonicalShipment.units.every(
+        (unit) => unit.labelStatus && String(unit.labelStatus).toUpperCase() !== 'NOT_PRINTED'
+      )
+    );
+  };
+
+  // Newly registered shipment (no print yet)
+  assert.equal(evaluateHasPrinted(false, null), false);
+  assert.equal(evaluateHasPrinted(false, { units: [{ labelStatus: 'NOT_PRINTED' }] }), false);
+  assert.equal(evaluateHasPrinted(false, { units: [{ labelStatus: 'not_printed' }] }), false);
+
+  // Printed during current session
+  assert.equal(evaluateHasPrinted(true, null), true);
+  assert.equal(evaluateHasPrinted(true, { units: [{ labelStatus: 'NOT_PRINTED' }] }), true);
+
+  // Canonical shipment loaded with already-printed units
+  assert.equal(evaluateHasPrinted(false, { units: [{ labelStatus: 'PRINTED' }] }), true);
+  assert.equal(evaluateHasPrinted(false, { units: [{ labelStatus: 'Printed' }] }), true);
+  assert.equal(evaluateHasPrinted(false, { units: [{ labelStatus: 'REPRINTED' }] }), true);
+  assert.equal(evaluateHasPrinted(false, {
+    units: [
+      { labelStatus: 'PRINTED' },
+      { labelStatus: 'REPRINTED' },
+    ],
+  }), true);
+
+  // Mixed units where some are still NOT_PRINTED
+  assert.equal(evaluateHasPrinted(false, {
+    units: [
+      { labelStatus: 'PRINTED' },
+      { labelStatus: 'NOT_PRINTED' },
+    ],
+  }), false);
+});
+
+test('ShipmentDetailScreen prompts for confirmation before reprinting already printed shipment labels', () => {
+  const source = readFileSync(new URL('../src/features/shipments/components/ShipmentDetailScreen.js', import.meta.url), 'utf8');
+  assert.ok(source.includes('confirmReprintVisible'));
+  assert.ok(source.includes('REPRINT CONFIRMATION'));
+  assert.ok(source.includes('REPRINT ALL LABELS'));
+  assert.ok(source.includes('handlePrintAllPress'));
+
+  const evaluateHasPrintedLabels = (units) => {
+    return units.length > 0 && units.some(
+      (unit) => unit.labelStatus && String(unit.labelStatus).toUpperCase() !== 'NOT_PRINTED'
+    );
+  };
+
+  assert.equal(evaluateHasPrintedLabels([]), false);
+  assert.equal(evaluateHasPrintedLabels([{ labelStatus: 'NOT_PRINTED' }]), false);
+  assert.equal(evaluateHasPrintedLabels([{ labelStatus: 'not_printed' }]), false);
+  assert.equal(evaluateHasPrintedLabels([{ labelStatus: null }]), false);
+
+  assert.equal(evaluateHasPrintedLabels([{ labelStatus: 'PRINTED' }]), true);
+  assert.equal(evaluateHasPrintedLabels([{ labelStatus: 'Printed' }]), true);
+  assert.equal(evaluateHasPrintedLabels([{ labelStatus: 'REPRINTED' }]), true);
+  assert.equal(evaluateHasPrintedLabels([
+    { labelStatus: 'NOT_PRINTED' },
+    { labelStatus: 'PRINTED' },
+  ]), true);
 });

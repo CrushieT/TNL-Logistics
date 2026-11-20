@@ -32,6 +32,7 @@ export function ParcelDetailScreen({ trackingId }) {
   const [isReprinting, setIsReprinting] = useState(false);
   const [isCoolingDown, setIsCoolingDown] = useState(false);
   const [statusDialog, setStatusDialog] = useState(null);
+  const [confirmReprintVisible, setConfirmReprintVisible] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(false);
   const isReprintingRef = useRef(false);
   const cooldownTimerRef = useRef(null);
@@ -137,7 +138,9 @@ export function ParcelDetailScreen({ trackingId }) {
 
   const pkgNum = parcel.packageIndex || 1;
   const pkgTotal = parcel.packageCount || 1;
-  const isPrinted = parcel.labelStatus === 'Printed' || parcel.labelStatus === 'PRINTED';
+  const isPrinted = Boolean(
+    parcel.labelStatus && String(parcel.labelStatus).toUpperCase() !== 'NOT_PRINTED'
+  );
   const history = parcel.history || [];
   const canonicalUnit = shipment?.units?.find((unit) => unit.trackingId === parcel.trackingId);
   let previewLabel = null;
@@ -154,6 +157,15 @@ export function ParcelDetailScreen({ trackingId }) {
   } catch (normalizationError) {
     labelDataError = normalizationError;
   }
+
+  const handleReprintPress = () => {
+    if (isReprintingRef.current || isReprinting || isCoolingDown || !previewLabel) return;
+    if (isPrinted) {
+      setConfirmReprintVisible(true);
+      return;
+    }
+    handleReprint();
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -243,7 +255,7 @@ export function ParcelDetailScreen({ trackingId }) {
           <Pressable
             accessibilityRole="button"
             disabled={isReprinting || isCoolingDown || !previewLabel}
-            onPress={handleReprint}
+            onPress={handleReprintPress}
             style={[styles.actionBtn, (isReprinting || isCoolingDown) && styles.btnDisabled]}
           >
             {isReprinting ? (
@@ -330,6 +342,24 @@ export function ParcelDetailScreen({ trackingId }) {
         message={statusDialog?.message || ''}
         confirmText="OK"
         onConfirm={() => setStatusDialog(null)}
+      />
+
+      <StatusModal
+        visible={confirmReprintVisible}
+        eyebrow="REPRINT CONFIRMATION"
+        title="Reprint Parcel Label?"
+        message={`This label has already been printed. An audit event will be recorded for this reprint. Are you sure you want to reprint the label for ${parcel?.trackingId || 'this parcel'}?`}
+        confirmText="REPRINT"
+        cancelText="CANCEL"
+        confirmVariant="primary"
+        onConfirm={() => {
+          if (isReprintingRef.current || isReprinting || isCoolingDown) return;
+          setConfirmReprintVisible(false);
+          handleReprint();
+        }}
+        onCancel={() => {
+          setConfirmReprintVisible(false);
+        }}
       />
 
       <ThermalLabelPreviewModal
