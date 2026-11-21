@@ -530,6 +530,8 @@ public class WaybillServiceImpl implements WaybillService {
 
         resp.setTotalWeightKg(totalWeight);
         resp.setTotalVolumeCbm(totalVolume);
+        resp.setBillableWeight(s.getBillableWeight());
+        resp.setAppliedVolumetricDivisor(s.getAppliedVolumetricDivisor());
         resp.setParcels(unitResponses);
 
         return resp;
