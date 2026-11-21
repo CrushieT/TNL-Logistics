@@ -99,7 +99,7 @@ jobs:
             --inline-modules-list-directory "$expo_android_directory/build/inline/modules" \
             --watched-directories-serialized "[]"
 
-      - name: Configure Gradle Memory
+      - name: Configure Gradle Build Optimizations
         run: |
           {
             echo
@@ -107,7 +107,16 @@ jobs:
             echo "org.gradle.parallel=true"
             echo "org.gradle.caching=true"
             echo "org.gradle.vfs.watch=false"
+            echo "reactNativeArchitectures=arm64-v8a,armeabi-v7a"
+            echo "android.enableMinifyInReleaseBuilds=true"
+            echo "android.enableShrinkResourcesInReleaseBuilds=true"
           } >> android/gradle.properties
+          {
+            echo
+            echo "# Keep third-party Bluetooth ESC/POS printer driver reflection under R8"
+            echo "-keep class cn.jystudio.bluetooth.** { *; }"
+            echo "-dontwarn cn.jystudio.bluetooth.**"
+          } >> android/app/proguard-rules.pro
 
       - name: Build Release APK
         working-directory: frontend-mobile/android
