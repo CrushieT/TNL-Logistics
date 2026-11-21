@@ -3,7 +3,7 @@ import { View, Text, Image, StyleSheet } from 'react-native';
 import QRCodeGenerator from '../../../components/common/QRCodeGenerator';
 import { colors, fonts, spacing, radius } from '../../../theme';
 import { getCompanyBranding } from '../../settings/services/settingsApi';
-import { getWaybillQrPayload, paginateWaybillParcels, WAYBILL_ITEMS_PER_PAGE } from '../services/waybillPrint.mjs';
+import { getWaybillQrPayload, groupParcelsByBillableWeight, paginateGroups, WAYBILL_ITEMS_PER_PAGE } from '../services/waybillPrint.mjs';
 
 /**
  * Waybill Manifest Card component strictly matching prototype waybills page.png
@@ -73,7 +73,12 @@ export default function WaybillManifestCard({ manifest, selectedHauler, companyB
 
   const isCompleted = manifest.status === 'SIGNED_COMPLETED' || manifest.statusLabel === 'Signed / Completed';
 
-  const paginatedPages = useMemo(() => paginateWaybillParcels(parcels), [parcels]);
+  const divisor = manifest.appliedVolumetricDivisor ?? 5000;
+  const grouped = useMemo(
+    () => groupParcelsByBillableWeight(parcels, totalQuantity, divisor),
+    [parcels, totalQuantity, divisor]
+  );
+  const paginatedPages = useMemo(() => paginateGroups(grouped.rows), [grouped.rows]);
   const totalPages = paginatedPages.length;
 
   return (
@@ -171,46 +176,36 @@ export default function WaybillManifestCard({ manifest, selectedHauler, companyB
                 const leftColumnItems = pageItems.slice(0, midpoint);
                 const rightColumnItems = pageItems.slice(midpoint);
 
-                const renderParcelRow = (parcel, startOffset, idx) => {
-                  const overallIndex = pageIndex * WAYBILL_ITEMS_PER_PAGE + startOffset + idx;
-                  const seq = parcel.seq ?? parcel.packageIndex ?? (overallIndex + 1);
-                  const total = parcel.packageCount ?? totalQuantity ?? parcels.length;
-                  const packageDisplay = parcel.packageNumber || `${seq} of ${total}`;
-                  const weightDisplay = parcel.weightKg !== undefined && parcel.weightKg !== null && parcel.weightKg !== ''
-                    ? `${Number(parcel.weightKg).toFixed(1)} kg`
-                    : '2.5 kg';
-
-                  return (
-                    <View key={parcel.trackingId || overallIndex} style={[styles.tableRow, parcel.lost && styles.lostTableRow]}>
-                      <Text style={[styles.tdCell, styles.monoText, styles.colTracking]}>
-                        {parcel.trackingId}{parcel.lost ? <Text style={styles.lostMarker}> LOST</Text> : null}
-                      </Text>
-                      <Text style={[styles.tdCell, styles.colPackage]}>
-                        {packageDisplay}
-                      </Text>
-                      <Text style={[styles.tdCell, styles.monoText, styles.colWeight]}>
-                        {weightDisplay}
-                      </Text>
-                    </View>
-                  );
-                };
+                const renderGroupRow = (group, idx) => (
+                  <View key={idx} style={styles.tableRow}>
+                    <Text style={[styles.tdCell, styles.monoText, styles.colPkgRange]}>
+                      {group.rangeLabel}
+                    </Text>
+                    <Text style={[styles.tdCell, styles.colBoxes]}>
+                      {group.boxes}
+                    </Text>
+                    <Text style={[styles.tdCell, styles.monoText, styles.colBw]}>
+                      {group.billableWeight.toFixed(1)} kg
+                    </Text>
+                  </View>
+                );
 
                 return (
                   <View style={styles.manifestColumnsContainer}>
                     {/* Left Column */}
                     <View style={styles.manifestColumn}>
                       <View style={styles.tableHeader}>
-                        <Text style={[styles.thCell, styles.colTracking]}>TRACKING ID</Text>
-                        <Text style={[styles.thCell, styles.colPackage]}>PACKAGE</Text>
-                        <Text style={[styles.thCell, styles.colWeight]}>WEIGHT</Text>
+                        <Text style={[styles.thCell, styles.colPkgRange]}>PACKAGES</Text>
+                        <Text style={[styles.thCell, styles.colBoxes]}>BOXES</Text>
+                        <Text style={[styles.thCell, styles.colBw]}>BILLABLE WT.</Text>
                       </View>
                       {leftColumnItems.length > 0 ? (
-                        leftColumnItems.map((parcel, idx) => renderParcelRow(parcel, 0, idx))
+                        leftColumnItems.map((group, idx) => renderGroupRow(group, idx))
                       ) : (
                         <View style={styles.tableRow}>
-                          <Text style={[styles.tdCell, styles.monoText, styles.colTracking]}>TRK-PENDING</Text>
-                          <Text style={[styles.tdCell, styles.colPackage]}>1 of {totalQuantity}</Text>
-                          <Text style={[styles.tdCell, styles.monoText, styles.colWeight]}>2.5 kg</Text>
+                          <Text style={[styles.tdCell, styles.monoText, styles.colPkgRange]}>Package 1 of {totalQuantity}</Text>
+                          <Text style={[styles.tdCell, styles.colBoxes]}>{totalQuantity}</Text>
+                          <Text style={[styles.tdCell, styles.monoText, styles.colBw]}>2.5 kg</Text>
                         </View>
                       )}
                     </View>
@@ -218,11 +213,11 @@ export default function WaybillManifestCard({ manifest, selectedHauler, companyB
                     {/* Right Column */}
                     <View style={[styles.manifestColumn, rightColumnItems.length === 0 && styles.hiddenColumn]}>
                       <View style={styles.tableHeader}>
-                        <Text style={[styles.thCell, styles.colTracking]}>TRACKING ID</Text>
-                        <Text style={[styles.thCell, styles.colPackage]}>PACKAGE</Text>
-                        <Text style={[styles.thCell, styles.colWeight]}>WEIGHT</Text>
+                        <Text style={[styles.thCell, styles.colPkgRange]}>PACKAGES</Text>
+                        <Text style={[styles.thCell, styles.colBoxes]}>BOXES</Text>
+                        <Text style={[styles.thCell, styles.colBw]}>BILLABLE WT.</Text>
                       </View>
-                      {rightColumnItems.map((parcel, idx) => renderParcelRow(parcel, midpoint, idx))}
+                      {rightColumnItems.map((group, idx) => renderGroupRow(group, idx))}
                     </View>
                   </View>
                 );
@@ -237,9 +232,19 @@ export default function WaybillManifestCard({ manifest, selectedHauler, companyB
               <>
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryItem}>
-                    <Text style={styles.summaryLabel}>Parcel Qty: </Text>
-                    <Text style={styles.summaryValue}>{totalQuantity}</Text>
+                    <Text style={styles.summaryLabel}>Total Boxes: </Text>
+                    <Text style={styles.summaryValue}>{grouped.totalBoxes}</Text>
                   </Text>
+                  <Text style={styles.summaryItem}>
+                    <Text style={styles.summaryLabel}>Total Billable: </Text>
+                    <Text style={styles.summaryValue}>{grouped.totalBillable.toFixed(1)} kg</Text>
+                  </Text>
+                  {grouped.lostCount > 0 ? (
+                    <Text style={styles.summaryItem}>
+                      <Text style={styles.lostText}>Lost Parcels: </Text>
+                      <Text style={styles.lostText}>{grouped.lostCount}</Text>
+                    </Text>
+                  ) : null}
                   <Text style={styles.summaryItem}>
                     <Text style={styles.summaryLabel}>Truck: </Text>
                     <Text style={styles.summaryValue}>{vehiclePlate || manifest.truckPlate || manifest.plateNumber || '-'}</Text>
@@ -510,14 +515,16 @@ const styles = StyleSheet.create({
   hiddenColumn: {
     opacity: 0,
   },
-  colTracking: {
+  colPkgRange: {
     flex: 2.2,
   },
-  colPackage: {
-    flex: 1.2,
-  },
-  colWeight: {
+  colBoxes: {
     flex: 1,
+    textAlign: 'center',
+    fontWeight: '700',
+  },
+  colBw: {
+    flex: 1.2,
     textAlign: 'right',
   },
   tableHeader: {
@@ -542,7 +549,21 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F0EFEA',
     alignItems: 'center',
   },
+  totalRow: {
+    borderTopWidth: 1.5,
+    borderTopColor: '#111111',
+    marginTop: 2,
+    paddingTop: 6,
+  },
+  totalLabel: {
+    fontWeight: '800',
+    color: '#111110',
+  },
   lostTableRow: { backgroundColor: colors.dangerSoft },
+  lostText: {
+    color: colors.danger,
+    fontStyle: 'italic',
+  },
   lostMarker: { color: colors.danger, fontWeight: '800', fontSize: 9.5 },
   tdCell: {
     fontFamily: fonts.sans,

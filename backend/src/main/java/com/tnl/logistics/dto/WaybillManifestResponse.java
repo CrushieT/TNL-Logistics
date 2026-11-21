@@ -48,6 +48,8 @@ public class WaybillManifestResponse {
     private Integer totalQuantity;
     private BigDecimal totalWeightKg;
     private BigDecimal totalVolumeCbm;
+    private BigDecimal billableWeight;
+    private Integer appliedVolumetricDivisor;
     private String releasedByAdminName;
     private List<ParcelUnitResponse> parcels;
 
@@ -136,6 +138,12 @@ public class WaybillManifestResponse {
 
     public BigDecimal getTotalVolumeCbm() { return totalVolumeCbm; }
     public void setTotalVolumeCbm(BigDecimal totalVolumeCbm) { this.totalVolumeCbm = totalVolumeCbm; }
+
+    public BigDecimal getBillableWeight() { return billableWeight; }
+    public void setBillableWeight(BigDecimal billableWeight) { this.billableWeight = billableWeight; }
+
+    public Integer getAppliedVolumetricDivisor() { return appliedVolumetricDivisor; }
+    public void setAppliedVolumetricDivisor(Integer appliedVolumetricDivisor) { this.appliedVolumetricDivisor = appliedVolumetricDivisor; }
 
     public List<ParcelUnitResponse> getParcels() { return parcels; }
     public void setParcels(List<ParcelUnitResponse> parcels) { this.parcels = parcels; }

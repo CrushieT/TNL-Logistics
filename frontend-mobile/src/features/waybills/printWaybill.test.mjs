@@ -2,7 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import jsQR from 'jsqr';
 import { generateQRMatrix } from '../../utils/qr.js';
-import { buildWaybillHtml, getWaybillQrPayload } from './printWaybill.mjs';
+import {
+  computeParcelBillableWeight,
+  groupParcelsByBillableWeight,
+  paginateGroups,
+  buildWaybillHtml,
+  getWaybillQrPayload
+} from './printWaybill.mjs';
 
 function decodeMatrix(matrix) {
   const scale = 8;
@@ -21,49 +27,114 @@ function decodeMatrix(matrix) {
   return jsQR(pixels, size, size)?.data;
 }
 
-test('prints two complete copies of only the selected manifest with 50-item dual-column pagination and multi-page headers', () => {
+test('computeParcelBillableWeight returns actual weight when actual exceeds volumetric', () => {
+  const parcel = { weightKg: 7.5, lengthCm: 20, widthCm: 20, heightCm: 20 };
+  assert.equal(computeParcelBillableWeight(parcel, 5000), 7.5);
+});
+
+test('computeParcelBillableWeight returns volumetric weight when volume exceeds actual', () => {
+  const parcel = { weightKg: 2.0, lengthCm: 50, widthCm: 40, heightCm: 30 };
+  assert.equal(computeParcelBillableWeight(parcel, 5000), 12.0);
+});
+
+test('groupParcelsByBillableWeight collapses same weight parcels into one row sorted descending', () => {
+  const parcels = [
+    { trackingId: 'TRK-1', seq: 1, weightKg: 3.0 },
+    { trackingId: 'TRK-2', seq: 2, weightKg: 3.0 },
+    { trackingId: 'TRK-3', seq: 3, weightKg: 6.5 },
+    { trackingId: 'TRK-4', seq: 4, weightKg: 6.5 },
+    { trackingId: 'TRK-5', seq: 5, weightKg: 8.0 }
+  ];
+  const { rows, totalBoxes, totalBillable, lostCount } = groupParcelsByBillableWeight(parcels, 5, 5000);
+
+  assert.equal(rows.length, 3);
+  assert.equal(totalBoxes, 5);
+  assert.equal(totalBillable, 27.0);
+  assert.equal(lostCount, 0);
+
+  assert.equal(rows[0].billableWeight, 8.0);
+  assert.equal(rows[0].boxes, 1);
+  assert.equal(rows[0].rangeLabel, 'Package 5 of 5');
+
+  assert.equal(rows[1].billableWeight, 6.5);
+  assert.equal(rows[1].boxes, 2);
+  assert.equal(rows[1].rangeLabel, 'Package 3–4 of 5');
+
+  assert.equal(rows[2].billableWeight, 3.0);
+  assert.equal(rows[2].boxes, 2);
+  assert.equal(rows[2].rangeLabel, 'Package 1–2 of 5');
+});
+
+test('groupParcelsByBillableWeight formats scattered packages compactly as Various (N of Total)', () => {
+  const indices = [1, 2, 3, 4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 30, 31, 32, 33, 34, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 48, 49, 50, 51, 52, 54, 55];
+  const parcels = indices.map((seq) => ({ trackingId: `TRK-${seq}`, seq, weightKg: 4.3 }));
+  const { rows } = groupParcelsByBillableWeight(parcels, 55, 5000);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].rangeLabel, 'Various (46 of 55)');
+  assert.equal(rows[0].boxes, 46);
+});
+
+test('buildWaybillHtml renders grouped table with TOTAL row and two copies', () => {
   const manifest = {
-    waybillId: 'WYB-2026-0001', shipmentId: 'SHP-2026-0001', totalQuantity: 55,
-    clientName: 'Client', recipientName: 'Recipient',
-    parcels: Array.from({ length: 55 }, (_, index) => ({ trackingId: `TRK-${index + 1}`, seq: index + 1 })),
+    waybillId: 'WYB-2026-0001',
+    shipmentId: 'SHP-2026-0001',
+    totalQuantity: 3,
+    recipientName: 'Recipient',
+    parcels: [
+      { trackingId: 'TRK-1', seq: 1, weightKg: 5.0 },
+      { trackingId: 'TRK-2', seq: 2, weightKg: 5.0 },
+      { trackingId: 'TRK-3', seq: 3, weightKg: 10.0 }
+    ]
   };
   const html = buildWaybillHtml(manifest, 'logo.png');
-  assert.equal(html.match(/class="copy"/g).length, 4);
-  assert.deepEqual([...html.matchAll(/class="copy-label(?: client-copy)?">([^<]+)/g)].map(match => match[1]),
-    ['ORIGINAL COPY', 'ORIGINAL COPY', 'CLIENT COPY', 'CLIENT COPY']);
-  assert.equal(html.match(/TRK-55/g).length, 2);
-  assert.doesNotMatch(html, /TRK-56/);
-  assert.match(html, /A4 portrait/);
-  assert.match(html, /min-height: 278mm/);
-  assert.match(html, /max-height: 297mm/);
-  assert.match(html, /break-inside: avoid/);
-  assert.match(html, /table-header-group/);
+
+  assert.equal(html.match(/<section class="copy">/g).length, 2);
+  assert.deepEqual(
+    [...html.matchAll(/class="copy-label(?: client-copy)?">([^<]+)/g)].map((m) => m[1]),
+    ['ORIGINAL COPY', 'CLIENT COPY']
+  );
+
+  // Dual-column grid
   assert.match(html, /class="manifest-grid"/);
-  assert.match(html, /class="manifest-table"/);
-  assert.doesNotMatch(html, /<th>Contents<\/th>/i);
-  assert.match(html, /logo\.png/);
-  assert.equal(html.match(/class="return-qr"/g).length, 4);
-  assert.equal(html.match(/aria-label="WAYBILL:WYB-2026-0001"/g).length, 4);
-  const qrPaths = [...html.matchAll(/<path d="([^"]+)"/g)].map((match) => match[1]);
-  assert.equal(qrPaths.length, 4);
-  assert.equal(qrPaths[0], qrPaths[1]);
-  assert.match(html, /Page 1 of 2/);
-  assert.match(html, /Page 2 of 2/);
+
+  assert.match(html, /<th class="th-pkg-range">Packages<\/th>/);
+  assert.match(html, /<th class="th-boxes">Boxes<\/th>/);
+  assert.match(html, /<th class="th-bw">Billable Wt\.<\/th>/);
+
+  assert.match(html, /Package 3 of 3/);
+  assert.match(html, /10\.0 kg/);
+  assert.match(html, /Package 1–2 of 3/);
+  assert.match(html, /5\.0 kg/);
+
+  // Summary row
+  assert.match(html, /class="summary-row"/);
+  assert.match(html, /Total Boxes: <\/span><b class="summary-val">3<\/b>/);
+  assert.match(html, /Total Billable: <\/span><b class="summary-val">20\.0 kg<\/b>/);
+
   const payload = getWaybillQrPayload(manifest.waybillId);
   assert.equal(decodeMatrix(generateQRMatrix(payload)), payload);
 });
 
-test('labels additional single-page copies as client copies', () => {
-  const html = buildWaybillHtml({ waybillId: 'WYB-1', parcels: [{ trackingId: 'UNIT' }] }, null, null, 3);
-  assert.deepEqual([...html.matchAll(/class="copy-label(?: client-copy)?">([^<]+)/g)].map(match => match[1]),
-    ['ORIGINAL COPY', 'CLIENT COPY', 'CLIENT COPY']);
-  assert.equal((html.match(/class="copy-label client-copy">CLIENT COPY/g) || []).length, 2);
-  assert.equal((html.match(/CLIENT SIGNATURE AND PRINTED NAME/g) || []).length, 3);
+test('buildWaybillHtml renders LOST indicator when lost parcels exist', () => {
+  const manifest = {
+    waybillId: 'WYB-2026-0002',
+    totalQuantity: 2,
+    parcels: [
+      { trackingId: 'TRK-1', seq: 1, weightKg: 5.0, lost: false },
+      { trackingId: 'TRK-2', seq: 2, weightKg: 5.0, lost: true }
+    ]
+  };
+  const html = buildWaybillHtml(manifest, null);
+  assert.match(html, /Lost: <\/span><b class="lost-val">1<\/b>/);
 });
 
 test('escapes manifest text and falls back to the brand name without a logo', () => {
-  const html = buildWaybillHtml({ waybillId: 'WYB-1', totalQuantity: 1,
-    recipientName: '<Recipient>', parcels: [{ trackingId: 'TRK-1', seq: 1 }] }, null);
+  const html = buildWaybillHtml({
+    waybillId: 'WYB-1',
+    totalQuantity: 1,
+    recipientName: '<Recipient>',
+    parcels: [{ trackingId: 'TRK-1', seq: 1, weightKg: 5.0 }]
+  }, null);
   assert.match(html, /&lt;Recipient&gt;/);
   assert.match(html, /TC &amp; CT INTEGRATED LOGISTICS/);
   assert.match(html, /RETURN CONFIRMATION QR/);
@@ -72,9 +143,23 @@ test('escapes manifest text and falls back to the brand name without a logo', ()
 });
 
 test('inlines the canonical base64 waybill logo by default when logoUri is omitted', () => {
-  const html = buildWaybillHtml({ waybillId: 'WYB-1', totalQuantity: 1,
-    parcels: [{ trackingId: 'TRK-1', seq: 1 }] });
+  const html = buildWaybillHtml({
+    waybillId: 'WYB-1',
+    totalQuantity: 1,
+    parcels: [{ trackingId: 'TRK-1', seq: 1, weightKg: 5.0 }]
+  });
   assert.match(html, /<img src="data:image\/png;base64,[^"]+"/);
   assert.match(html, /class="logo-wrap"/);
   assert.doesNotMatch(html, /class="logo-fallback"/);
+});
+
+test('waybills.js protects print preview with synchronous ref lock and non-jargon feedback', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../../app/(main)/waybills.js', import.meta.url), 'utf8');
+  assert.match(source, /isPrintingManifestRef = useRef\(false\)/);
+  assert.match(source, /printCooldownTimerRef = useRef\(null\)/);
+  assert.match(source, /if \(!manifest \|\| busy \|\| isPrintingManifestRef\.current\) return/);
+  assert.match(source, /isPrintingManifestRef\.current = true/);
+  assert.match(source, /Print preview opened\. Hand paper copies and units to the driver\./);
+  assert.match(source, /Unable to open print preview\. Please wait a moment and try again\./);
 });

@@ -1,6 +1,8 @@
 import { generateQRMatrix, generateQRSvgPath } from '../../utils/qr.js';
 import { WAYBILL_LOGO_BASE64 } from './waybillLogo.mjs';
 
+export { WAYBILL_LOGO_BASE64 };
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -20,16 +22,97 @@ function buildWaybillQrMarkup(waybillId) {
 export const WAYBILL_ITEMS_PER_PAGE = 50;
 export const WAYBILL_PRINT_COPY_COUNT = 2;
 
-export function paginateWaybillParcels(parcels = []) {
+export function computeParcelBillableWeight(parcel, divisor = 5000) {
+  const actual = Number(parcel?.weightKg) || 0;
+  let volumetric = 0;
+  const safeDivisor = Number(divisor) > 0 ? Number(divisor) : 5000;
+
+  if (parcel?.volumeCbm != null && Number(parcel.volumeCbm) > 0) {
+    volumetric = (Number(parcel.volumeCbm) * 1000000) / safeDivisor;
+  } else if (parcel?.lengthCm != null && parcel?.widthCm != null && parcel?.heightCm != null) {
+    volumetric = (Number(parcel.lengthCm) * Number(parcel.widthCm) * Number(parcel.heightCm)) / safeDivisor;
+  }
+
+  const maxWeight = Math.max(actual, volumetric);
+  return Math.round(maxWeight * 10) / 10;
+}
+
+export function groupParcelsByBillableWeight(parcels = [], totalQuantity = 0, divisor = 5000) {
   if (!Array.isArray(parcels) || parcels.length === 0) {
+    return { rows: [], totalBoxes: 0, totalBillable: 0, lostCount: 0 };
+  }
+
+  const groups = new Map();
+  let lostCount = 0;
+
+  for (const parcel of parcels) {
+    if (parcel?.lost) {
+      lostCount += 1;
+      continue;
+    }
+    const bw = computeParcelBillableWeight(parcel, divisor);
+    const key = bw.toFixed(1);
+    if (!groups.has(key)) {
+      groups.set(key, { billableWeight: bw, boxes: 0, indices: [] });
+    }
+    const group = groups.get(key);
+    group.boxes += 1;
+    const idx = parcel?.packageIndex ?? parcel?.seq ?? null;
+    if (idx != null) {
+      group.indices.push(Number(idx));
+    }
+  }
+
+  const sortedGroups = [...groups.values()].sort((a, b) => b.billableWeight - a.billableWeight);
+  const total = totalQuantity || parcels.length;
+
+  const rows = sortedGroups.map((group) => {
+    const sortedIndices = [...group.indices].sort((a, b) => a - b);
+    let rangeLabel = '';
+    if (sortedIndices.length === 1) {
+      rangeLabel = `Package ${sortedIndices[0]} of ${total}`;
+    } else if (sortedIndices.length > 1) {
+      const min = sortedIndices[0];
+      const max = sortedIndices[sortedIndices.length - 1];
+      const isContiguous = sortedIndices.length === (max - min + 1);
+      if (isContiguous) {
+        rangeLabel = `Package ${min}–${max} of ${total}`;
+      } else {
+        const joined = sortedIndices.join(', ');
+        if (sortedIndices.length <= 3 && joined.length <= 12) {
+          rangeLabel = `Package ${joined} of ${total}`;
+        } else {
+          rangeLabel = `Various (${group.boxes} of ${total})`;
+        }
+      }
+    } else {
+      rangeLabel = `${group.boxes} Box${group.boxes > 1 ? 'es' : ''} of ${total}`;
+    }
+    return {
+      rangeLabel,
+      boxes: group.boxes,
+      billableWeight: group.billableWeight,
+    };
+  });
+
+  const totalBoxes = rows.reduce((sum, r) => sum + r.boxes, 0);
+  const totalBillable = rows.reduce((sum, r) => sum + (r.billableWeight * r.boxes), 0);
+
+  return { rows, totalBoxes, totalBillable, lostCount };
+}
+
+export function paginateGroups(rows = [], itemsPerPage = WAYBILL_ITEMS_PER_PAGE) {
+  if (!Array.isArray(rows) || rows.length === 0) {
     return [[]];
   }
   const pages = [];
-  for (let i = 0; i < parcels.length; i += WAYBILL_ITEMS_PER_PAGE) {
-    pages.push(parcels.slice(i, i + WAYBILL_ITEMS_PER_PAGE));
+  for (let i = 0; i < rows.length; i += itemsPerPage) {
+    pages.push(rows.slice(i, i + itemsPerPage));
   }
   return pages;
 }
+
+export const paginateWaybillParcels = paginateGroups;
 
 export function createWaybillPrintSheetSequence(paginatedPages, copies = WAYBILL_PRINT_COPY_COUNT) {
   const pages = Array.isArray(paginatedPages) && paginatedPages.length > 0 ? paginatedPages : [[]];
@@ -59,32 +142,34 @@ export function buildWaybillHtml(manifest, logoUri = WAYBILL_LOGO_BASE64, brandi
   const logo = logoUri ? `<img src="${escapeHtml(logoUri)}" alt="${companyName}" onerror="this.style.display='none'"/>` : '';
   const returnQr = buildWaybillQrMarkup(manifest.waybillId);
 
-  const paginatedPages = paginateWaybillParcels(manifest.parcels);
-  const printSheets = createWaybillPrintSheetSequence(paginatedPages, copies);
+  const divisor = manifest.appliedVolumetricDivisor ?? 5000;
   const totalQuantity = manifest.totalQuantity || manifest.parcels.length;
+  const grouped = groupParcelsByBillableWeight(manifest.parcels, totalQuantity, divisor);
+  const paginatedPages = paginateGroups(grouped.rows);
+  const printSheets = createWaybillPrintSheetSequence(paginatedPages, copies);
 
   const sheetsHtml = printSheets.map(({ copyIndex, pageIndex, pageNumber, totalPages, isLastPage, pageItems }) => {
     const midpoint = Math.ceil(pageItems.length / 2);
     const leftItems = pageItems.slice(0, midpoint);
     const rightItems = pageItems.slice(midpoint);
 
-    const renderColumnTable = (columnItems, startOffset, isRightColumn = false) => {
-      const rows = columnItems.map((parcel, idx) => {
-        const overallIndex = pageIndex * WAYBILL_ITEMS_PER_PAGE + startOffset + idx;
-        const seq = parcel.seq ?? parcel.packageIndex ?? (overallIndex + 1);
-        const total = parcel.packageCount ?? totalQuantity;
-        const packageDisplay = parcel.packageNumber || `${seq} of ${total}`;
-        const weightDisplay = parcel.weightKg !== undefined && parcel.weightKg !== null && parcel.weightKg !== ''
-          ? `${Number(parcel.weightKg).toFixed(1)} kg`
-          : '2.5 kg';
-        return `<tr><td class="td-tracking">${escapeHtml(parcel.trackingId)}${parcel.lost ? ' | LOST' : ''}</td><td class="td-pkg">${escapeHtml(packageDisplay)}</td><td class="td-weight">${escapeHtml(weightDisplay)}</td></tr>`;
-      }).join('');
+    const renderColumnTable = (columnItems, isRightColumn = false) => {
+      const rows = columnItems.map((group) => (
+        `<tr><td class="td-pkg-range">${escapeHtml(group.rangeLabel)}</td><td class="td-boxes">${group.boxes}</td><td class="td-bw">${group.billableWeight.toFixed(1)} kg</td></tr>`
+      )).join('');
 
-      return `<table class="manifest-table${isRightColumn && columnItems.length === 0 ? ' empty-col' : ''}"><thead><tr><th class="th-tracking">Tracking ID</th><th class="th-pkg">Package</th><th class="th-weight">Weight</th></tr></thead><tbody>${rows}</tbody></table>`;
+      return `<table class="manifest-table${isRightColumn && columnItems.length === 0 ? ' empty-col' : ''}"><thead><tr><th class="th-pkg-range">Packages</th><th class="th-boxes">Boxes</th><th class="th-bw">Billable Wt.</th></tr></thead><tbody>${rows}</tbody></table>`;
     };
 
-    const leftTable = renderColumnTable(leftItems, 0, false);
-    const rightTable = renderColumnTable(rightItems, midpoint, true);
+    const leftTable = renderColumnTable(leftItems, false);
+    const rightTable = renderColumnTable(rightItems, true);
+
+    const summaryRowHtml = isLastPage ? `<div class="summary-row">
+      <span><span class="summary-label">Total Boxes: </span><b class="summary-val">${grouped.totalBoxes}</b></span>
+      <span><span class="summary-label">Total Billable: </span><b class="summary-val">${grouped.totalBillable.toFixed(1)} kg</b></span>
+      ${grouped.lostCount > 0 ? `<span><span class="summary-label lost-label">Lost: </span><b class="lost-val">${grouped.lostCount}</b></span>` : ''}
+      <span><span class="summary-label">Truck: </span><b class="summary-val">${escapeHtml(manifest.vehiclePlate || manifest.truckPlate || '—')}</b></span>
+    </div>` : '';
 
     return `<section class="copy">
       <div>
@@ -117,6 +202,7 @@ export function buildWaybillHtml(manifest, logoUri = WAYBILL_LOGO_BASE64, brandi
           ${leftTable}
           ${rightTable}
         </div>
+        ${summaryRowHtml}
       </div>
       <div class="bottom-block">
         ${isLastPage ? `<footer><div>RELEASED BY<br><b>${escapeHtml(manifest.releasedByAdminName || 'Hauler Staff')}</b><hr>Signature</div><div>CLIENT SIGNATURE AND PRINTED NAME<br><b>${escapeHtml(manifest.signedBy)}</b><hr>Date: ${escapeHtml(manifest.signedDate || '________________')}</div></footer>` : ''}
@@ -163,13 +249,19 @@ export function buildWaybillHtml(manifest, logoUri = WAYBILL_LOGO_BASE64, brandi
     th, td { padding: 1.4mm 2mm; border-bottom: 1px solid #ddd; text-align: left; }
     th { border-bottom: 1.5px solid #111; font-family: monospace; font-size: 10.5px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; }
     td { font-size: 10.5px; }
-    .th-tracking, .td-tracking { width: 52%; font-family: monospace; font-weight: bold; font-size: 10.5px; }
-    .th-pkg, .td-pkg { width: 26%; font-size: 10.5px; }
-    .th-weight, .td-weight { width: 22%; text-align: right; font-size: 10.5px; }
-    .lost-tag { color: #c00; font-weight: bold; font-size: 9px; }
+    .th-pkg-range, .td-pkg-range { width: 52%; font-family: monospace; font-weight: bold; font-size: 10.5px; }
+    .th-boxes, .td-boxes { width: 20%; text-align: center; font-weight: bold; font-size: 10.5px; }
+    .th-bw, .td-bw { width: 28%; text-align: right; font-family: monospace; font-weight: bold; font-size: 10.5px; }
+    .summary-row { display: flex; justify-content: space-between; padding: 2mm 0; border-top: 1px solid #E1DFD5; border-bottom: 1px solid #E1DFD5; margin: 3mm 0 1.5mm 0; font-size: 11px; }
+    .summary-label { color: #555; }
+    .summary-val { font-weight: bold; color: #111; }
+    .lost-label { color: #c00; font-weight: bold; }
+    .lost-val { color: #c00; font-weight: bold; }
     footer { display: flex; justify-content: space-between; margin-top: 4mm; }
     footer div { width: 45%; font-size: 11px; }
     footer hr { margin-top: 7mm; border: 0; border-top: 1px solid #111; }
     .page-footnote { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #E1DFD5; padding-top: 1.5mm; margin-top: 3mm; font-size: 10px; color: #888; }
   </style></head><body>${sheetsHtml}</body></html>`;
 }
+
+export const buildWaybillPrintHtml = buildWaybillHtml;
