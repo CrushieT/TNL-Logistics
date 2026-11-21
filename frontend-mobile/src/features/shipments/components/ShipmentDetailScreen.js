@@ -365,8 +365,8 @@ export function ShipmentDetailScreen({ shipmentId }) {
         title={units.length > 1 ? 'Reprint All Labels?' : 'Reprint Parcel Label?'}
         message={
           units.length > 1
-            ? `Labels for this shipment have already been printed. An audit event will be recorded for this reprint. Are you sure you want to reprint all ${units.length} labels?`
-            : `The label for this shipment has already been printed. An audit event will be recorded for this reprint. Are you sure you want to reprint it?`
+            ? 'These labels were already printed. A reprint audit event will be logged.'
+            : 'This label was already printed. A reprint audit event will be logged.'
         }
         confirmText="REPRINT ALL"
         cancelText="CANCEL"

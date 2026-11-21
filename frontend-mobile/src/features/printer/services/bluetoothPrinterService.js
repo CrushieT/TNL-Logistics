@@ -85,7 +85,7 @@ export class VirtualPrinterDriver {
 
   async printLabel(bytes, metadata) {
     assertVirtualPrinterEnabled();
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await new Promise((resolve) => setTimeout(resolve, 100));
     return { success: true, virtual: true, byteCount: bytes?.length || 0, metadata };
   }
 
