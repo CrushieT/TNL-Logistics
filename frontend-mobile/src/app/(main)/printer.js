@@ -18,7 +18,7 @@ import { ThermalLabelPreviewModal } from '../../components/common/ThermalLabelPr
 import { normalizeLabelData } from '../../features/printer/services/thermalLabelData';
 import { IS_VIRTUAL_PRINTER_ENABLED } from '../../features/printer/services/bluetoothPrinterService';
 
-const SHOW_VIRTUAL_PRINTER_TOGGLE = true;
+const SHOW_VIRTUAL_PRINTER_TOGGLE = false;
 
 export default function PrinterSetupScreen() {
   const {

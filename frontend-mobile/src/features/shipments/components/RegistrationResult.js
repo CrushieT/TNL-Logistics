@@ -379,8 +379,8 @@ export function RegistrationResult({ shipment, onRegisterAnother, onHome }) {
         title={trackingCount > 1 ? 'Reprint Parcel Labels?' : 'Reprint Parcel Label?'}
         message={
           trackingCount > 1
-            ? `Labels for all ${trackingCount} parcel units have already been printed. An audit event will be recorded for this reprint. Are you sure you want to reprint?`
-            : `The label for this shipment has already been printed. An audit event will be recorded for this reprint. Are you sure you want to reprint?`
+            ? 'These labels were already printed. A reprint audit event will be logged.'
+            : 'This label was already printed. A reprint audit event will be logged.'
         }
         confirmText="REPRINT"
         cancelText="CANCEL"

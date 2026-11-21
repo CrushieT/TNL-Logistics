@@ -348,7 +348,7 @@ export function ParcelDetailScreen({ trackingId }) {
         visible={confirmReprintVisible}
         eyebrow="REPRINT CONFIRMATION"
         title="Reprint Parcel Label?"
-        message={`This label has already been printed. An audit event will be recorded for this reprint. Are you sure you want to reprint the label for ${parcel?.trackingId || 'this parcel'}?`}
+        message={`This label was already printed for ${parcel?.trackingId || 'this parcel'}. A reprint audit event will be logged.`}
         confirmText="REPRINT"
         cancelText="CANCEL"
         confirmVariant="primary"
