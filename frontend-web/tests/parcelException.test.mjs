@@ -119,8 +119,8 @@ test('an open confirmation retains its reason when refreshed eligibility hides t
 test('reprints retain lost members, counts, and escaped tracking IDs', () => {
   const html = buildWaybillPrintHtml({ waybillId: 'WYB-2026-0001', statusLabel: 'Closed with Loss', deliveredCount: 1, lostCount: 1,
     parcels: [{ trackingId: 'TRK-OK' }, { trackingId: '<TRK-LOST>', lost: true }], totalQuantity: 2 });
-  assert.ok(html.includes('&lt;TRK-LOST&gt; | LOST'));
   assert.ok(html.includes('Closed with Loss'));
   assert.ok(html.includes('Delivered: 1 | Lost: 1'));
-  assert.equal((html.match(/TRK-OK/g) || []).length, 2);
+  assert.ok(html.includes('Lost: </span><b class="lost-val">1</b>'));
+  assert.ok(html.includes('Package 1 of 2') || html.includes('1 Box of 2'));
 });

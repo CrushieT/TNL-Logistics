@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Icon } from 'react-native-paper';
 import { colors } from '../../../theme';
 
 export function PasswordInput({ label, value, onChangeText, editable = true, autoFocus = false }) {
@@ -28,8 +29,9 @@ export function PasswordInput({ label, value, onChangeText, editable = true, aut
           disabled={!editable}
           accessibilityRole="button"
           accessibilityLabel={`${isVisible ? 'Hide' : 'Show'} ${label.toLowerCase()}`}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Text style={styles.toggleText}>{isVisible ? 'HIDE' : 'SHOW'}</Text>
+          <Icon source={isVisible ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.inkSoft} />
         </Pressable>
       </View>
     </View>
@@ -41,6 +43,5 @@ const styles = StyleSheet.create({
   label: { color: colors.inkSoft, fontFamily: 'monospace', fontSize: 10.5, fontWeight: '700', letterSpacing: 0.9, marginBottom: 6 },
   inputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 4 },
   input: { flex: 1, minHeight: 48, color: colors.ink, fontSize: 14, paddingHorizontal: 12 },
-  toggle: { minWidth: 56, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
-  toggleText: { color: colors.inkSoft, fontFamily: 'monospace', fontSize: 10.5, fontWeight: '800', letterSpacing: 0.5 },
+  toggle: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
 });

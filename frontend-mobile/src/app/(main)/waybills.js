@@ -146,6 +146,14 @@ export default function DispatchWaybillsScreen() {
   const [confirmedWaybillId, setConfirmedWaybillId] = useState(null);
   const [confirmedManifestRevision, setConfirmedManifestRevision] = useState(null);
   const isCompletingWaybill = useRef(false);
+  const isPrintingManifestRef = useRef(false);
+  const printCooldownTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (printCooldownTimerRef.current) clearTimeout(printCooldownTimerRef.current);
+    };
+  }, []);
 
   // UI state
   const [busy, setBusy] = useState(false);
@@ -1125,18 +1133,25 @@ export default function DispatchWaybillsScreen() {
 
   // Print 2 portrait A4 copies via expo-print
   const handlePrintManifest = async () => {
-    if (!manifest || busy) return;
+    if (!manifest || busy || isPrintingManifestRef.current) return;
+    isPrintingManifestRef.current = true;
     setBusy(true);
+    setError('');
     try {
       await Print.printAsync({
         html: buildWaybillHtml(manifest),
         width: 595,
         height: 842
       });
-      setNotice('Print dialog opened. Hand paper copies and units to the driver.');
-    } catch {
-      setError('Print dialog could not be opened.');
+      setNotice('Print preview opened. Hand paper copies and units to the driver.');
+    } catch (err) {
+      console.warn('[WaybillPrint] Print.printAsync failed:', err);
+      setError('Unable to open print preview. Please wait a moment and try again.');
     } finally {
+      printCooldownTimerRef.current = setTimeout(() => {
+        isPrintingManifestRef.current = false;
+        printCooldownTimerRef.current = null;
+      }, 1500);
       setBusy(false);
     }
   };

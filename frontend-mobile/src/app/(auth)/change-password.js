@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Icon } from 'react-native-paper';
 import { useAuth } from '../../features/auth/context/AuthContext';
 import { PressableScale } from '../../components/common/PressableScale';
 import { colors } from '../../theme';
@@ -144,18 +146,35 @@ export default function ChangePasswordScreen() {
 }
 
 function PasswordField({ label, value, onChangeText, editable }) {
+  const [isVisible, setIsVisible] = useState(false);
   return (
     <View style={styles.inputGroup}>
       <Text style={styles.inputLabel}>{label}</Text>
-      <TextInput
-        style={styles.input}
-        value={value}
-        onChangeText={onChangeText}
-        secureTextEntry
-        autoCapitalize="none"
-        autoCorrect={false}
-        editable={editable}
-      />
+      <View style={styles.inputRow}>
+        <TextInput
+          style={styles.input}
+          value={value}
+          onChangeText={onChangeText}
+          secureTextEntry={!isVisible}
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="off"
+          textContentType="none"
+          importantForAutofill="noExcludeDescendants"
+          editable={editable}
+          accessibilityLabel={label}
+        />
+        <Pressable
+          style={styles.eyeButton}
+          onPress={() => setIsVisible((current) => !current)}
+          disabled={!editable}
+          accessibilityRole="button"
+          accessibilityLabel={`${isVisible ? 'Hide' : 'Show'} ${label.toLowerCase()}`}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Icon source={isVisible ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.inkSoft} />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -170,7 +189,16 @@ const styles = StyleSheet.create({
   form: { width: '100%' },
   inputGroup: { marginBottom: 16 },
   inputLabel: { color: colors.inkSoft, fontFamily: 'monospace', fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 6 },
-  input: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 4, borderWidth: 1, color: colors.ink, fontSize: 14, height: 46, paddingHorizontal: 12 },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  input: { flex: 1, color: colors.ink, fontSize: 14, height: 46, paddingHorizontal: 12 },
+  eyeButton: { width: 46, height: 46, alignItems: 'center', justifyContent: 'center' },
   errorContainer: { backgroundColor: colors.dangerSoft, borderColor: '#FCA5A5', borderRadius: 4, borderWidth: 1, marginBottom: 16, padding: 10 },
   errorText: { color: colors.danger, fontSize: 12, fontWeight: '600', textAlign: 'center' },
   actionButtonPressable: { width: '100%' },

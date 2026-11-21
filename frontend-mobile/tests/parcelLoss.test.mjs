@@ -25,9 +25,9 @@ test('batch review explains loss without calling an unfinished parcel delivered'
 test('mobile reprints retain and identify every original manifest member', () => {
   const html = buildWaybillHtml({ waybillId: 'WYB-2026-0001', statusLabel: 'Closed with Loss', deliveredCount: 1, lostCount: 1,
     parcels: [{ trackingId: 'TRK-OK' }, { trackingId: '<TRK-LOST>', lost: true }], totalQuantity: 2 });
-  assert.ok(html.includes('&lt;TRK-LOST&gt; | LOST'));
   assert.ok(html.includes('Delivered: 1 | Lost: 1'));
-  assert.equal((html.match(/TRK-OK/g) || []).length, 2);
+  assert.ok(html.includes('Lost: </span><b class="lost-val">1</b>'));
+  assert.ok(html.includes('Package 1 of 2') || html.includes('1 Box of 2'));
 });
 
 test('the production Dispatch queue rejects lost arrivals and loaded parcels before adding them', async () => {

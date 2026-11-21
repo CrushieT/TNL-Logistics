@@ -152,3 +152,14 @@ test('inlines the canonical base64 waybill logo by default when logoUri is omitt
   assert.match(html, /class="logo-wrap"/);
   assert.doesNotMatch(html, /class="logo-fallback"/);
 });
+
+test('waybills.js protects print preview with synchronous ref lock and non-jargon feedback', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../../app/(main)/waybills.js', import.meta.url), 'utf8');
+  assert.match(source, /isPrintingManifestRef = useRef\(false\)/);
+  assert.match(source, /printCooldownTimerRef = useRef\(null\)/);
+  assert.match(source, /if \(!manifest \|\| busy \|\| isPrintingManifestRef\.current\) return/);
+  assert.match(source, /isPrintingManifestRef\.current = true/);
+  assert.match(source, /Print preview opened\. Hand paper copies and units to the driver\./);
+  assert.match(source, /Unable to open print preview\. Please wait a moment and try again\./);
+});
